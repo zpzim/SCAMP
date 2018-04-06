@@ -280,7 +280,7 @@ SCRIMPError_t kernel_self_join_upper(const DATATYPE *QT, const DATATYPE *timeser
 template <class DATATYPE, size_t BLOCKSZ, size_t UNROLL_COUNT>
 SCRIMPError_t kernel_self_join_lower(const DATATYPE *QT, const DATATYPE *timeseries_A, const DATATYPE *timeseries_B, const DATATYPE *std_dev_A,
                                      const DATATYPE *std_dev_B, const DATATYPE *means_A, const DATATYPE *means_B, unsigned long long int *profile_A,
-                                     unsigned long long int *profile_B, size_t window_size, size_t tile_width, cudaStream_t s)
+                                     unsigned long long int *profile_B, size_t window_size, size_t tile_width, size_t tile_height, size_t global_x, size_t global_y, cudaStream_t s)
 {
         
         //do_tile_self_join_upper<DATATYPE, float, BLOCKSZ, UNROLL_COUNT><<<dim3(ceil(tile_width / (double) BLOCKSZ), 1, 1), dim3(BLOCKSZ, 1,1), 0, s>>>(QT, timeseries_A, timeseries_B, means_A, means_B, std_dev_A, std_dev_B, profile_A, profile_B, profile_A_sym, profile_B_sym, window_size, tile_width, reg_mem<UNROLL_COUNT>());

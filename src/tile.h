@@ -74,6 +74,12 @@ template<class DATATYPE, class CUFFT_DTYPE, size_t BLOCKSZ, size_t UNROLL_COUNT>
 SCRIMPError_t SCRIMP_Tile<DATATYPE, CUFFT_DTYPE, BLOCKSZ, UNROLL_COUNT>::do_self_join_full(cudaStream_t s) {
     SCRIMPError_t error;
 
+    if(window_size > tile_width) {
+        return SCRIMP_DIM_INCOMPATIBLE;
+    }
+    if(window_size > tile_height) { 
+        return SCRIMP_DIM_INCOMPATIBLE;
+    }
     error = fft_info->compute_QT(QT_scratch, timeseries_A, timeseries_B, s);
     if(error != SCRIMP_NO_ERROR) {
         return error;
@@ -89,7 +95,7 @@ SCRIMPError_t SCRIMP_Tile<DATATYPE, CUFFT_DTYPE, BLOCKSZ, UNROLL_COUNT>::do_self
         return error;
     }
 
-    error = kernel_self_join_lower<DATATYPE, BLOCKSZ, UNROLL_COUNT>(QT_scratch, timeseries_A, timeseries_B, std_dev_A, std_dev_B, means_A, means_B, profile_A, profile_B, window_size, tile_width - window_size + 1, s);
+    error = kernel_self_join_lower<DATATYPE, BLOCKSZ, UNROLL_COUNT>(QT_scratch, timeseries_A, timeseries_B, std_dev_A, std_dev_B, means_A, means_B, profile_A, profile_B, window_size, tile_width - window_size + 1, tile_height - window_size + 1, tile_start_A, tile_start_B, s);
     if(error != SCRIMP_NO_ERROR) {
         return error;
     }
@@ -101,6 +107,13 @@ SCRIMPError_t SCRIMP_Tile<DATATYPE, CUFFT_DTYPE, BLOCKSZ, UNROLL_COUNT>::do_self
 template<class DATATYPE, class CUFFT_DTYPE, size_t BLOCKSZ, size_t UNROLL_COUNT>
 SCRIMPError_t SCRIMP_Tile<DATATYPE, CUFFT_DTYPE, BLOCKSZ, UNROLL_COUNT>::do_self_join_half(cudaStream_t s) {
     SCRIMPError_t error;
+
+    if(window_size > tile_width) {
+        return SCRIMP_DIM_INCOMPATIBLE;
+    }
+    if(window_size > tile_height) { 
+        return SCRIMP_DIM_INCOMPATIBLE;
+    }
 
     error = fft_info->compute_QT(QT_scratch, timeseries_A, timeseries_B, s);
     if(error != SCRIMP_NO_ERROR) {
