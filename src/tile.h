@@ -79,7 +79,7 @@ SCRIMPError_t SCRIMP_Tile<DATATYPE, CUFFT_DTYPE, BLOCKSZ, UNROLL_COUNT>::do_self
         return error;
     }
 
-    error = kernel_self_join_upper<DATATYPE, BLOCKSZ, UNROLL_COUNT>(QT_scratch, timeseries_A, timeseries_B, std_dev_A, std_dev_B, means_A, means_B, profile_A, profile_B, window_size, tile_width - window_size + 1, s);
+    error = kernel_self_join_upper<DATATYPE, BLOCKSZ, UNROLL_COUNT>(QT_scratch, timeseries_A, timeseries_B, std_dev_A, std_dev_B, means_A, means_B, profile_A, profile_B, window_size, tile_width - window_size + 1, tile_start_A, tile_start_B, s);
     if(error != SCRIMP_NO_ERROR) {
         return error;
     }
@@ -107,7 +107,7 @@ SCRIMPError_t SCRIMP_Tile<DATATYPE, CUFFT_DTYPE, BLOCKSZ, UNROLL_COUNT>::do_self
         return error;
     }
 
-    error = kernel_self_join_upper<DATATYPE, BLOCKSZ, UNROLL_COUNT>(QT_scratch, timeseries_A, timeseries_B, std_dev_A, std_dev_B, means_A, means_B, profile_A, profile_B, window_size, tile_width - window_size + 1, s);
+    error = kernel_self_join_upper<DATATYPE, BLOCKSZ, UNROLL_COUNT>(QT_scratch, timeseries_A, timeseries_B, std_dev_A, std_dev_B, means_A, means_B, profile_A, profile_B, window_size, tile_width - window_size + 1, tile_start_A, tile_start_B, s);
     if(error != SCRIMP_NO_ERROR) {
         return error;
     }
