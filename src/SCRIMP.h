@@ -24,7 +24,7 @@ template<class DTYPE, class CUFFT_DTYPE>
 class SCRIMP_Operation
 {
 private:
-    unordered_map<int, DTYPE*> T_A_dev, T_B_dev, QT_dev, means_A, means_B, stds_A, stds_B;
+    unordered_map<int, DTYPE*> T_A_dev, T_B_dev, QT_dev, means_A, means_B, stds_A, stds_B, scratchpad;
     unordered_map<int, float*> profile_A_dev, profile_B_dev;
     unordered_map<int, unsigned long long int*> profile_A_merged, profile_B_merged;
     unordered_map<int, unsigned int*> profile_idx_A_dev, profile_idx_B_dev;
@@ -45,10 +45,9 @@ private:
 public:
     SCRIMP_Operation(size_t Asize, size_t Bsize, size_t window_sz, const vector<int> &dev) : size_A(Asize), size_B(Bsize), m(window_sz), devices(dev) {
 
-       tile_size = Asize / devices.size();
+       tile_size = Asize / (devices.size() * 4);
        factor = ceil(tile_size / (float) MAX_TILE_SIZE);
        tile_size = tile_size / factor;
-       printf("Tile size = %lu\n", tile_size);
        n = Asize - m + 1;
        tile_n = tile_size - m + 1;
 

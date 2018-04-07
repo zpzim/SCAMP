@@ -19,7 +19,6 @@ using std::make_pair;
 
 #define WORK_SIZE 512
 #define AMT_UNROLL 16
-#define MAX_TILE_SIZE 10000000
 namespace SCRIMP {
 
 __global__ void cross_correlation_to_ed(float *profile, unsigned int n, unsigned int m) {
@@ -61,14 +60,12 @@ __global__ void sliding_std(DTYPE* cumsumsqr, unsigned int window, unsigned int 
 }
 
 template<class DTYPE>
-void compute_statistics(const DTYPE *T, DTYPE *means, DTYPE *stds, size_t n, size_t m, cudaStream_t s)
+void compute_statistics(const DTYPE *T, DTYPE *means, DTYPE *stds, size_t n, size_t m, cudaStream_t s, DTYPE *scratch)
 {
     square<DTYPE> sqr;
     dim3 grid(ceil(n / (double) WORK_SIZE), 1,1);
     dim3 block(WORK_SIZE, 1, 1);
     
-    DTYPE *scratch;
-    cudaMalloc(&scratch, sizeof(DTYPE) * (n + m - 1));
     gpuErrchk(cudaPeekAtLastError());
     
     thrust::device_ptr<const DTYPE> dev_ptr_T = thrust::device_pointer_cast(T);
@@ -85,10 +82,6 @@ void compute_statistics(const DTYPE *T, DTYPE *means, DTYPE *stds, size_t n, siz
     gpuErrchk(cudaPeekAtLastError());
     // Use prefix sum of squares to compute the sliding standard deviation
     sliding_std<DTYPE><<<grid, block, 0, s>>>(scratch, m, n, means, stds);
-    gpuErrchk(cudaPeekAtLastError());
-    cudaStreamSynchronize(s);
-    gpuErrchk(cudaPeekAtLastError());
-    cudaFree(scratch);
     gpuErrchk(cudaPeekAtLastError());
 }
 
@@ -112,6 +105,7 @@ SCRIMPError_t SCRIMP_Operation<DTYPE,CUFFT_DTYPE>::init()
         profile_B_merged.insert(make_pair(device,(unsigned long long int*) NULL));
         profile_idx_A_dev.insert(make_pair(device,(unsigned int *) NULL));
         profile_idx_B_dev.insert(make_pair(device,(unsigned int *) NULL));
+        scratchpad.insert(make_pair(device, (DTYPE*) NULL));
 
         cudaMalloc(&T_A_dev.at(device), sizeof(DTYPE) * tile_size);
         gpuErrchk(cudaPeekAtLastError());
@@ -139,6 +133,7 @@ SCRIMPError_t SCRIMP_Operation<DTYPE,CUFFT_DTYPE>::init()
         gpuErrchk(cudaPeekAtLastError());
         cudaMalloc(&profile_B_merged.at(device), sizeof(unsigned long long int) * tile_n);
         gpuErrchk(cudaPeekAtLastError());
+        cudaMalloc(&scratchpad.at(device), sizeof(DTYPE) * tile_size);
         scratch[device] = new fft_precompute_helper<DTYPE, CUFFT_DTYPE>(tile_size, m, true);
         cudaEvent_t st, ed, copy;
         cudaEventCreate(&ed);
@@ -179,6 +174,7 @@ SCRIMPError_t SCRIMP_Operation<DTYPE,CUFFT_DTYPE>::destroy()
         cudaFree(profile_B_merged[device]);
         cudaFree(profile_idx_A_dev[device]);
         cudaFree(profile_idx_B_dev[device]);
+        cudaFree(scratchpad.at(device));
         delete scratch[device];
         cudaEventDestroy(clocks_start[device]);
         cudaEventDestroy(clocks_end[device]);
@@ -210,9 +206,9 @@ SCRIMPError_t SCRIMP_Operation<DTYPE,CUFFT_DTYPE>::do_tile(SCRIMPTileType t, siz
         cudaMemcpyAsync(profile_idx_B_dev[device], profile_idx_h.data() + start_y, sizeof(unsigned int) * t_n_y, cudaMemcpyHostToDevice, streams.at(device));
         gpuErrchk(cudaPeekAtLastError());
         // TODO: Computing the sliding dot products & statistics for each tile is overkill
-        compute_statistics<DTYPE>(T_A_dev[device], means_A[device], stds_A[device], t_n_x, m, streams.at(device));
+        compute_statistics<DTYPE>(T_A_dev[device], means_A[device], stds_A[device], t_n_x, m, streams.at(device), scratchpad[device]);
         gpuErrchk(cudaPeekAtLastError());
-        compute_statistics<DTYPE>(T_B_dev[device], means_B[device], stds_B[device], t_n_y, m, streams.at(device));
+        compute_statistics<DTYPE>(T_B_dev[device], means_B[device], stds_B[device], t_n_y, m, streams.at(device), scratchpad[device]);
         gpuErrchk(cudaPeekAtLastError());
         thrust::device_ptr<unsigned long long int> ptr_A = thrust::device_pointer_cast(profile_A_merged[device]);
         thrust::device_ptr<unsigned long long int> ptr_B = thrust::device_pointer_cast(profile_B_merged[device]);
@@ -225,22 +221,6 @@ SCRIMPError_t SCRIMP_Operation<DTYPE,CUFFT_DTYPE>::do_tile(SCRIMPTileType t, siz
         cudaEventRecord(clocks_start[device], streams.at(device));
         gpuErrchk(cudaPeekAtLastError());
         err = tile.execute(streams.at(device));
-       /* 
-        vector<unsigned long long int> test(t_n_x);
-        
-        cudaMemcpy(test.data(), profile_A_merged.at(device), t_n_x * sizeof(unsigned long long int), cudaMemcpyDeviceToHost);
-        gpuErrchk(cudaPeekAtLastError());
-        int count = 0;
-        for(auto elem : test) {
-            mp_entry e;
-            e.ulong = elem;
-            printf("%d, [%f, %u]\n", count, e.floats[0], e.ints[1]);
-            count++;
-        }
-        */
-        // Compute the final distance calculation to convert cross correlation computed earlier into euclidean distance
-        //cross_correlation_to_ed<<<dim3(ceil(n / (float) WORK_SIZE), 1, 1), dim3(WORK_SIZE, 1, 1), 0, streams.at(device)>>>(profile_A_dev[device], t_n_x, m); 
-        //cross_correlation_to_ed<<<dim3(ceil(n / (float) WORK_SIZE), 1, 1), dim3(WORK_SIZE, 1, 1), 0, streams.at(device)>>>(profile_B_dev[device], t_n_y, m); 
         cudaEventRecord(clocks_end[device], streams.at(device));
         gpuErrchk(cudaPeekAtLastError());
         return err; 
@@ -485,7 +465,6 @@ int main(int argc, char** argv) {
     FILE* f2 = fopen( argv[4], "w");
     for(int i = 0; i < profile.size(); ++i){
          fprintf(f1, "%f\n", sqrt(max(2*(window_size - profile[i]), 0.0)));
-         //fprintf(f1, "%f\n", profile[i]);
          fprintf(f2, "%u\n", profile_idx[i] + 1);
     }
     gpuErrchk(cudaDeviceSynchronize());

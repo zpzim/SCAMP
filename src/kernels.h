@@ -98,7 +98,7 @@ __device__ inline void initialize_tile_memory(const unsigned long long int *prof
 template<class DTYPE_IN, class DTYPE, unsigned int BLOCKSZ, unsigned int UNROLL_COUNT>
 __global__ void do_tile_self_join(const DTYPE_IN* QT, const DTYPE_IN *T_a, const DTYPE_IN *T_b, const DTYPE_IN *inv_stds_A, const DTYPE_IN *inv_stds_B, const DTYPE_IN *means_A,
                                         const DTYPE_IN *means_B, unsigned long long int *profile_A, unsigned long long int *profile_B, unsigned int m, unsigned int n, unsigned int global_start_x, unsigned int global_start_y,
-                                        struct reg_mem<UNROLL_COUNT> mem, const bool flipped)
+                                        struct reg_mem<UNROLL_COUNT> mem, const bool flipped, const int exclusion)
 {
     // Factor and threads per block must both be powers of two where: factor <= threads per block
     // UNROLL_COUNT * factor must also evenly divide WORK_SIZE
@@ -125,8 +125,7 @@ __global__ void do_tile_self_join(const DTYPE_IN* QT, const DTYPE_IN *T_a, const
 
     // The first threads are acutally computing the trivial match between the same subsequence
     // we exclude these from the calculation
-    const int exclusion = (m / 4);
-    int tile_start_x = meta_diagonal_idx * BLOCKSZ;
+    int tile_start_x = meta_diagonal_idx * BLOCKSZ + exclusion;
     int tile_start_y = 0;
     
     // x is the global column of the distance matrix
@@ -134,15 +133,6 @@ __global__ void do_tile_self_join(const DTYPE_IN* QT, const DTYPE_IN *T_a, const
     // localX, localY are the local coordinates of the thread position in the tile it is working on
     int x = tile_start_x + threadIdx.x;
     int y = 0;
-
-    bool excluded;
-    if(flipped && (global_start_x + (n - x) >= global_start_y && global_start_x + (n - x)  <= global_start_y + exclusion)) {
-        excluded = true;
-    } else if (!flipped && (global_start_x + x >= global_start_y && global_start_x + x <= global_start_y + exclusion)) {
-        excluded = true;
-    } else{
-        excluded = false;
-    }
 
     int localX, localY;
 
@@ -181,63 +171,58 @@ __global__ void do_tile_self_join(const DTYPE_IN* QT, const DTYPE_IN *T_a, const
         // In all but the last tile in each metadiagonal, this first loop will compute
         // the entire tile, at the end we will have some leftover (UNROLL_COUNT may
         // not cleanly divide x) which is handled by the second loop
-        if(!excluded) {
-            while (x < n - UNROLL_COUNT + 1 && localY < tile_height)
-            {
-                // Update the QT value for the next iteration(s)
-                #pragma unroll
-                for (int i = 0; i < UNROLL_COUNT - 1; ++i) {
-                    mem.qt[i + 1] = mem.qt[i] - A_low[localX + i] * B_low[localY + i] + A_high[localX + i] * B_high[localY + i];
-                }
-
-                // Compute the next partial distance value(s):
-                // We defer some of the calculation until after the kernel has finished, this saves us several
-                // long latency math operations in this critical path.
-                // The distance computed here can be converted to the true z-normalized euclidan
-                // distance in constant time
-                // mean_x has already been multiplied with the window size 'm' when the tile was populated
-                // This saves us an extra multiply for each distance computed
-                #pragma unroll
-                for (int i = 0; i < UNROLL_COUNT; ++i) {
-                    mem.dist[i] = (static_cast<float>(mem.qt[i]) - (mean_x[localX + i] * mean_y[localY + i])) * inv_std_x[localX + i] * inv_std_y[localY + i];
-                }
-
-                // This is the next qt value that will be used in the next iteration of the loop
-                mem.qt[0] = mem.qt[UNROLL_COUNT - 1] - A_low[localX + UNROLL_COUNT - 1] * B_low[localY + UNROLL_COUNT - 1] + A_high[localX + UNROLL_COUNT - 1] * B_high[localY + UNROLL_COUNT - 1];
-
-                // Update the cache with the new max value atomically
-                // This is a major source of latency, but this is probably still the best option
-                // if you can think of a better way to handle this please let me know
-                #pragma unroll
-                for (int i = 0; i < UNROLL_COUNT; ++i) {
-                    MPatomicMax((unsigned long long*) (localMPMain + localX + i), mem.dist[i], global_start_y + y + i);
-                    MPatomicMax((unsigned long long*) (localMPOther + localY + i), mem.dist[i], global_start_x + x + i);
-                }
-
-                x += UNROLL_COUNT;
-                y += UNROLL_COUNT;
-                localX += UNROLL_COUNT;
-                localY += UNROLL_COUNT;
+        while (x < n - UNROLL_COUNT + 1 && localY < tile_height)
+        {
+            // Update the QT value for the next iteration(s)
+            #pragma unroll
+            for (int i = 0; i < UNROLL_COUNT - 1; ++i) {
+                mem.qt[i + 1] = mem.qt[i] - A_low[localX + i] * B_low[localY + i] + A_high[localX + i] * B_high[localY + i];
             }
-            double qt_curr = mem.qt[0];
 
-        
-            // Finish the remaining iterations of the final tile if there were leftover
-            // NOTE: this loop should only execute once for each thread beacuse we restrict
-            // UNROLL_COUNT to be a factor of tile_height
-            while (x < n && localY < tile_height) {
-                float dist = (static_cast<float>(qt_curr) - (mean_x[localX] * mean_y[localY])) * inv_std_x[localX] * inv_std_y[localY];
-                qt_curr = qt_curr - A_low[localX] * B_low[localY] + A_high[localX] * B_high[localY];
-                MPatomicMax((unsigned long long*) (localMPMain + localX), dist, global_start_y + y);
-                MPatomicMax((unsigned long long*) (localMPOther + localY), dist, global_start_x + x);
-                x++;
-                y++;
-                localX++;
-                localY++;
+            // Compute the next partial distance value(s):
+            // We defer some of the calculation until after the kernel has finished, this saves us several
+            // long latency math operations in this critical path.
+            // The distance computed here can be converted to the true z-normalized euclidan
+            // distance in constant time
+            // mean_x has already been multiplied with the window size 'm' when the tile was populated
+            // This saves us an extra multiply for each distance computed
+            #pragma unroll
+            for (int i = 0; i < UNROLL_COUNT; ++i) {
+                mem.dist[i] = (static_cast<float>(mem.qt[i]) - (mean_x[localX + i] * mean_y[localY + i])) * inv_std_x[localX + i] * inv_std_y[localY + i];
             }
-        } else {
-            x += tile_height;
-            y += tile_height;
+
+            // This is the next qt value that will be used in the next iteration of the loop
+            mem.qt[0] = mem.qt[UNROLL_COUNT - 1] - A_low[localX + UNROLL_COUNT - 1] * B_low[localY + UNROLL_COUNT - 1] + A_high[localX + UNROLL_COUNT - 1] * B_high[localY + UNROLL_COUNT - 1];
+
+            // Update the cache with the new max value atomically
+            // This is a major source of latency, but this is probably still the best option
+            // if you can think of a better way to handle this please let me know
+            #pragma unroll
+            for (int i = 0; i < UNROLL_COUNT; ++i) {
+                MPatomicMax((unsigned long long*) (localMPMain + localX + i), mem.dist[i], global_start_y + y + i);
+                MPatomicMax((unsigned long long*) (localMPOther + localY + i), mem.dist[i], global_start_x + x + i);
+            }
+
+            x += UNROLL_COUNT;
+            y += UNROLL_COUNT;
+            localX += UNROLL_COUNT;
+            localY += UNROLL_COUNT;
+        }
+        double qt_curr = mem.qt[0];
+
+    
+        // Finish the remaining iterations of the final tile if there were leftover
+        // NOTE: this loop should only execute once for each thread beacuse we restrict
+        // UNROLL_COUNT to be a factor of tile_height
+        while (x < n && localY < tile_height) {
+            float dist = (static_cast<float>(qt_curr) - (mean_x[localX] * mean_y[localY])) * inv_std_x[localX] * inv_std_y[localY];
+            qt_curr = qt_curr - A_low[localX] * B_low[localY] + A_high[localX] * B_high[localY];
+            MPatomicMax((unsigned long long*) (localMPMain + localX), dist, global_start_y + y);
+            MPatomicMax((unsigned long long*) (localMPOther + localY), dist, global_start_x + x);
+            x++;
+            y++;
+            localX++;
+            localY++;
         }
         // After this sync, the caches will be updated with the best so far values for this tile
         __syncthreads();
@@ -270,7 +255,7 @@ __global__ void do_tile_self_join(const DTYPE_IN* QT, const DTYPE_IN *T_a, const
 template<class DTYPE_IN, class DTYPE, unsigned int BLOCKSZ, unsigned int UNROLL_COUNT>
 __global__ void do_tile_self_join_bounds_check(const DTYPE_IN* QT, const DTYPE_IN *T_a, const DTYPE_IN *T_b, const DTYPE_IN *inv_stds_A, const DTYPE_IN *inv_stds_B, const DTYPE_IN *means_A,
                                         const DTYPE_IN *means_B, unsigned long long int *profile_A, unsigned long long int *profile_B, unsigned int m, unsigned int n_x, unsigned int n_y, unsigned int global_start_x, unsigned int global_start_y,
-                                        struct reg_mem<UNROLL_COUNT> mem, const bool flipped)
+                                        struct reg_mem<UNROLL_COUNT> mem, const bool flipped, const int exclusion)
 {
     // Factor and threads per block must both be powers of two where: factor <= threads per block
     // UNROLL_COUNT * factor must also evenly divide WORK_SIZE
@@ -297,8 +282,7 @@ __global__ void do_tile_self_join_bounds_check(const DTYPE_IN* QT, const DTYPE_I
 
     // The first threads are acutally computing the trivial match between the same subsequence
     // we exclude these from the calculation
-    const int exclusion = (m / 4);
-    int tile_start_x = meta_diagonal_idx * BLOCKSZ;
+    int tile_start_x = meta_diagonal_idx * BLOCKSZ + exclusion;
     int tile_start_y = 0;
     
     // x is the global column of the distance matrix
@@ -306,15 +290,6 @@ __global__ void do_tile_self_join_bounds_check(const DTYPE_IN* QT, const DTYPE_I
     // localX, localY are the local coordinates of the thread position in the tile it is working on
     int x = tile_start_x + threadIdx.x;
     int y = 0;
-
-    bool excluded;
-    if(flipped && (global_start_x + (n_x - x) >= global_start_y && global_start_x + (n_x - x)  <= global_start_y + exclusion)) {
-        excluded = true;
-    } else if (!flipped && (global_start_x + x >= global_start_y && global_start_x + x <= global_start_y + exclusion)) {
-        excluded = true;
-    } else{
-        excluded = false;
-    }
 
     int localX, localY;
 
@@ -353,63 +328,58 @@ __global__ void do_tile_self_join_bounds_check(const DTYPE_IN* QT, const DTYPE_I
         // In all but the last tile in each metadiagonal, this first loop will compute
         // the entire tile, at the end we will have some leftover (UNROLL_COUNT may
         // not cleanly divide x) which is handled by the second loop
-        if(!excluded) {
-            while (x < n_x - UNROLL_COUNT + 1 && y < n_y - UNROLL_COUNT + 1 && localY < tile_height)
-            {
-                // Update the QT value for the next iteration(s)
-                #pragma unroll
-                for (int i = 0; i < UNROLL_COUNT - 1; ++i) {
-                    mem.qt[i + 1] = mem.qt[i] - A_low[localX + i] * B_low[localY + i] + A_high[localX + i] * B_high[localY + i];
-                }
-
-                // Compute the next partial distance value(s):
-                // We defer some of the calculation until after the kernel has finished, this saves us several
-                // long latency math operations in this critical path.
-                // The distance computed here can be converted to the true z-normalized euclidan
-                // distance in constant time
-                // mean_x has already been multiplied with the window size 'm' when the tile was populated
-                // This saves us an extra multiply for each distance computed
-                #pragma unroll
-                for (int i = 0; i < UNROLL_COUNT; ++i) {
-                    mem.dist[i] = (static_cast<float>(mem.qt[i]) - (mean_x[localX + i] * mean_y[localY + i])) * inv_std_x[localX + i] * inv_std_y[localY + i];
-                }
-
-                // This is the next qt value that will be used in the next iteration of the loop
-                mem.qt[0] = mem.qt[UNROLL_COUNT - 1] - A_low[localX + UNROLL_COUNT - 1] * B_low[localY + UNROLL_COUNT - 1] + A_high[localX + UNROLL_COUNT - 1] * B_high[localY + UNROLL_COUNT - 1];
-
-                // Update the cache with the new max value atomically
-                // This is a major source of latency, but this is probably still the best option
-                // if you can think of a better way to handle this please let me know
-                #pragma unroll
-                for (int i = 0; i < UNROLL_COUNT; ++i) {
-                    MPatomicMax((unsigned long long*) (localMPMain + localX + i), mem.dist[i], global_start_y + y + i);
-                    MPatomicMax((unsigned long long*) (localMPOther + localY + i), mem.dist[i], global_start_x + x + i);
-                }
-
-                x += UNROLL_COUNT;
-                y += UNROLL_COUNT;
-                localX += UNROLL_COUNT;
-                localY += UNROLL_COUNT;
+        while (x < n_x - UNROLL_COUNT + 1 && y < n_y - UNROLL_COUNT + 1 && localY < tile_height)
+        {
+            // Update the QT value for the next iteration(s)
+            #pragma unroll
+            for (int i = 0; i < UNROLL_COUNT - 1; ++i) {
+                mem.qt[i + 1] = mem.qt[i] - A_low[localX + i] * B_low[localY + i] + A_high[localX + i] * B_high[localY + i];
             }
-            double qt_curr = mem.qt[0];
 
-        
-            // Finish the remaining iterations of the final tile if there were leftover
-            // NOTE: this loop should only execute once for each thread beacuse we restrict
-            // UNROLL_COUNT to be a factor of tile_height
-            while (x < n_x && y < n_y && localY < tile_height) {
-                float dist = (static_cast<float>(qt_curr) - (mean_x[localX] * mean_y[localY])) * inv_std_x[localX] * inv_std_y[localY];
-                qt_curr = qt_curr - A_low[localX] * B_low[localY] + A_high[localX] * B_high[localY];
-                MPatomicMax((unsigned long long*) (localMPMain + localX), dist, global_start_y + y);
-                MPatomicMax((unsigned long long*) (localMPOther + localY), dist, global_start_x + x);
-                x++;
-                y++;
-                localX++;
-                localY++;
+            // Compute the next partial distance value(s):
+            // We defer some of the calculation until after the kernel has finished, this saves us several
+            // long latency math operations in this critical path.
+            // The distance computed here can be converted to the true z-normalized euclidan
+            // distance in constant time
+            // mean_x has already been multiplied with the window size 'm' when the tile was populated
+            // This saves us an extra multiply for each distance computed
+            #pragma unroll
+            for (int i = 0; i < UNROLL_COUNT; ++i) {
+                mem.dist[i] = (static_cast<float>(mem.qt[i]) - (mean_x[localX + i] * mean_y[localY + i])) * inv_std_x[localX + i] * inv_std_y[localY + i];
             }
-        } else {
-            x += tile_height;
-            y += tile_height;
+
+            // This is the next qt value that will be used in the next iteration of the loop
+            mem.qt[0] = mem.qt[UNROLL_COUNT - 1] - A_low[localX + UNROLL_COUNT - 1] * B_low[localY + UNROLL_COUNT - 1] + A_high[localX + UNROLL_COUNT - 1] * B_high[localY + UNROLL_COUNT - 1];
+
+            // Update the cache with the new max value atomically
+            // This is a major source of latency, but this is probably still the best option
+            // if you can think of a better way to handle this please let me know
+            #pragma unroll
+            for (int i = 0; i < UNROLL_COUNT; ++i) {
+                MPatomicMax((unsigned long long*) (localMPMain + localX + i), mem.dist[i], global_start_y + y + i);
+                MPatomicMax((unsigned long long*) (localMPOther + localY + i), mem.dist[i], global_start_x + x + i);
+            }
+
+            x += UNROLL_COUNT;
+            y += UNROLL_COUNT;
+            localX += UNROLL_COUNT;
+            localY += UNROLL_COUNT;
+        }
+        double qt_curr = mem.qt[0];
+
+    
+        // Finish the remaining iterations of the final tile if there were leftover
+        // NOTE: this loop should only execute once for each thread beacuse we restrict
+        // UNROLL_COUNT to be a factor of tile_height
+        while (x < n_x && y < n_y && localY < tile_height) {
+            float dist = (static_cast<float>(qt_curr) - (mean_x[localX] * mean_y[localY])) * inv_std_x[localX] * inv_std_y[localY];
+            qt_curr = qt_curr - A_low[localX] * B_low[localY] + A_high[localX] * B_high[localY];
+            MPatomicMax((unsigned long long*) (localMPMain + localX), dist, global_start_y + y);
+            MPatomicMax((unsigned long long*) (localMPOther + localY), dist, global_start_x + x);
+            x++;
+            y++;
+            localX++;
+            localY++;
         }
         // After this sync, the caches will be updated with the best so far values for this tile
         __syncthreads();
@@ -443,7 +413,16 @@ SCRIMPError_t kernel_self_join_upper(const DATATYPE *QT, const DATATYPE *timeser
                                      const DATATYPE *std_dev_B, const DATATYPE *means_A, const DATATYPE *means_B, unsigned long long int *profile_A,
                                      unsigned long long int *profile_B, size_t window_size, size_t tile_width, size_t global_x, size_t global_y, cudaStream_t s, bool flipped)
 {
-        do_tile_self_join<DATATYPE, float, BLOCKSZ, UNROLL_COUNT><<<dim3(ceil(tile_width / (double) BLOCKSZ), 1, 1), dim3(BLOCKSZ, 1,1), 0, s>>>(QT, timeseries_A, timeseries_B, std_dev_A, std_dev_B, means_A, means_B, profile_A, profile_B, window_size, tile_width, global_x, global_y, reg_mem<UNROLL_COUNT>(), flipped);
+        dim3 grid(1,1,1);
+        dim3 block(BLOCKSZ, 1, 1);
+        int exclusion = window_size / 4;
+        if(global_y >= global_x && global_y <= global_x + exclusion) {
+            grid.x = ceil((tile_width - exclusion) / (double) BLOCKSZ);
+        } else {
+            grid.x = ceil((tile_width) / (double) BLOCKSZ);
+            exclusion = 0;
+        }
+        do_tile_self_join<DATATYPE, float, BLOCKSZ, UNROLL_COUNT><<<dim3(ceil(tile_width / (double) BLOCKSZ), 1, 1), dim3(BLOCKSZ, 1,1), 0, s>>>(QT, timeseries_A, timeseries_B, std_dev_A, std_dev_B, means_A, means_B, profile_A, profile_B, window_size, tile_width, global_x, global_y, reg_mem<UNROLL_COUNT>(), flipped, exclusion);
         cudaError_t err = cudaPeekAtLastError();
         if(err != cudaSuccess) {
             return SCRIMP_CUDA_ERROR;
@@ -458,11 +437,19 @@ SCRIMPError_t kernel_self_join_lower(const DATATYPE *QT, const DATATYPE *timeser
                                      const DATATYPE *std_dev_B, const DATATYPE *means_A, const DATATYPE *means_B, unsigned long long int *profile_A,
                                      unsigned long long int *profile_B, size_t window_size, size_t tile_width, size_t tile_height, size_t global_x, size_t global_y, cudaStream_t s)
 {
-       
-        if(tile_height <= tile_width) {
-            do_tile_self_join<DATATYPE, float, BLOCKSZ, UNROLL_COUNT><<<dim3(ceil(tile_height / (double) BLOCKSZ), 1, 1), dim3(BLOCKSZ, 1, 1), 0, s>>>(QT, timeseries_B, timeseries_A, std_dev_B, std_dev_A, means_B, means_A, profile_B, profile_A, window_size, tile_height, global_y, global_x, reg_mem<UNROLL_COUNT>(), true);
+        dim3 grid(1,1,1);
+        dim3 block(BLOCKSZ, 1, 1);
+        int exclusion = window_size / 4;
+        if(global_y + tile_height >= global_x && global_y + tile_height <= global_x + exclusion) {
+            grid.x = ceil((tile_height - exclusion) / (double) BLOCKSZ);
         } else {
-            do_tile_self_join_bounds_check<DATATYPE, float, BLOCKSZ, UNROLL_COUNT><<<dim3(ceil(tile_height / (double) BLOCKSZ), 1, 1), dim3(BLOCKSZ, 1, 1), 0, s>>>(QT, timeseries_B, timeseries_A, std_dev_B, std_dev_A, means_B, means_A, profile_B, profile_A, window_size, tile_height, tile_width, global_y, global_x, reg_mem<UNROLL_COUNT>(), true);
+            grid.x = ceil((tile_height) / (double) BLOCKSZ);
+            exclusion = 0;
+        }
+        if(tile_height <= tile_width) {
+            do_tile_self_join<DATATYPE, float, BLOCKSZ, UNROLL_COUNT><<<grid, block, 0, s>>>(QT, timeseries_B, timeseries_A, std_dev_B, std_dev_A, means_B, means_A, profile_B, profile_A, window_size, tile_height - exclusion, global_y, global_x, reg_mem<UNROLL_COUNT>(), true, 0);
+        } else {
+            do_tile_self_join_bounds_check<DATATYPE, float, BLOCKSZ, UNROLL_COUNT><<<grid, block, 0, s>>>(QT, timeseries_B, timeseries_A, std_dev_B, std_dev_A, means_B, means_A, profile_B, profile_A, window_size, tile_height - exclusion, tile_width, global_y, global_x, reg_mem<UNROLL_COUNT>(), true, 0);
         }
         cudaError_t err = cudaPeekAtLastError();
         if(err != cudaSuccess) {
