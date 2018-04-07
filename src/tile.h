@@ -84,19 +84,20 @@ SCRIMPError_t SCRIMP_Tile<DATATYPE, CUFFT_DTYPE, BLOCKSZ, UNROLL_COUNT>::do_self
     if(error != SCRIMP_NO_ERROR) {
         return error;
     }
-
-    error = kernel_self_join_upper<DATATYPE, BLOCKSZ, UNROLL_COUNT>(QT_scratch, timeseries_A, timeseries_B, std_dev_A, std_dev_B, means_A, means_B, profile_A, profile_B, window_size, tile_width - window_size + 1, tile_start_A, tile_start_B, s);
+    
+    printf("kernel 2 n = %lu, start_B = %lu, start_A = %lu\n", tile_width - window_size + 1, tile_start_B, tile_start_A);
+    error = kernel_self_join_upper<DATATYPE, BLOCKSZ, UNROLL_COUNT>(QT_scratch, timeseries_A, timeseries_B, std_dev_A, std_dev_B, means_A, means_B, profile_A, profile_B, window_size, tile_width - window_size + 1, tile_start_A, tile_start_B, s, false);
     if(error != SCRIMP_NO_ERROR) {
         return error;
     }
-
     error = fft_info->compute_QT(QT_scratch, timeseries_B, timeseries_A, s);
     if(error != SCRIMP_NO_ERROR) {
         return error;
     }
-
+    
     error = kernel_self_join_lower<DATATYPE, BLOCKSZ, UNROLL_COUNT>(QT_scratch, timeseries_A, timeseries_B, std_dev_A, std_dev_B, means_A, means_B, profile_A, profile_B, window_size, tile_width - window_size + 1, tile_height - window_size + 1, tile_start_A, tile_start_B, s);
     if(error != SCRIMP_NO_ERROR) {
+        printf("SCRIMP error\n");
         return error;
     }
 
@@ -120,7 +121,7 @@ SCRIMPError_t SCRIMP_Tile<DATATYPE, CUFFT_DTYPE, BLOCKSZ, UNROLL_COUNT>::do_self
         return error;
     }
 
-    error = kernel_self_join_upper<DATATYPE, BLOCKSZ, UNROLL_COUNT>(QT_scratch, timeseries_A, timeseries_B, std_dev_A, std_dev_B, means_A, means_B, profile_A, profile_B, window_size, tile_width - window_size + 1, tile_start_A, tile_start_B, s);
+    error = kernel_self_join_upper<DATATYPE, BLOCKSZ, UNROLL_COUNT>(QT_scratch, timeseries_A, timeseries_B, std_dev_A, std_dev_B, means_A, means_B, profile_A, profile_B, window_size, tile_width - window_size + 1, tile_start_A, tile_start_B, s, false);
     if(error != SCRIMP_NO_ERROR) {
         return error;
     }

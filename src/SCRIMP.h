@@ -8,8 +8,7 @@ using std::unordered_map;
 
 namespace SCRIMP {
 
-#define MAX_TILE_SIZE 10000000
-
+#define MAX_TILE_SIZE 9000000
 //For computing the prefix squared sum
 template<class DTYPE>
 struct square
@@ -46,10 +45,8 @@ private:
 public:
     SCRIMP_Operation(size_t Asize, size_t Bsize, size_t window_sz, const vector<int> &dev) : size_A(Asize), size_B(Bsize), m(window_sz), devices(dev) {
 
-       tile_size = Asize;
-       factor = 1;
-//        tile_size = Asize / devices.size();
-//        factor = ceil(tile_size / (float) MAX_TILE_SIZE);
+       tile_size = Asize / devices.size();
+       factor = ceil(tile_size / (float) MAX_TILE_SIZE);
        tile_size = tile_size / factor;
        printf("Tile size = %lu\n", tile_size);
        n = Asize - m + 1;

@@ -196,7 +196,7 @@ SCRIMPError_t SCRIMP_Operation<DTYPE,CUFFT_DTYPE>::do_tile(SCRIMPTileType t, siz
         SCRIMPError_t err;
         size_t t_n_x = t_size_x - m + 1;
         size_t t_n_y = t_size_y - m + 1;
-        printf("tile [%lu, %lu]...\n", start_x, start_y);
+        printf("tile type = %d start_pos = [%lu, %lu]...\n", t, start_x, start_y);
         cudaMemcpyAsync(T_A_dev[device], T_h.data() + start_x, sizeof(DTYPE) * t_size_x, cudaMemcpyHostToDevice, streams.at(device));
         gpuErrchk(cudaPeekAtLastError());
         cudaMemcpyAsync(T_B_dev[device], T_h.data() + start_y, sizeof(DTYPE) * t_size_y, cudaMemcpyHostToDevice, streams.at(device));
@@ -258,6 +258,7 @@ bool SCRIMP_Operation<DTYPE,CUFFT_DTYPE>::pick_and_start_next_tile_self_join(int
     start_y = tile_row * tile_n;
     size_x = min(tile_size, size_A - start_x);
     size_y = min(tile_size, size_B - start_y);
+    printf("start_x = %lu, start_y = %lu, size_x = %lu, size_y = %lu, tile_size = %lu\n", start_x, start_y, size_x, size_y, tile_size);
     if(tile_row == tile_col) {
         //partial tile on diagonal
         do_tile(SELF_JOIN_UPPER_TRIANGULAR, size_x, size_y, start_x, start_y, dev, T_h, profile_h, profile_idx_h);
@@ -295,8 +296,9 @@ void merge_partial_on_host(vector<unsigned long long int> &profile_to_merge, vec
 template<class DTYPE, class CUFFT_DTYPE>
 SCRIMPError_t SCRIMP_Operation<DTYPE, CUFFT_DTYPE>::do_self_join(const vector<DTYPE> &T_host, vector<float> &profile, vector<unsigned int> &profile_idx)
 {
-    size_t num_tile_rows = factor * devices.size();
-    size_t num_tile_cols = num_tile_rows;
+    
+    size_t num_tile_rows = ceil((size_A - m + 1) / (float) tile_n);
+    size_t num_tile_cols = ceil((size_B - m + 1) / (float) tile_n);
     vector<bool> profile_lock(num_tile_cols, false);
     vector<int> curr_tile(num_tile_rows);
     vector< vector<unsigned long long int> > profileA_h(devices.size(), vector<unsigned long long int>(tile_n)), profileB_h(devices.size(), vector<unsigned long long int>(tile_n));
@@ -346,12 +348,14 @@ SCRIMPError_t SCRIMP_Operation<DTYPE, CUFFT_DTYPE>::do_self_join(const vector<DT
             n_y_2[device] = n_y[device];
             pos_x_2[device] = pos_x[device];
             pos_y_2[device] = pos_y[device];
-            done = pick_and_start_next_tile_self_join(device, tile_col, work_start, curr_tile, num_tile_rows, num_tile_cols, T_host, profile, profile_idx, n_x[device], n_y[device], pos_x[device], pos_y[device]);
-            if(done) {
-                last_dev = device;
-                break;
+            if(!done) {
+                done = pick_and_start_next_tile_self_join(device, tile_col, work_start, curr_tile, num_tile_rows, num_tile_cols, T_host, profile, profile_idx, n_x[device], n_y[device], pos_x[device], pos_y[device]);
+                if(done) {
+                    last_dev = device;
+                }
             }
         }
+
         for(auto device : devices) {
             cudaSetDevice(device);
             gpuErrchk(cudaPeekAtLastError());
@@ -376,7 +380,6 @@ SCRIMPError_t SCRIMP_Operation<DTYPE, CUFFT_DTYPE>::do_self_join(const vector<DT
         cudaEventElapsedTime(&elapsed_time, clocks_start[device], clocks_end[device]);
         gpuErrchk(cudaPeekAtLastError());
         printf("Device %d took %f seconds to finish tile\n", device, elapsed_time / 1000);
-        printf("%lu\n", n_x[device]);
         cudaMemcpyAsync(profileA_h.at(device).data(), profile_A_merged[device], sizeof(unsigned long long int) * (n_x[device] - m + 1), cudaMemcpyDeviceToHost, streams.at(device));
         gpuErrchk(cudaPeekAtLastError());
         cudaMemcpyAsync(profileB_h.at(device).data(), profile_B_merged[device], sizeof(unsigned long long int) * (n_y[device] - m + 1), cudaMemcpyDeviceToHost, streams.at(device));
@@ -404,88 +407,18 @@ void do_SCRIMP(const vector<DTYPE> &T_h, vector<float> &profile_h, vector<unsign
         exit(0);
     }
     // Allocate and initialize memory
-    
+    clock_t start, end;
     SCRIMP_Operation<DTYPE, CUFFT_DTYPE> op(T_h.size(), T_h.size(), m, devices);
-    op.init();    
-
+    op.init();
+    gpuErrchk(cudaPeekAtLastError());
+    start = clock();
     op.do_self_join(T_h, profile_h, profile_idx_h);
     cudaDeviceSynchronize();
+    end = clock();
+    gpuErrchk(cudaPeekAtLastError());
     op.destroy();
     gpuErrchk(cudaPeekAtLastError());
-    printf("Finished STOMP to generate partial matrix profile of size %lu on %lu devices:\n", profile_h.size(), devices.size());
-/*
-    // Free unneeded resources
-    for (auto &device : devices) {
-        cudaSetDevice(device);
-        gpuErrchk(cudaPeekAtLastError());
-        cudaFree(T_A_dev[device]);
-        gpuErrchk(cudaPeekAtLastError());
-        cudaFree(T_B_dev[device]);
-        gpuErrchk(cudaPeekAtLastError());
-        // Keep the profile for the first device as a staging area for the final result
-        if (device != devices.at(0)) { 
-            cudaFree(profile_A_dev[device]);
-            gpuErrchk(cudaPeekAtLastError());
-            cudaFree(profile_B_dev[device]);
-            gpuErrchk(cudaPeekAtLastError());
-            cudaFree(profile_idx_A_dev[device]);
-            gpuErrchk(cudaPeekAtLastError());
-            cudaFree(profile_idx_B_dev[device]);
-            gpuErrchk(cudaPeekAtLastError());
-        }
-        cudaFree(QT_dev[device]);
-        gpuErrchk(cudaPeekAtLastError());
-        cudaFree(means_A[device]);
-        gpuErrchk(cudaPeekAtLastError());
-        cudaFree(means_B[device]);
-        gpuErrchk(cudaPeekAtLastError());
-        cudaFree(stds_A[device]);
-        gpuErrchk(cudaPeekAtLastError());
-        cudaFree(stds_B[device]);
-        gpuErrchk(cudaPeekAtLastError());
-        cudaStreamDestroy(streams.at(device));
-        gpuErrchk(cudaPeekAtLastError());
-        delete scratch[device];
-    }
-    
-    // TODO: this is a hack and will only work for 1 tile 1 GPU self join   
-    cudaSetDevice(0);
-    auto ptr_profile = thrust::device_ptr<float>(profile_A_dev[devices.at(0)]);
-    auto ptr_profile_B = thrust::device_ptr<float>(profile_A_dev[devices.at(0)]);
-    auto ptr_index = thrust::device_ptr<unsigned int>(profile_idx_A_dev[devices.at(0)]);
-    auto ptr_index_B = thrust::device_ptr<unsigned int>(profile_idx_B_dev[devices.at(0)]);
-    auto ptr_merged = thrust::device_ptr<unsigned long long int>(profile_A_merged[devices.at(0)]);
-    auto ptr_merged_B = thrust::device_ptr<unsigned long long int>(profile_B_merged[devices.at(0)]);
-    auto iter_begin = thrust::make_zip_iterator(thrust::make_tuple(ptr_profile, ptr_index, ptr_merged));
-    auto iter_end = thrust::make_zip_iterator(thrust::make_tuple(ptr_profile + tile_n, ptr_index + tile_n, ptr_merged + tile_n));
-    thrust::for_each(iter_begin, iter_end, max_with_index());
-    iter_begin = thrust::make_zip_iterator(thrust::make_tuple(ptr_profile, ptr_index, ptr_merged_B));
-    iter_end = thrust::make_zip_iterator(thrust::make_tuple(ptr_profile + tile_n, ptr_index + tile_n, ptr_merged_B + tile_n));
-    thrust::for_each(iter_begin, iter_end, max_with_index());
-    cudaDeviceSynchronize();
-    gpuErrchk(cudaPeekAtLastError());
-
-         
-    // Compute the final distance calculation to convert cross correlation computed earlier into euclidean distance
-    cross_correlation_to_ed<<<dim3(ceil(n / (float) WORK_SIZE), 1, 1), dim3(WORK_SIZE, 1, 1)>>>(profile_A_dev[devices.at(0)], tile_n, m); 
-    gpuErrchk(cudaPeekAtLastError());
-    cudaMemcpy(profile_idx_h.data(), profile_idx_A_dev[devices.at(0)], sizeof(unsigned int) * tile_n, cudaMemcpyDeviceToHost);
-    gpuErrchk(cudaPeekAtLastError());
-    cudaMemcpy(profile_h.data(), profile_A_dev[devices.at(0)], sizeof(float) * tile_n, cudaMemcpyDeviceToHost);
-    gpuErrchk(cudaPeekAtLastError());
-    cudaFree(profile_idx_A_dev[devices.at(0)]);
-    gpuErrchk(cudaPeekAtLastError());
-    cudaFree(profile_idx_B_dev[devices.at(0)]);
-    gpuErrchk(cudaPeekAtLastError());
-    cudaFree(profile_A_dev[devices.at(0)]);
-    gpuErrchk(cudaPeekAtLastError());
-    cudaFree(profile_B_dev[devices.at(0)]);
-    gpuErrchk(cudaPeekAtLastError());
-    cudaFree(profile_A_merged[devices.at(0)]);
-    gpuErrchk(cudaPeekAtLastError());
-    cudaFree(profile_B_merged[devices.at(0)]);
-    gpuErrchk(cudaPeekAtLastError());
-*/
+    printf("Finished STOMP to generate partial matrix profile of size %lu in %f seconds on %lu devices:\n", profile_h.size(), (end - start) / (double) CLOCKS_PER_SEC, devices.size());
 }
 
 //Reads input time series from file
@@ -551,8 +484,9 @@ int main(int argc, char** argv) {
     FILE* f1 = fopen( argv[3], "w");
     FILE* f2 = fopen( argv[4], "w");
     for(int i = 0; i < profile.size(); ++i){
-        fprintf(f1, "%f\n", sqrt(max(2*(window_size - profile[i]), 0.0)));
-        fprintf(f2, "%u\n", profile_idx[i] + 1);
+         fprintf(f1, "%f\n", sqrt(max(2*(window_size - profile[i]), 0.0)));
+         //fprintf(f1, "%f\n", profile[i]);
+         fprintf(f2, "%u\n", profile_idx[i] + 1);
     }
     gpuErrchk(cudaDeviceSynchronize());
     gpuErrchk(cudaDeviceReset());
