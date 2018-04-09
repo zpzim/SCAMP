@@ -227,13 +227,32 @@ SCRIMPError_t SCRIMP_Operation<DTYPE,CUFFT_DTYPE>::do_tile(SCRIMPTileType t, siz
 
 }
 
+template<class DTYPE, class CUFFT_DTYPE>
+void SCRIMP_Operation<DTYPE, CUFFT_DTYPE>::get_tile_ordering(list<pair<int,int>> &tile_ordering) {
+	size_t num_tile_rows = ceil((size_A - m + 1) / (float) tile_n);
+	size_t num_tile_cols = ceil((size_B - m + 1) / (float) tile_n);
+
+	for(int offset = 0; offset < num_tile_rows - 1; ++offset) {
+		for(int diag = 0; diag < num_tile_cols - 1 - offset; ++diag) {
+			tile_ordering.emplace_back(diag,diag + offset);
+		}
+	}
+
+	for(int i = 0; i < num_tile_rows; ++i) {
+		tile_ordering.emplace_back(i, num_tile_cols - 1);
+	}
+
+
+}
+
 
 template<class DTYPE, class CUFFT_DTYPE>
-bool SCRIMP_Operation<DTYPE,CUFFT_DTYPE>::pick_and_start_next_tile_self_join(int dev, size_t &tile_col, size_t &work_start, vector<int> &curr_tile, const size_t num_tile_rows, const size_t num_tile_cols, const vector<DTYPE> &T_h, const vector<float> &profile_h, const vector<unsigned int> &profile_idx_h, size_t &size_x, size_t &size_y, size_t &start_x, size_t &start_y)
+bool SCRIMP_Operation<DTYPE,CUFFT_DTYPE>::pick_and_start_next_tile_self_join(int dev, list<pair<int,int>> &tile_order, const vector<DTYPE> &T_h, const vector<float> &profile_h, const vector<unsigned int> &profile_idx_h, size_t &size_x, size_t &size_y, size_t &start_x, size_t &start_y)
 {
     
     bool done = false;
-    int tile_row = curr_tile.at(tile_col);
+    int tile_row = tile_order.front().first;
+    int tile_col = tile_order.front().second;
     start_x = tile_col * tile_n;
     start_y = tile_row * tile_n;
     size_x = min(tile_size, size_A - start_x);
@@ -242,24 +261,13 @@ bool SCRIMP_Operation<DTYPE,CUFFT_DTYPE>::pick_and_start_next_tile_self_join(int
     if(tile_row == tile_col) {
         //partial tile on diagonal
         do_tile(SELF_JOIN_UPPER_TRIANGULAR, size_x, size_y, start_x, start_y, dev, T_h, profile_h, profile_idx_h);
-        curr_tile.at(tile_col)--;
-        if(curr_tile.at(tile_col) < 0) {
-            work_start++;
-        }
     } else {
         // full tile
         do_tile(SELF_JOIN_FULL_TILE, size_x, size_y, start_x, start_y, dev, T_h, profile_h, profile_idx_h);
-        curr_tile.at(tile_col)--;
-        if(curr_tile.at(tile_col) < 0) {
-            work_start++;
-        }
     }
-    if(work_start >=  num_tile_rows){ 
+    tile_order.pop_front();
+    if(tile_order.empty()){
         done = true;
-    }
-    tile_col++;
-    if(tile_col >= num_tile_cols) {
-        tile_col = work_start;
     }
     return done;
 }
@@ -276,16 +284,9 @@ void merge_partial_on_host(vector<unsigned long long int> &profile_to_merge, vec
 template<class DTYPE, class CUFFT_DTYPE>
 SCRIMPError_t SCRIMP_Operation<DTYPE, CUFFT_DTYPE>::do_self_join(const vector<DTYPE> &T_host, vector<float> &profile, vector<unsigned int> &profile_idx)
 {
-    
-    size_t num_tile_rows = ceil((size_A - m + 1) / (float) tile_n);
-    size_t num_tile_cols = ceil((size_B - m + 1) / (float) tile_n);
-    vector<bool> profile_lock(num_tile_cols, false);
-    vector<int> curr_tile(num_tile_rows);
+    list<pair<int,int>> tile_ordering;
     vector< vector<unsigned long long int> > profileA_h(devices.size(), vector<unsigned long long int>(tile_n)), profileB_h(devices.size(), vector<unsigned long long int>(tile_n));
-    std::iota(curr_tile.begin(), curr_tile.end(), 0);
     bool done = false;
-    size_t tile_col = 0;
-    size_t work_start = 0;
     int last_dev;
     vector<size_t> n_x(devices.size());
     vector<size_t> n_y(devices.size());
@@ -296,11 +297,13 @@ SCRIMPError_t SCRIMP_Operation<DTYPE, CUFFT_DTYPE>::do_self_join(const vector<DT
     vector<size_t> pos_x_2(devices.size());
     vector<size_t> pos_y_2(devices.size());
     
+    get_tile_ordering(tile_ordering);
+    printf("Performing self join with %lu tiles.\n", tile_ordering.size() );
 
     for(auto device : devices) {
         cudaSetDevice(device);
         gpuErrchk(cudaPeekAtLastError());
-        done = pick_and_start_next_tile_self_join(device, tile_col, work_start, curr_tile, num_tile_rows, num_tile_cols, T_host, profile, profile_idx, n_x[device], n_y[device], pos_x[device], pos_y[device]);
+        done = pick_and_start_next_tile_self_join(device, tile_ordering, T_host, profile, profile_idx, n_x[device], n_y[device], pos_x[device], pos_y[device]);
         gpuErrchk(cudaPeekAtLastError());
         if (done) {
             last_dev = device;
@@ -312,12 +315,12 @@ SCRIMPError_t SCRIMP_Operation<DTYPE, CUFFT_DTYPE>::do_self_join(const vector<DT
         for(auto device : devices) {
             cudaSetDevice(device);
             gpuErrchk(cudaPeekAtLastError());
-            cudaEventSynchronize(clocks_end[device]);
-            gpuErrchk(cudaPeekAtLastError());
-            float elapsed_time;
-            cudaEventElapsedTime(&elapsed_time, clocks_start[device], clocks_end[device]);
-            gpuErrchk(cudaPeekAtLastError());
-            printf("Device %d took %f seconds to finish tile\n", device, elapsed_time / 1000);
+            //cudaEventSynchronize(clocks_end[device]);
+            //gpuErrchk(cudaPeekAtLastError());
+            //float elapsed_time;
+            //cudaEventElapsedTime(&elapsed_time, clocks_start[device], clocks_end[device]);
+            //gpuErrchk(cudaPeekAtLastError());
+            //printf("Device %d took %f seconds to finish tile\n", device, elapsed_time / 1000);
             cudaMemcpyAsync(profileA_h.at(device).data(), profile_A_merged[device], sizeof(unsigned long long int) * (n_x[device] - m + 1), cudaMemcpyDeviceToHost, streams.at(device));
             gpuErrchk(cudaPeekAtLastError());
             cudaMemcpyAsync(profileB_h.at(device).data(), profile_B_merged[device], sizeof(unsigned long long int) * (n_y[device] - m + 1), cudaMemcpyDeviceToHost, streams.at(device));
@@ -329,7 +332,7 @@ SCRIMPError_t SCRIMP_Operation<DTYPE, CUFFT_DTYPE>::do_self_join(const vector<DT
             pos_x_2[device] = pos_x[device];
             pos_y_2[device] = pos_y[device];
             if(!done) {
-                done = pick_and_start_next_tile_self_join(device, tile_col, work_start, curr_tile, num_tile_rows, num_tile_cols, T_host, profile, profile_idx, n_x[device], n_y[device], pos_x[device], pos_y[device]);
+                done = pick_and_start_next_tile_self_join(device, tile_ordering, T_host, profile, profile_idx, n_x[device], n_y[device], pos_x[device], pos_y[device]);
                 if(done) {
                     last_dev = device;
                 }
@@ -354,12 +357,12 @@ SCRIMPError_t SCRIMP_Operation<DTYPE, CUFFT_DTYPE>::do_self_join(const vector<DT
     for(int device = 0; device <= last_dev; ++device) {
         cudaSetDevice(device);
         gpuErrchk(cudaPeekAtLastError());
-        cudaEventSynchronize(clocks_end[device]);
-        gpuErrchk(cudaPeekAtLastError());
-        float elapsed_time;
-        cudaEventElapsedTime(&elapsed_time, clocks_start[device], clocks_end[device]);
-        gpuErrchk(cudaPeekAtLastError());
-        printf("Device %d took %f seconds to finish tile\n", device, elapsed_time / 1000);
+        //cudaEventSynchronize(clocks_end[device]);
+        //gpuErrchk(cudaPeekAtLastError());
+        //float elapsed_time;
+        //cudaEventElapsedTime(&elapsed_time, clocks_start[device], clocks_end[device]);
+        //gpuErrchk(cudaPeekAtLastError());
+        //printf("Device %d took %f seconds to finish tile\n", device, elapsed_time / 1000);
         cudaMemcpyAsync(profileA_h.at(device).data(), profile_A_merged[device], sizeof(unsigned long long int) * (n_x[device] - m + 1), cudaMemcpyDeviceToHost, streams.at(device));
         gpuErrchk(cudaPeekAtLastError());
         cudaMemcpyAsync(profileB_h.at(device).data(), profile_B_merged[device], sizeof(unsigned long long int) * (n_y[device] - m + 1), cudaMemcpyDeviceToHost, streams.at(device));

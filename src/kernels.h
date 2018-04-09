@@ -447,9 +447,9 @@ SCRIMPError_t kernel_self_join_lower(const DATATYPE *QT, const DATATYPE *timeser
             exclusion = 0;
         }
         if(tile_height <= tile_width) {
-            do_tile_self_join<DATATYPE, float, BLOCKSZ, UNROLL_COUNT><<<grid, block, 0, s>>>(QT, timeseries_B, timeseries_A, std_dev_B, std_dev_A, means_B, means_A, profile_B, profile_A, window_size, tile_height - exclusion, global_y, global_x, reg_mem<UNROLL_COUNT>(), true, 0);
+            do_tile_self_join<DATATYPE, float, BLOCKSZ, UNROLL_COUNT><<<grid, block, 0, s>>>(QT, timeseries_B, timeseries_A, std_dev_B, std_dev_A, means_B, means_A, profile_B, profile_A, window_size, tile_height, global_y, global_x, reg_mem<UNROLL_COUNT>(), true, 0);
         } else {
-            do_tile_self_join_bounds_check<DATATYPE, float, BLOCKSZ, UNROLL_COUNT><<<grid, block, 0, s>>>(QT, timeseries_B, timeseries_A, std_dev_B, std_dev_A, means_B, means_A, profile_B, profile_A, window_size, tile_height - exclusion, tile_width, global_y, global_x, reg_mem<UNROLL_COUNT>(), true, 0);
+            do_tile_self_join_bounds_check<DATATYPE, float, BLOCKSZ, UNROLL_COUNT><<<grid, block, 0, s>>>(QT, timeseries_B, timeseries_A, std_dev_B, std_dev_A, means_B, means_A, profile_B, profile_A, window_size, tile_height, tile_width, global_y, global_x, reg_mem<UNROLL_COUNT>(), true, 0);
         }
         cudaError_t err = cudaPeekAtLastError();
         if(err != cudaSuccess) {
