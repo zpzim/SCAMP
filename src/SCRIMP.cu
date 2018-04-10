@@ -257,7 +257,6 @@ bool SCRIMP_Operation<DTYPE,CUFFT_DTYPE>::pick_and_start_next_tile_self_join(int
     start_y = tile_row * tile_n;
     size_x = min(tile_size, size_A - start_x);
     size_y = min(tile_size, size_B - start_y);
-    printf("start_x = %lu, start_y = %lu, size_x = %lu, size_y = %lu, tile_size = %lu\n", start_x, start_y, size_x, size_y, tile_size);
     if(tile_row == tile_col) {
         //partial tile on diagonal
         do_tile(SELF_JOIN_UPPER_TRIANGULAR, size_x, size_y, start_x, start_y, dev, T_h, profile_h, profile_idx_h);
@@ -299,6 +298,7 @@ SCRIMPError_t SCRIMP_Operation<DTYPE, CUFFT_DTYPE>::do_self_join(const vector<DT
     
     get_tile_ordering(tile_ordering);
     printf("Performing self join with %lu tiles.\n", tile_ordering.size() );
+    size_t num_tiles = tile_ordering.size();
 
     for(auto device : devices) {
         cudaSetDevice(device);
@@ -315,12 +315,6 @@ SCRIMPError_t SCRIMP_Operation<DTYPE, CUFFT_DTYPE>::do_self_join(const vector<DT
         for(auto device : devices) {
             cudaSetDevice(device);
             gpuErrchk(cudaPeekAtLastError());
-            //cudaEventSynchronize(clocks_end[device]);
-            //gpuErrchk(cudaPeekAtLastError());
-            //float elapsed_time;
-            //cudaEventElapsedTime(&elapsed_time, clocks_start[device], clocks_end[device]);
-            //gpuErrchk(cudaPeekAtLastError());
-            //printf("Device %d took %f seconds to finish tile\n", device, elapsed_time / 1000);
             cudaMemcpyAsync(profileA_h.at(device).data(), profile_A_merged[device], sizeof(unsigned long long int) * (n_x[device] - m + 1), cudaMemcpyDeviceToHost, streams.at(device));
             gpuErrchk(cudaPeekAtLastError());
             cudaMemcpyAsync(profileB_h.at(device).data(), profile_B_merged[device], sizeof(unsigned long long int) * (n_y[device] - m + 1), cudaMemcpyDeviceToHost, streams.at(device));
@@ -348,6 +342,8 @@ SCRIMPError_t SCRIMP_Operation<DTYPE, CUFFT_DTYPE>::do_self_join(const vector<DT
             gpuErrchk(cudaPeekAtLastError());
             merge_partial_on_host(profileB_h.at(device), profile, profile_idx, pos_y_2[device], (n_y_2[device] - m + 1));
             gpuErrchk(cudaPeekAtLastError());
+            completed_tiles++;
+            printf("%f percent complete\n", (completed_tiles / (float) total_tiles) * 100);
             
         }
 
@@ -357,12 +353,6 @@ SCRIMPError_t SCRIMP_Operation<DTYPE, CUFFT_DTYPE>::do_self_join(const vector<DT
     for(int device = 0; device <= last_dev; ++device) {
         cudaSetDevice(device);
         gpuErrchk(cudaPeekAtLastError());
-        //cudaEventSynchronize(clocks_end[device]);
-        //gpuErrchk(cudaPeekAtLastError());
-        //float elapsed_time;
-        //cudaEventElapsedTime(&elapsed_time, clocks_start[device], clocks_end[device]);
-        //gpuErrchk(cudaPeekAtLastError());
-        //printf("Device %d took %f seconds to finish tile\n", device, elapsed_time / 1000);
         cudaMemcpyAsync(profileA_h.at(device).data(), profile_A_merged[device], sizeof(unsigned long long int) * (n_x[device] - m + 1), cudaMemcpyDeviceToHost, streams.at(device));
         gpuErrchk(cudaPeekAtLastError());
         cudaMemcpyAsync(profileB_h.at(device).data(), profile_B_merged[device], sizeof(unsigned long long int) * (n_y[device] - m + 1), cudaMemcpyDeviceToHost, streams.at(device));
@@ -379,6 +369,8 @@ SCRIMPError_t SCRIMP_Operation<DTYPE, CUFFT_DTYPE>::do_self_join(const vector<DT
         gpuErrchk(cudaPeekAtLastError());
         merge_partial_on_host(profileB_h.at(device), profile, profile_idx, pos_y[device], (n_y[device] - m + 1));
         gpuErrchk(cudaPeekAtLastError());
+        completed_tiles++;
+        printf("%f percent complete\n", (completed_tiles / (float) total_tiles) * 100);
     }
     return SCRIMP_NO_ERROR;
 }
@@ -401,7 +393,7 @@ void do_SCRIMP(const vector<DTYPE> &T_h, vector<float> &profile_h, vector<unsign
     gpuErrchk(cudaPeekAtLastError());
     op.destroy();
     gpuErrchk(cudaPeekAtLastError());
-    printf("Finished STOMP to generate partial matrix profile of size %lu in %f seconds on %lu devices:\n", profile_h.size(), (end - start) / (double) CLOCKS_PER_SEC, devices.size());
+    printf("Finished SCRIMP to generate partial matrix profile of size %lu in %f seconds on %lu devices:\n", profile_h.size(), (end - start) / (double) CLOCKS_PER_SEC, devices.size());
 }
 
 //Reads input time series from file
