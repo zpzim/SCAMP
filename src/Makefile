@@ -1,7 +1,7 @@
 #Make sure that this points to the cuda install you want to use
 CUDA_DIRECTORY=/usr/local/cuda-9.1
 CC=$(CUDA_DIRECTORY)/bin/nvcc
-ARCH=-gencode=arch=compute_60,code=sm_60
+ARCH=-gencode=arch=compute_70,code=sm_70 -gencode=arch=compute_60,code=sm_60
 CFLAGS=-c -dc -use_fast_math -lineinfo -O2 -std=c++11 $(ARCH) -I$(CUDA_DIRECTORY)/include
 
 LDFLAGS=-L$(CUDA_DIRECTORY)/lib64 -lcufft

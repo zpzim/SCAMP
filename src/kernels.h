@@ -2,6 +2,12 @@
 #include "common.h"
 #include <float.h>
 
+#if __CUDA_ARCH__ >= 700
+#define TILE_HEIGHT_ADJUSTMENT 4
+#else
+#define TILE_HEIGHT_ADJUSTMENT 2
+#endif
+
 namespace SCRIMP {
 
 
@@ -106,8 +112,7 @@ __global__ void do_tile_self_join(const DTYPE_IN* QT, const DTYPE_IN *T_a, const
     // we cannot do a full tile at once, we must chop it into pieces
     // The values that are set here should give good performance already
     // but may be fine tuned for your specific Nvidia architecture
-    const int factor = 2;
-    const int tile_height = BLOCKSZ / factor;
+    const int tile_height = BLOCKSZ / TILE_HEIGHT_ADJUSTMENT;
     const int tile_width = tile_height + BLOCKSZ;
     __shared__ mp_entry localMPMain[tile_width];
     __shared__ mp_entry localMPOther[tile_height];
@@ -263,8 +268,7 @@ __global__ void do_tile_self_join_bounds_check(const DTYPE_IN* QT, const DTYPE_I
     // we cannot do a full tile at once, we must chop it into pieces
     // The values that are set here should give good performance already
     // but may be fine tuned for your specific Nvidia architecture
-    const int factor = 2;
-    const int tile_height = BLOCKSZ / factor;
+    const int tile_height = BLOCKSZ / TILE_HEIGHT_ADJUSTMENT;
     const int tile_width = tile_height + BLOCKSZ;
     __shared__ mp_entry localMPMain[tile_width];
     __shared__ mp_entry localMPOther[tile_height];

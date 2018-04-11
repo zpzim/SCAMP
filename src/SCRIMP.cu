@@ -17,8 +17,16 @@ using std::vector;
 using std::unordered_map;
 using std::make_pair;
 
+
+
 #define WORK_SIZE 512
+
+#if __CUDA_ARCH__ >= 700
+#define AMT_UNROLL 2
+#else
 #define AMT_UNROLL 16
+#endif
+
 namespace SCRIMP {
 
 __global__ void cross_correlation_to_ed(float *profile, unsigned int n, unsigned int m) {
