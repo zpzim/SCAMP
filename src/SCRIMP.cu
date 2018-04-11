@@ -298,8 +298,8 @@ SCRIMPError_t SCRIMP_Operation<DTYPE, CUFFT_DTYPE>::do_self_join(const vector<DT
     
     get_tile_ordering(tile_ordering);
     printf("Performing self join with %lu tiles.\n", tile_ordering.size() );
-    size_t num_tiles = tile_ordering.size();
-
+    size_t total_tiles = tile_ordering.size();
+    size_t completed_tiles = 0;
     for(auto device : devices) {
         cudaSetDevice(device);
         gpuErrchk(cudaPeekAtLastError());
