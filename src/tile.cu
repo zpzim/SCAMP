@@ -5,28 +5,33 @@
 
 namespace SCRIMP {
 
-
-template<class DATATYPE, class CUFFT_DTYPE, size_t BLOCKSZ, size_t UNROLL_COUNT>
-SCRIMPError_t SCRIMP_Tile<DATATYPE, CUFFT_DTYPE, BLOCKSZ, UNROLL_COUNT>::do_self_join_full(cudaStream_t s) {
+SCRIMPError_t SCRIMP_Tile::do_self_join_full(cudaStream_t s) {
     SCRIMPError_t error;
 
-    error = fft_info->compute_QT(QT_scratch, timeseries_A, timeseries_B, window_size, tile_width, s);
+    if(window_size > tile_width) {
+        return SCRIMP_DIM_INCOMPATIBLE;
+    }
+    if(window_size > tile_height) { 
+        return SCRIMP_DIM_INCOMPATIBLE;
+    }
+    error = fft_info->compute_QT(QT_scratch, timeseries_A, timeseries_B, means_B, s);
+    if(error != SCRIMP_NO_ERROR) {
+        return error;
+    }
+    
+    error = kernel_self_join_upper(QT_scratch, timeseries_A, timeseries_B, df_A, df_B, dg_A, dg_B, norms_A, norms_B, profile_A, profile_B, window_size, tile_width - window_size + 1, tile_height - window_size + 1, tile_start_A, tile_start_B, s);
     if(error != SCRIMP_NO_ERROR) {
         return error;
     }
 
-    error = kernel_self_join_upper<DATATYPE, BLOCKSZ, UNROLL_COUNT>(QT_scratch, timeseries_A, timeseries_B, std_dev_A, std_dev_B, means_A, means_B, profile_A, profile_B, window_size, tile_width, s);
+    error = fft_info->compute_QT(QT_scratch, timeseries_B, timeseries_A, means_A, s);
     if(error != SCRIMP_NO_ERROR) {
         return error;
     }
-
-    error = fft_info->compute_QT(QT_scratch, timeseries_B, timeseries_A, window_size, tile_width, s);
+    
+    error = kernel_self_join_lower(QT_scratch, timeseries_A, timeseries_B, df_A, df_B, dg_A, dg_B, norms_A, norms_B, profile_A, profile_B, window_size, tile_width - window_size + 1, tile_height - window_size + 1, tile_start_A, tile_start_B, s);
     if(error != SCRIMP_NO_ERROR) {
-        return error;
-    }
-
-    error = kernel_self_join_lower<DATATYPE, BLOCKSZ, UNROLL_COUNT>(QT_scratch, timeseries_A, timeseries_B, std_dev_A, std_dev_B, means_A, means_B, profile_A, profile_B, window_size, tile_width, s);
-    if(error != SCRIMP_NO_ERROR) {
+        printf("SCRIMP error\n");
         return error;
     }
 
@@ -34,16 +39,22 @@ SCRIMPError_t SCRIMP_Tile<DATATYPE, CUFFT_DTYPE, BLOCKSZ, UNROLL_COUNT>::do_self
 
 }
 
-template<class DATATYPE, class CUFFT_DTYPE, size_t BLOCKSZ, size_t UNROLL_COUNT>
-SCRIMPError_t SCRIMP_Tile<DATATYPE, CUFFT_DTYPE, BLOCKSZ, UNROLL_COUNT>::do_self_join_half(cudaStream_t s) {
+SCRIMPError_t SCRIMP_Tile::do_self_join_half(cudaStream_t s) {
     SCRIMPError_t error;
 
-    error = fft_info->compute_QT(QT_scratch, timeseries_A, timeseries_B, window_size, tile_width, s);
+    if(window_size > tile_width) {
+        return SCRIMP_DIM_INCOMPATIBLE;
+    }
+    if(window_size > tile_height) { 
+        return SCRIMP_DIM_INCOMPATIBLE;
+    }
+
+    error = fft_info->compute_QT(QT_scratch, timeseries_A, timeseries_B, means_B, s);
     if(error != SCRIMP_NO_ERROR) {
         return error;
     }
 
-    error = kernel_self_join_upper<DATATYPE, BLOCKSZ, UNROLL_COUNT>(QT_scratch, timeseries_A, timeseries_B, std_dev_A, std_dev_B, means_A, means_B, profile_A, profile_B, window_size, tile_width, s);
+    error = kernel_self_join_upper(QT_scratch, timeseries_A, timeseries_B, df_A, df_B, dg_A, dg_B, norms_A, norms_B, profile_A, profile_B, window_size, tile_width - window_size + 1, tile_height - window_size + 1,tile_start_A, tile_start_B, s);
     if(error != SCRIMP_NO_ERROR) {
         return error;
     }
@@ -51,50 +62,17 @@ SCRIMPError_t SCRIMP_Tile<DATATYPE, CUFFT_DTYPE, BLOCKSZ, UNROLL_COUNT>::do_self
     return SCRIMP_NO_ERROR;
 }
 
-template<class DATATYPE, class CUFFT_DTYPE, size_t BLOCKSZ, size_t UNROLL_COUNT>
-SCRIMPError_t SCRIMP_Tile<DATATYPE, CUFFT_DTYPE, BLOCKSZ, UNROLL_COUNT>::do_ab_join_full(cudaStream_t s) {
+SCRIMPError_t SCRIMP_Tile::do_ab_join_full(cudaStream_t s) {
     return SCRIMP_FUNCTIONALITY_UNIMPLEMENTED;
 }
 
-template<class DATATYPE, class CUFFT_DTYPE, size_t BLOCKSZ, size_t UNROLL_COUNT>
-SCRIMPError_t SCRIMP_Tile<DATATYPE, CUFFT_DTYPE, BLOCKSZ, UNROLL_COUNT>::do_ab_join_upper(cudaStream_t s) {
+SCRIMPError_t SCRIMP_Tile::do_ab_join_upper(cudaStream_t s) {
     return SCRIMP_FUNCTIONALITY_UNIMPLEMENTED;
 }
 
-template<class DATATYPE, class CUFFT_DTYPE, size_t BLOCKSZ, size_t UNROLL_COUNT>
-SCRIMPError_t SCRIMP_Tile<DATATYPE, CUFFT_DTYPE, BLOCKSZ, UNROLL_COUNT>::do_ab_join_lower(cudaStream_t s) {
+SCRIMPError_t SCRIMP_Tile::do_ab_join_lower(cudaStream_t s) {
     return SCRIMP_FUNCTIONALITY_UNIMPLEMENTED;
 }
-
-
-/*
-template<class DATATYPE, class CUFFT_DTYPE, size_t BLOCKSZ, size_t UNROLL_COUNT>
-SCRIMPError_t SCRIMP_Tile<DATATYPE, CUFFT_DTYPE, BLOCKSZ, UNROLL_COUNT>::execute(cudaStream_t s) {
-    SCRIMPError_t error;
-    switch (type) {
-        case SELF_JOIN_FULL_TILE:
-            error = do_self_join_full(s);
-            break;
-        case SELF_JOIN_UPPER_TRIANGULAR:
-            error = do_self_join_half(s);
-            break;
-        case AB_JOIN_FULL_TILE:
-            error = do_ab_join_full(s);
-            break;
-        case AB_JOIN_UPPER_TRIANGULAR:
-            error = do_ab_join_upper(s);
-            break;
-        case AB_JOIN_LOWER_TRIANGULAR:
-            error = do_ab_join_lower(s);
-            break;
-        default:
-            error = SCRIMP_TILE_ILLEGAL_TYPE;
-            break;
-    }
-    return error;
-
-}    
-*/
 
 }
 
