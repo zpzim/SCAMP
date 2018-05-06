@@ -66,19 +66,28 @@ __global__ void sliding_dfdg(const DTYPE *T, const DTYPE *means, DTYPE *df, DTYP
     }
 }
 
-__global__ void __launch_bounds__(1,1) 
+__global__ void __launch_bounds__(512,4) 
 fastinvnorm(double *norm, const double *mean, const double *T, int m, int n) {
-    
+   
+    int tid = threadIdx.x + blockDim.x * blockIdx.x;
+    int jump = ceil(n / (double) (blockDim.x * gridDim.x));
+    int start = jump * tid;
+    int end = jump * (tid + 1);
+    end = min(end,n);
+    if(start >= n) {
+        return;
+    }
     double sum = 0;
     for(int i = 0; i < m; ++i){ 
-        double val = T[i] - mean[0];
+        double val = T[i + start] - mean[start];
         sum += val * val;
     }
-    norm[0] = sum;
-    for(int i = 1; i < n; ++i) {
+    norm[start] = sum;
+    
+    for(int i = start+1; i < end; ++i) {
             norm[i] = norm[i - 1]  + ((T[i-1] - mean[i-1]) + (T[i + m - 1] - mean[i])) * (T[i + m - 1] - T[i - 1]);
     }
-    for(int i = 0; i < n; ++i) {
+    for(int i = start; i < end; ++i) {
         norm[i] = 1.0 / sqrt(norm[i]);
     }
 }
@@ -114,7 +123,8 @@ void compute_statistics(const double *T, double *norms, double *df, double *dg,
     gpuErrchk(cudaPeekAtLastError());
     
     // This will be kind of slow on the GPU, may cause latency between tiles
-    fastinvnorm<<<dim3(1,1,1), dim3(1,1,1), 0, s>>>(norms, means, T, m, n);
+    int workers = n / m + 1;
+    fastinvnorm<<<dim3(ceil(workers / (double)512),1,1), dim3(512,1,1), 0, s>>>(norms, means, T, m, n);
     gpuErrchk(cudaPeekAtLastError());
     
 }
@@ -503,7 +513,7 @@ int main(int argc, char** argv) {
     FILE* f1 = fopen( argv[3], "w");
     FILE* f2 = fopen( argv[4], "w");
     for(int i = 0; i < profile.size(); ++i){
-         fprintf(f1, "%f\n", sqrt(max(2*(window_size - profile[i]), 0.0)));
+         fprintf(f1, "%f\n", sqrt(max(2*(1 - profile[i]), 0.0)) * sqrt((double)window_size));
          fprintf(f2, "%u\n", profile_idx[i] + 1);
     }
     gpuErrchk(cudaDeviceSynchronize());
