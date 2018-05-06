@@ -279,7 +279,7 @@ do_tile_self_join(const double* __restrict__ Cov, const double* __restrict__ dfa
                   unsigned long long* __restrict__ profile_B,
                   const unsigned int m, const unsigned int n_x, const unsigned int n_y,
                   const unsigned int global_start_x, const unsigned int global_start_y,
-                  const int exclusion_lower)
+                  const int exclusion_lower, const int exclusion_upper)
 {
     // tile_height must be a multiple of 4
     // Tuned for V100
@@ -294,6 +294,8 @@ do_tile_self_join(const double* __restrict__ Cov, const double* __restrict__ dfa
     __shared__ float dg_row[tile_height];
     __shared__ float inorm_row[tile_height];
 
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+
     // This is the index of the meta-diagonal that this thread block will work on
     int meta_diagonal_idx = blockIdx.x;
 
@@ -301,7 +303,7 @@ do_tile_self_join(const double* __restrict__ Cov, const double* __restrict__ dfa
     // we exclude these from the calculation
     int tile_start_x = meta_diagonal_idx * (BLOCKSZ * 4) + exclusion_lower;
     int tile_start_y = 0;
-    
+      
     // x is the global column of the distance matrix
     // y is the global row of the distance matrix
     // localX, localY are the local coordinates of the thread position in the tile it is working on
@@ -311,23 +313,25 @@ do_tile_self_join(const double* __restrict__ Cov, const double* __restrict__ dfa
     // Each thread updates 2 diagonals at once
     float cov1, cov2, cov3, cov4;
     
+    int nx_exclusion = n_x - exclusion_upper;
+    
     // Load the first dot product values
-    if (x < n_x) {
+    if (x < nx_exclusion) {
         cov1 = Cov[x];
     }
     
-    if (x + 1 < n_x) {
+    if (x + 1 < nx_exclusion) {
         cov2 = Cov[x + 1];
     }
     
-    if (x + 2 < n_x) {
+    if (x + 2 < nx_exclusion) {
         cov3 = Cov[x + 2];
     }
 
-    if(x + 3 < n_x) {
+    if(x + 3 < nx_exclusion) {
         cov4 = Cov[x + 3]; 
     }
-
+    
     /////////////////////////////////////    
     // Main loop
     /////////////////////////////////////
@@ -349,16 +353,16 @@ do_tile_self_join(const double* __restrict__ Cov, const double* __restrict__ dfa
 
         // There are 2 pathways here, most of the time we take the fast path (top),
         // the last block will take the slower path as well as the fast path (bottom)
-        if(x + tile_height < n_x && y + tile_height < n_y) {
+        if(tile_start_x + tile_width < n_x && tile_start_y + tile_height < n_y && tid < nx_exclusion) {
             for(int i = 0, j = threadIdx.x << 2; i < tile_height; i+=4, j+=4) {
                 do_iteration_unroll_4(i,j,x + global_start_x + i,y + global_start_y + i, cov1,cov2,cov3,cov4,df_col, df_row, dg_col, dg_row, inorm_col, inorm_row, local_mp_col, local_mp_row);
             }
             x += tile_height;
             y += tile_height;
-        } else {
+        } else if (tid < nx_exclusion){
             int localX = threadIdx.x << 2;
             int localY = 0;
-            while(x < n_x && y < n_y) {
+            while(x < n_x && y < n_y && localY < tile_height) {
                 do_iteration_4diag(localY,localX,x,y,global_start_x,global_start_y,n_x,cov1,cov2,cov3,cov4, df_col, df_row, dg_col, dg_row, inorm_col, inorm_row, local_mp_col, local_mp_row);
                 ++x;
                 ++y;
@@ -414,7 +418,7 @@ SCRIMPError_t kernel_self_join_upper(const double *QT, const double *timeseries_
         }
         do_tile_self_join<<<grid,block, 0,s>>>(QT,df_A,df_B,dg_A,dg_B,norms_A,norms_B,profile_A, profile_B,
                                                window_size, tile_width, tile_height, global_x, global_y,
-                                               exclusion);
+                                               exclusion,0);
         cudaError_t err = cudaPeekAtLastError();
         if(err != cudaSuccess) {
             return SCRIMP_CUDA_ERROR;
@@ -433,10 +437,10 @@ SCRIMPError_t kernel_self_join_lower(const double *QT, const double *timeseries_
             grid.x = ceil((tile_height) / (double) BLOCKSZ);
             exclusion = 0;
         }
-        if(exclusion <= tile_width) {
+        if(exclusion < tile_height) {
             do_tile_self_join<<<grid,block, 0,s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A,
-                                               window_size, tile_height, tile_width - exclusion, global_y, global_x,
-                                               0);
+                                               window_size, tile_height, tile_width, global_y, global_x,
+                                               0, exclusion);
         }
         cudaError_t err = cudaPeekAtLastError();
         if(err != cudaSuccess) {
