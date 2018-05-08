@@ -19,6 +19,21 @@ __device__ inline void MPatomicMax(volatile unsigned long long int* address, flo
     }
 }
 
+// As above, but checks a previously read value before attempting another read
+// This allows us to exploit vectorized loads of the matrix profile
+__device__ inline void MPatomicMax_check(volatile unsigned long long int* __restrict__ address, float val, unsigned int idx, float curr_val)
+{
+    if(val > curr_val) {
+        mp_entry loc, loctest;
+        loc.floats[0] = val;
+        loc.ints[1] = idx;
+        loctest.ulong = *address;
+        while (loctest.floats[0] < val){
+            loctest.ulong = atomicCAS((unsigned long long int*) address, loctest.ulong,  loc.ulong);
+        }
+     }
+}
+
 __device__ inline void MPMax(const float d1, const float d2, const unsigned int i1,
                              const unsigned int i2, float &outd, unsigned int &outi)
 {
@@ -111,7 +126,7 @@ __device__ inline void do_unrolled_row4(float &cov1, float &cov2, float &cov3, f
                                          const float &dg_colz, const float &dg_colw, const float &df_row,
                                          const float &dg_row, const int &row, const int &col,
                                          const int &global_row, const int &global_col,
-                                         mp_entry* __restrict__ mp_row) {
+                                         mp_entry* __restrict__ mp_row, const float &curr_val) {
 
     float4 dist;
 
@@ -137,7 +152,7 @@ __device__ inline void do_unrolled_row4(float &cov1, float &cov2, float &cov3, f
     // We take the maximum of the columns we computed for the row
     // And use that value to check the matrix profile
     float d = max4(dist, global_col, idx);
-    MPatomicMax((unsigned long long*) (mp_row + row), d, idx);
+    MPatomicMax_check((unsigned long long*) (mp_row + row), d, idx, curr_val);
 }
 
 // Processes 4 iterations of the inner loop. Each thread computes 4 distances per iteration (x,y), (x+1,y), (x+2,y), and (x+3,y)
@@ -155,9 +170,10 @@ __device__ inline void do_iteration_unroll_4(int i, int j, int x, int y, float &
     // Load row values 2 at a time, load column values 4 at a time
     int r = i >> 1;
     int c = j >> 2;
+    int c2 = j >> 1;
 
     // Preload the shared memory values we will use into registers
-    // We load 4 values per instruction into a float4 vector type
+    // We load 4 values per thread into a float4 vector type
     float4 dfc = reinterpret_cast<float4*>(df_col)[c];
     float4 dgc = reinterpret_cast<float4*>(dg_col)[c];
     float4 inormc = (reinterpret_cast<float4*>(inorm_col)[c]);
@@ -165,10 +181,15 @@ __device__ inline void do_iteration_unroll_4(int i, int j, int x, int y, float &
     float4 dgc2 = reinterpret_cast<float4*>(dg_col)[c+1];
     float4 inormc2 = reinterpret_cast<float4*>(inorm_col)[c+1];
 
+    // Copy the pieces of the cache we will use into registers with vectorized loads
+    ulonglong2 mp_col_check1 = reinterpret_cast<ulonglong2*>(local_mp_col)[c2];
+    ulonglong2 mp_col_check2 = reinterpret_cast<ulonglong2*>(local_mp_col)[c2 + 1];
+
     // Due to a lack of registers on volta, we only load these row values 2 at a time
     float2 dgr = reinterpret_cast<float2*>(dg_row)[r];
     float2 dfr = reinterpret_cast<float2*>(df_row)[r];
     float2 inormr = reinterpret_cast<float2*>(inorm_row)[r];
+    ulonglong2 mp_row_check = reinterpret_cast<ulonglong2*>(local_mp_row)[r];
 
     // Do rows one at a time:
     // We are computing a tile that looks like this:
@@ -180,51 +201,67 @@ __device__ inline void do_iteration_unroll_4(int i, int j, int x, int y, float &
     // For 4 diagonals unrolled 4 times we compute a total of 16 distances.
     // These distances cover 4 possible rows and 7 possible columns, so we need to check the matrix profile
     // 11 times total, once for each row and once for each column
-    
+    mp_entry e;
+    e.ulong = mp_row_check.x; 
     do_unrolled_row4(cov1, cov2, cov3, cov4, distc.x, distc.y, distc.z, distc.w,
                      idxc.x, idxc.y, idxc.z, idxc.w, inormc.x, inormc.y, inormc.z, 
                      inormc.w, inormr.x, dfc.x, dfc.y, dfc.z, dfc.w, dgc.x, dgc.y,
-                     dgc.z, dgc.w, dfr.x, dgr.x, i, j, y, x, local_mp_row);
+                     dgc.z, dgc.w, dfr.x, dgr.x, i, j, y, x, local_mp_row, e.floats[0]);
+    e.ulong = mp_col_check1.x;
 
     // Each row's computation allows us to complete a column, the first row completes column 1
-    MPatomicMax((unsigned long long*) (local_mp_col + j), distc.x, idxc.x);
+    MPatomicMax_check((unsigned long long*) (local_mp_col + j), distc.x, idxc.x, e.floats[0]);
 
+    e.ulong = mp_row_check.y;
     do_unrolled_row4(cov1, cov2, cov3, cov4, distc.y, distc.z, distc.w, distc2.x,
                      idxc.y, idxc.z, idxc.w, idxc2.x, inormc.y, inormc.z, inormc.w,
                      inormc2.x, inormr.y, dfc.y, dfc.z, dfc.w, dfc2.x, dgc.y, dgc.z,
                      dgc.w, dgc2.x, dfr.y, dgr.y, i + 1, j + 1, y + 1, x + 1,
-                     local_mp_row);
+                     local_mp_row, e.floats[0]);
 
     // The second row completes column 2
-    MPatomicMax((unsigned long long*) (local_mp_col + j + 1), distc.y, idxc.y);
+    e.ulong = mp_col_check1.y;
+    MPatomicMax_check((unsigned long long*) (local_mp_col + j + 1), distc.y, idxc.y, e.floats[0]);
 
     // Load the values for the next 2 rows
     dgr = reinterpret_cast<float2*>(dg_row)[r + 1];
     dfr = reinterpret_cast<float2*>(df_row)[r + 1];
     inormr = reinterpret_cast<float2*>(inorm_row)[r + 1];
+    mp_row_check = reinterpret_cast<ulonglong2*>(local_mp_row)[r + 1];
 
+    e.ulong  = mp_row_check.x;
     do_unrolled_row4(cov1, cov2, cov3, cov4, distc.z, distc.w, distc2.x, distc2.y,
                      idxc.z, idxc.w, idxc2.x, idxc2.y, inormc.z, inormc.w, inormc2.x,
                      inormc2.y, inormr.x, dfc.z, dfc.w, dfc2.x, dfc2.y, dgc.z, dgc.w,
                      dgc2.x, dgc2.y, dfr.x, dgr.x, i + 2, j + 2, y + 2, x + 2,
-                     local_mp_row);
+                     local_mp_row, e.floats[0]);
 
+   
     // The third row completes column 3
-    MPatomicMax((unsigned long long*) (local_mp_col + j + 2), distc.z, idxc.z);
-
+    e.ulong  = mp_col_check2.x;
+    MPatomicMax_check((unsigned long long*) (local_mp_col + j + 2), distc.z, idxc.z, e.floats[0]);
+    
+    e.ulong = mp_row_check.y;
     do_unrolled_row4(cov1, cov2, cov3, cov4, distc.w, distc2.x, distc2.y, distc2.z,
                      idxc.w, idxc2.x, idxc2.y, idxc2.z, inormc.w, inormc2.x, inormc2.y,
                      inormc2.z, inormr.y, dfc.w, dfc2.x, dfc2.y, dfc2.z, dgc.w, dgc2.x,
                      dgc2.y, dgc2.z, dfr.y, dgr.y, i + 3, j + 3, y + 3, x + 3,
-                     local_mp_row);
-   
+                     local_mp_row, e.floats[0]);
+    
     // After the 4th row, we have completed columns 4, 5, 6, and 7
-    MPatomicMax((unsigned long long*) (local_mp_col + j + 3), distc.w, idxc.w);
-    MPatomicMax((unsigned long long*) (local_mp_col + j + 4), distc2.x, idxc2.x);
-    MPatomicMax((unsigned long long*) (local_mp_col + j + 5), distc2.y, idxc2.y);
-    MPatomicMax((unsigned long long*) (local_mp_col + j + 6), distc2.z, idxc2.z);
+    e.ulong = mp_col_check2.y;
+    mp_col_check1 = reinterpret_cast<ulonglong2*>(local_mp_col)[c2+2];
+    mp_col_check2 = reinterpret_cast<ulonglong2*>(local_mp_col)[c2+3];
+    MPatomicMax_check((unsigned long long*) (local_mp_col + j + 3), distc.w, idxc.w, e.floats[0]);
+    e.ulong = mp_col_check1.x;
+    MPatomicMax_check((unsigned long long*) (local_mp_col + j + 4), distc2.x, idxc2.x, e.floats[0]);
+    e.ulong = mp_col_check1.y;
+    MPatomicMax_check((unsigned long long*) (local_mp_col + j + 5), distc2.y, idxc2.y, e.floats[0]);
+    e.ulong = mp_col_check2.x;
+    MPatomicMax_check((unsigned long long*) (local_mp_col + j + 6), distc2.z, idxc2.z, e.floats[0]);
     
 }
+
 
 // Does a single iteration of the inner loop on 4 diagonals per thread, not unrolled
 // Checks for the boundary case where only 1, 2, or 3 diagonals can be updated
