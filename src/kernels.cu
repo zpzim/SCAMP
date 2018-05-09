@@ -331,7 +331,7 @@ do_tile_self_join(const double* __restrict__ Cov, const double* __restrict__ dfa
     __shared__ float dg_row[tile_height];
     __shared__ float inorm_row[tile_height];
 
-    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+    int tid = (threadIdx.x << 2) + blockIdx.x * (blockDim.x << 2);
 
     // This is the index of the meta-diagonal that this thread block will work on
     int meta_diagonal_idx = blockIdx.x;
@@ -448,9 +448,11 @@ SCRIMPError_t kernel_self_join_upper(const double *QT, const double *timeseries_
         dim3 block(BLOCKSZ, 1, 1);
         int exclusion = window_size / 4;
         if(global_y >= global_x && global_y <= global_x + exclusion) {
-            grid.x = ceil((tile_width - exclusion) / (double) BLOCKSZ);
+            int num_workers = ceil((tile_width - exclusion) / 4.0);
+            grid.x = ceil(num_workers / (double) BLOCKSZ);
         } else {
-            grid.x = ceil((tile_width) / (double) BLOCKSZ);
+            int num_workers = ceil(tile_width / 4.0);
+            grid.x = ceil(num_workers / (double) BLOCKSZ);
             exclusion = 0;
         }
         do_tile_self_join<<<grid,block, 0,s>>>(QT,df_A,df_B,dg_A,dg_B,norms_A,norms_B,profile_A, profile_B,
@@ -469,9 +471,11 @@ SCRIMPError_t kernel_self_join_lower(const double *QT, const double *timeseries_
         dim3 block(BLOCKSZ, 1, 1);
         int exclusion = window_size / 4;
         if(global_y + tile_height >= global_x && global_y + tile_height <= global_x + exclusion) {
-            grid.x = ceil((tile_height - exclusion) / (double) BLOCKSZ);
+            int num_workers = ceil((tile_height - exclusion) / 4.0);
+            grid.x = ceil(num_workers / (double) BLOCKSZ);
         } else {
-            grid.x = ceil((tile_height) / (double) BLOCKSZ);
+            int num_workers = ceil(tile_height / 4.0);
+            grid.x = ceil(num_workers / (double) BLOCKSZ);
             exclusion = 0;
         }
         if(exclusion < tile_height) {

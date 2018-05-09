@@ -9,6 +9,7 @@ TILE_SZ=(1000000 8000 4000 2000 1000 500)
 INPUT_FILES=(randomwalk8K randomwalk16K randomwalk32K randomwalk64K)
 NUM_TESTS=3
 NUM_TILE_SZ=5
+
 for k in `seq 0 $NUM_TESTS`;
 do
     INPUT_FILE=$ROOT_DIR_INPUT/${INPUT_FILES[$k]}.txt
@@ -20,7 +21,7 @@ do
         for i in `seq 0 $NUM_TILE_SZ`;
         do
             tile_sz=${TILE_SZ[i]}
-            echo "$EXECUTABLE $j $tile_sz $INPUT_FILE mp mpi"
+            echo "$EXECUTABLE $j $tile_sz $INPUT_FILE mp mpi 0"
             `$EXECUTABLE $j $tile_sz $INPUT_FILE mp mpi 0`
             X=`diff -U 0 mpi $COMPARE_MPI | grep ^@ | wc -l`
             echo "$X flips"
@@ -29,7 +30,6 @@ do
         done
     done
 done
-       
-rm mp mpi out
 
+rm mp mpi out
 

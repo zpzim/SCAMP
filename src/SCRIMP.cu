@@ -249,7 +249,7 @@ SCRIMPError_t SCRIMP_Operation::do_tile(SCRIMPTileType t, size_t t_size_x, size_
         SCRIMPError_t err;
         size_t t_n_x = t_size_x - m + 1;
         size_t t_n_y = t_size_y - m + 1;
-        printf("tile type = %d start_pos = [%lu, %lu]...\n", t, start_x, start_y);
+        printf("tile type = %d start_pos = [%lu, %lu]...\n", t, start_y, start_x);
         cudaMemcpyAsync(T_A_dev[device], T_h.data() + start_x, sizeof(double) * t_size_x, cudaMemcpyHostToDevice, streams.at(device));
         gpuErrchk(cudaPeekAtLastError());
         cudaMemcpyAsync(T_B_dev[device], T_h.data() + start_y, sizeof(double) * t_size_y, cudaMemcpyHostToDevice, streams.at(device));
@@ -513,7 +513,7 @@ int main(int argc, char** argv) {
     FILE* f1 = fopen( argv[4], "w");
     FILE* f2 = fopen( argv[5], "w");
     for(int i = 0; i < profile.size(); ++i){
-         fprintf(f1, "%f\n", sqrt(max(2*(1 - profile[i]), 0.0)) * sqrt((double)window_size));
+         fprintf(f1, "%f\n", sqrt(max(2*window_size*(1 - profile[i]), 0.0)));
          fprintf(f2, "%u\n", profile_idx[i] + 1);
     }
     gpuErrchk(cudaDeviceSynchronize());
