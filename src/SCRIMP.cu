@@ -430,14 +430,14 @@ SCRIMPError_t SCRIMP_Operation::do_self_join(const vector<double> &T_host, vecto
     return SCRIMP_NO_ERROR;
 }
 
-void do_SCRIMP(const vector<double> &T_h, vector<float> &profile_h, vector<unsigned int> &profile_idx_h, const unsigned int m, const vector<int> &devices) {
+void do_SCRIMP(const vector<double> &T_h, vector<float> &profile_h, vector<unsigned int> &profile_idx_h, const unsigned int m, const size_t max_tile_size, const vector<int> &devices) {
     if(devices.empty()) {
         printf("Error: no gpu provided\n");
         exit(0);
     }
     // Allocate and initialize memory
     clock_t start, end;
-    SCRIMP_Operation op(T_h.size(), T_h.size(), m, devices);
+    SCRIMP_Operation op(T_h.size(), T_h.size(), m, max_tile_size, devices);
     op.init();
     gpuErrchk(cudaPeekAtLastError());
     start = clock();
@@ -473,23 +473,23 @@ void readFile(const char* filename, vector<DTYPE>& v, const char *format_str)
 int main(int argc, char** argv) {
 
     if(argc < 5) {
-        printf("Usage: SCRIMP <window_len> <input file> <profile output file> <index output file> [Optional: list of GPU device numbers to run on]\n");
+        printf("Usage: SCRIMP <window_len> <max_tile_size> <input file> <profile output file> <index output file> [Optional: list of GPU device numbers to run on]\n");
         exit(0);
     }
 
     int window_size = atoi(argv[1]);
-    
+    int max_tile_size = atoi(argv[2]);
     vector<double> T_h;
-    SCRIMP::readFile<double>(argv[2], T_h, "%lf");
+    SCRIMP::readFile<double>(argv[3], T_h, "%lf");
     int n = T_h.size() - window_size + 1;
     vector<float> profile(n, CC_MIN);
     vector<unsigned int> profile_idx(n, 0);
-    
+     
     cudaFree(0);
     
     vector<int> devices;
     
-    if(argc == 5) {
+    if(argc == 6) {
         // Use all available devices 
         int num_dev;
         cudaGetDeviceCount(&num_dev);
@@ -498,7 +498,7 @@ int main(int argc, char** argv) {
         }
     } else {
         // Use the devices specified
-        int x = 5;
+        int x = 6;
         while (x < argc) {
             devices.push_back(atoi(argv[x]));
             ++x;
@@ -507,11 +507,11 @@ int main(int argc, char** argv) {
     
     printf("Starting SCRIMP\n");
      
-    SCRIMP::do_SCRIMP(T_h, profile, profile_idx, window_size, devices);
+    SCRIMP::do_SCRIMP(T_h, profile, profile_idx, window_size, max_tile_size, devices);
     
     printf("Now writing result to files\n");
-    FILE* f1 = fopen( argv[3], "w");
-    FILE* f2 = fopen( argv[4], "w");
+    FILE* f1 = fopen( argv[4], "w");
+    FILE* f2 = fopen( argv[5], "w");
     for(int i = 0; i < profile.size(); ++i){
          fprintf(f1, "%f\n", sqrt(max(2*(1 - profile[i]), 0.0)) * sqrt((double)window_size));
          fprintf(f2, "%u\n", profile_idx[i] + 1);

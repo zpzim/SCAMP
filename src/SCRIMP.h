@@ -10,7 +10,6 @@ using std::pair;
 
 namespace SCRIMP {
 
-#define MAX_TILE_SIZE (1 << 20)
 //For computing the prefix squared sum
 template<class DTYPE>
 struct square
@@ -38,6 +37,7 @@ private:
     size_t n;
     size_t tile_n;
     size_t m;
+    const size_t MAX_TILE_SIZE;
     vector<int> devices;
     SCRIMPError_t do_tile(SCRIMPTileType t, size_t t_size_x, size_t t_size_y,
                           size_t start_x, size_t start_y, int device,
@@ -55,8 +55,8 @@ private:
     void get_tile_ordering(list<pair<int,int>> &tile_ordering);
 
 public:
-    SCRIMP_Operation(size_t Asize, size_t Bsize, size_t window_sz, const vector<int> &dev) :
-                     size_A(Asize), size_B(Bsize), m(window_sz), devices(dev)
+    SCRIMP_Operation(size_t Asize, size_t Bsize, size_t window_sz, size_t max_tile_size, const vector<int> &dev) :
+                     size_A(Asize), size_B(Bsize), m(window_sz), MAX_TILE_SIZE(max_tile_size), devices(dev)
     {
          tile_size = Asize / (devices.size());
          if(tile_size > MAX_TILE_SIZE) {
