@@ -270,7 +270,7 @@ __device__ inline void do_iteration_4diag(int i, int j, int x, int y,
                                           int n, float &cov1, float &cov2,
                                           float &cov3, float &cov4, float *df_col, float *df_row,
                                           float *dg_col, float *dg_row, float *inorm_col, float *inorm_row,
-                                          mp_entry *local_mp_col, mp_entry *local_mp_row) 
+                                          mp_entry *local_mp_col, mp_entry *local_mp_row, size_t diag, size_t num_diags)
 {
     float dist_1;
     unsigned int idx_1;
@@ -287,20 +287,19 @@ __device__ inline void do_iteration_4diag(int i, int j, int x, int y,
     cov3 = cov3 + df_col[j+2] * dg_row[i] + dg_col[j + 2] * df_row[i];
     cov4 = cov4 + df_col[j+3] * dg_row[i] + dg_col[j + 3] * df_row[i];
 
-    // Update the matrix profile, see comment below for explanation
     MPatomicMax((unsigned long long*) (local_mp_col + j), dist.x, y);
     dist_1 = dist.x;
     idx_1 = x + global_start_x;
-    if(x + 1 < n) {
-        MPMax(dist_1, dist.y, idx_1, x + 1, dist_1, idx_1);
+    if(x + 1 < n && diag + 1 < num_diags) {
+        MPMax(dist_1, dist.y, idx_1, global_start_x + x + 1, dist_1, idx_1);
         MPatomicMax((unsigned long long*) (local_mp_col + j + 1), dist.y, y + global_start_y);
     }
-    if(x + 2 < n) {
-        MPMax(dist_1, dist.z, idx_1, x + 2, dist_1, idx_1);
+    if(x + 2 < n && diag + 2 < num_diags) {
+        MPMax(dist_1, dist.z, idx_1, global_start_x + x + 2, dist_1, idx_1);
         MPatomicMax((unsigned long long*) (local_mp_col + j + 2), dist.z, y + global_start_y);
     }
-    if(x + 3 < n) {
-        MPMax(dist_1, dist.w, idx_1, x + 3, dist_1, idx_1);
+    if(x + 3 < n && diag + 3 < num_diags) {
+        MPMax(dist_1, dist.w, idx_1, global_start_x + x + 3, dist_1, idx_1);
         MPatomicMax((unsigned long long*) (local_mp_col + j + 3), dist.w, y + global_start_y);
     }
     MPatomicMax((unsigned long long*) (local_mp_row + i), dist_1, idx_1);	
@@ -331,10 +330,10 @@ do_tile_self_join(const double* __restrict__ Cov, const double* __restrict__ dfa
     __shared__ float dg_row[tile_height];
     __shared__ float inorm_row[tile_height];
 
-    int tid = (threadIdx.x << 2) + blockIdx.x * (blockDim.x << 2);
+    const unsigned int start_diag = (threadIdx.x << 2) + blockIdx.x * (blockDim.x << 2);
 
     // This is the index of the meta-diagonal that this thread block will work on
-    int meta_diagonal_idx = blockIdx.x;
+    const unsigned int meta_diagonal_idx = blockIdx.x;
 
     // The first threads are acutally computing the trivial match between the same subsequence
     // we exclude these from the calculation
@@ -350,22 +349,22 @@ do_tile_self_join(const double* __restrict__ Cov, const double* __restrict__ dfa
     // Each thread updates 2 diagonals at once
     float cov1, cov2, cov3, cov4;
     
-    int nx_exclusion = n_x - exclusion_upper;
+    const unsigned int num_diags = n_x - exclusion_upper;
     
     // Load the first dot product values
-    if (x < nx_exclusion) {
+    if (x < n_x) {
         cov1 = Cov[x];
     }
     
-    if (x + 1 < nx_exclusion) {
+    if (x + 1 < n_x) {
         cov2 = Cov[x + 1];
     }
     
-    if (x + 2 < nx_exclusion) {
+    if (x + 2 < n_x) {
         cov3 = Cov[x + 2];
     }
 
-    if(x + 3 < nx_exclusion) {
+    if(x + 3 < n_x) {
         cov4 = Cov[x + 3]; 
     }
     
@@ -390,17 +389,17 @@ do_tile_self_join(const double* __restrict__ Cov, const double* __restrict__ dfa
 
         // There are 2 pathways here, most of the time we take the fast path (top),
         // the last block will take the slower path as well as the fast path (bottom)
-        if(tile_start_x + tile_width < n_x && tile_start_y + tile_height < n_y && tid < nx_exclusion) {
+        if(tile_start_x + tile_width < n_x && tile_start_y + tile_height < n_y && start_diag + 3 < num_diags) {
             for(int i = 0, j = threadIdx.x << 2; i < tile_height; i+=4, j+=4) {
                 do_iteration_unroll_4(i,j,x + global_start_x + i,y + global_start_y + i, cov1,cov2,cov3,cov4,df_col, df_row, dg_col, dg_row, inorm_col, inorm_row, local_mp_col, local_mp_row);
             }
             x += tile_height;
             y += tile_height;
-        } else if (tid < nx_exclusion){
+        } else if (start_diag < num_diags){
             int localX = threadIdx.x << 2;
             int localY = 0;
             while(x < n_x && y < n_y && localY < tile_height) {
-                do_iteration_4diag(localY,localX,x,y,global_start_x,global_start_y,n_x,cov1,cov2,cov3,cov4, df_col, df_row, dg_col, dg_row, inorm_col, inorm_row, local_mp_col, local_mp_row);
+                do_iteration_4diag(localY,localX,x,y,global_start_x,global_start_y,n_x,cov1,cov2,cov3,cov4, df_col, df_row, dg_col, dg_row, inorm_col, inorm_row, local_mp_col, local_mp_row, start_diag, num_diags);
                 ++x;
                 ++y;
                 ++localX;
@@ -455,9 +454,11 @@ SCRIMPError_t kernel_self_join_upper(const double *QT, const double *timeseries_
             grid.x = ceil(num_workers / (double) BLOCKSZ);
             exclusion = 0;
         }
-        do_tile_self_join<<<grid,block, 0,s>>>(QT,df_A,df_B,dg_A,dg_B,norms_A,norms_B,profile_A, profile_B,
+        if(exclusion < tile_width) {
+            do_tile_self_join<<<grid,block, 0,s>>>(QT,df_A,df_B,dg_A,dg_B,norms_A,norms_B,profile_A, profile_B,
                                                window_size, tile_width, tile_height, global_x, global_y,
                                                exclusion,0);
+        }
         cudaError_t err = cudaPeekAtLastError();
         if(err != cudaSuccess) {
             return SCRIMP_CUDA_ERROR;
