@@ -23,8 +23,8 @@ do
             count=`wc -l $INPUT_FILE | awk '{print $1}'`
             echo $(($count * 2))
             if [ $tile_sz -lt $(($count * 2)) ]; then
-                echo "$EXECUTABLE $j $tile_sz $INPUT_FILE mp mpi 0"
-                `$EXECUTABLE $j $tile_sz $INPUT_FILE mp mpi 0`
+                echo "$EXECUTABLE $j $tile_sz $INPUT_FILE $INPUT_FILE mp mpi 0"
+                `$EXECUTABLE $j $tile_sz $INPUT_FILE $INPUT_FILE mp mpi 0`
                 X=`diff -U 0 mpi $COMPARE_MPI | grep ^@ | wc -l`
                 echo "$X flips"
                 echo ./difference.py mp $COMPARE_MP out

@@ -4,6 +4,7 @@ namespace SCRIMP {
 
 #define BLOCKSZ 512
 #define BLOCKSPERSM_SELF 2
+#define BLOCKSPERSM_AB 2
 #define TILE_HEIGHT 200
 
 //Atomically updates the MP/idxs using a single 64-bit integer. We lose a small amount of precision in the output, if we do not do this we are unable
@@ -463,6 +464,40 @@ do_tile(const double* __restrict__ Cov, const double* __restrict__ dfa,
 
 }
 
+SCRIMPError_t kernel_ab_join_upper(const double *QT, const double *timeseries_A, const double *timeseries_B, const double *df_A, const double *df_B, const double *dg_A, const double *dg_B, const double *norms_A, const double *norms_B, unsigned long long int *profile_A, unsigned long long int *profile_B, size_t window_size, size_t tile_width, size_t tile_height, size_t global_x, size_t global_y, cudaStream_t s)
+{
+        dim3 grid(1,1,1);
+        dim3 block(BLOCKSZ, 1, 1);
+        int num_workers = ceil(tile_width / 4.0);
+        grid.x = ceil(num_workers / (double) BLOCKSZ);
+        do_tile<false, BLOCKSPERSM_AB><<<grid,block,0,s>>>(QT,df_A,df_B,dg_A,dg_B,norms_A,norms_B,profile_A, profile_B,
+                                               window_size, tile_width, tile_height, global_x, global_y,
+                                               0,0);
+        cudaError_t err = cudaPeekAtLastError();
+        if(err != cudaSuccess) {
+            return SCRIMP_CUDA_ERROR;
+        }
+        return SCRIMP_NO_ERROR;
+}
+
+SCRIMPError_t kernel_ab_join_lower(const double *QT, const double *timeseries_A, const double *timeseries_B, const double *df_A, const double *df_B, const double *dg_A, const double *dg_B, const double *norms_A, const double *norms_B, unsigned long long int *profile_A, unsigned long long int *profile_B, size_t window_size, size_t tile_width, size_t tile_height, size_t global_x, size_t global_y, cudaStream_t s)
+{
+        dim3 grid(1,1,1);
+        dim3 block(BLOCKSZ, 1, 1);
+        int num_workers = ceil(tile_height / 4.0);
+        grid.x = ceil(num_workers / (double) BLOCKSZ);
+        do_tile<false, BLOCKSPERSM_AB><<<grid,block,TILE_HEIGHT * sizeof(mp_entry),s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A,
+                                               window_size, tile_height, tile_width, global_y, global_x,
+                                               0,0);
+        cudaError_t err = cudaPeekAtLastError();
+        if(err != cudaSuccess) {
+            return SCRIMP_CUDA_ERROR;
+        }
+        return SCRIMP_NO_ERROR;
+
+
+
+}
 
 SCRIMPError_t kernel_self_join_upper(const double *QT, const double *timeseries_A, const double *timeseries_B, const double *df_A, const double *df_B, const double *dg_A, const double *dg_B, const double *norms_A, const double *norms_B, unsigned long long int *profile_A, unsigned long long int *profile_B, size_t window_size, size_t tile_width, size_t tile_height, size_t global_x, size_t global_y, cudaStream_t s)
 {

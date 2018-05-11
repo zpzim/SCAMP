@@ -158,35 +158,35 @@ SCRIMPError_t SCRIMP_Operation::init()
         gpuErrchk(cudaPeekAtLastError());
         cudaMalloc(&T_B_dev.at(device), sizeof(double) * tile_size);
         gpuErrchk(cudaPeekAtLastError());
-        cudaMalloc(&profile_A_dev.at(device), sizeof(float) * tile_n);
+        cudaMalloc(&profile_A_dev.at(device), sizeof(float) * tile_n_x);
         gpuErrchk(cudaPeekAtLastError());
-        cudaMalloc(&profile_B_dev.at(device), sizeof(float) * tile_n);
+        cudaMalloc(&profile_B_dev.at(device), sizeof(float) * tile_n_y);
         gpuErrchk(cudaPeekAtLastError());
-        cudaMalloc(&profile_idx_A_dev.at(device), sizeof(unsigned int) * tile_n);
+        cudaMalloc(&profile_idx_A_dev.at(device), sizeof(unsigned int) * tile_n_x);
         gpuErrchk(cudaPeekAtLastError());
-        cudaMalloc(&profile_idx_B_dev.at(device), sizeof(unsigned int) * tile_n);
+        cudaMalloc(&profile_idx_B_dev.at(device), sizeof(unsigned int) * tile_n_y);
         gpuErrchk(cudaPeekAtLastError());
-        cudaMalloc(&QT_dev.at(device), sizeof(double) * tile_n);
+        cudaMalloc(&QT_dev.at(device), sizeof(double) * tile_n_x);
         gpuErrchk(cudaPeekAtLastError());
-        cudaMalloc(&means_A.at(device), sizeof(double) * tile_n);
+        cudaMalloc(&means_A.at(device), sizeof(double) * tile_n_x);
         gpuErrchk(cudaPeekAtLastError());
-        cudaMalloc(&means_B.at(device), sizeof(double) * tile_n);
+        cudaMalloc(&means_B.at(device), sizeof(double) * tile_n_y);
         gpuErrchk(cudaPeekAtLastError());
-        cudaMalloc(&norms_A.at(device), sizeof(double) * tile_n);
+        cudaMalloc(&norms_A.at(device), sizeof(double) * tile_n_x);
         gpuErrchk(cudaPeekAtLastError());
-        cudaMalloc(&norms_B.at(device), sizeof(double) * tile_n);
+        cudaMalloc(&norms_B.at(device), sizeof(double) * tile_n_y);
         gpuErrchk(cudaPeekAtLastError());
-        cudaMalloc(&df_A.at(device), sizeof(double) * tile_n);
+        cudaMalloc(&df_A.at(device), sizeof(double) * tile_n_x);
         gpuErrchk(cudaPeekAtLastError());
-        cudaMalloc(&df_B.at(device), sizeof(double) * tile_n);
+        cudaMalloc(&df_B.at(device), sizeof(double) * tile_n_y);
         gpuErrchk(cudaPeekAtLastError());
-        cudaMalloc(&dg_A.at(device), sizeof(double) * tile_n);
+        cudaMalloc(&dg_A.at(device), sizeof(double) * tile_n_x);
         gpuErrchk(cudaPeekAtLastError());
-        cudaMalloc(&dg_B.at(device), sizeof(double) * tile_n);
+        cudaMalloc(&dg_B.at(device), sizeof(double) * tile_n_y);
         gpuErrchk(cudaPeekAtLastError());
-        cudaMalloc(&profile_A_merged.at(device), sizeof(unsigned long long int) * tile_n);
+        cudaMalloc(&profile_A_merged.at(device), sizeof(unsigned long long int) * tile_n_x);
         gpuErrchk(cudaPeekAtLastError());
-        cudaMalloc(&profile_B_merged.at(device), sizeof(unsigned long long int) * tile_n);
+        cudaMalloc(&profile_B_merged.at(device), sizeof(unsigned long long int) * tile_n_y);
         gpuErrchk(cudaPeekAtLastError());
         cudaMalloc(&scratchpad.at(device), sizeof(double) * tile_size);
         scratch[device] = new fft_precompute_helper(tile_size, m, true);
@@ -243,39 +243,44 @@ SCRIMPError_t SCRIMP_Operation::destroy()
 
 }
 
-SCRIMPError_t SCRIMP_Operation::do_tile(SCRIMPTileType t, size_t t_size_x, size_t t_size_y, size_t start_x, size_t start_y, int device, const vector<double> &T_h, const vector<float> &profile_h, const vector<unsigned int> &profile_idx_h)
-{ 
+SCRIMPError_t SCRIMP_Operation::do_tile(SCRIMPTileType t, int device, const vector<double> &Ta_h, const vector<double> &Tb_h, const vector<float> &profile_h, const vector<unsigned int> &profile_idx_h)
+{
+        size_t start_x = pos_x[device];
+        size_t start_y = pos_y[device];
         MPIDXCombine combiner;
         SCRIMPError_t err;
-        size_t t_n_x = t_size_x - m + 1;
-        size_t t_n_y = t_size_y - m + 1;
+        size_t t_n_x = n_x[device] - m + 1;
+        size_t t_n_y = n_y[device] - m + 1;
         printf("tile type = %d start_pos = [%lu, %lu]...\n", t, start_y, start_x);
-        cudaMemcpyAsync(T_A_dev[device], T_h.data() + start_x, sizeof(double) * t_size_x, cudaMemcpyHostToDevice, streams.at(device));
+        cudaMemcpyAsync(T_A_dev[device], Ta_h.data() + start_x, sizeof(double) * n_x[device], cudaMemcpyHostToDevice, streams.at(device));
         gpuErrchk(cudaPeekAtLastError());
-        cudaMemcpyAsync(T_B_dev[device], T_h.data() + start_y, sizeof(double) * t_size_y, cudaMemcpyHostToDevice, streams.at(device));
+        cudaMemcpyAsync(T_B_dev[device], Tb_h.data() + start_y, sizeof(double) * n_y[device], cudaMemcpyHostToDevice, streams.at(device));
         gpuErrchk(cudaPeekAtLastError());
         cudaMemcpyAsync(profile_A_dev[device], profile_h.data() + start_x, sizeof(float) * t_n_x, cudaMemcpyHostToDevice, streams.at(device));
         gpuErrchk(cudaPeekAtLastError());
-        cudaMemcpyAsync(profile_B_dev[device], profile_h.data() + start_y, sizeof(float) * t_n_y, cudaMemcpyHostToDevice, streams.at(device));
-        gpuErrchk(cudaPeekAtLastError());
         cudaMemcpyAsync(profile_idx_A_dev[device], profile_idx_h.data() + start_x, sizeof(unsigned int) * t_n_x, cudaMemcpyHostToDevice, streams.at(device));
         gpuErrchk(cudaPeekAtLastError());
-        cudaMemcpyAsync(profile_idx_B_dev[device], profile_idx_h.data() + start_y, sizeof(unsigned int) * t_n_y, cudaMemcpyHostToDevice, streams.at(device));
-        gpuErrchk(cudaPeekAtLastError());
-        
+        if(self_join) {
+            cudaMemcpyAsync(profile_B_dev[device], profile_h.data() + start_y, sizeof(float) * t_n_y, cudaMemcpyHostToDevice, streams.at(device));
+            gpuErrchk(cudaPeekAtLastError());
+            cudaMemcpyAsync(profile_idx_B_dev[device], profile_idx_h.data() + start_y, sizeof(unsigned int) * t_n_y, cudaMemcpyHostToDevice, streams.at(device));
+            gpuErrchk(cudaPeekAtLastError());
+        }
         // FIXME?: Computing the sliding dot products & statistics for each tile is overkill
         compute_statistics(T_A_dev[device], norms_A[device], df_A[device], dg_A[device], means_A[device], t_n_x, m, streams.at(device), scratchpad[device]);
         gpuErrchk(cudaPeekAtLastError());
         compute_statistics(T_B_dev[device], norms_B[device], df_B[device], dg_B[device],  means_B[device], t_n_y, m, streams.at(device), scratchpad[device]);
         gpuErrchk(cudaPeekAtLastError());
         thrust::device_ptr<unsigned long long int> ptr_A = thrust::device_pointer_cast(profile_A_merged[device]);
-        thrust::device_ptr<unsigned long long int> ptr_B = thrust::device_pointer_cast(profile_B_merged[device]);
         thrust::transform(thrust::cuda::par.on(streams.at(device)), profile_A_dev[device], profile_A_dev[device] + t_n_x, profile_idx_A_dev[device], profile_A_merged[device], combiner);
         gpuErrchk(cudaPeekAtLastError());
-        thrust::transform(thrust::cuda::par.on(streams.at(device)), profile_B_dev[device], profile_B_dev[device] + t_n_y, profile_idx_B_dev[device], profile_B_merged[device], combiner);
-        gpuErrchk(cudaPeekAtLastError());
+        if(self_join) {
+            thrust::device_ptr<unsigned long long int> ptr_B = thrust::device_pointer_cast(profile_B_merged[device]);
+            thrust::transform(thrust::cuda::par.on(streams.at(device)), profile_B_dev[device], profile_B_dev[device] + t_n_y, profile_idx_B_dev[device], profile_B_merged[device], combiner);
+            gpuErrchk(cudaPeekAtLastError());
+        }
 
-        SCRIMP_Tile tile(t, T_A_dev[device], T_B_dev[device], df_A[device], df_B[device], dg_A[device], dg_B[device], norms_A[device], norms_B[device], means_A[device], means_B[device],  QT_dev[device], profile_A_merged[device], profile_B_merged[device], start_x, start_y, t_size_y, t_size_x, m, scratch[device]);
+        SCRIMP_Tile tile(t, T_A_dev[device], T_B_dev[device], df_A[device], df_B[device], dg_A[device], dg_B[device], norms_A[device], norms_B[device], means_A[device], means_B[device],  QT_dev[device], profile_A_merged[device], profile_B_merged[device], start_x, start_y, n_y[device], n_x[device], m, scratch[device]);
         cudaEventRecord(clocks_start[device], streams.at(device));
         gpuErrchk(cudaPeekAtLastError());
         err = tile.execute(streams.at(device));
@@ -285,43 +290,63 @@ SCRIMPError_t SCRIMP_Operation::do_tile(SCRIMPTileType t, size_t t_size_x, size_
 
 }
 
-void SCRIMP_Operation::get_tile_ordering(list<pair<int,int>> &tile_ordering) {
-	size_t num_tile_rows = ceil((size_A - m + 1) / (float) tile_n);
-	size_t num_tile_cols = ceil((size_B - m + 1) / (float) tile_n);
+void SCRIMP_Operation::get_tile_ordering() {
+    tile_ordering.clear();
+	size_t num_tile_rows = ceil((size_B - m + 1) / (float) tile_n_y);
+	size_t num_tile_cols = ceil((size_A - m + 1) / (float) tile_n_x);
 
-	for(int offset = 0; offset < num_tile_rows - 1; ++offset) {
-		for(int diag = 0; diag < num_tile_cols - 1 - offset; ++diag) {
-			tile_ordering.emplace_back(diag,diag + offset);
-		}
-	}
+    if(self_join) {
+        for(int offset = 0; offset < num_tile_rows - 1; ++offset) {
+            for(int diag = 0; diag < num_tile_cols - 1 - offset; ++diag) {
+                tile_ordering.emplace_back(diag,diag + offset);
+            }
+        }
 
-	for(int i = 0; i < num_tile_rows; ++i) {
-		tile_ordering.emplace_back(i, num_tile_cols - 1);
-	}
-
+        for(int i = 0; i < num_tile_rows; ++i) {
+            tile_ordering.emplace_back(i, num_tile_cols - 1);
+        }
+    } else {
+        for(int i = 0; i < num_tile_rows - 1; ++i) {
+            for(int j = 0; j < num_tile_cols - 1; ++j) {
+                tile_ordering.emplace_back(i, j);
+            }
+        }
+        for(int i = 0; i < num_tile_cols - 1; ++i) {
+            tile_ordering.emplace_back(num_tile_rows - 1, i);
+        }
+        for(int i = 0; i < num_tile_rows - 1; ++i) {
+            tile_ordering.emplace_back(i, num_tile_cols - 1);
+        } 
+        tile_ordering.emplace_back(num_tile_rows - 1, num_tile_cols - 1);
+    }
+    total_tiles = tile_ordering.size();
 
 }
 
 
-bool SCRIMP_Operation::pick_and_start_next_tile_self_join(int dev, list<pair<int,int>> &tile_order, const vector<double> &T_h, const vector<float> &profile_h, const vector<unsigned int> &profile_idx_h, size_t &size_x, size_t &size_y, size_t &start_x, size_t &start_y)
+bool SCRIMP_Operation::pick_and_start_next_tile(int dev, const vector<double> &Ta_h, const vector<double> &Tb_h, const vector<float> &profile_h, const vector<unsigned int> &profile_idx_h)
 {
     
     bool done = false;
-    int tile_row = tile_order.front().first;
-    int tile_col = tile_order.front().second;
-    start_x = tile_col * tile_n;
-    start_y = tile_row * tile_n;
-    size_x = min(tile_size, size_A - start_x);
-    size_y = min(tile_size, size_B - start_y);
-    if(tile_row == tile_col) {
-        //partial tile on diagonal
-        do_tile(SELF_JOIN_UPPER_TRIANGULAR, size_x, size_y, start_x, start_y, dev, T_h, profile_h, profile_idx_h);
+    int tile_row = tile_ordering.front().first;
+    int tile_col = tile_ordering.front().second;
+    pos_x[dev] = tile_col * tile_n_x;
+    pos_y[dev] = tile_row * tile_n_y;
+    n_x[dev] = min(tile_size, size_A - pos_x[dev]);
+    n_y[dev] = min(tile_size, size_B - pos_y[dev]);
+    if(self_join) {
+        if(tile_row == tile_col) {
+            //partial tile on diagonal
+            do_tile(SELF_JOIN_UPPER_TRIANGULAR, dev, Ta_h, Tb_h, profile_h, profile_idx_h);
+        } else {
+            // full tile
+            do_tile(SELF_JOIN_FULL_TILE, dev, Ta_h, Tb_h, profile_h, profile_idx_h);
+        }
     } else {
-        // full tile
-        do_tile(SELF_JOIN_FULL_TILE, size_x, size_y, start_x, start_y, dev, T_h, profile_h, profile_idx_h);
+        do_tile(AB_JOIN_FULL_TILE, dev, Ta_h, Tb_h, profile_h, profile_idx_h);
     }
-    tile_order.pop_front();
-    if(tile_order.empty()){
+    tile_ordering.pop_front();
+    if(tile_ordering.empty()){
         done = true;
     }
     return done;
@@ -336,29 +361,70 @@ void merge_partial_on_host(vector<unsigned long long int> &profile_to_merge, vec
 
 }
 
-SCRIMPError_t SCRIMP_Operation::do_self_join(const vector<double> &T_host, vector<float> &profile, vector<unsigned int> &profile_idx)
+
+int SCRIMP_Operation::issue_and_merge_tiles_on_devices(const vector<double> &Ta_host, const vector<double> &Tb_host, vector<float> &profile, vector<unsigned int> &profile_idx, vector<vector<unsigned long long int>> &profileA_h, vector<vector<unsigned long long int>> &profileB_h, int last_device_idx = -2)
 {
-    list<pair<int,int>> tile_ordering;
-    vector< vector<unsigned long long int> > profileA_h(devices.size(), vector<unsigned long long int>(tile_n)), profileB_h(devices.size(), vector<unsigned long long int>(tile_n));
+    bool done = last_device_idx != -2;
+    int last_dev = -2; 
+    if(last_device_idx == -2) {
+        last_device_idx = devices.size() - 1;
+    }
+    for(int i = 0; i <= last_device_idx; ++i) {
+        int device = devices.at(i);
+        cudaSetDevice(device);
+        gpuErrchk(cudaPeekAtLastError());
+        cudaMemcpyAsync(profileA_h.at(device).data(), profile_A_merged[device], sizeof(unsigned long long int) * (n_x[device] - m + 1), cudaMemcpyDeviceToHost, streams.at(device));
+        gpuErrchk(cudaPeekAtLastError());
+        if(self_join) {
+            cudaMemcpyAsync(profileB_h.at(device).data(), profile_B_merged[device], sizeof(unsigned long long int) * (n_y[device] - m + 1), cudaMemcpyDeviceToHost, streams.at(device));
+            gpuErrchk(cudaPeekAtLastError());
+        }
+        cudaEventRecord(copy_to_host_done[device], streams.at(device));
+        gpuErrchk(cudaPeekAtLastError());
+        n_x_2[device] = n_x[device];
+        n_y_2[device] = n_y[device];
+        pos_x_2[device] = pos_x[device];
+        pos_y_2[device] = pos_y[device];
+        if(!done) {
+            done = pick_and_start_next_tile(device, Ta_host, Tb_host, profile, profile_idx);
+            if(done) {
+                last_dev = device;
+            }
+        }
+    }
+
+    for(int i = 0; i <= last_device_idx; ++i) {
+        int device = devices.at(i);
+        cudaSetDevice(device);
+        gpuErrchk(cudaPeekAtLastError());
+        cudaEventSynchronize(copy_to_host_done[device]);
+        gpuErrchk(cudaPeekAtLastError());
+        merge_partial_on_host(profileA_h.at(device), profile, profile_idx, pos_x_2[device], (n_x_2[device] - m + 1));
+        gpuErrchk(cudaPeekAtLastError());
+        if(self_join) {
+            merge_partial_on_host(profileB_h.at(device), profile, profile_idx, pos_y_2[device], (n_y_2[device] - m + 1));
+            gpuErrchk(cudaPeekAtLastError());
+        }
+        completed_tiles++;
+        printf("%f percent complete\n", (completed_tiles / (float) total_tiles) * 100);
+    }
+    return last_dev;
+}
+
+
+SCRIMPError_t SCRIMP_Operation::do_join(const vector<double> &Ta_host, const vector<double> &Tb_host, vector<float> &profile, vector<unsigned int> &profile_idx)
+{
+    const int ISSUED_ALL_DEVICES = -2;
+
+    vector< vector<unsigned long long int> > profileA_h(devices.size(), vector<unsigned long long int>(tile_n_y)), profileB_h(devices.size(), vector<unsigned long long int>(tile_n_x));
     bool done = false;
-    int last_dev;
-    vector<size_t> n_x(devices.size());
-    vector<size_t> n_y(devices.size());
-    vector<size_t> n_x_2(devices.size());
-    vector<size_t> n_y_2(devices.size());
-    vector<size_t> pos_x(devices.size());
-    vector<size_t> pos_y(devices.size());
-    vector<size_t> pos_x_2(devices.size());
-    vector<size_t> pos_y_2(devices.size());
-    
-    get_tile_ordering(tile_ordering);
-    printf("Performing self join with %lu tiles.\n", tile_ordering.size() );
-    size_t total_tiles = tile_ordering.size();
-    size_t completed_tiles = 0;
+    int last_dev = ISSUED_ALL_DEVICES;
+    get_tile_ordering();
+    printf("Performing join with %lu tiles.\n", tile_ordering.size() );
     for(auto device : devices) {
         cudaSetDevice(device);
         gpuErrchk(cudaPeekAtLastError());
-        done = pick_and_start_next_tile_self_join(device, tile_ordering, T_host, profile, profile_idx, n_x[device], n_y[device], pos_x[device], pos_y[device]);
+        done = pick_and_start_next_tile(device, Ta_host, Tb_host, profile, profile_idx);
         gpuErrchk(cudaPeekAtLastError());
         if (done) {
             last_dev = device;
@@ -366,82 +432,32 @@ SCRIMPError_t SCRIMP_Operation::do_self_join(const vector<double> &T_host, vecto
         }
     }
 
-    while(!done) {
-        for(auto device : devices) {
-            cudaSetDevice(device);
-            gpuErrchk(cudaPeekAtLastError());
-            cudaMemcpyAsync(profileA_h.at(device).data(), profile_A_merged[device], sizeof(unsigned long long int) * (n_x[device] - m + 1), cudaMemcpyDeviceToHost, streams.at(device));
-            gpuErrchk(cudaPeekAtLastError());
-            cudaMemcpyAsync(profileB_h.at(device).data(), profile_B_merged[device], sizeof(unsigned long long int) * (n_y[device] - m + 1), cudaMemcpyDeviceToHost, streams.at(device));
-            gpuErrchk(cudaPeekAtLastError());
-            cudaEventRecord(copy_to_host_done[device], streams.at(device));
-            gpuErrchk(cudaPeekAtLastError());
-            n_x_2[device] = n_x[device];
-            n_y_2[device] = n_y[device];
-            pos_x_2[device] = pos_x[device];
-            pos_y_2[device] = pos_y[device];
-            if(!done) {
-                done = pick_and_start_next_tile_self_join(device, tile_ordering, T_host, profile, profile_idx, n_x[device], n_y[device], pos_x[device], pos_y[device]);
-                if(done) {
-                    last_dev = device;
-                }
-            }
-        }
-
-        for(auto device : devices) {
-            cudaSetDevice(device);
-            gpuErrchk(cudaPeekAtLastError());
-            cudaEventSynchronize(copy_to_host_done[device]);
-            gpuErrchk(cudaPeekAtLastError());
-            merge_partial_on_host(profileA_h.at(device), profile, profile_idx, pos_x_2[device], (n_x_2[device] - m + 1));
-            gpuErrchk(cudaPeekAtLastError());
-            merge_partial_on_host(profileB_h.at(device), profile, profile_idx, pos_y_2[device], (n_y_2[device] - m + 1));
-            gpuErrchk(cudaPeekAtLastError());
-            completed_tiles++;
-            printf("%f percent complete\n", (completed_tiles / (float) total_tiles) * 100);
-            
-        }
-
-
+    while(last_dev == ISSUED_ALL_DEVICES) {
+        last_dev = issue_and_merge_tiles_on_devices(Ta_host, Tb_host, profile, profile_idx, profileA_h, profileB_h);
     }
 
-    for(int device = 0; device <= last_dev; ++device) {
-        cudaSetDevice(device);
-        gpuErrchk(cudaPeekAtLastError());
-        cudaMemcpyAsync(profileA_h.at(device).data(), profile_A_merged[device], sizeof(unsigned long long int) * (n_x[device] - m + 1), cudaMemcpyDeviceToHost, streams.at(device));
-        gpuErrchk(cudaPeekAtLastError());
-        cudaMemcpyAsync(profileB_h.at(device).data(), profile_B_merged[device], sizeof(unsigned long long int) * (n_y[device] - m + 1), cudaMemcpyDeviceToHost, streams.at(device));
-        gpuErrchk(cudaPeekAtLastError());
-        cudaEventRecord(copy_to_host_done[device], streams.at(device));
-        gpuErrchk(cudaPeekAtLastError());
-    }
-    for(int device = 0; device <= last_dev; ++device) {
-        cudaSetDevice(device);
-        gpuErrchk(cudaPeekAtLastError());
-        cudaEventSynchronize(copy_to_host_done[device]);
-        gpuErrchk(cudaPeekAtLastError());
-        merge_partial_on_host(profileA_h.at(device), profile, profile_idx, pos_x[device], (n_x[device] - m + 1));
-        gpuErrchk(cudaPeekAtLastError());
-        merge_partial_on_host(profileB_h.at(device), profile, profile_idx, pos_y[device], (n_y[device] - m + 1));
-        gpuErrchk(cudaPeekAtLastError());
-        completed_tiles++;
-        printf("%f percent complete\n", (completed_tiles / (float) total_tiles) * 100);
-    }
+    issue_and_merge_tiles_on_devices(Ta_host, Tb_host, profile, profile_idx, profileA_h, profileB_h, last_dev);
+
     return SCRIMP_NO_ERROR;
 }
 
-void do_SCRIMP(const vector<double> &T_h, vector<float> &profile_h, vector<unsigned int> &profile_idx_h, const unsigned int m, const size_t max_tile_size, const vector<int> &devices) {
+void do_SCRIMP(const vector<double> &Ta_h, const vector<double> &Tb_h, vector<float> &profile_h, vector<unsigned int> &profile_idx_h, const unsigned int m, const size_t max_tile_size, const vector<int> &devices, bool self_join) {
     if(devices.empty()) {
         printf("Error: no gpu provided\n");
         exit(0);
     }
     // Allocate and initialize memory
     clock_t start, end;
-    SCRIMP_Operation op(T_h.size(), T_h.size(), m, max_tile_size, devices);
+    SCRIMP_Operation op(Ta_h.size(), Tb_h.size(), m, max_tile_size, devices, self_join);
     op.init();
     gpuErrchk(cudaPeekAtLastError());
     start = clock();
-    op.do_self_join(T_h, profile_h, profile_idx_h);
+    if(self_join) {
+        op.do_join(Ta_h, Ta_h, profile_h, profile_idx_h);
+    } else {
+        op.do_join(Ta_h, Tb_h, profile_h, profile_idx_h);
+
+    }
     cudaDeviceSynchronize();
     end = clock();
     gpuErrchk(cudaPeekAtLastError());
@@ -473,23 +489,35 @@ void readFile(const char* filename, vector<DTYPE>& v, const char *format_str)
 int main(int argc, char** argv) {
 
     if(argc < 5) {
-        printf("Usage: SCRIMP <window_len> <max_tile_size> <input file> <profile output file> <index output file> [Optional: list of GPU device numbers to run on]\n");
+        printf("Usage: SCRIMP <window_len> <max_tile_size> <input file A> <input file B> <profile output file> <index output file> [Optional: list of GPU device numbers to run on]\n");
         exit(0);
     }
 
     int window_size = atoi(argv[1]);
     int max_tile_size = atoi(argv[2]);
-    vector<double> T_h;
-    SCRIMP::readFile<double>(argv[3], T_h, "%lf");
-    int n = T_h.size() - window_size + 1;
-    vector<float> profile(n, CC_MIN);
-    vector<unsigned int> profile_idx(n, 0);
+    vector<double> Ta_h, Tb_h;
+    bool self_join = false;
+    SCRIMP::readFile<double>(argv[3], Ta_h, "%lf");
+    if(strncmp(argv[3], argv[4], strlen(argv[3])) == 0) {
+        self_join = true;
+    } else {
+        SCRIMP::readFile<double>(argv[4], Tb_h, "%lf"); 
+    }
+    int n_x = Ta_h.size() - window_size + 1;
+    int n_y;
+    if(self_join) {
+       n_y = n_x;
+    } else {
+       n_y = Tb_h.size() - window_size + 1;
+    }
+    vector<float> profile(n_x, CC_MIN);
+    vector<unsigned int> profile_idx(n_x, 0);
      
     cudaFree(0);
     
     vector<int> devices;
     
-    if(argc == 6) {
+    if(argc == 7) {
         // Use all available devices 
         int num_dev;
         cudaGetDeviceCount(&num_dev);
@@ -498,7 +526,7 @@ int main(int argc, char** argv) {
         }
     } else {
         // Use the devices specified
-        int x = 6;
+        int x = 7;
         while (x < argc) {
             devices.push_back(atoi(argv[x]));
             ++x;
@@ -507,11 +535,11 @@ int main(int argc, char** argv) {
     
     printf("Starting SCRIMP\n");
      
-    SCRIMP::do_SCRIMP(T_h, profile, profile_idx, window_size, max_tile_size, devices);
+    SCRIMP::do_SCRIMP(Ta_h, Tb_h, profile, profile_idx, window_size, max_tile_size, devices, self_join);
     
     printf("Now writing result to files\n");
-    FILE* f1 = fopen( argv[4], "w");
-    FILE* f2 = fopen( argv[5], "w");
+    FILE* f1 = fopen( argv[5], "w");
+    FILE* f2 = fopen( argv[6], "w");
     for(int i = 0; i < profile.size(); ++i){
          fprintf(f1, "%f\n", sqrt(max(2*window_size*(1 - profile[i]), 0.0)));
          fprintf(f2, "%u\n", profile_idx[i] + 1);

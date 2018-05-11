@@ -34,40 +34,66 @@ private:
     size_t size_A;
     size_t size_B;
     size_t tile_size;
-    size_t n;
-    size_t tile_n;
+    size_t tile_n_x;
+    size_t tile_n_y;
     size_t m;
+    const bool self_join;
     const size_t MAX_TILE_SIZE;
     vector<int> devices;
-    SCRIMPError_t do_tile(SCRIMPTileType t, size_t t_size_x, size_t t_size_y,
-                          size_t start_x, size_t start_y, int device,
-                          const vector<double> &T_h,
+
+    // Tile state variables
+    list<pair<int,int>> tile_ordering;
+    int completed_tiles;
+    size_t total_tiles;
+    vector<size_t> n_x;
+    vector<size_t> n_y;
+    vector<size_t> n_x_2;
+    vector<size_t> n_y_2;
+    vector<size_t> pos_x;
+    vector<size_t> pos_y;
+    vector<size_t> pos_x_2;
+    vector<size_t> pos_y_2;
+
+    SCRIMPError_t do_tile(SCRIMPTileType t, int device, const vector<double> &Ta_h,
+                          const vector<double> &Tb_h,
                           const vector<float> &profile_h,
                           const vector<unsigned int> &profile_idx_h);
 
-    bool pick_and_start_next_tile_self_join(int dev, list<pair<int,int>> &tile_order,
-                                            const vector<double> &T_h,
-                                            const vector<float> &profile_h,
-                                            const vector<unsigned int> &profile_idx_h,
-                                            size_t &size_x, size_t &size_y,
-                                            size_t &start_x, size_t &start_y);
+    bool pick_and_start_next_tile(int dev, const vector<double> &Ta_h,
+                                  const vector<double> &Tb_h,
+                                  const vector<float> &profile_h,
+                                  const vector<unsigned int> &profile_idx_h);
 
-    void get_tile_ordering(list<pair<int,int>> &tile_ordering);
+    int issue_and_merge_tiles_on_devices(const vector<double> &Ta_host, const vector<double> &Tb_host,
+                                         vector<float> &profile, vector<unsigned int> &profile_idx,
+                                         vector<vector<unsigned long long int>> &profileA_h,
+                                         vector<vector<unsigned long long int>> &profileB_h,
+                                         int last_device_idx);
+
+    void get_tile_ordering();
 
 public:
-    SCRIMP_Operation(size_t Asize, size_t Bsize, size_t window_sz, size_t max_tile_size, const vector<int> &dev) :
-                     size_A(Asize), size_B(Bsize), m(window_sz), MAX_TILE_SIZE(max_tile_size), devices(dev)
+    SCRIMP_Operation(size_t Asize, size_t Bsize, size_t window_sz, size_t max_tile_size, const vector<int> &dev, bool selfjoin) :
+                     size_A(Asize), m(window_sz), MAX_TILE_SIZE(max_tile_size), devices(dev), self_join(selfjoin),
+                     n_x(dev.size()), n_y(dev.size()), n_x_2(dev.size()), n_y_2(dev.size()),
+                     pos_x(dev.size()), pos_y(dev.size()), pos_x_2(dev.size()), pos_y_2(dev.size()), completed_tiles(0)
     {
+         if(self_join) {
+            size_B = size_A;
+         } else {
+            size_B = Bsize;
+         }
          tile_size = Asize / (devices.size());
          if(tile_size > MAX_TILE_SIZE) {
     	     tile_size = MAX_TILE_SIZE;
          }
-         n = Asize - m + 1;
-         tile_n = tile_size - m + 1;
-
+         //n_y = Asize - m + 1;
+         //n_x = Bsize - m + 1;
+         tile_n_x = tile_size - m + 1;
+         tile_n_y = tile_n_x;
     }
-    SCRIMPError_t do_self_join(const vector<double> &T_host, vector<float> &profile,
-                               vector<unsigned int> &profile_idx);
+    SCRIMPError_t do_join(const vector<double> &Ta_host, const vector<double> &Tb_host,
+                          vector<float> &profile, vector<unsigned int> &profile_idx);
     SCRIMPError_t init();
     SCRIMPError_t destroy();
 };
