@@ -16,10 +16,10 @@ for line1, line2 in zip(fd1,fd2):
     if(abs(diff) > maxdiff):
         maxdiff = abs(diff)
     if abs(diff) > 0.0005:
-        print("difference of ", str(diff), "at index", str(count))
+        print("difference of " + str(diff) + "at index" + str(count))
     count += 1
 
-print("Max diff was ", str(maxdiff))
+print("Max matrix profile difference was " + str(maxdiff))
 
 
 

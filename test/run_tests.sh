@@ -21,13 +21,11 @@ do
         do
             tile_sz=${TILE_SZ[i]}
             count=`wc -l $INPUT_FILE | awk '{print $1}'`
-            echo $(($count * 2))
             if [ $tile_sz -lt $(($count * 2)) ]; then
-                echo "$EXECUTABLE $j $tile_sz $INPUT_FILE $INPUT_FILE mp mpi 0"
-                `$EXECUTABLE $j $tile_sz $INPUT_FILE $INPUT_FILE mp mpi 0`
-                X=`diff -U 0 mpi $COMPARE_MPI | grep ^@ | wc -l`
-                echo "$X flips"
-                echo ./difference.py mp $COMPARE_MP out
+                echo "Running Test: $EXECUTABLE $j $tile_sz $INPUT_FILE $INPUT_FILE mp mpi 0"
+                $EXECUTABLE $j $tile_sz $INPUT_FILE $INPUT_FILE mp mpi 0 > /dev/null
+                X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mpi | grep '^' | wc -l`
+                echo "$X matrix profile index differences"
                 ./difference.py mp $COMPARE_MP out
             fi
         done
