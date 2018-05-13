@@ -282,7 +282,7 @@ SCRIMPError_t SCRIMP_Operation::do_tile(SCRIMPTileType t, int device, const vect
             thrust::transform(thrust::cuda::par.on(streams.at(device)), profile_B_dev[device], profile_B_dev[device] + t_n_y, profile_idx_B_dev[device], profile_B_merged[device], combiner);
             gpuErrchk(cudaPeekAtLastError());
         }
-        SCRIMP_Tile tile(t, T_A_dev[device], T_B_dev[device], df_A[device], df_B[device], dg_A[device], dg_B[device], norms_A[device], norms_B[device], means_A[device], means_B[device],  QT_dev[device], profile_A_merged[device], profile_B_merged[device], start_x, start_y, n_y[device], n_x[device], m, scratch[device]);
+        SCRIMP_Tile tile(t, T_A_dev[device], T_B_dev[device], df_A[device], df_B[device], dg_A[device], dg_B[device], norms_A[device], norms_B[device], means_A[device], means_B[device],  QT_dev[device], profile_A_merged[device], profile_B_merged[device], start_x, start_y, n_y[device], n_x[device], m, scratch[device], dev_props.at(device), compute_fp64);
         cudaEventRecord(clocks_start[device], streams.at(device));
         gpuErrchk(cudaPeekAtLastError());
         err = tile.execute(streams.at(device));

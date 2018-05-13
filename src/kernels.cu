@@ -119,6 +119,41 @@ __device__  inline void initialize_tile_memory(const unsigned long long int* __r
 
 }
 
+// This does one row of work for 2 diagonals in a single thread
+template<class T, bool full_join, bool only_col>
+__device__ inline void do_unrolled_row2(T &cov1, T &cov2, float &distcol1, float &distcol2, unsigned int &idxcol1,
+                                        unsigned int &idxcol2, const T &inormcx, const T &inormcy, const T &inormr,
+                                        const T &df_colx, const T &df_coly, const T &dg_colx, const T &dg_coly,
+                                        const T &df_row, const T &dg_row, const int &row, const int &col,
+                                        const int &global_row, const int &global_col, mp_entry* __restrict__ mp_row,
+                                        const float &curr_val) {
+
+    float2 dist;
+
+    // Compute the row's distances
+    dist.x = cov1 * inormcx * inormr;
+    dist.y = cov2 * inormcy * inormr;
+
+    // Compute the next covariance values
+    cov1 = cov1 + df_colx * dg_row + dg_colx * df_row;
+    cov2 = cov2 + df_coly * dg_row + dg_coly * df_row;
+
+    
+    // Update the column best-so-far values
+    if(full_join || only_col) {
+        MPMax2(distcol1, dist.x, idxcol1, global_row);
+        MPMax2(distcol2, dist.y, idxcol2, global_row);
+    }
+
+    if(full_join || !only_col) {
+        unsigned int idx = global_col;
+        // We take the maximum of the columns we computed for the row
+        // And use that value to check the matrix profile
+        MPMax2(dist.x, dist.y, idx, global_col + 1);
+        MPatomicMax_check((unsigned long long*) (mp_row + row), dist.x, idx, curr_val);
+    }
+}
+
 // This does one row of work for 4 diagonals in a single thread
 template<class T, bool full_join, bool only_col>
 __device__ inline void do_unrolled_row4(T &cov1, T &cov2, T &cov3, T &cov4,
@@ -163,6 +198,83 @@ __device__ inline void do_unrolled_row4(T &cov1, T &cov2, T &cov3, T &cov4,
         // And use that value to check the matrix profile
         float d = max4(dist, global_col, idx);
         MPatomicMax_check((unsigned long long*) (mp_row + row), d, idx, curr_val);
+    }
+}
+
+// Processes 2 iterations of the inner loop. Each thread computes 2 distances per iteration (x,y), (x+1,y)
+// This function assumes that the edge cases that occur on the edge of the distance matrix are not present. This is the faster path,
+// with less conditional branching.
+template<class T, class VT2, bool full_join, bool only_col>
+__device__ inline void do_iteration_unroll_2(int i, int j, int x, int y, T &cov1, T &cov2,
+                                             T* __restrict__ df_col, T* __restrict__ df_row,
+                                             T* __restrict__ dg_col, T* __restrict__ dg_row,
+                                             T* __restrict__ inorm_col, T* __restrict__ inorm_row,
+                                             mp_entry* __restrict__ local_mp_col, mp_entry* __restrict__ local_mp_row) 
+{
+    float2 distc = make_float2(CC_MIN, CC_MIN);
+    float2 distc2 = make_float2(CC_MIN, CC_MIN);
+    uint2 idxc,idxc2;
+    
+    // Load row values 2 at a time, load column values 4 at a time
+    int r = i >> 1;
+    int c = j >> 1;
+
+    // Preload the shared memory values we will use into registers
+    // We load 4 values per thread into a float4 vector type
+    VT2 dfc = reinterpret_cast<VT2*>(df_col)[c];
+    VT2 dgc = reinterpret_cast<VT2*>(dg_col)[c];
+    VT2 inormc = reinterpret_cast<VT2*>(inorm_col)[c];
+    VT2 dfc2 = reinterpret_cast<VT2*>(df_col)[c+1];
+    VT2 dgc2 = reinterpret_cast<VT2*>(dg_col)[c+1];
+    VT2 inormc2 = reinterpret_cast<VT2*>(inorm_col)[c+1];
+    ulonglong2 mp_col_check1, mp_col_check2;
+    ulonglong2 mp_row_check;
+
+    // Copy the pieces of the cache we will use into registers with vectorized loads
+    if(full_join || only_col) {
+        mp_col_check1 = reinterpret_cast<ulonglong2*>(local_mp_col)[c];
+    }
+    if(full_join || !only_col) {
+        mp_row_check = reinterpret_cast<ulonglong2*>(local_mp_row)[r];
+    }
+
+    VT2 dgr = reinterpret_cast<VT2*>(dg_row)[r];
+    VT2 dfr = reinterpret_cast<VT2*>(df_row)[r];
+    VT2 inormr = reinterpret_cast<VT2*>(inorm_row)[r];
+    
+    // Do rows one at a time:
+    // We are computing a tile that looks like this:
+    // C:1 2 3
+    //R1 X X
+    //R2   X X
+    // For 2 diagonals unrolled 2 times we compute a total of 4 distances.
+    // These distances cover 2 possible rows and 3 possible columns, so we need to check the matrix profile
+    // 5 times total, once for each row and once for each column
+    mp_entry e;
+    e.ulong = mp_row_check.x; 
+    do_unrolled_row2<T, full_join,only_col>(cov1, cov2, distc.x, distc.y, idxc.x, idxc.y,
+                                            inormc.x, inormc.y, inormr.x, dfc.x, dfc.y,
+                                            dgc.x, dgc.y, dfr.x, dgr.x, i, j, y, x, local_mp_row, e.floats[0]);
+
+    // Each row's computation allows us to complete a column, the first row completes column 1
+    if(full_join || only_col) {
+        e.ulong = mp_col_check1.x;
+        MPatomicMax_check((unsigned long long*) (local_mp_col + j), distc.x, idxc.x, e.floats[0]);
+    }
+
+    e.ulong = mp_row_check.y;
+    do_unrolled_row2<T,full_join, only_col>(cov1, cov2, distc.y, distc2.x, idxc.y,
+                                            idxc2.x, inormc.y, inormc2.x, inormr.y,
+                                            dfc.y, dfc2.x, dgc.y, dgc2.x, dfr.y, dgr.y,
+                                            i + 1, j + 1, y + 1, x + 1, local_mp_row, e.floats[0]);
+
+    // The second row completes column 2
+    if(full_join || only_col) {
+        e.ulong = mp_col_check1.y;
+        MPatomicMax_check((unsigned long long*) (local_mp_col + j + 1), distc.y, idxc.y, e.floats[0]);
+        mp_col_check2 = reinterpret_cast<ulonglong2*>(local_mp_col)[c+1];
+        e.ulong = mp_col_check2.y;
+        MPatomicMax_check((unsigned long long*) (local_mp_col + j + 2), distc2.x, idxc2.x, e.floats[0]);
     }
 }
 
@@ -291,6 +403,45 @@ __device__ inline void do_iteration_unroll_4(int i, int j, int x, int y, T &cov1
     }    
 }
 
+// Does a single iteration of the inner loop on 2 diagonals per thread, not unrolled
+// Checks for the boundary case where only 1 diagonal can be updated
+template<class T, bool full_join, bool only_col>
+__device__ inline void do_iteration_2diag(int i, int j, int x, int y,
+                                          size_t global_start_x, size_t global_start_y,
+                                          int n, T &cov1, T &cov2, T* __restrict__ df_col,
+                                          T* __restrict__ df_row, T* __restrict__ dg_col,
+                                          T* __restrict__ dg_row, T* __restrict__ inorm_col,
+                                          T* __restrict__ inorm_row, mp_entry* __restrict__ local_mp_col,
+                                          mp_entry* __restrict__ local_mp_row, size_t diag, size_t num_diags)
+{
+    float dist_1;
+    unsigned int idx_1;
+    float2 dist;
+    // Compute the next set of distances (row y)
+    dist.x = cov1 * inorm_col[j] * inorm_row[i];
+    dist.y = cov2 * inorm_col[j + 1] * inorm_row[i];
+
+    // Update cov and compute the next distance values (row y)
+    cov1 = cov1 + df_col[j] * dg_row[i] + dg_col[j] * df_row[i];
+    cov2 = cov2 + df_col[j+1] * dg_row[i] + dg_col[j+1] * df_row[i];
+
+    if(full_join || only_col) {
+        MPatomicMax((unsigned long long*) (local_mp_col + j), dist.x, y + global_start_y);
+    }
+    dist_1 = dist.x;
+    idx_1 = x + global_start_x;
+    if(x + 1 < n && diag + 1 < num_diags) {
+        if(full_join || !only_col) {
+            MPMax(dist_1, dist.y, idx_1, global_start_x + x + 1, dist_1, idx_1);
+        }
+        if(full_join || only_col) {
+            MPatomicMax((unsigned long long*) (local_mp_col + j + 1), dist.y, y + global_start_y);
+        }
+    }
+    if(full_join || !only_col) {
+        MPatomicMax((unsigned long long*) (local_mp_row + i), dist_1, idx_1);	
+    }
+}
 
 // Does a single iteration of the inner loop on 4 diagonals per thread, not unrolled
 // Checks for the boundary case where only 1, 2, or 3 diagonals can be updated
@@ -354,7 +505,7 @@ __device__ inline void do_iteration_4diag(int i, int j, int x, int y,
 }
 
 //Computes the matrix profile given the sliding dot products for the first query and the precomputed data statisics
-template<class T, class T4, class T2, bool full_join, bool only_col, int blocks_per_sm>
+template<class T, class T2, class T4, bool fp64, bool full_join, bool only_col, int blocks_per_sm, int diags_per_thread>
 __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
 do_tile(const double* __restrict__ Cov, const double* __restrict__ dfa,
                   const double* __restrict__ dfb, const double* __restrict__ dga,
@@ -369,38 +520,43 @@ do_tile(const double* __restrict__ Cov, const double* __restrict__ dfa,
     // tile_height must be a multiple of 4
     // Tuned for V100
     const int tile_height = TILE_HEIGHT;
-    const int tile_width = tile_height + BLOCKSZ * 4;
-    extern __shared__ mp_entry smem[];
+    const int tile_width = tile_height + BLOCKSZ * diags_per_thread;
+    extern __shared__ char smem[];
     mp_entry *local_mp_col, *local_mp_row;
+    T *df_col, *dg_col, *inorm_col, *df_row, *dg_row, *inorm_row;
+    
+    
+    df_col = (T*) smem;
+    dg_col = df_col + tile_width;
+    inorm_col = dg_col + tile_width;
+    df_row = inorm_col + tile_width;
+    dg_row = df_row + tile_height;
+    inorm_row = dg_row + tile_height;
+    mp_entry *pos = (mp_entry*) (inorm_row + tile_height);
+    
     if(!full_join && only_col) {
-        local_mp_col = smem;
+        local_mp_col = pos;
     } else if(!full_join) {
-        local_mp_row = smem;
+        local_mp_row = pos;
     } else {
-        local_mp_col = smem;
-        local_mp_row = smem + tile_width;
+        local_mp_col = pos;
+        local_mp_row = pos + tile_width;
     }
-    __shared__ T df_col[tile_width];
-    __shared__ T dg_col[tile_width];
-    __shared__ T inorm_col[tile_width];
-    __shared__ T df_row[tile_height];
-    __shared__ T dg_row[tile_height];
-    __shared__ T inorm_row[tile_height];
 
-    const unsigned int start_diag = (threadIdx.x << 2) + blockIdx.x * (blockDim.x << 2);
+    const unsigned int start_diag = (threadIdx.x * diags_per_thread) + blockIdx.x * (blockDim.x * diags_per_thread);
 
     // This is the index of the meta-diagonal that this thread block will work on
     const unsigned int meta_diagonal_idx = blockIdx.x;
 
     // The first threads are acutally computing the trivial match between the same subsequence
     // we exclude these from the calculation
-    int tile_start_x = meta_diagonal_idx * (BLOCKSZ * 4) + exclusion_lower;
+    int tile_start_x = meta_diagonal_idx * (BLOCKSZ * diags_per_thread) + exclusion_lower;
     int tile_start_y = 0;
       
     // x is the global column of the distance matrix
     // y is the global row of the distance matrix
     // localX, localY are the local coordinates of the thread position in the tile it is working on
-    int x = tile_start_x + threadIdx.x * 4;
+    int x = tile_start_x + threadIdx.x * diags_per_thread;
     int y = 0;
 
     // Each thread updates 2 diagonals at once
@@ -413,15 +569,15 @@ do_tile(const double* __restrict__ Cov, const double* __restrict__ dfa,
         cov1 = Cov[x];
     }
     
-    if (x + 1 < n_x) {
+    if (x + 1 < n_x && diags_per_thread > 1) {
         cov2 = Cov[x + 1];
     }
     
-    if (x + 2 < n_x) {
+    if (x + 2 < n_x && diags_per_thread > 2) {
         cov3 = Cov[x + 2];
     }
 
-    if(x + 3 < n_x) {
+    if(x + 3 < n_x && diags_per_thread > 3) {
         cov4 = Cov[x + 3]; 
     }
     
@@ -446,17 +602,25 @@ do_tile(const double* __restrict__ Cov, const double* __restrict__ dfa,
 
         // There are 2 pathways here, most of the time we take the fast path (top),
         // the last block will take the slower path as well as the fast path (bottom)
-        if(tile_start_x + tile_width < n_x && tile_start_y + tile_height < n_y && start_diag + 3 < num_diags) {
-            for(int i = 0, j = threadIdx.x << 2; i < tile_height; i+=4, j+=4) {
-                do_iteration_unroll_4<T,T4,T2,full_join, only_col>(i,j,x + global_start_x + i,y + global_start_y + i, cov1,cov2,cov3,cov4,df_col, df_row, dg_col, dg_row, inorm_col, inorm_row, local_mp_col, local_mp_row);
-            }
+        if(tile_start_x + tile_width < n_x && tile_start_y + tile_height < n_y && start_diag + diags_per_thread - 1 < num_diags) {
+            for(int i = 0, j = threadIdx.x * diags_per_thread; i < tile_height; i+=diags_per_thread, j+=diags_per_thread) {
+                if(diags_per_thread == 4) {
+                    do_iteration_unroll_4<T,T4,T2,full_join, only_col>(i,j,x + global_start_x + i,y + global_start_y + i, cov1,cov2,cov3,cov4,df_col, df_row, dg_col, dg_row, inorm_col, inorm_row, local_mp_col, local_mp_row);
+                } else if(diags_per_thread == 2) {
+                    do_iteration_unroll_2<T,T2,full_join, only_col>(i,j,x + global_start_x + i,y + global_start_y + i, cov1,cov2,df_col, df_row, dg_col, dg_row, inorm_col, inorm_row, local_mp_col, local_mp_row);
+                }
+            }                
             x += tile_height;
             y += tile_height;
         } else if (start_diag < num_diags){
-            int localX = threadIdx.x << 2;
+            int localX = threadIdx.x * diags_per_thread;
             int localY = 0;
             while(x < n_x && y < n_y && localY < tile_height) {
-                do_iteration_4diag<T,full_join, only_col>(localY,localX,x,y,global_start_x,global_start_y,n_x,cov1,cov2,cov3,cov4, df_col, df_row, dg_col, dg_row, inorm_col, inorm_row, local_mp_col, local_mp_row, start_diag, num_diags);
+                if(diags_per_thread == 4) {
+                    do_iteration_4diag<T,full_join, only_col>(localY,localX,x,y,global_start_x,global_start_y,n_x,cov1,cov2,cov3,cov4, df_col, df_row, dg_col, dg_row, inorm_col, inorm_row, local_mp_col, local_mp_row, start_diag, num_diags);
+                } else if(diags_per_thread == 2) {
+                    do_iteration_2diag<T,full_join, only_col>(localY,localX,x,y,global_start_x,global_start_y,n_x,cov1,cov2,df_col, df_row, dg_col, dg_row, inorm_col, inorm_row, local_mp_col, local_mp_row, start_diag, num_diags);
+                }
                 ++x;
                 ++y;
                 ++localX;
@@ -501,16 +665,51 @@ do_tile(const double* __restrict__ Cov, const double* __restrict__ dfa,
 
 }
 
-SCRIMPError_t kernel_ab_join_upper(const double *QT, const double *timeseries_A, const double *timeseries_B, const double *df_A, const double *df_B, const double *dg_A, const double *dg_B, const double *norms_A, const double *norms_B, unsigned long long int *profile_A, unsigned long long int *profile_B, size_t window_size, size_t tile_width, size_t tile_height, size_t global_x, size_t global_y, cudaStream_t s)
+template< class T >
+int get_smem(int tile_height, bool fp64, bool full_join, bool only_column_join, const cudaDeviceProp &dev_prop) {
+    int smem;
+    int diags_per_thread;
+    if(fp64 || dev_prop.major < 7) {
+        diags_per_thread = 2;
+    } else {
+        diags_per_thread = 4;
+    }
+    int tile_width = BLOCKSZ * diags_per_thread + tile_height;
+    smem = (tile_width + tile_height) * 3 * sizeof(T);
+    if(full_join) {
+        smem += (tile_width + tile_height) * sizeof(mp_entry);
+    } else if( only_column_join){
+        smem += tile_width * sizeof(mp_entry);
+    } else {
+        smem += tile_height * sizeof(mp_entry);
+    }
+    return smem;
+} 
+
+SCRIMPError_t kernel_ab_join_upper(const double *QT, const double *timeseries_A, const double *timeseries_B, const double *df_A, const double *df_B, const double *dg_A, const double *dg_B, const double *norms_A, const double *norms_B, unsigned long long int *profile_A, unsigned long long int *profile_B, size_t window_size, size_t tile_width, size_t tile_height, size_t global_x, size_t global_y, const cudaDeviceProp &props, bool fp64, cudaStream_t s)
 {
         dim3 grid(1,1,1);
         dim3 block(BLOCKSZ, 1, 1);
         int num_workers = ceil(tile_width / 4.0);
         grid.x = ceil(num_workers / (double) BLOCKSZ);
-        int smem = TILE_HEIGHT + BLOCKSZ * 4;
-        do_tile<float, float4, float2, false, true, BLOCKSPERSM_AB><<<grid,block,smem * sizeof(mp_entry),s>>>(QT,df_A,df_B,dg_A,dg_B,norms_A,norms_B,profile_A, profile_B,
+        if(fp64) {
+            int smem = get_smem<double>(TILE_HEIGHT, fp64, false, true, props);
+            do_tile<double, double2, double4, true, false, true, BLOCKSPERSM_AB, 2><<<grid,block,smem,s>>>(QT,df_A,df_B,dg_A,dg_B,norms_A,norms_B,profile_A, profile_B,
                                                window_size, tile_width, tile_height, global_x, global_y,
                                                0,0);
+        
+        } else if (props.major < 7) {
+            int smem = get_smem<float>(TILE_HEIGHT, fp64, false, true, props);
+            do_tile<float, float2, float4, false, false, true, BLOCKSPERSM_AB, 2><<<grid,block,smem,s>>>(QT,df_A,df_B,dg_A,dg_B,norms_A,norms_B,profile_A, profile_B,
+                                               window_size, tile_width, tile_height, global_x, global_y,
+                                               0,0);
+        
+        } else {
+            int smem = get_smem<float>(TILE_HEIGHT, fp64, false, true, props);
+            do_tile<float, float2, float4, false, false, true, BLOCKSPERSM_AB, 4><<<grid,block,smem,s>>>(QT,df_A,df_B,dg_A,dg_B,norms_A,norms_B,profile_A, profile_B,
+                                               window_size, tile_width, tile_height, global_x, global_y,
+                                               0,0);
+        }
         cudaError_t err = cudaPeekAtLastError();
         if(err != cudaSuccess) {
             return SCRIMP_CUDA_ERROR;
@@ -518,16 +717,31 @@ SCRIMPError_t kernel_ab_join_upper(const double *QT, const double *timeseries_A,
         return SCRIMP_NO_ERROR;
 }
 
-SCRIMPError_t kernel_ab_join_lower(const double *QT, const double *timeseries_A, const double *timeseries_B, const double *df_A, const double *df_B, const double *dg_A, const double *dg_B, const double *norms_A, const double *norms_B, unsigned long long int *profile_A, unsigned long long int *profile_B, size_t window_size, size_t tile_width, size_t tile_height, size_t global_x, size_t global_y, cudaStream_t s)
+SCRIMPError_t kernel_ab_join_lower(const double *QT, const double *timeseries_A, const double *timeseries_B, const double *df_A, const double *df_B, const double *dg_A, const double *dg_B, const double *norms_A, const double *norms_B, unsigned long long int *profile_A, unsigned long long int *profile_B, size_t window_size, size_t tile_width, size_t tile_height, size_t global_x, size_t global_y, const cudaDeviceProp &props, bool fp64, cudaStream_t s)
 {
         dim3 grid(1,1,1);
         dim3 block(BLOCKSZ, 1, 1);
         int num_workers = ceil(tile_height / 4.0);
         grid.x = ceil(num_workers / (double) BLOCKSZ);
-        int smem = TILE_HEIGHT;
-        do_tile<float, float4, float2, false, false, BLOCKSPERSM_AB><<<grid,block,smem * sizeof(mp_entry),s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A,
+
+        if(fp64) {
+            int smem = get_smem<double>(TILE_HEIGHT, fp64, false, false, props);
+            do_tile<double, double2, double4, false, false, false, BLOCKSPERSM_AB, 2><<<grid,block,smem,s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A,
                                                window_size, tile_height, tile_width, global_y, global_x,
                                                0,0);
+
+        } else if(props.major < 7) {
+            int smem = get_smem<float>(TILE_HEIGHT, fp64, false, false, props);
+            do_tile<float, float2, float4, false, false, false, BLOCKSPERSM_AB, 2><<<grid,block,smem,s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A,
+                                               window_size, tile_height, tile_width, global_y, global_x,
+                                               0,0);
+
+        } else {
+            int smem = get_smem<float>(TILE_HEIGHT, fp64, false, false, props);
+            do_tile<float, float2, float4, false, false, false, BLOCKSPERSM_AB, 4><<<grid,block,smem,s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A,
+                                               window_size, tile_height, tile_width, global_y, global_x,
+                                               0,0);
+        }
         cudaError_t err = cudaPeekAtLastError();
         if(err != cudaSuccess) {
             return SCRIMP_CUDA_ERROR;
@@ -538,7 +752,7 @@ SCRIMPError_t kernel_ab_join_lower(const double *QT, const double *timeseries_A,
 
 }
 
-SCRIMPError_t kernel_self_join_upper(const double *QT, const double *timeseries_A, const double *timeseries_B, const double *df_A, const double *df_B, const double *dg_A, const double *dg_B, const double *norms_A, const double *norms_B, unsigned long long int *profile_A, unsigned long long int *profile_B, size_t window_size, size_t tile_width, size_t tile_height, size_t global_x, size_t global_y, cudaStream_t s)
+SCRIMPError_t kernel_self_join_upper(const double *QT, const double *timeseries_A, const double *timeseries_B, const double *df_A, const double *df_B, const double *dg_A, const double *dg_B, const double *norms_A, const double *norms_B, unsigned long long int *profile_A, unsigned long long int *profile_B, size_t window_size, size_t tile_width, size_t tile_height, size_t global_x, size_t global_y, const cudaDeviceProp &props, bool fp64, cudaStream_t s)
 {
         dim3 grid(1,1,1);
         dim3 block(BLOCKSZ, 1, 1);
@@ -551,11 +765,26 @@ SCRIMPError_t kernel_self_join_upper(const double *QT, const double *timeseries_
             grid.x = ceil(num_workers / (double) BLOCKSZ);
             exclusion = 0;
         }
-        int smem = 2 * TILE_HEIGHT + BLOCKSZ * 4;
         if(exclusion < tile_width) {
-            do_tile<float, float4, float2, true,false, BLOCKSPERSM_SELF><<<grid,block,smem * sizeof(mp_entry),s>>>(QT,df_A,df_B,dg_A,dg_B,norms_A,norms_B,profile_A, profile_B,
-                                               window_size, tile_width, tile_height, global_x, global_y,
-                                               exclusion,0);
+            if(fp64) {
+                int smem = get_smem<double>(TILE_HEIGHT, fp64, true, false, props);
+                do_tile<double, double2, double4, false, true,false, BLOCKSPERSM_SELF, 2><<<grid,block,smem,s>>>(QT,df_A,df_B,dg_A,dg_B,norms_A,norms_B,profile_A, profile_B,
+                                                   window_size, tile_width, tile_height, global_x, global_y,
+                                                   exclusion,0);
+            
+            } else if (props.major < 7) {
+                int smem = get_smem<float>(TILE_HEIGHT, fp64, true, false, props);
+                do_tile<float, float2, float4, false, true,false, BLOCKSPERSM_SELF,2><<<grid,block,smem,s>>>(QT,df_A,df_B,dg_A,dg_B,norms_A,norms_B,profile_A, profile_B,
+                                                   window_size, tile_width, tile_height, global_x, global_y,
+                                                   exclusion,0);
+
+            } else {
+                int smem = get_smem<float>(TILE_HEIGHT, fp64, true, false, props);
+                do_tile<float, float2, float4, false, true,false, BLOCKSPERSM_SELF,4><<<grid,block,smem,s>>>(QT,df_A,df_B,dg_A,dg_B,norms_A,norms_B,profile_A, profile_B,
+                                                   window_size, tile_width, tile_height, global_x, global_y,
+                                                   exclusion,0);
+
+            }
         }
         cudaError_t err = cudaPeekAtLastError();
         if(err != cudaSuccess) {
@@ -564,7 +793,7 @@ SCRIMPError_t kernel_self_join_upper(const double *QT, const double *timeseries_
         return SCRIMP_NO_ERROR;
 }
 
-SCRIMPError_t kernel_self_join_lower(const double *QT, const double *timeseries_A, const double *timeseries_B, const double *df_A, const double *df_B, const double *dg_A, const double *dg_B, const double *norms_A, const double *norms_B, unsigned long long int *profile_A, unsigned long long int *profile_B, size_t window_size, size_t tile_width, size_t tile_height, size_t global_x, size_t global_y, cudaStream_t s)
+SCRIMPError_t kernel_self_join_lower(const double *QT, const double *timeseries_A, const double *timeseries_B, const double *df_A, const double *df_B, const double *dg_A, const double *dg_B, const double *norms_A, const double *norms_B, unsigned long long int *profile_A, unsigned long long int *profile_B, size_t window_size, size_t tile_width, size_t tile_height, size_t global_x, size_t global_y, const cudaDeviceProp &props, bool fp64, cudaStream_t s)
 {
         dim3 grid(1,1,1);
         dim3 block(BLOCKSZ, 1, 1);
@@ -577,11 +806,27 @@ SCRIMPError_t kernel_self_join_lower(const double *QT, const double *timeseries_
             grid.x = ceil(num_workers / (double) BLOCKSZ);
             exclusion = 0;
         }
-        int smem = 2 * TILE_HEIGHT + BLOCKSZ * 4;
+        
         if(exclusion < tile_height) {
-            do_tile<float,float4,float2, true,false, BLOCKSPERSM_SELF><<<grid,block,smem * sizeof(mp_entry),s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A,
+            if(fp64) {
+                int smem = get_smem<double>(TILE_HEIGHT, fp64, true, false, props);
+                do_tile<double, double2,double4, false, true,false, BLOCKSPERSM_SELF, 2><<<grid,block,smem,s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A,
                                                window_size, tile_height, tile_width, global_y, global_x,
                                                0, exclusion);
+
+            } else if (props.major < 7) {
+                int smem = get_smem<float>(TILE_HEIGHT, fp64, true, false, props);
+                do_tile<float,float2,float4, false, true,false, BLOCKSPERSM_SELF, 2><<<grid,block,smem,s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A,
+                                               window_size, tile_height, tile_width, global_y, global_x,
+                                               0, exclusion);
+
+            } else {
+                int smem = get_smem<float>(TILE_HEIGHT, fp64, true, false, props);
+                do_tile<float,float2,float4, false, true,false, BLOCKSPERSM_SELF, 4><<<grid,block,smem,s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A,
+                                               window_size, tile_height, tile_width, global_y, global_x,
+                                               0, exclusion);
+
+            }
         }
         cudaError_t err = cudaPeekAtLastError();
         if(err != cudaSuccess) {

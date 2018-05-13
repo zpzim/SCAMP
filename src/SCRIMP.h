@@ -31,6 +31,7 @@ private:
     unordered_map<int, cudaEvent_t> clocks_start, clocks_end, copy_to_host_done;
     unordered_map<int, cudaStream_t> streams;
     unordered_map<int, fft_precompute_helper*> scratch;
+    unordered_map<int, cudaDeviceProp> dev_props;
     size_t size_A;
     size_t size_B;
     size_t tile_size;
@@ -39,6 +40,7 @@ private:
     size_t m;
     const bool self_join;
     const size_t MAX_TILE_SIZE;
+    const bool compute_fp64;
     vector<int> devices;
 
     // Tile state variables
@@ -75,7 +77,7 @@ private:
 public:
     SCRIMP_Operation(size_t Asize, size_t Bsize, size_t window_sz, size_t max_tile_size, const vector<int> &dev, bool selfjoin) :
                      size_A(Asize), m(window_sz), MAX_TILE_SIZE(max_tile_size), devices(dev), self_join(selfjoin),
-                     completed_tiles(0)
+                     completed_tiles(0), compute_fp64(false)
     {
          if(self_join) {
             size_B = size_A;
@@ -95,11 +97,15 @@ public:
             pos_y.emplace(device,0);
             pos_x_2.emplace(device,0);
             pos_y_2.emplace(device,0);
+            cudaDeviceProp properties;
+            cudaGetDeviceProperties(&properties, device);
+            dev_props.emplace(device, properties);
          }
          //n_y = Asize - m + 1;
          //n_x = Bsize - m + 1;
          tile_n_x = tile_size - m + 1;
          tile_n_y = tile_n_x;
+        
     }
     SCRIMPError_t do_join(const vector<double> &Ta_host, const vector<double> &Tb_host,
                           vector<float> &profile, vector<unsigned int> &profile_idx);
