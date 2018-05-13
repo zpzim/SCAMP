@@ -78,15 +78,15 @@ __device__ inline float max4(const float4 &d, const unsigned int init, unsigned 
     return ret;
 }
 
-template<int tile_height, int tile_width, bool full_join, bool only_col>
+template<class T, int tile_height, int tile_width, bool full_join, bool only_col>
 __device__  inline void initialize_tile_memory(const unsigned long long int* __restrict__ profile_A,
                                         const unsigned long long int* __restrict__ profile_B,
                                         const double* __restrict__ df_A, const double* __restrict__ df_B,
                                         const double* __restrict__ dg_A, const double* __restrict__ dg_B,
                                         const double* __restrict__ norms_A, const double* __restrict__ norms_B,
                                         mp_entry* __restrict__ local_mp_col, mp_entry* __restrict__ local_mp_row,
-                                        float* __restrict__ df_col, float* __restrict__ df_row, float* __restrict__ dg_col,
-                                        float* __restrict__ dg_row, float* __restrict__ norm_col, float* __restrict__ norm_row,
+                                        T* __restrict__ df_col, T* __restrict__ df_row, T* __restrict__ dg_col,
+                                        T* __restrict__ dg_row, T* __restrict__ norm_col, T* __restrict__ norm_row,
                                         const unsigned int n_x, const unsigned int n_y, const unsigned int col_start,
                                         const unsigned int row_start)
 {
@@ -120,27 +120,27 @@ __device__  inline void initialize_tile_memory(const unsigned long long int* __r
 }
 
 // This does one row of work for 4 diagonals in a single thread
-template<class ACCUM_TYPE, bool full_join, bool only_col>
-__device__ inline void do_unrolled_row4(ACCUM_TYPE &cov1, ACCUM_TYPE &cov2, ACCUM_TYPE &cov3, ACCUM_TYPE &cov4,
-                                         float &distcol1, float &distcol2, float &distcol3,
-                                         float &distcol4, unsigned int &idxcol1,
-                                         unsigned int &idxcol2, unsigned int &idxcol3, unsigned int &idxcol4,
-                                         const float &inormcx, const float &inormcy, const float &inormcz,
-                                         const float &inormcw, const float &inormr,
-                                         const float &df_colx, const float &df_coly, const float &df_colz,
-                                         const float &df_colw, const float &dg_colx, const float &dg_coly,
-                                         const float &dg_colz, const float &dg_colw, const float &df_row,
-                                         const float &dg_row, const int &row, const int &col,
-                                         const int &global_row, const int &global_col,
-                                         mp_entry* __restrict__ mp_row, const float &curr_val) {
+template<class T, bool full_join, bool only_col>
+__device__ inline void do_unrolled_row4(T &cov1, T &cov2, T &cov3, T &cov4,
+                                        float &distcol1, float &distcol2, float &distcol3,
+                                        float &distcol4, unsigned int &idxcol1,
+                                        unsigned int &idxcol2, unsigned int &idxcol3, unsigned int &idxcol4,
+                                        const T &inormcx, const T &inormcy, const T &inormcz,
+                                        const T &inormcw, const T &inormr,
+                                        const T &df_colx, const T &df_coly, const T &df_colz,
+                                        const T &df_colw, const T &dg_colx, const T &dg_coly,
+                                        const T &dg_colz, const T &dg_colw, const T &df_row,
+                                        const T &dg_row, const int &row, const int &col,
+                                        const int &global_row, const int &global_col,
+                                        mp_entry* __restrict__ mp_row, const float &curr_val) {
 
     float4 dist;
 
     // Compute the row's distances
-    dist.x = static_cast<float>(cov1) * inormcx * inormr;
-    dist.y = static_cast<float>(cov2) * inormcy * inormr;
-    dist.z = static_cast<float>(cov3) * inormcz * inormr;
-    dist.w = static_cast<float>(cov4) * inormcw * inormr;
+    dist.x = cov1 * inormcx * inormr;
+    dist.y = cov2 * inormcy * inormr;
+    dist.z = cov3 * inormcz * inormr;
+    dist.w = cov4 * inormcw * inormr;
 
     // Compute the next covariance values
     cov1 = cov1 + df_colx * dg_row + dg_colx * df_row;
@@ -169,11 +169,11 @@ __device__ inline void do_unrolled_row4(ACCUM_TYPE &cov1, ACCUM_TYPE &cov2, ACCU
 // Processes 4 iterations of the inner loop. Each thread computes 4 distances per iteration (x,y), (x+1,y), (x+2,y), and (x+3,y)
 // This function assumes that the edge cases that occur on the edge of the distance matrix are not present. This is the faster path,
 // with less conditional branching.
-template<class ACCUM_TYPE, bool full_join, bool only_col>
-__device__ inline void do_iteration_unroll_4(int i, int j, int x, int y, ACCUM_TYPE &cov1, ACCUM_TYPE &cov2, ACCUM_TYPE &cov3,
-                                             ACCUM_TYPE &cov4, float* __restrict__ df_col, float* __restrict__ df_row,
-                                             float* __restrict__ dg_col, float* __restrict__ dg_row,
-                                             float* __restrict__ inorm_col, float* __restrict__ inorm_row,
+template<class T, class VT4, class VT2, bool full_join, bool only_col>
+__device__ inline void do_iteration_unroll_4(int i, int j, int x, int y, T &cov1, T &cov2, T &cov3,
+                                             T &cov4, T* __restrict__ df_col, T* __restrict__ df_row,
+                                             T* __restrict__ dg_col, T* __restrict__ dg_row,
+                                             T* __restrict__ inorm_col, T* __restrict__ inorm_row,
                                              mp_entry* __restrict__ local_mp_col, mp_entry* __restrict__ local_mp_row) 
 {
     float4 distc = make_float4(CC_MIN, CC_MIN, CC_MIN, CC_MIN);
@@ -187,12 +187,12 @@ __device__ inline void do_iteration_unroll_4(int i, int j, int x, int y, ACCUM_T
 
     // Preload the shared memory values we will use into registers
     // We load 4 values per thread into a float4 vector type
-    float4 dfc = reinterpret_cast<float4*>(df_col)[c];
-    float4 dgc = reinterpret_cast<float4*>(dg_col)[c];
-    float4 inormc = (reinterpret_cast<float4*>(inorm_col)[c]);
-    float4 dfc2 = reinterpret_cast<float4*>(df_col)[c+1];
-    float4 dgc2 = reinterpret_cast<float4*>(dg_col)[c+1];
-    float4 inormc2 = reinterpret_cast<float4*>(inorm_col)[c+1];
+    VT4 dfc = reinterpret_cast<VT4*>(df_col)[c];
+    VT4 dgc = reinterpret_cast<VT4*>(dg_col)[c];
+    VT4 inormc = (reinterpret_cast<VT4*>(inorm_col)[c]);
+    VT4 dfc2 = reinterpret_cast<VT4*>(df_col)[c+1];
+    VT4 dgc2 = reinterpret_cast<VT4*>(dg_col)[c+1];
+    VT4 inormc2 = reinterpret_cast<VT4*>(inorm_col)[c+1];
     ulonglong2 mp_col_check1, mp_col_check2;
     ulonglong2 mp_row_check;
 
@@ -205,9 +205,9 @@ __device__ inline void do_iteration_unroll_4(int i, int j, int x, int y, ACCUM_T
     }
 
     // Due to a lack of registers on volta, we only load these row values 2 at a time
-    float2 dgr = reinterpret_cast<float2*>(dg_row)[r];
-    float2 dfr = reinterpret_cast<float2*>(df_row)[r];
-    float2 inormr = reinterpret_cast<float2*>(inorm_row)[r];
+    VT2 dgr = reinterpret_cast<VT2*>(dg_row)[r];
+    VT2 dfr = reinterpret_cast<VT2*>(df_row)[r];
+    VT2 inormr = reinterpret_cast<VT2*>(inorm_row)[r];
     
     // Do rows one at a time:
     // We are computing a tile that looks like this:
@@ -221,7 +221,7 @@ __device__ inline void do_iteration_unroll_4(int i, int j, int x, int y, ACCUM_T
     // 11 times total, once for each row and once for each column
     mp_entry e;
     e.ulong = mp_row_check.x; 
-    do_unrolled_row4<ACCUM_TYPE,full_join,only_col>(cov1, cov2, cov3, cov4, distc.x, distc.y, distc.z, distc.w,
+    do_unrolled_row4<T, full_join,only_col>(cov1, cov2, cov3, cov4, distc.x, distc.y, distc.z, distc.w,
                      idxc.x, idxc.y, idxc.z, idxc.w, inormc.x, inormc.y, inormc.z, 
                      inormc.w, inormr.x, dfc.x, dfc.y, dfc.z, dfc.w, dgc.x, dgc.y,
                      dgc.z, dgc.w, dfr.x, dgr.x, i, j, y, x, local_mp_row, e.floats[0]);
@@ -233,7 +233,7 @@ __device__ inline void do_iteration_unroll_4(int i, int j, int x, int y, ACCUM_T
     }
 
     e.ulong = mp_row_check.y;
-    do_unrolled_row4<ACCUM_TYPE,full_join, only_col>(cov1, cov2, cov3, cov4, distc.y, distc.z, distc.w, distc2.x,
+    do_unrolled_row4<T,full_join, only_col>(cov1, cov2, cov3, cov4, distc.y, distc.z, distc.w, distc2.x,
                      idxc.y, idxc.z, idxc.w, idxc2.x, inormc.y, inormc.z, inormc.w,
                      inormc2.x, inormr.y, dfc.y, dfc.z, dfc.w, dfc2.x, dgc.y, dgc.z,
                      dgc.w, dgc2.x, dfr.y, dgr.y, i + 1, j + 1, y + 1, x + 1,
@@ -246,16 +246,16 @@ __device__ inline void do_iteration_unroll_4(int i, int j, int x, int y, ACCUM_T
     }
 
     // Load the values for the next 2 rows
-    dgr = reinterpret_cast<float2*>(dg_row)[r + 1];
-    dfr = reinterpret_cast<float2*>(df_row)[r + 1];
-    inormr = reinterpret_cast<float2*>(inorm_row)[r + 1];
+    dgr = reinterpret_cast<VT2*>(dg_row)[r + 1];
+    dfr = reinterpret_cast<VT2*>(df_row)[r + 1];
+    inormr = reinterpret_cast<VT2*>(inorm_row)[r + 1];
 
     if(full_join || !only_col) {
         mp_row_check = reinterpret_cast<ulonglong2*>(local_mp_row)[r + 1];
     }
 
     e.ulong  = mp_row_check.x;
-    do_unrolled_row4<ACCUM_TYPE,full_join,only_col>(cov1, cov2, cov3, cov4, distc.z, distc.w, distc2.x, distc2.y,
+    do_unrolled_row4<T,full_join,only_col>(cov1, cov2, cov3, cov4, distc.z, distc.w, distc2.x, distc2.y,
                      idxc.z, idxc.w, idxc2.x, idxc2.y, inormc.z, inormc.w, inormc2.x,
                      inormc2.y, inormr.x, dfc.z, dfc.w, dfc2.x, dfc2.y, dgc.z, dgc.w,
                      dgc2.x, dgc2.y, dfr.x, dgr.x, i + 2, j + 2, y + 2, x + 2,
@@ -270,7 +270,7 @@ __device__ inline void do_iteration_unroll_4(int i, int j, int x, int y, ACCUM_T
     }
 
     e.ulong = mp_row_check.y;
-    do_unrolled_row4<ACCUM_TYPE,full_join,only_col>(cov1, cov2, cov3, cov4, distc.w, distc2.x, distc2.y, distc2.z,
+    do_unrolled_row4<T,full_join,only_col>(cov1, cov2, cov3, cov4, distc.w, distc2.x, distc2.y, distc2.z,
                      idxc.w, idxc2.x, idxc2.y, idxc2.z, inormc.w, inormc2.x, inormc2.y,
                      inormc2.z, inormr.y, dfc.w, dfc2.x, dfc2.y, dfc2.z, dgc.w, dgc2.x,
                      dgc2.y, dgc2.z, dfr.y, dgr.y, i + 3, j + 3, y + 3, x + 3,
@@ -294,14 +294,14 @@ __device__ inline void do_iteration_unroll_4(int i, int j, int x, int y, ACCUM_T
 
 // Does a single iteration of the inner loop on 4 diagonals per thread, not unrolled
 // Checks for the boundary case where only 1, 2, or 3 diagonals can be updated
-template<class ACCUM_TYPE, bool full_join, bool only_col>
+template<class T, bool full_join, bool only_col>
 __device__ inline void do_iteration_4diag(int i, int j, int x, int y,
                                           size_t global_start_x, size_t global_start_y,
-                                          int n, ACCUM_TYPE &cov1, ACCUM_TYPE &cov2,
-                                          ACCUM_TYPE &cov3, ACCUM_TYPE &cov4, float* __restrict__ df_col,
-                                          float* __restrict__ df_row, float* __restrict__ dg_col,
-                                          float* __restrict__ dg_row, float* __restrict__ inorm_col,
-                                          float* __restrict__ inorm_row, mp_entry* __restrict__ local_mp_col,
+                                          int n, T &cov1, T &cov2,
+                                          T &cov3, T &cov4, T* __restrict__ df_col,
+                                          T* __restrict__ df_row, T* __restrict__ dg_col,
+                                          T* __restrict__ dg_row, T* __restrict__ inorm_col,
+                                          T* __restrict__ inorm_row, mp_entry* __restrict__ local_mp_col,
                                           mp_entry* __restrict__ local_mp_row, size_t diag, size_t num_diags)
 {
     float dist_1;
@@ -354,8 +354,8 @@ __device__ inline void do_iteration_4diag(int i, int j, int x, int y,
 }
 
 //Computes the matrix profile given the sliding dot products for the first query and the precomputed data statisics
-template<class ACCUM_TYPE, bool full_join, bool only_col, int blocks_per_sm>
-__global__ void __launch_bounds__(BLOCKSZ, (BLOCKSZ * blocks_per_sm)  / BLOCKSZ)
+template<class T, class T4, class T2, bool full_join, bool only_col, int blocks_per_sm>
+__global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
 do_tile(const double* __restrict__ Cov, const double* __restrict__ dfa,
                   const double* __restrict__ dfb, const double* __restrict__ dga,
                   const double* __restrict__ dgb, const double* __restrict__ normsa,
@@ -380,12 +380,12 @@ do_tile(const double* __restrict__ Cov, const double* __restrict__ dfa,
         local_mp_col = smem;
         local_mp_row = smem + tile_width;
     }
-    __shared__ float df_col[tile_width];
-    __shared__ float dg_col[tile_width];
-    __shared__ float inorm_col[tile_width];
-    __shared__ float df_row[tile_height];
-    __shared__ float dg_row[tile_height];
-    __shared__ float inorm_row[tile_height];
+    __shared__ T df_col[tile_width];
+    __shared__ T dg_col[tile_width];
+    __shared__ T inorm_col[tile_width];
+    __shared__ T df_row[tile_height];
+    __shared__ T dg_row[tile_height];
+    __shared__ T inorm_row[tile_height];
 
     const unsigned int start_diag = (threadIdx.x << 2) + blockIdx.x * (blockDim.x << 2);
 
@@ -404,7 +404,7 @@ do_tile(const double* __restrict__ Cov, const double* __restrict__ dfa,
     int y = 0;
 
     // Each thread updates 2 diagonals at once
-    ACCUM_TYPE cov1, cov2, cov3, cov4;
+    T cov1, cov2, cov3, cov4;
     
     const unsigned int num_diags = n_x - exclusion_upper;
     
@@ -437,7 +437,7 @@ do_tile(const double* __restrict__ Cov, const double* __restrict__ dfa,
     while (tile_start_x < n_x && tile_start_y < n_y)
     {
         // Initialize the next tile's shared memory
-        initialize_tile_memory<tile_height,tile_width,full_join,only_col>(profile_A, profile_B, dfa, dfb, dga, dgb,
+        initialize_tile_memory<T,tile_height,tile_width,full_join,only_col>(profile_A, profile_B, dfa, dfb, dga, dgb,
                                                        normsa, normsb, local_mp_col, local_mp_row,
                                                        df_col, df_row, dg_col, dg_row, inorm_col, inorm_row,
                                                        n_x, n_y, tile_start_x, tile_start_y);
@@ -448,7 +448,7 @@ do_tile(const double* __restrict__ Cov, const double* __restrict__ dfa,
         // the last block will take the slower path as well as the fast path (bottom)
         if(tile_start_x + tile_width < n_x && tile_start_y + tile_height < n_y && start_diag + 3 < num_diags) {
             for(int i = 0, j = threadIdx.x << 2; i < tile_height; i+=4, j+=4) {
-                do_iteration_unroll_4<ACCUM_TYPE,full_join, only_col>(i,j,x + global_start_x + i,y + global_start_y + i, cov1,cov2,cov3,cov4,df_col, df_row, dg_col, dg_row, inorm_col, inorm_row, local_mp_col, local_mp_row);
+                do_iteration_unroll_4<T,T4,T2,full_join, only_col>(i,j,x + global_start_x + i,y + global_start_y + i, cov1,cov2,cov3,cov4,df_col, df_row, dg_col, dg_row, inorm_col, inorm_row, local_mp_col, local_mp_row);
             }
             x += tile_height;
             y += tile_height;
@@ -456,7 +456,7 @@ do_tile(const double* __restrict__ Cov, const double* __restrict__ dfa,
             int localX = threadIdx.x << 2;
             int localY = 0;
             while(x < n_x && y < n_y && localY < tile_height) {
-                do_iteration_4diag<ACCUM_TYPE,full_join, only_col>(localY,localX,x,y,global_start_x,global_start_y,n_x,cov1,cov2,cov3,cov4, df_col, df_row, dg_col, dg_row, inorm_col, inorm_row, local_mp_col, local_mp_row, start_diag, num_diags);
+                do_iteration_4diag<T,full_join, only_col>(localY,localX,x,y,global_start_x,global_start_y,n_x,cov1,cov2,cov3,cov4, df_col, df_row, dg_col, dg_row, inorm_col, inorm_row, local_mp_col, local_mp_row, start_diag, num_diags);
                 ++x;
                 ++y;
                 ++localX;
@@ -508,7 +508,7 @@ SCRIMPError_t kernel_ab_join_upper(const double *QT, const double *timeseries_A,
         int num_workers = ceil(tile_width / 4.0);
         grid.x = ceil(num_workers / (double) BLOCKSZ);
         int smem = TILE_HEIGHT + BLOCKSZ * 4;
-        do_tile<double, false, true, BLOCKSPERSM_AB><<<grid,block,smem * sizeof(mp_entry),s>>>(QT,df_A,df_B,dg_A,dg_B,norms_A,norms_B,profile_A, profile_B,
+        do_tile<float, float4, float2, false, true, BLOCKSPERSM_AB><<<grid,block,smem * sizeof(mp_entry),s>>>(QT,df_A,df_B,dg_A,dg_B,norms_A,norms_B,profile_A, profile_B,
                                                window_size, tile_width, tile_height, global_x, global_y,
                                                0,0);
         cudaError_t err = cudaPeekAtLastError();
@@ -525,7 +525,7 @@ SCRIMPError_t kernel_ab_join_lower(const double *QT, const double *timeseries_A,
         int num_workers = ceil(tile_height / 4.0);
         grid.x = ceil(num_workers / (double) BLOCKSZ);
         int smem = TILE_HEIGHT;
-        do_tile<double, false, false, BLOCKSPERSM_AB><<<grid,block,smem * sizeof(mp_entry),s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A,
+        do_tile<float, float4, float2, false, false, BLOCKSPERSM_AB><<<grid,block,smem * sizeof(mp_entry),s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A,
                                                window_size, tile_height, tile_width, global_y, global_x,
                                                0,0);
         cudaError_t err = cudaPeekAtLastError();
@@ -553,7 +553,7 @@ SCRIMPError_t kernel_self_join_upper(const double *QT, const double *timeseries_
         }
         int smem = 2 * TILE_HEIGHT + BLOCKSZ * 4;
         if(exclusion < tile_width) {
-            do_tile<double, true,false, BLOCKSPERSM_SELF><<<grid,block,smem * sizeof(mp_entry),s>>>(QT,df_A,df_B,dg_A,dg_B,norms_A,norms_B,profile_A, profile_B,
+            do_tile<float, float4, float2, true,false, BLOCKSPERSM_SELF><<<grid,block,smem * sizeof(mp_entry),s>>>(QT,df_A,df_B,dg_A,dg_B,norms_A,norms_B,profile_A, profile_B,
                                                window_size, tile_width, tile_height, global_x, global_y,
                                                exclusion,0);
         }
@@ -579,7 +579,7 @@ SCRIMPError_t kernel_self_join_lower(const double *QT, const double *timeseries_
         }
         int smem = 2 * TILE_HEIGHT + BLOCKSZ * 4;
         if(exclusion < tile_height) {
-            do_tile<double, true,false, BLOCKSPERSM_SELF><<<grid,block,smem * sizeof(mp_entry),s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A,
+            do_tile<float,float4,float2, true,false, BLOCKSPERSM_SELF><<<grid,block,smem * sizeof(mp_entry),s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A,
                                                window_size, tile_height, tile_width, global_y, global_x,
                                                0, exclusion);
         }

@@ -5,8 +5,8 @@ ROOT_DIR_INPUT=SampleInput
 ROOT_DIR_OUTPUT=SampleOutput
 WINDOWSZ=(100)
 TILE_SZ=(2000000 1000000 500000 250000 125000 62500 31250 15625 8000 4000)
-INPUT_FILES=(randomwalk8K randomwalk16K randomwalk32K randomwalk64K randomwalk1M)
-NUM_TESTS=4
+INPUT_FILES=(randomwalk8K randomwalk16K randomwalk32K randomwalk64K randomwalk1M earthquake_precision_test100K)
+NUM_TESTS=5
 NUM_TILE_SZ=9
 
 for k in `seq 0 $NUM_TESTS`;
