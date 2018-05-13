@@ -45,14 +45,14 @@ private:
     list<pair<int,int>> tile_ordering;
     int completed_tiles;
     size_t total_tiles;
-    vector<size_t> n_x;
-    vector<size_t> n_y;
-    vector<size_t> n_x_2;
-    vector<size_t> n_y_2;
-    vector<size_t> pos_x;
-    vector<size_t> pos_y;
-    vector<size_t> pos_x_2;
-    vector<size_t> pos_y_2;
+    unordered_map<int,size_t> n_x;
+    unordered_map<int,size_t> n_y;
+    unordered_map<int,size_t> n_x_2;
+    unordered_map<int,size_t> n_y_2;
+    unordered_map<int,size_t> pos_x;
+    unordered_map<int,size_t> pos_y;
+    unordered_map<int,size_t> pos_x_2;
+    unordered_map<int,size_t> pos_y_2;
 
     SCRIMPError_t do_tile(SCRIMPTileType t, int device, const vector<double> &Ta_h,
                           const vector<double> &Tb_h,
@@ -75,8 +75,7 @@ private:
 public:
     SCRIMP_Operation(size_t Asize, size_t Bsize, size_t window_sz, size_t max_tile_size, const vector<int> &dev, bool selfjoin) :
                      size_A(Asize), m(window_sz), MAX_TILE_SIZE(max_tile_size), devices(dev), self_join(selfjoin),
-                     n_x(dev.size()), n_y(dev.size()), n_x_2(dev.size()), n_y_2(dev.size()),
-                     pos_x(dev.size()), pos_y(dev.size()), pos_x_2(dev.size()), pos_y_2(dev.size()), completed_tiles(0)
+                     completed_tiles(0)
     {
          if(self_join) {
             size_B = size_A;
@@ -86,6 +85,16 @@ public:
          tile_size = Asize / (devices.size());
          if(tile_size > MAX_TILE_SIZE) {
     	     tile_size = MAX_TILE_SIZE;
+         }
+         for(auto device : devices) {
+            n_x.emplace(device,0);
+            n_y.emplace(device,0);
+            n_x_2.emplace(device,0);
+            n_y_2.emplace(device,0);
+            pos_x.emplace(device,0);
+            pos_y.emplace(device,0);
+            pos_x_2.emplace(device,0);
+            pos_y_2.emplace(device,0);
          }
          //n_y = Asize - m + 1;
          //n_x = Bsize - m + 1;

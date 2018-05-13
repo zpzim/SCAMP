@@ -19,6 +19,9 @@ using std::make_pair;
 
 namespace SCRIMP {
 
+static const int ISSUED_ALL_DEVICES = -2;
+
+
 
 __global__ void cross_correlation_to_ed(float *profile, unsigned int n, unsigned int m) {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -279,7 +282,6 @@ SCRIMPError_t SCRIMP_Operation::do_tile(SCRIMPTileType t, int device, const vect
             thrust::transform(thrust::cuda::par.on(streams.at(device)), profile_B_dev[device], profile_B_dev[device] + t_n_y, profile_idx_B_dev[device], profile_B_merged[device], combiner);
             gpuErrchk(cudaPeekAtLastError());
         }
-
         SCRIMP_Tile tile(t, T_A_dev[device], T_B_dev[device], df_A[device], df_B[device], dg_A[device], dg_B[device], norms_A[device], norms_B[device], means_A[device], means_B[device],  QT_dev[device], profile_A_merged[device], profile_B_merged[device], start_x, start_y, n_y[device], n_x[device], m, scratch[device]);
         cudaEventRecord(clocks_start[device], streams.at(device));
         gpuErrchk(cudaPeekAtLastError());
@@ -362,21 +364,21 @@ void merge_partial_on_host(vector<unsigned long long int> &profile_to_merge, vec
 }
 
 
-int SCRIMP_Operation::issue_and_merge_tiles_on_devices(const vector<double> &Ta_host, const vector<double> &Tb_host, vector<float> &profile, vector<unsigned int> &profile_idx, vector<vector<unsigned long long int>> &profileA_h, vector<vector<unsigned long long int>> &profileB_h, int last_device_idx = -2)
+int SCRIMP_Operation::issue_and_merge_tiles_on_devices(const vector<double> &Ta_host, const vector<double> &Tb_host, vector<float> &profile, vector<unsigned int> &profile_idx, vector<vector<unsigned long long int>> &profileA_h, vector<vector<unsigned long long int>> &profileB_h, int last_device_idx = ISSUED_ALL_DEVICES)
 {
-    bool done = last_device_idx != -2;
-    int last_dev = -2; 
-    if(last_device_idx == -2) {
+    bool done = last_device_idx != ISSUED_ALL_DEVICES;
+    int last_dev = ISSUED_ALL_DEVICES; 
+    if(last_device_idx == ISSUED_ALL_DEVICES) {
         last_device_idx = devices.size() - 1;
     }
     for(int i = 0; i <= last_device_idx; ++i) {
         int device = devices.at(i);
         cudaSetDevice(device);
         gpuErrchk(cudaPeekAtLastError());
-        cudaMemcpyAsync(profileA_h.at(device).data(), profile_A_merged[device], sizeof(unsigned long long int) * (n_x[device] - m + 1), cudaMemcpyDeviceToHost, streams.at(device));
+        cudaMemcpyAsync(profileA_h.at(i).data(), profile_A_merged[device], sizeof(unsigned long long int) * (n_x[device] - m + 1), cudaMemcpyDeviceToHost, streams.at(device));
         gpuErrchk(cudaPeekAtLastError());
         if(self_join) {
-            cudaMemcpyAsync(profileB_h.at(device).data(), profile_B_merged[device], sizeof(unsigned long long int) * (n_y[device] - m + 1), cudaMemcpyDeviceToHost, streams.at(device));
+            cudaMemcpyAsync(profileB_h.at(i).data(), profile_B_merged[device], sizeof(unsigned long long int) * (n_y[device] - m + 1), cudaMemcpyDeviceToHost, streams.at(device));
             gpuErrchk(cudaPeekAtLastError());
         }
         cudaEventRecord(copy_to_host_done[device], streams.at(device));
@@ -388,7 +390,7 @@ int SCRIMP_Operation::issue_and_merge_tiles_on_devices(const vector<double> &Ta_
         if(!done) {
             done = pick_and_start_next_tile(device, Ta_host, Tb_host, profile, profile_idx);
             if(done) {
-                last_dev = device;
+                last_dev = i;
             }
         }
     }
@@ -399,10 +401,10 @@ int SCRIMP_Operation::issue_and_merge_tiles_on_devices(const vector<double> &Ta_
         gpuErrchk(cudaPeekAtLastError());
         cudaEventSynchronize(copy_to_host_done[device]);
         gpuErrchk(cudaPeekAtLastError());
-        merge_partial_on_host(profileA_h.at(device), profile, profile_idx, pos_x_2[device], (n_x_2[device] - m + 1));
+        merge_partial_on_host(profileA_h.at(i), profile, profile_idx, pos_x_2[device], (n_x_2[device] - m + 1));
         gpuErrchk(cudaPeekAtLastError());
         if(self_join) {
-            merge_partial_on_host(profileB_h.at(device), profile, profile_idx, pos_y_2[device], (n_y_2[device] - m + 1));
+            merge_partial_on_host(profileB_h.at(i), profile, profile_idx, pos_y_2[device], (n_y_2[device] - m + 1));
             gpuErrchk(cudaPeekAtLastError());
         }
         completed_tiles++;
@@ -414,20 +416,20 @@ int SCRIMP_Operation::issue_and_merge_tiles_on_devices(const vector<double> &Ta_
 
 SCRIMPError_t SCRIMP_Operation::do_join(const vector<double> &Ta_host, const vector<double> &Tb_host, vector<float> &profile, vector<unsigned int> &profile_idx)
 {
-    const int ISSUED_ALL_DEVICES = -2;
 
     vector< vector<unsigned long long int> > profileA_h(devices.size(), vector<unsigned long long int>(tile_n_y)), profileB_h(devices.size(), vector<unsigned long long int>(tile_n_x));
     bool done = false;
     int last_dev = ISSUED_ALL_DEVICES;
     get_tile_ordering();
     printf("Performing join with %lu tiles.\n", tile_ordering.size() );
-    for(auto device : devices) {
+    for(int i = 0; i < devices.size(); ++i) {
+        int device = devices.at(i);
         cudaSetDevice(device);
         gpuErrchk(cudaPeekAtLastError());
         done = pick_and_start_next_tile(device, Ta_host, Tb_host, profile, profile_idx);
         gpuErrchk(cudaPeekAtLastError());
         if (done) {
-            last_dev = device;
+            last_dev = i;
             break;
         }
     }
