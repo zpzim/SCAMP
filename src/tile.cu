@@ -75,7 +75,7 @@ SCRIMPError_t SCRIMP_Tile::do_ab_join_full(cudaStream_t s) {
         return error;
     }
     
-    error = kernel_ab_join_upper(QT_scratch, timeseries_A, timeseries_B, df_A, df_B, dg_A, dg_B, norms_A, norms_B, profile_A, profile_B, window_size, tile_width - window_size + 1, tile_height - window_size + 1, tile_start_A, tile_start_B, props, fp64, s);
+    error = kernel_ab_join_upper(QT_scratch, timeseries_A, timeseries_B, df_A, df_B, dg_A, dg_B, norms_A, norms_B, profile_A, profile_B, window_size, tile_width - window_size + 1, tile_height - window_size + 1, tile_start_A, tile_start_B, props, fp64, full_join, s);
     if(error != SCRIMP_NO_ERROR) {
         return error;
     }
@@ -85,21 +85,13 @@ SCRIMPError_t SCRIMP_Tile::do_ab_join_full(cudaStream_t s) {
         return error;
     }
     
-    error = kernel_ab_join_lower(QT_scratch, timeseries_A, timeseries_B, df_A, df_B, dg_A, dg_B, norms_A, norms_B, profile_A, profile_B, window_size, tile_width - window_size + 1, tile_height - window_size + 1, tile_start_A, tile_start_B, props, fp64, s);
+    error = kernel_ab_join_lower(QT_scratch, timeseries_A, timeseries_B, df_A, df_B, dg_A, dg_B, norms_A, norms_B, profile_A, profile_B, window_size, tile_width - window_size + 1, tile_height - window_size + 1, tile_start_A, tile_start_B, props, fp64, full_join, s);
     if(error != SCRIMP_NO_ERROR) {
         printf("SCRIMP error\n");
         return error;
     }
 
     return SCRIMP_NO_ERROR;
-}
-
-SCRIMPError_t SCRIMP_Tile::do_ab_join_upper(cudaStream_t s) {
-    return SCRIMP_FUNCTIONALITY_UNIMPLEMENTED;
-}
-
-SCRIMPError_t SCRIMP_Tile::do_ab_join_lower(cudaStream_t s) {
-    return SCRIMP_FUNCTIONALITY_UNIMPLEMENTED;
 }
 
 }

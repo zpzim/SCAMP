@@ -39,6 +39,7 @@ private:
     size_t tile_n_y;
     size_t m;
     const bool self_join;
+    const bool full_join;
     const size_t MAX_TILE_SIZE;
     const bool compute_fp64;
     vector<int> devices;
@@ -59,25 +60,29 @@ private:
     SCRIMPError_t do_tile(SCRIMPTileType t, int device, const vector<double> &Ta_h,
                           const vector<double> &Tb_h,
                           const vector<float> &profile_h,
-                          const vector<unsigned int> &profile_idx_h);
+                          const vector<unsigned int> &profile_idx_h,
+                          const vector<float> &profile_B_h,
+                          const vector<unsigned int> &profile_idx_B_h);
 
     bool pick_and_start_next_tile(int dev, const vector<double> &Ta_h,
                                   const vector<double> &Tb_h,
                                   const vector<float> &profile_h,
-                                  const vector<unsigned int> &profile_idx_h);
+                                  const vector<unsigned int> &profile_idx_h,
+                                  const vector<float> &profile_B_h,
+                                  const vector<unsigned int> &profile_idx_B_h);
 
     int issue_and_merge_tiles_on_devices(const vector<double> &Ta_host, const vector<double> &Tb_host,
-                                         vector<float> &profile, vector<unsigned int> &profile_idx,
+                                         vector<float> &profile_A_full_host, vector<unsigned int> &profile_idx_A_full_host,
+                                         vector<float> &profile_B_full_host, vector<unsigned int> &profile_idx_B_full_host,
                                          vector<vector<unsigned long long int>> &profileA_h,
                                          vector<vector<unsigned long long int>> &profileB_h,
                                          int last_device_idx);
-
     void get_tile_ordering();
 
 public:
-    SCRIMP_Operation(size_t Asize, size_t Bsize, size_t window_sz, size_t max_tile_size, const vector<int> &dev, bool selfjoin) :
+    SCRIMP_Operation(size_t Asize, size_t Bsize, size_t window_sz, size_t max_tile_size, const vector<int> &dev, bool selfjoin, bool fp64, bool do_full_join) :
                      size_A(Asize), m(window_sz), MAX_TILE_SIZE(max_tile_size), devices(dev), self_join(selfjoin),
-                     completed_tiles(0), compute_fp64(false)
+                     completed_tiles(0), compute_fp64(fp64), full_join(do_full_join)
     {
          if(self_join) {
             size_B = size_A;
@@ -108,7 +113,8 @@ public:
         
     }
     SCRIMPError_t do_join(const vector<double> &Ta_host, const vector<double> &Tb_host,
-                          vector<float> &profile, vector<unsigned int> &profile_idx);
+                          vector<float> &profile, vector<unsigned int> &profile_idx,
+                          vector<float> &profile_B, vector<unsigned int> &profile_idx_B);
     SCRIMPError_t init();
     SCRIMPError_t destroy();
 };
