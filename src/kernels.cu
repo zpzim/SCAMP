@@ -666,7 +666,7 @@ do_tile(const double* __restrict__ Cov, const double* __restrict__ dfa,
 }
 
 int get_diags_per_thread(bool fp64, const cudaDeviceProp &dev_prop) {
-    if(fp64 || dev_prop.major < 7) {
+    if(fp64 || dev_prop.major < 6) {
         return 2;
     } else {
         return 4;
@@ -704,7 +704,7 @@ SCRIMPError_t kernel_ab_join_upper(const double *QT, const double *timeseries_A,
                                                    window_size, tile_width, tile_height, global_x, global_y,
                                                    0,0);
             
-            } else if (props.major < 7) {
+            } else if (props.major < 6) {
                 int smem = get_smem<float>(TILE_HEIGHT, fp64, true, true, props);
                 do_tile<float, float2, float4, false, true, true, BLOCKSPERSM_AB, 2, TILE_HEIGHT><<<grid,block,smem,s>>>(QT,df_A,df_B,dg_A,dg_B,norms_A,norms_B,profile_A, profile_B,
                                                    window_size, tile_width, tile_height, global_x, global_y,
@@ -723,7 +723,7 @@ SCRIMPError_t kernel_ab_join_upper(const double *QT, const double *timeseries_A,
                                                    window_size, tile_width, tile_height, global_x, global_y,
                                                    0,0);
             
-            } else if (props.major < 7) {
+            } else if (props.major < 6) {
                 int smem = get_smem<float>(TILE_HEIGHT, fp64, false, true, props);
                 do_tile<float, float2, float4, false, false, true, BLOCKSPERSM_AB, 2, TILE_HEIGHT><<<grid,block,smem,s>>>(QT,df_A,df_B,dg_A,dg_B,norms_A,norms_B,profile_A, profile_B,
                                                    window_size, tile_width, tile_height, global_x, global_y,
@@ -756,7 +756,7 @@ SCRIMPError_t kernel_ab_join_lower(const double *QT, const double *timeseries_A,
                                                    window_size, tile_height, tile_width, global_y, global_x,
                                                    0,0);
 
-            } else if(props.major < 7) {
+            } else if(props.major < 6) {
                 int smem = get_smem<float>(TILE_HEIGHT, fp64, true, true, props);
                 do_tile<float, float2, float4, false, true, true, BLOCKSPERSM_AB, 2, TILE_HEIGHT><<<grid,block,smem,s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A,
                                                    window_size, tile_height, tile_width, global_y, global_x,
@@ -775,7 +775,7 @@ SCRIMPError_t kernel_ab_join_lower(const double *QT, const double *timeseries_A,
                                                    window_size, tile_height, tile_width, global_y, global_x,
                                                    0,0);
 
-            } else if(props.major < 7) {
+            } else if(props.major < 6) {
                 int smem = get_smem<float>(TILE_HEIGHT, fp64, false, false, props);
                 do_tile<float, float2, float4, false, false, false, BLOCKSPERSM_AB, 2, TILE_HEIGHT><<<grid,block,smem,s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A,
                                                    window_size, tile_height, tile_width, global_y, global_x,
@@ -819,7 +819,7 @@ SCRIMPError_t kernel_self_join_upper(const double *QT, const double *timeseries_
                                                    window_size, tile_width, tile_height, global_x, global_y,
                                                    exclusion,0);
             
-            } else if (props.major < 7) {
+            } else if (props.major < 6) {
                 int smem = get_smem<float>(TILE_HEIGHT, fp64, true, false, props);
                 do_tile<float, float2, float4, false, true,false, BLOCKSPERSM_SELF,2, TILE_HEIGHT><<<grid,block,smem,s>>>(QT,df_A,df_B,dg_A,dg_B,norms_A,norms_B,profile_A, profile_B,
                                                    window_size, tile_width, tile_height, global_x, global_y,
@@ -861,7 +861,7 @@ SCRIMPError_t kernel_self_join_lower(const double *QT, const double *timeseries_
                                                window_size, tile_height, tile_width, global_y, global_x,
                                                0, exclusion);
 
-            } else if (props.major < 7) {
+            } else if (props.major < 6) {
                 int smem = get_smem<float>(TILE_HEIGHT, fp64, true, false, props);
                 do_tile<float,float2,float4, false, true,false, BLOCKSPERSM_SELF, 2, TILE_HEIGHT><<<grid,block,smem,s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A,
                                                window_size, tile_height, tile_width, global_y, global_x,

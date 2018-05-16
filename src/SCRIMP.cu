@@ -273,6 +273,7 @@ SCRIMPError_t SCRIMP_Operation::do_tile(SCRIMPTileType t, int device, const vect
         } else if(full_join) {
             cudaMemcpyAsync(profile_B_dev[device], profile_B_h.data() + start_y, sizeof(float) * t_n_y, cudaMemcpyHostToDevice, streams.at(device));
             gpuErrchk(cudaPeekAtLastError());
+            printf("start = %lu, size = %lu\n", start_y, profile_idx_B_h.size());
             cudaMemcpyAsync(profile_idx_B_dev[device], profile_idx_B_h.data() + start_y, sizeof(unsigned int) * t_n_y, cudaMemcpyHostToDevice, streams.at(device));
             gpuErrchk(cudaPeekAtLastError());
         }
@@ -393,7 +394,7 @@ int SCRIMP_Operation::issue_and_merge_tiles_on_devices(const vector<double> &Ta_
         gpuErrchk(cudaPeekAtLastError());
         cudaMemcpyAsync(profileA_h.at(i).data(), profile_A_merged[device], sizeof(unsigned long long int) * (n_x[device] - m + 1), cudaMemcpyDeviceToHost, streams.at(device));
         gpuErrchk(cudaPeekAtLastError());
-        if(self_join) {
+        if(self_join || full_join) {
             cudaMemcpyAsync(profileB_h.at(i).data(), profile_B_merged[device], sizeof(unsigned long long int) * (n_y[device] - m + 1), cudaMemcpyDeviceToHost, streams.at(device));
             gpuErrchk(cudaPeekAtLastError());
         }
@@ -524,10 +525,10 @@ int main(int argc, char** argv) {
     vector<double> Ta_h, Tb_h;
     bool self_join = false;
     SCRIMP::readFile<double>(argv[5], Ta_h, "%lf");
-    if(strncmp(argv[3], argv[6], strlen(argv[3])) == 0) {
+    if(strncmp(argv[5], argv[6], strlen(argv[5])) == 0) {
         self_join = true;
     } else {
-        SCRIMP::readFile<double>(argv[4], Tb_h, "%lf"); 
+        SCRIMP::readFile<double>(argv[6], Tb_h, "%lf"); 
     }
     int n_x = Ta_h.size() - window_size + 1;
     int n_y;
@@ -543,7 +544,7 @@ int main(int argc, char** argv) {
 
     if(full_join){
         profile_B = vector<float>(n_y, CC_MIN);
-        profile_idx = vector<unsigned int>(n_y, 0);
+        profile_idx_B = vector<unsigned int>(n_y, 0);
     }
 
     cudaFree(0);
@@ -551,7 +552,8 @@ int main(int argc, char** argv) {
     vector<int> devices;
     
     if((!full_join && argc == 9) || (full_join && argc == 11)) {
-        // Use all available devices 
+        // Use all available devices
+        printf("using all devices\n"); 
         int num_dev;
         cudaGetDeviceCount(&num_dev);
         for(int i = 0; i < num_dev; ++i){ 
@@ -576,16 +578,16 @@ int main(int argc, char** argv) {
     SCRIMP::do_SCRIMP(Ta_h, Tb_h, profile, profile_idx, profile_B, profile_idx_B, window_size, max_tile_size, devices, self_join, fp_64, full_join);
     
     printf("Now writing result to files\n");
-    FILE* f1 = fopen( argv[5], "w");
-    FILE* f2 = fopen( argv[6], "w");
+    FILE* f1 = fopen( argv[7], "w");
+    FILE* f2 = fopen( argv[8], "w");
     FILE* f3, *f4;
     for(int i = 0; i < profile.size(); ++i){
          fprintf(f1, "%f\n", sqrt(max(2*window_size*(1 - profile[i]), 0.0)));
          fprintf(f2, "%u\n", profile_idx[i] + 1);
     }
     if(full_join) {
-        f3 = fopen(argv[7], "w");
-        f4 = fopen(argv[8], "w");
+        f3 = fopen(argv[9], "w");
+        f4 = fopen(argv[10], "w");
         for(int i = 0; i < profile_B.size(); ++i) {
             fprintf(f3, "%f\n", sqrt(max(2*window_size*(1 - profile_B[i]), 0.0)));
             fprintf(f4, "%u\n", profile_idx_B[i] + 1);
