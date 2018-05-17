@@ -70,7 +70,7 @@ fi
 
 if [ $file_A != $file_B ];
 then
-    aws s3 cp s3://$bucket/$file_B.zip $file_B.zip
+    aws s3 cp s3://$bucket/$ts_A_dir/$file_B.zip $file_B.zip
     if [ ! -f $file_B.zip ];
     then
         echo "Unable to pull input s3://$bucket/$file_B.zip from s3"
