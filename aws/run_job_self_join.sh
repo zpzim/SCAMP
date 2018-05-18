@@ -1,11 +1,16 @@
 #!/bin/bash
 
 echo "Checking for GPUs"
-nvidia-smi
+nvidia-smi | grep 'Driver Version' &> /dev/null
+if [ $? != 0 ];
+then
+   echo "Unable to find an nvidia driver on this system. Aborting!"
+   exit 1
+fi
 
 if [ $# -lt 10 ];
 then
-   echo "Usage: <s3 bucket> <s3 input dir> <s3 output bucket> <s3 output dir> <s3 input file prefix> <number of columns in problem> <SCRIMP window length> <SCRIMP max tile size> <SCRIMP fp64 flag> <SCRIMP path> <Optional: tile index override>"
+   echo "Usage: <s3 bucket> <s3 input A dir> <s3 output bucket> <s3 output dir> <s3 input file prefix> <number of tile columns> <SCRIMP window length> <SCRIMP max tile size> <SCRIMP fp64 flag> <SCRIMP path> <Optional: tile index override>"
    exit 1
 fi
 
@@ -13,7 +18,7 @@ bucket=$1
 ts_A_dir=$2
 output_bucket=$3
 output_dir=$4
-prefix="$5"_
+prefix=$5
 num_tiles_wide=$6
 
 window_len=$7
@@ -49,7 +54,8 @@ echo "tile [$idx_row, $idx_col]"
 file_A=$prefix$idx_col
 file_B=$prefix$idx_row
 
-aws s3 cp s3://$bucket/$ts_A_dir/$file_A.zip $file_A.zip
+cmd="aws s3 cp s3://$bucket/$ts_A_dir/$file_A.zip $file_A.zip"
+for i in 1 2 3; do $cmd && break || sleep 5; done
 
 if [ ! -f $file_A.zip ];
 then
@@ -70,7 +76,10 @@ fi
 
 if [ $file_A != $file_B ];
 then
-    aws s3 cp s3://$bucket/$ts_A_dir/$file_B.zip $file_B.zip
+
+    cmd="aws s3 cp s3://$bucket/$ts_A_dir/$file_B.zip $file_B.zip"
+    for i in 1 2 3; do $cmd && break || sleep 5; done
+   
     if [ ! -f $file_B.zip ];
     then
         echo "Unable to pull input s3://$bucket/$file_B.zip from s3"
@@ -87,7 +96,6 @@ then
     fi
     echo Running SCRIMP: $executable_path $window_len $max_tile_size $fp_64 $full_join "$file_A/$x_file_A_name" "$file_B/$x_file_B_name" mpA mpiA mpB mpiB
     $executable_path $window_len $max_tile_size $fp_64 $full_join "$file_A/$x_file_A_name" "$file_B/$x_file_B_name" mpA mpiA mpB mpiB
-
     rm -rf $file_A $file_B
 
     if [ ! -f mpA ] || [ ! -f mpB ] || [ ! -f mpiA ] || [ ! -f mpiB ];
@@ -102,7 +110,6 @@ else
     full_join=0
     echo Running SCRIMP: $executable_path $window_len $max_tile_size $fp_64 $full_join "$file_A/$x_file_A_name" "$file_A/$x_file_A_name" mpA mpiA
     $executable_path $window_len $max_tile_size $fp_64 $full_join "$file_A/$x_file_A_name" "$file_A/$x_file_A_name" mpA mpiA
-
     rm -rf $file_A $file_B
 
     if [ ! -f mpA ] || [ ! -f mpiA ];
@@ -123,7 +130,8 @@ then
     exit 1
 fi
   
-aws s3 cp $result_file s3://$output_bucket/$output_dir/$result_file
+cmd="aws s3 cp $result_file s3://$output_bucket/$output_dir/$result_file"
+for i in 1 2 3 4 5; do $cmd && break || sleep 5; done
 
 rm $result_file
 
