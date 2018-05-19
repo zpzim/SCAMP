@@ -1,5 +1,20 @@
 #!/bin/bash
 
+if [ $# != 1 ];
+then
+    echo "Usage: run_tests.sh <fp64 flag (0 fp32, 1 fp64)>"
+fi
+
+
+fp64=$1
+
+if [ $fp64 == 0 ];
+then
+    echo "Running fp32 tests"
+else
+    echo "Running fp64 tests."
+fi
+
 EXECUTABLE=../src/SCRIMP-GPU
 ROOT_DIR_INPUT=SampleInput
 ROOT_DIR_OUTPUT=SampleOutput
@@ -10,7 +25,6 @@ AB_INPUT_FILES=(randomwalk16K randomwalk32K)
 NUM_TESTS=$((${#INPUT_FILES[@]} - 1))
 NUM_TILE_SZ=$((${#TILE_SZ[@]} - 1))
 NUM_AB=$((${#AB_INPUT_FILES[@]} - 1))
-
 for k in `seq 0 $NUM_TESTS`;
 do
     INPUT_FILE=$ROOT_DIR_INPUT/${INPUT_FILES[$k]}.txt
@@ -25,7 +39,7 @@ do
             count=`wc -l $INPUT_FILE | awk '{print $1}'`
             if [ $tile_sz -lt $(($count * 2)) ]; then
                 echo "Running Test: $EXECUTABLE $j $tile_sz $INPUT_FILE $INPUT_FILE mp mpi"
-                $EXECUTABLE $j $tile_sz 0 0 $INPUT_FILE $INPUT_FILE mp mpi > /dev/null
+                $EXECUTABLE $j $tile_sz $fp64 0 $INPUT_FILE $INPUT_FILE mp mpi > /dev/null
                 X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mpi | grep '^' | wc -l`
                 echo "$X matrix profile index differences"
                 ./difference.py mp $COMPARE_MP out
@@ -50,7 +64,7 @@ do
                 count=`wc -l $INPUT_FILE_A | awk '{print $1}'`
                 if [ $tile_sz -lt $(($count * 2)) ]; then
                     echo "Running Test: $EXECUTABLE $k $tile_sz $INPUT_FILE_A $INPUT_FILE_B mp mpi"
-                    $EXECUTABLE $k $tile_sz 0 0 $INPUT_FILE_A $INPUT_FILE_B mp mpi > /dev/null
+                    $EXECUTABLE $k $tile_sz $fp64 0 $INPUT_FILE_A $INPUT_FILE_B mp mpi > /dev/null
                     X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mpi | grep '^' | wc -l`
                     echo "$X matrix profile index differences"
                     ./difference.py mp $COMPARE_MP out
@@ -67,7 +81,7 @@ do
                 count=`wc -l $INPUT_FILE_A | awk '{print $1}'`
                 if [ $tile_sz -lt $(($count * 2)) ]; then
                     echo "Running Test: $EXECUTABLE $k $tile_sz $INPUT_FILE_B $INPUT_FILE_A mp mpi"
-                    $EXECUTABLE $k $tile_sz 0 0 $INPUT_FILE_B $INPUT_FILE_A mp mpi > /dev/null
+                    $EXECUTABLE $k $tile_sz $fp64 0 $INPUT_FILE_B $INPUT_FILE_A mp mpi > /dev/null
                     X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mpi | grep '^' | wc -l`
                     echo "$X matrix profile index differences"
                     ./difference.py mp $COMPARE_MP out

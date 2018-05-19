@@ -269,12 +269,12 @@ __device__ inline void do_iteration_unroll_2(int i, int j, int x, int y, T &cov1
                                             dfc.y, dfc2.x, dgc.y, dgc2.x, dfr.y, dgr.y,
                                             i + 1, j + 1, y + 1, x + 1, local_mp_row, e.floats[0]);
 
-    // The second row completes column 2
+    // The second row completes column 2 and 3
     if(full_join || only_col) {
         e.ulong = mp_col_check1.y;
         MPatomicMax_check((unsigned long long*) (local_mp_col + j + 1), distc.y, idxc.y, e.floats[0]);
         mp_col_check2 = reinterpret_cast<ulonglong2*>(local_mp_col)[c+1];
-        e.ulong = mp_col_check2.y;
+        e.ulong = mp_col_check2.x;
         MPatomicMax_check((unsigned long long*) (local_mp_col + j + 2), distc2.x, idxc2.x, e.floats[0]);
     }
 }
@@ -695,7 +695,8 @@ SCRIMPError_t kernel_ab_join_upper(const double *QT, const double *timeseries_A,
 {
         dim3 grid(1,1,1);
         dim3 block(BLOCKSZ, 1, 1);
-        int num_workers = ceil(tile_width / 4.0);
+        int diags_per_thread = get_diags_per_thread(fp64, props);
+        int num_workers = ceil(tile_width / diags_per_thread);
         grid.x = ceil(num_workers / (double) BLOCKSZ);
         if(full_join) {
             if(fp64) {
@@ -747,7 +748,8 @@ SCRIMPError_t kernel_ab_join_lower(const double *QT, const double *timeseries_A,
 {
         dim3 grid(1,1,1);
         dim3 block(BLOCKSZ, 1, 1);
-        int num_workers = ceil(tile_height / 4.0);
+        int diags_per_thread = get_diags_per_thread(fp64, props);
+        int num_workers = ceil(tile_height / diags_per_thread);
         grid.x = ceil(num_workers / (double) BLOCKSZ);
         if(full_join) {
             if(fp64) {
