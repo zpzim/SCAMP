@@ -25,12 +25,16 @@ fi
 unzip input.zip -d input
 inputfile=`ls input`
 
+rm input.zip
+
 mkdir splitfiles
 
 cmd="python split_ts.py input/$inputfile $tile_size $window_len splitfiles"
 echo $cmd
 
 $cmd
+
+rm -rf input
 
 mkdir $output_s3_dir
 
@@ -43,8 +47,11 @@ done
 
 cd ..
 
+rm -rf splitfiles
 
 cmd="aws s3 cp --recursive $output_s3_dir s3://$output_s3_bucket/$output_s3_dir/"
 for i in 1 2 3; do $cmd && break || sleep 5; done
+
+rm -rf $output_s3_dir
 
 
