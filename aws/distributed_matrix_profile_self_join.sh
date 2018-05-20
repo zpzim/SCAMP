@@ -34,7 +34,7 @@ X=`aws batch submit-job --job-name "scrimp-$time_series_A_name" \
                      --job-queue $job_queue \
                      --job-definition $job_definition \
                      --retry-strategy "attempts=2" \
-                     --parameters input_bucket=$input_bucket,output_bucket=$output_bucket,output_dir=$time_series_A_name$time_series_A_name,input_dir="split_$time_series_A_dir",num_tiles_wide="$width",SCRIMP_Tile_size="$scrimp_tile_size",prefix="segment_",fp64_flag=0 \
+                     --parameters input_bucket=$input_bucket,output_bucket=$output_bucket,output_dir=$time_series_A_name$time_series_A_name,input_dir="split_$time_series_A_dir",num_tiles_wide="$width",tile_width=$tile_size,SCRIMP_Tile_size="$scrimp_tile_size",prefix="segment_",fp64_flag=0 \
                      --array-properties size=$num_jobs \
                      | python -c "import sys, json; print json.load(sys.stdin)['jobId']"`
 

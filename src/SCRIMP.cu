@@ -10,6 +10,7 @@
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/execution_policy.h>
 #include <thrust/extrema.h>
+#include <unistd.h>
 #include "SCRIMP.h"
 #include "tile.h"
 
@@ -290,7 +291,10 @@ SCRIMPError_t SCRIMP_Operation::do_tile(SCRIMPTileType t, int device, const vect
             thrust::transform(thrust::cuda::par.on(streams.at(device)), profile_B_dev[device], profile_B_dev[device] + t_n_y, profile_idx_B_dev[device], profile_B_merged[device], combiner);
             gpuErrchk(cudaPeekAtLastError());
         }
-        SCRIMP_Tile tile(t, T_A_dev[device], T_B_dev[device], df_A[device], df_B[device], dg_A[device], dg_B[device], norms_A[device], norms_B[device], means_A[device], means_B[device],  QT_dev[device], profile_A_merged[device], profile_B_merged[device], start_x, start_y, n_y[device], n_x[device], m, scratch[device], dev_props.at(device), compute_fp64);
+        SCRIMP_Tile tile(t, T_A_dev[device], T_B_dev[device], df_A[device], df_B[device], dg_A[device], dg_B[device],
+                         norms_A[device], norms_B[device], means_A[device], means_B[device],  QT_dev[device],
+                         profile_A_merged[device], profile_B_merged[device], start_x, start_y, tile_start_col_position,
+                         tile_start_row_position, n_y[device], n_x[device], m, scratch[device], dev_props.at(device), compute_fp64);
         cudaEventRecord(clocks_start[device], streams.at(device));
         gpuErrchk(cudaPeekAtLastError());
         err = tile.execute(streams.at(device));
@@ -465,7 +469,7 @@ SCRIMPError_t SCRIMP_Operation::do_join(const vector<double> &Ta_host, const vec
 
 void do_SCRIMP(const vector<double> &Ta_h, const vector<double> &Tb_h, vector<float> &profile_h, vector<unsigned int> &profile_idx_h,
                vector<float> &profile_B_h, vector<unsigned int> &profile_idx_B_h, const unsigned int m, const size_t max_tile_size, 
-               const vector<int> &devices, bool self_join, bool fp64, bool full_join)
+               const vector<int> &devices, bool self_join, bool fp64, bool full_join, size_t start_row, size_t start_col)
 {
     if(devices.empty()) {
         printf("Error: no gpu provided\n");
@@ -473,7 +477,7 @@ void do_SCRIMP(const vector<double> &Ta_h, const vector<double> &Tb_h, vector<fl
     }
     // Allocate and initialize memory
     clock_t start, end;
-    SCRIMP_Operation op(Ta_h.size(), Tb_h.size(), m, max_tile_size, devices, self_join, fp64, full_join);
+    SCRIMP_Operation op(Ta_h.size(), Tb_h.size(), m, max_tile_size, devices, self_join, fp64, full_join, start_row, start_col);
     op.init();
     gpuErrchk(cudaPeekAtLastError());
     start = clock();
@@ -513,23 +517,45 @@ void readFile(const char* filename, vector<DTYPE>& v, const char *format_str)
 
 int main(int argc, char** argv) {
 
-    if(argc < 7) {
-        printf("Usage: SCRIMP <window_len> <max_tile_size> <use_double (0=false, 1=true)> <full_ab_join (0=false, 1=true)> <input file A> <input file B> <profile A output file> <index A output file> [For full join: <profile B output> <index B output> ][Optional: list of GPU device numbers to run on]\n");
-        exit(0);
+
+    bool fp_64 = false;
+    bool full_join = false;
+    bool self_join = true;
+    size_t start_row = 0;
+    size_t start_col = 0;
+    int max_tile_size = (1 << 21);
+    int opt;
+    vector<int> devices;
+    vector<double> Ta_h, Tb_h;
+    char *output_B_prefix, *input_B;
+    while ((opt = getopt(argc, argv, "df:r:c:s:b:g:")) != -1) {
+        switch (opt) {
+        case 'd': fp_64 = true; break;
+        case 'f': output_B_prefix = optarg; full_join = true; break;
+        case 'r': start_row = atoi(optarg); break;
+        case 'c': start_col = atoi(optarg); break;
+        case 's': max_tile_size = atoi(optarg); break;
+        case 'b': input_B = optarg; self_join = false; break;
+        case 'g': devices.push_back(atoi(optarg)); break;
+        default:
+            exit(EXIT_FAILURE);
+        }
+    }
+    if(self_join && full_join) {
+        printf("error: invalid argument combination -f flag can only be used in ab-joins");
+        exit(EXIT_FAILURE);
     }
 
-    int window_size = atoi(argv[1]);
-    int max_tile_size = atoi(argv[2]);
-    int fp_64 = atoi(argv[3]);
-    int full_join = atoi(argv[4]);
-    vector<double> Ta_h, Tb_h;
-    bool self_join = false;
-    SCRIMP::readFile<double>(argv[5], Ta_h, "%lf");
-    if(strncmp(argv[5], argv[6], strlen(argv[5])) == 0) {
-        self_join = true;
-    } else {
-        SCRIMP::readFile<double>(argv[6], Tb_h, "%lf"); 
+    int index = optind;
+    int window_size = atoi(argv[index++]);
+    char *input_A = argv[index++];
+     
+    SCRIMP::readFile<double>(input_A, Ta_h, "%lf");
+    
+    if(!self_join) {
+        SCRIMP::readFile<double>(input_B, Tb_h, "%lf"); 
     }
+
     int n_x = Ta_h.size() - window_size + 1;
     int n_y;
     if(self_join) {
@@ -537,6 +563,7 @@ int main(int argc, char** argv) {
     } else {
        n_y = Tb_h.size() - window_size + 1;
     }
+
     vector<float> profile(n_x, CC_MIN);
     vector<unsigned int> profile_idx(n_x, 0);
     vector<float> profile_B;
@@ -549,9 +576,7 @@ int main(int argc, char** argv) {
 
     cudaFree(0);
     
-    vector<int> devices;
-    
-    if((!full_join && argc == 9) || (full_join && argc == 11)) {
+    if(devices.empty()) {
         // Use all available devices
         printf("using all devices\n"); 
         int num_dev;
@@ -559,42 +584,29 @@ int main(int argc, char** argv) {
         for(int i = 0; i < num_dev; ++i){ 
             devices.push_back(i);
         }
-    } else {
-        // Use the devices specified
-        int x;
-        if(full_join) {
-            x = 11;
-        } else {
-            x = 9;
-        }
-        while (x < argc) {
-            devices.push_back(atoi(argv[x]));
-            ++x;
-        }
     }
-    
-    printf("Starting SCRIMP\n");
-     
-    SCRIMP::do_SCRIMP(Ta_h, Tb_h, profile, profile_idx, profile_B, profile_idx_B, window_size, max_tile_size, devices, self_join, fp_64, full_join);
+
+    printf("Starting SCRIMP\n");     
+    SCRIMP::do_SCRIMP(Ta_h, Tb_h, profile, profile_idx, profile_B, profile_idx_B, window_size, max_tile_size, devices, self_join, fp_64, full_join, start_row, start_col);
     
     printf("Now writing result to files\n");
-    FILE* f1 = fopen( argv[7], "w");
-    FILE* f2 = fopen( argv[8], "w");
+    FILE* f1 = fopen( argv[index++], "w");
+    FILE* f2 = fopen( argv[index++], "w");
     FILE* f3, *f4;
     for(int i = 0; i < profile.size(); ++i){
          fprintf(f1, "%f\n", sqrt(max(2*window_size*(1 - profile[i]), 0.0)));
          fprintf(f2, "%u\n", profile_idx[i] + 1);
     }
+    fclose(f1);
+    fclose(f2);
     if(full_join) {
-        f3 = fopen(argv[9], "w");
-        f4 = fopen(argv[10], "w");
+        f3 = fopen(strcat(output_B_prefix,"_mp") , "w");
+        f4 = fopen(strcat(output_B_prefix,"i"), "w");
         for(int i = 0; i < profile_B.size(); ++i) {
             fprintf(f3, "%f\n", sqrt(max(2*window_size*(1 - profile_B[i]), 0.0)));
             fprintf(f4, "%u\n", profile_idx_B[i] + 1);
         }
     }
-    fclose(f1);
-    fclose(f2);
     if(full_join) {
         fclose(f3);
         fclose(f4);

@@ -4,7 +4,7 @@ ADD aws/run_job_self_join.sh .
 ADD aws/run_job_ab_join.sh .
 ADD aws/run_job_preprocess.sh .
 ADD aws/split_ts.py .
-ADD aws/run_job_postprocess.sh .
+ADD aws/run_job_postprocess.py .
 ADD src/SCRIMP-GPU .
 
 RUN apt-get update && \

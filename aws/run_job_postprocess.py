@@ -27,8 +27,8 @@ def merge(info,tile_height,tile_width):
     mpi.close()
     print "merged " + str(count) +" values"    
     if info[1] != info[2] and self_join:
-        mpB = open(f + '/mpB',"r")
-        mpiB = open(f + '/mpiB', "r")
+        mpB = open(f + '/B_mp',"r")
+        mpiB = open(f + '/B_mpi', "r")
         count = 0
         for number,idx in zip(mpB, mpiB):
             val = float(number)

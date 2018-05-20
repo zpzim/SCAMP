@@ -24,6 +24,8 @@ private:
     unsigned long long int *profile_A;
     unsigned long long int *profile_B;
     
+    size_t global_start_A;
+    size_t global_start_B;
     size_t tile_start_A;
     size_t tile_start_B;
     size_t tile_height;
@@ -44,12 +46,14 @@ public:
                 const double *dfB, const double *dgA, const double *dgB, const double *normA,
                 const double *normB, const double *meansA, const double *meansB, double *QT,
                 unsigned long long int *profileA, unsigned long long int *profileB,
-                size_t start_A, size_t start_B, size_t height, size_t width, size_t m,
+                size_t start_A, size_t start_B, size_t g_start_A, size_t g_start_B,
+                size_t height, size_t width, size_t m,
                 fft_precompute_helper *scratch, const cudaDeviceProp &prop, bool use_double)
                 : type(t), timeseries_A(ts_A), timeseries_B(ts_B), df_A(dfA), df_B(dfB), means_A(meansA), means_B(meansB),
                   dg_A(dgA), dg_B(dgB), norms_A(normA), norms_B(normB), QT_scratch(QT), profile_A(profileA),
-                  profile_B(profileB), tile_start_A(start_A), tile_start_B(start_B), tile_height(height),
-                  tile_width(width), fft_info(scratch), window_size(m), props(prop), fp64(use_double), full_join(false) {}
+                  profile_B(profileB), tile_start_A(start_A), tile_start_B(start_B), global_start_A(g_start_A),
+                  global_start_B(g_start_B), tile_height(height), tile_width(width), fft_info(scratch),
+                  window_size(m), props(prop), fp64(use_double), full_join(false) {}
     SCRIMPError_t execute(cudaStream_t s) {
         SCRIMPError_t error;
         switch (type) {

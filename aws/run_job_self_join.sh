@@ -10,7 +10,7 @@ fi
 
 if [ $# -lt 10 ];
 then
-   echo "Usage: <s3 bucket> <s3 input A dir> <s3 output bucket> <s3 output dir> <s3 input file prefix> <number of tile columns> <SCRIMP window length> <SCRIMP max tile size> <SCRIMP fp64 flag> <SCRIMP path> <Optional: tile index override>"
+   echo "Usage: <s3 bucket> <s3 input A dir> <s3 output bucket> <s3 output dir> <s3 input file prefix> <number of tile columns> <tile width> <SCRIMP window length> <SCRIMP max tile size> <SCRIMP fp64 flag> <SCRIMP path> <Optional: tile index override>"
    exit 1
 fi
 
@@ -20,18 +20,27 @@ output_bucket=$3
 output_dir=$4
 prefix=$5
 num_tiles_wide=$6
+tile_width=$7
+window_len=$8
+max_tile_size=$9
+fp_64=$10
+executable_path=${11}
 
-window_len=$7
-max_tile_size=$8
-fp_64=$9
-executable_path=${10}
-full_join=1
+
 
 tile_num=$AWS_BATCH_JOB_ARRAY_INDEX
 if [ $# -gt 10 ];
 then
-    tile_num=${11}
+    tile_num=${12}
 fi
+
+if [ $fp_64 == "1" ];
+then
+    $fp_64 = "-d"
+else
+    $fp_64 = ""
+fi
+
 
 i=0
 
@@ -48,8 +57,11 @@ done
 
 idx_row=$i
 idx_col=$(($tile_num + $i))
+g_start_row=$(($idx_row * $tile_width))
+g_start_col=$(($idx_col * $tile_width))
 
 echo "tile [$idx_row, $idx_col]"
+echo "start [$g_start_row, $g_start_col]"
 
 file_A=$prefix$idx_col
 file_B=$prefix$idx_row
@@ -94,11 +106,11 @@ then
         echo "Unable to extract input from archive $file_A.zip"
         exit 1
     fi
-    echo Running SCRIMP: $executable_path $window_len $max_tile_size $fp_64 $full_join "$file_A/$x_file_A_name" "$file_B/$x_file_B_name" mpA mpiA mpB mpiB
-    $executable_path $window_len $max_tile_size $fp_64 $full_join "$file_A/$x_file_A_name" "$file_B/$x_file_B_name" mpA mpiA mpB mpiB
+    echo Running SCRIMP: $executable_path -s $max_tile_size $fp_64 -f B -b "$file_B/$x_file_B_name" -r $g_start_row -c $g_start_c $window_len "$file_A/$x_file_A_name" mpA mpiA
+    $executable_path -s $max_tile_size $fp_64 -f B -b "$file_B/$x_file_B_name" -r $g_start_row -c $g_start_c $window_len "$file_A/$x_file_A_name" mpA mpiA
     rm -rf $file_A $file_B
 
-    if [ ! -f mpA ] || [ ! -f mpB ] || [ ! -f mpiA ] || [ ! -f mpiB ];
+    if [ ! -f mpA ] || [ ! -f B_mp ] || [ ! -f mpiA ] || [ ! -f B_mpi ];
     then
         echo "SCRIMP did not produce output files"
         exit 1
@@ -107,9 +119,8 @@ then
     zip $result_file mpA mpiA mpB mpiB
     rm mpA mpiA mpB mpiB
 else
-    full_join=0
-    echo Running SCRIMP: $executable_path $window_len $max_tile_size $fp_64 $full_join "$file_A/$x_file_A_name" "$file_A/$x_file_A_name" mpA mpiA
-    $executable_path $window_len $max_tile_size $fp_64 $full_join "$file_A/$x_file_A_name" "$file_A/$x_file_A_name" mpA mpiA
+    echo Running SCRIMP: $executable_path -s $max_tile_size $fp_64 $window_len "$file_A/$x_file_A_name" mpA mpiA
+    $executable_path -s $max_tile_size $fp_64 $window_len "$file_A/$x_file_A_name" mpA mpiA
     rm -rf $file_A $file_B
 
     if [ ! -f mpA ] || [ ! -f mpiA ];

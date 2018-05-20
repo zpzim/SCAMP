@@ -43,7 +43,8 @@ private:
     const size_t MAX_TILE_SIZE;
     const bool compute_fp64;
     vector<int> devices;
-
+    const size_t tile_start_row_position;
+    const size_t tile_start_col_position;
     // Tile state variables
     list<pair<int,int>> tile_ordering;
     int completed_tiles;
@@ -80,9 +81,9 @@ private:
     void get_tile_ordering();
 
 public:
-    SCRIMP_Operation(size_t Asize, size_t Bsize, size_t window_sz, size_t max_tile_size, const vector<int> &dev, bool selfjoin, bool fp64, bool do_full_join) :
+    SCRIMP_Operation(size_t Asize, size_t Bsize, size_t window_sz, size_t max_tile_size, const vector<int> &dev, bool selfjoin, bool fp64, bool do_full_join, size_t start_row, size_t start_col) :
                      size_A(Asize), m(window_sz), MAX_TILE_SIZE(max_tile_size), devices(dev), self_join(selfjoin),
-                     completed_tiles(0), compute_fp64(fp64), full_join(do_full_join)
+                     completed_tiles(0), compute_fp64(fp64), full_join(do_full_join), tile_start_row_position(start_row), tile_start_col_position(start_col)
     {
          if(self_join) {
             size_B = size_A;
