@@ -8,7 +8,7 @@ then
    exit 1
 fi
 
-if [ $# -lt 10 ];
+if [ $# -lt 11 ];
 then
    echo "Usage: <s3 bucket> <s3 input A dir> <s3 output bucket> <s3 output dir> <s3 input file prefix> <number of tile columns> <tile width> <SCRIMP window length> <SCRIMP max tile size> <SCRIMP fp64 flag> <SCRIMP path> <Optional: tile index override>"
    exit 1
@@ -23,13 +23,13 @@ num_tiles_wide=$6
 tile_width=$7
 window_len=$8
 max_tile_size=$9
-fp_64=$10
+fp_64=${10}
 executable_path=${11}
 
 
 
 tile_num=$AWS_BATCH_JOB_ARRAY_INDEX
-if [ $# -gt 10 ];
+if [ $# -gt 11 ];
 then
     tile_num=${12}
 fi

@@ -23,7 +23,10 @@ echo $num_jobs
 
 
 #Split up the input and write to s3 requires CLI access to s3
-./run_job_preprocess.sh $input_bucket/$time_series_A_dir/$time_series_A_name.zip $input_bucket split_$time_series_A_dir $window_size $tile_size
+
+cmd="./run_job_preprocess.sh $input_bucket/$time_series_A_dir/$time_series_A_name.zip $input_bucket split_$time_series_A_dir $window_size $tile_size"
+echo $cmd
+$cmd
 
 
 #Requires CLI access to batch
@@ -41,13 +44,13 @@ X=`aws batch submit-job --job-name "scrimp-$time_series_A_name" \
 
 #wait for job to finish
 Y="UNKNOWN"
-while [ $Y != "SUCCEEDED" ] && [ $Y != "FAILED" ];
+while [ "$Y" != "SUCCEEDED" ] && [ "$Y" != "FAILED" ];
 do
-    Y=`aws batch describe-jobs --jobs $X | | python -c "import sys, json; print json.load(sys.stdin)['status']"`
+    Y=`aws batch describe-jobs --jobs $X | python -c "import sys, json; print json.load(sys.stdin)['status']"`
     sleep 20s
 done
 
-if [ $Y == "FAILED" ];
+if [ "$Y" = "FAILED" ];
 then
     echo "AWS Job Failed"
     exit 1
