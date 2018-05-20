@@ -30,6 +30,7 @@ then
 fi
 
 tag=`echo $login_cmd | awk '{print $NF}'`
+tag=${tag:8}
 
 docker tag $X $tag/scrimp-gpu:latest
 
