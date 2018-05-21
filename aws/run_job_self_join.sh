@@ -70,7 +70,7 @@ for i in 1 2 3; do $cmd && break || sleep 5; done
 
 if [ ! -f $file_A.zip ];
 then
-    echo "Unable to pull input s3://$bucker/$file_A.zip from s3"
+    echo "Unable to pull input s3://$bucket/$file_A.zip from s3"
     exit 1
 fi
 
