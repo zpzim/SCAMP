@@ -36,6 +36,13 @@ then
     tile_num=${13}
 fi
 
+if [ $fp_64 == "1" ];
+then
+    fp_64="-d"
+else
+    fp_64=""
+fi
+
 idx_row=$(($tile_num / $num_tiles_wide))
 idx_col=$(($tile_num % $num_tiles_wide))
 

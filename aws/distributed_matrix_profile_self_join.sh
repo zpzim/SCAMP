@@ -41,12 +41,18 @@ X=`aws batch submit-job --job-name "scrimp-$time_series_A_name" \
                      --array-properties size=$num_jobs \
                      | python -c "import sys, json; print json.load(sys.stdin)['jobId']"`
 
+if [ $? -ne 0 ];
+then
+    echo "failed to submit aws job"
+    exit 1
+fi
+
 
 #wait for job to finish
 Y="UNKNOWN"
 while [ "$Y" != "SUCCEEDED" ] && [ "$Y" != "FAILED" ];
 do
-    Y=`aws batch describe-jobs --jobs $X | python -c "import sys, json; print json.load(sys.stdin)['status']"`
+    Y=`aws batch describe-jobs --jobs $X | python -c "import sys, json; print json.load(sys.stdin)['jobs'][0]['status']"`
     sleep 20s
 done
 
