@@ -115,8 +115,8 @@ then
         exit 1
     fi
     result_file=result_"$idx_row"_"$idx_col".zip
-    zip $result_file mpA mpiA mpB mpiB
-    rm mpA mpiA mpB mpiB
+    zip $result_file mpA mpiA B_mp B_mpi
+    rm mpA mpiA B_mp B_mpi
 else
     echo Running SCRIMP: $executable_path -s $max_tile_size $fp_64 $window_len "$file_A/$x_file_A_name" mpA mpiA
     $executable_path -s $max_tile_size $fp_64 $window_len "$file_A/$x_file_A_name" mpA mpiA
