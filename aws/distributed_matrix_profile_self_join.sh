@@ -69,7 +69,7 @@ fi
 
 #pull partial results from s3 and combine into single result
 echo "job done running merge routine"
-cmd="python ./run_job_postprocess.py $output_bucket $time_series_A_dir$time_series_A_dir $tile_n $tile_n $time_series_n $self_join"
+cmd="python ./run_job_postprocess.py $output_bucket $time_series_A_name$time_series_A_name $tile_n $tile_n $time_series_n $self_join"
 echo $cmd
 $cmd
 

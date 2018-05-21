@@ -1,14 +1,26 @@
 import os, shutil,re,sys,subprocess
 
+
+def try_cmd(cmd, err):
+    p = subprocess.Popen(cmd.split())
+    out, errors = p.communicate()
+    for i in range(0,3):
+        if p.returncode is not 0:
+            print err
+            if i is 2:
+                print "retry attempts exceeded! command was " + cmd
+                exit(1)
+            else:
+                print "will retry."
+        else:
+            break
+
+
 def merge(info,tile_height,tile_width):
     f = 'result_'+str(info[0])
     fzip = f+'.zip'
     cmd = 'unzip ' + fzip + ' -d ' + f
-    p = subprocess.Popen(cmd.split())
-    outz, errz = p.communicate()
-    if p.returncode is not 0:
-        print "Could not unzip file"
-        exit(1)
+    try_cmd(cmd, "Could not unzip file") 
         
     os.remove(fzip)
     start_row = int(info[1]) * tile_height
@@ -44,47 +56,17 @@ def merge(info,tile_height,tile_width):
 
 def write_result_s3(out_s3_path):
     cmd='zip mp.zip full_matrix_profile.txt'
-    p = subprocess.Popen(cmd.split())
-    outz, errz = p.communicate()
-    if p.returncode is not 0:
-        print "ERROR: could not zip file"
-        exit(1)
+    try_cmd(cmd, "ERROR: Could not zip file")
 
     cmd='zip mpi.zip full_matrix_profile_index.txt'
-    p = subprocess.Popen(cmd.split())
-    if p.returncode is not 0:
-        print "ERROR: could not zip file"
-        exit(1)
+    try_cmd(cmd, "ERROR: could not zip file")
 
-    outz, errz = p.communicate()
+    cmd = 'aws s3 cp mp.zip s3://' + out_s3_path + 'mp.zip'
+    try_cmd(cmd, "ERROR: copy to s3 failed")
 
-    for i in range(0,3):
-        cmd = 'aws s3 cp mp.zip s3://' + out_s3_path + 'mp.zip'
-        p = subprocess.Popen(cmd.split())
-        out, err = p.communicate()
-        if p.returncode is not 0:
-            print "ERROR: copy to s3 failed"
-            if i is 2:
-                print "retry attempts exceeded! command was " + cmd
-                exit(1)
-            else:
-                print "will retry."
-        else:
-            break
 
-    for i in range(0,3):
-        cmd = 'aws s3 cp mpi.zip s3://' + out_s3_path + 'mpi.zip'
-        p = subprocess.Popen(cmd.split())
-        out, err = p.communicate()
-        if p.returncode is not 0:
-            print "ERROR: copy to s3 failed"
-            if i is 2:
-                print "retry attempts exceeded! command was " + cmd
-                exit(1)
-            else:
-                print "will retry."
-        else:
-            break
+    cmd = 'aws s3 cp mpi.zip s3://' + out_s3_path + 'mpi.zip'
+    try_cmd(cmd, "ERROR: copy to s3 failed")
 
 
 if len(sys.argv) < 7:
@@ -98,6 +80,7 @@ tile_height = int(sys.argv[4])
 matrix_profile_length = int(sys.argv[5])
 self_join = bool(sys.argv[6])
 write_s3 = False
+remove_s3_input = False
 if len(sys.argv) == 8:
     out_s3_path = sys.argv[7]
     write_s3 = True 
@@ -189,6 +172,11 @@ mpi.close()
 
 if write_s3:
     write_result_s3(out_s3_path) 
+
+if remove_s3_input:
+    cmd = 'aws s3 rm --recursive s3://'+bucket+'/'+directory
+    try_cmd(cmd, err)
+
 
 print "Finished!"
 
