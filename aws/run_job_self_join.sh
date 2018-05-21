@@ -56,8 +56,8 @@ done
 
 idx_row=$i
 idx_col=$(($tile_num + $i))
-g_start_row=$(($idx_row * $tile_width))
-g_start_col=$(($idx_col * $tile_width))
+g_start_row=$(($idx_row * ($tile_width - $window_len + 1)))
+g_start_col=$(($idx_col * ($tile_width - $window_len + 1)))
 
 echo "tile [$idx_row, $idx_col]"
 echo "start [$g_start_row, $g_start_col]"
