@@ -9,6 +9,7 @@ job_queue=$8
 job_definition=$9
 
 tile_n=$(($tile_size - $window_size + 1))
+time_series_n=$(($time_series_length - $window_size + 1))
 scrimp_tile_size=2097152
 self_join=1
 width=$(($time_series_length / $tile_n))
@@ -52,8 +53,12 @@ fi
 Y="UNKNOWN"
 while [ "$Y" != "SUCCEEDED" ] && [ "$Y" != "FAILED" ];
 do
-    Y=`aws batch describe-jobs --jobs $X | python -c "import sys, json; print json.load(sys.stdin)['jobs'][0]['status']"`
     sleep 20s
+    Z=`aws batch describe-jobs --jobs $X`
+    Y=`echo $Z | python -c "import sys, json; print json.load(sys.stdin)['jobs'][0]['status']"`
+    W=`echo $Z | python -c "import sys, json; print json.load(sys.stdin)['jobs'][0]['arrayProperties']['statusSummary']"`
+    echo "Current Job State: $Y"
+    echo "Jobs summary: $W"
 done
 
 if [ "$Y" = "FAILED" ];
@@ -63,5 +68,9 @@ then
 fi
 
 #pull partial results from s3 and combine into single result
-python ./run_job_postprocess.py $output_bucket $time_series_A_dir$time_series_A_dir $tile_n $tile_n $time_series_n $self_join
+echo "job done running merge routine"
+cmd="python ./run_job_postprocess.py $output_bucket $time_series_A_dir$time_series_A_dir $tile_n $tile_n $time_series_n $self_join"
+echo $cmd
+$cmd
 
+echo "Finished!"

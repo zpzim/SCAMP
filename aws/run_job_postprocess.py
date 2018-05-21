@@ -50,7 +50,6 @@ def write_result_s3(out_s3_path):
         print "ERROR: could not zip file"
         exit(1)
 
-    os.remove('full_matrix_profile.txt')
     cmd='zip mpi.zip full_matrix_profile_index.txt'
     p = subprocess.Popen(cmd.split())
     if p.returncode is not 0:
@@ -58,7 +57,6 @@ def write_result_s3(out_s3_path):
         exit(1)
 
     outz, errz = p.communicate()
-    os.remove('full_matrix_profile_index.txt')
 
     for i in range(0,3):
         cmd = 'aws s3 cp mp.zip s3://' + out_s3_path + 'mp.zip'
@@ -89,13 +87,20 @@ def write_result_s3(out_s3_path):
             break
 
 
+if len(sys.argv) < 7:
+    print "usage: s3_bucket s3_directory tile_width tile_height matrix_profile_length self_join_flag [Optional: out_s3_path]"
+    exit(1)
+
 bucket = sys.argv[1]
 directory = sys.argv[2]
 tile_width = int(sys.argv[3])
 tile_height = int(sys.argv[4])
 matrix_profile_length = int(sys.argv[5])
 self_join = bool(sys.argv[6])
-out_s3_path = sys.argv[7]
+write_s3 = False
+if len(sys.argv) == 8:
+    out_s3_path = sys.argv[7]
+    write_s3 = True 
 
 cmd = 'aws s3 ls --recursive s3://'+bucket+'/'+directory
 process = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
@@ -181,6 +186,9 @@ for number, idx in zip(matrix_profile, matrix_profile_index):
 
 mp.close()
 mpi.close()
+
+if write_s3:
+    write_result_s3(out_s3_path) 
 
 print "Finished!"
 
