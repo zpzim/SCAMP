@@ -13,7 +13,7 @@ job_queue=${12}
 job_definition=${13}
 
 tile_n=$(($tile_size - $window_size + 1))
-time_series_A_n=$(($time_series_length - $window_size + 1))
+time_series_A_n=$(($time_series_A_length - $window_size + 1))
 scrimp_tile_size=2097152
 self_join=0
 width=$(($time_series_A_length / $tile_n))

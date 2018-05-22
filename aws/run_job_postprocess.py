@@ -16,7 +16,7 @@ def try_cmd(cmd, err):
             break
 
 
-def merge(info,tile_height,tile_width):
+def merge(info,tile_height,tile_width,self_join):
     f = 'result_'+str(info[0])
     fzip = f+'.zip'
     cmd = 'unzip ' + fzip + ' -d ' + f
@@ -78,7 +78,7 @@ directory = sys.argv[2]
 tile_width = int(sys.argv[3])
 tile_height = int(sys.argv[4])
 matrix_profile_length = int(sys.argv[5])
-self_join = bool(sys.argv[6])
+self_join = bool(int(sys.argv[6]))
 write_s3 = False
 remove_s3_input = False
 if len(sys.argv) == 8:
@@ -134,7 +134,7 @@ while len(copy_commands) > 0:
             copy_commands.append(info)
             continue
 
-    merge(info,tile_height,tile_width)    
+    merge(info,tile_height,tile_width,self_join)    
 
 #Finish last jobs in the queue   
 while len(copy_procs) > 0:
@@ -157,7 +157,7 @@ while len(copy_procs) > 0:
             copy_procs.append([info, subprocess.Popen(info[3].split(), stdout=subprocess.PIPE)])
             continue
     
-    merge(info,tile_height,tile_width)
+    merge(info,tile_height,tile_width, self_join)
 
 
 mp = open('full_matrix_profile.txt', "w")

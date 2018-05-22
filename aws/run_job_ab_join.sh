@@ -78,7 +78,7 @@ then
     exit 1
 fi
 
-cmd="aws s3 cp s3://$bucket/$ts_A_dir/$file_B.zip $file_B_local.zip"
+cmd="aws s3 cp s3://$bucket/$ts_B_dir/$file_B.zip $file_B_local.zip"
 for i in 1 2 3; do $cmd && break || sleep 5; done
 
 if [ ! -f $file_B_local.zip ];
