@@ -57,47 +57,49 @@ echo "tile [$idx_row, $idx_col]"
 file_A=$prefix$idx_col
 file_B=$prefix$idx_row
 
-cmd="aws s3 cp s3://$bucket/$ts_A_dir/$file_A.zip $file_A.zip"
+file_A_local=$ts_A_dir$file_A
+file_B_local=$ts_B_dir$file_B
+cmd="aws s3 cp s3://$bucket/$ts_A_dir/$file_A.zip $file_A_local.zip"
 for i in 1 2 3; do $cmd && break || sleep 5; done
 
-if [ ! -f $file_A.zip ];
+if [ ! -f $file_A_local.zip ];
 then
     echo "Unable to pull input s3://$bucker/$file_A.zip from s3"
     exit 1
 fi
 
-unzip -d $file_A $file_A.zip
-rm $file_A.zip
-x_file_A_name=`ls $file_A`
+unzip -d $file_A_local $file_A_local.zip
+rm $file_A_local.zip
+x_file_A_name=`ls $file_A_local`
 
-if [ ! -f $file_A/$x_file_A_name ];
+if [ ! -f $file_A_local/$x_file_A_name ];
 then
-    echo "Unable to extract input from archive $file_A.zip"
+    echo "Unable to extract input from archive $file_A_local.zip"
     exit 1
 fi
 
-cmd="aws s3 cp s3://$bucket/$ts_A_dir/$file_B.zip $file_B.zip"
+cmd="aws s3 cp s3://$bucket/$ts_A_dir/$file_B.zip $file_B_local.zip"
 for i in 1 2 3; do $cmd && break || sleep 5; done
 
-if [ ! -f $file_B.zip ];
+if [ ! -f $file_B_local.zip ];
 then
     echo "Unable to pull input s3://$bucket/$file_B.zip from s3"
     exit 1
 fi
-unzip -d $file_B $file_B.zip
-rm $file_B.zip
-x_file_B_name=`ls $file_B`
+unzip -d $file_B_local $file_B_local.zip
+rm $file_B_local.zip
+x_file_B_name=`ls $file_B_local`
 
-if [ ! -f $file_B/$x_file_B_name ];
+if [ ! -f $file_B_local/$x_file_B_name ];
 then
-    echo "Unable to extract input from archive $file_A.zip"
+    echo "Unable to extract input from archive $file_B_local.zip"
     exit 1
 fi
 
-echo Running SCRIMP: $executable_path -s $max_tile_size $fp_64 -b "$file_B/$x_file_B_name" $window_len "$file_B/$x_file_B_name" mpA mpiA
-$executable_path -s $max_tile_size $fp_64 -b "$file_B/$x_file_B_name" $window_len "$file_B/$x_file_B_name" mpA mpiA
+echo Running SCRIMP: $executable_path -s $max_tile_size $fp_64 -b "$file_B_local/$x_file_B_name" $window_len "$file_A/$x_file_A_name" mpA mpiA
+$executable_path -s $max_tile_size $fp_64 -b "$file_B_local/$x_file_B_name" $window_len "$file_A/$x_file_A_name" mpA mpiA
     
-rm -rf $file_A $file_B
+rm -rf $file_A_local $file_B_local
 
 if [ ! -f mpA ] || [ ! -f mpiA ];
 then
