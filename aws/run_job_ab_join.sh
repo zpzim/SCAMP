@@ -25,7 +25,7 @@ num_tiles_wide=$7
 num_tiles_high=$8
 
 window_len=$9
-max_tile_size=$10
+max_tile_size=${10}
 fp_64=${11}
 executable_path=${12}
 full_join=0
