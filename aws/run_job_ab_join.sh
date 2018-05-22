@@ -96,8 +96,8 @@ then
     exit 1
 fi
 
-echo Running SCRIMP: $executable_path -s $max_tile_size $fp_64 -b "$file_B_local/$x_file_B_name" $window_len "$file_A/$x_file_A_name" mpA mpiA
-$executable_path -s $max_tile_size $fp_64 -b "$file_B_local/$x_file_B_name" $window_len "$file_A/$x_file_A_name" mpA mpiA
+echo Running SCRIMP: $executable_path -s $max_tile_size $fp_64 -b "$file_B_local/$x_file_B_name" $window_len "$file_A_local/$x_file_A_name" mpA mpiA
+$executable_path -s $max_tile_size $fp_64 -b "$file_B_local/$x_file_B_name" $window_len "$file_A_local/$x_file_A_name" mpA mpiA
     
 rm -rf $file_A_local $file_B_local
 
