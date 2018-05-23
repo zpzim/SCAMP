@@ -1,6 +1,6 @@
 # GPU-SCRIMP
 This is a GPU implementation of the SCRIMP algorithm. SCRIMP takes a time series as input and computes the matrix profile for a particular window size. You can read more at the [Matrix Profile Homepage](http://www.cs.ucr.edu/~eamonn/MatrixProfile.html)
-This is a more fleshed out implementation of [GPU-STOMP](https://github.com/STOMPSelfJoin) which has the following additional features:
+This is a more fleshed out implementation of [GPU-STOMP](https://github.com/zpzim/STOMPSelfJoin) which has the following additional features:
  * Tiling for large inputs 
  * Computation in fp32 or fp64 (fp32 is recommended for most datasets and is much faster)
  * fp32 version should be compatible with GeForce cards
@@ -8,7 +8,7 @@ This is a more fleshed out implementation of [GPU-STOMP](https://github.com/STOM
  * Distributable (we use AWS but other cloud platforms can work)
  * Some optimizations for Pascal.
 
-Note: for self-joins on small inputs (~2M or less) the features in this repository are probably overkill. You should probably use [GPU-STOMP](https://github.com/STOMPSelfJoin)
+Note: for self-joins on small inputs (~2M or less) the features in this repository are probably overkill. You should probably use [GPU-STOMP](https://github.com/zpzim/STOMPSelfJoin)
 
 # Environment
 This base project requires:
