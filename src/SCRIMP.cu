@@ -523,7 +523,7 @@ int main(int argc, char** argv) {
     bool self_join = true;
     size_t start_row = 0;
     size_t start_col = 0;
-    int max_tile_size = (1 << 21);
+    int max_tile_size = (1 << 20);
     int opt;
     vector<int> devices;
     vector<double> Ta_h, Tb_h;
