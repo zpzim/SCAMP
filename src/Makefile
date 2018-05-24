@@ -1,8 +1,8 @@
 #Make sure that this points to the cuda install you want to use
 CUDA_DIRECTORY=/usr/local/cuda-9.1
 CC=$(CUDA_DIRECTORY)/bin/nvcc
-ARCH=-gencode=arch=compute_60,code=sm_70 -gencode=arch=compute_60,code=sm_60
-CFLAGS=-c -dc -use_fast_math -lineinfo -O2 -std=c++11 $(ARCH) -I$(CUDA_DIRECTORY)/include
+ARCH=-gencode=arch=compute_60,code=sm_70 -gencode=arch=compute_60,code=sm_60 -gencode=arch=compute_50,code=sm_50 -gencode=arch=compute_37,code=sm_37 -gencode=arch=compute_35,code=sm_35
+CFLAGS=-c -use_fast_math -lineinfo -O2 -std=c++11 $(ARCH) -I$(CUDA_DIRECTORY)/include
 
 LDFLAGS=-L$(CUDA_DIRECTORY)/lib64 -lcufft
 SOURCES=fft_helper.cu tile.cu SCRIMP.cu
