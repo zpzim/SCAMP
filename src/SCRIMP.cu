@@ -306,8 +306,8 @@ SCRIMPError_t SCRIMP_Operation::do_tile(SCRIMPTileType t, int device, const vect
 
 void SCRIMP_Operation::get_tile_ordering() {
     tile_ordering.clear();
-	size_t num_tile_rows = ceil((size_B - m + 1) / (float) tile_n_y);
-	size_t num_tile_cols = ceil((size_A - m + 1) / (float) tile_n_x);
+    size_t num_tile_rows = ceil((size_B - m + 1) / (float) tile_n_y);
+    size_t num_tile_cols = ceil((size_A - m + 1) / (float) tile_n_x);
 
     if(self_join) {
         for(int offset = 0; offset < num_tile_rows - 1; ++offset) {
@@ -319,6 +319,31 @@ void SCRIMP_Operation::get_tile_ordering() {
         for(int i = 0; i < num_tile_rows; ++i) {
             tile_ordering.emplace_back(i, num_tile_cols - 1);
         }
+    } else if(full_join) {
+        for(int offset = 0; offset < num_tile_rows - 1; ++offset) {
+            for(int diag = 0; diag < num_tile_cols - 1 - offset; ++diag) {
+                tile_ordering.emplace_back(diag,diag + offset);
+            }
+            
+            if(offset != 0) {
+                for(int diag = 0; diag < num_tile_cols - 1 - offset; ++diag) {
+                    tile_ordering.emplace_back(diag+offset,diag); 
+                }
+            }
+        }
+        
+        // Add
+        tile_ordering.emplace_back(num_tile_rows - 1, num_tile_cols - 1);
+
+        for(int i = 0; i < num_tile_rows - 1; ++i) {
+            tile_ordering.emplace_back(i, num_tile_cols - 1);
+        }
+
+        for(int i = 0; i < num_tile_cols - 1; ++i) {
+            tile_ordering.emplace_back(num_tile_rows - 1, i);
+        }
+
+
     } else {
         for(int i = 0; i < num_tile_rows - 1; ++i) {
             for(int j = 0; j < num_tile_cols - 1; ++j) {
@@ -334,7 +359,6 @@ void SCRIMP_Operation::get_tile_ordering() {
         tile_ordering.emplace_back(num_tile_rows - 1, num_tile_cols - 1);
     }
     total_tiles = tile_ordering.size();
-
 }
 
 
