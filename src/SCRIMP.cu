@@ -319,44 +319,47 @@ void SCRIMP_Operation::get_tile_ordering() {
         for(int i = 0; i < num_tile_rows; ++i) {
             tile_ordering.emplace_back(i, num_tile_cols - 1);
         }
-    } else if(full_join) {
-        for(int offset = 0; offset < num_tile_rows - 1; ++offset) {
-            for(int diag = 0; diag < num_tile_cols - 1 - offset; ++diag) {
-                tile_ordering.emplace_back(diag,diag + offset);
-            }
-            
-            if(offset != 0) {
-                for(int diag = 0; diag < num_tile_cols - 1 - offset; ++diag) {
-                    tile_ordering.emplace_back(diag+offset,diag); 
-                }
+    } else {
+        // Add upper diagonals one at a time except for edge tiles
+        for(int diag = 0; diag < num_tile_cols - 1; ++diag) {
+            for(int offset = 0; offset + diag < num_tile_cols - 1 && offset < num_tile_rows - 1; ++offset) {
+                    tile_ordering.emplace_back(offset,diag + offset);
             }
         }
         
-        // Add
-        tile_ordering.emplace_back(num_tile_rows - 1, num_tile_cols - 1);
-
-        for(int i = 0; i < num_tile_rows - 1; ++i) {
-            tile_ordering.emplace_back(i, num_tile_cols - 1);
-        }
-
-        for(int i = 0; i < num_tile_cols - 1; ++i) {
-            tile_ordering.emplace_back(num_tile_rows - 1, i);
-        }
-
-
-    } else {
-        for(int i = 0; i < num_tile_rows - 1; ++i) {
-            for(int j = 0; j < num_tile_cols - 1; ++j) {
-                tile_ordering.emplace_back(i, j);
+        // Add lower diagonals one at a time except for edge tiles
+        for(int diag = 1; diag < num_tile_rows - 1; ++diag) {
+            for(int offset = 0; offset + diag < num_tile_rows - 1 && offset < num_tile_cols - 1; ++offset) {
+                tile_ordering.emplace_back(offset+diag,offset); 
             }
         }
-        for(int i = 0; i < num_tile_cols - 1; ++i) {
-            tile_ordering.emplace_back(num_tile_rows - 1, i);
-        }
-        for(int i = 0; i < num_tile_rows - 1; ++i) {
-            tile_ordering.emplace_back(i, num_tile_cols - 1);
-        } 
+    
+        // Add the corner edge tile
         tile_ordering.emplace_back(num_tile_rows - 1, num_tile_cols - 1);
+
+        int x = 0;
+        int y = 0;
+
+        // Alternate between adding final row and final column edge tiles
+        while (x < num_tile_cols - 1 && y < num_tile_rows - 1) {
+            tile_ordering.emplace_back(y, num_tile_cols - 1);
+            tile_ordering.emplace_back(num_tile_rows - 1, x);
+            ++x;
+            ++y;
+        }
+
+        // Add any remaining final row edge tiles
+        while (x < num_tile_cols - 1){
+            tile_ordering.emplace_back(num_tile_rows - 1,x);
+            ++x;
+        }
+    
+        // Add any remaining final column edge tiles
+        while (y < num_tile_rows - 1) {
+            tile_ordering.emplace_back(y, num_tile_cols - 1);
+            ++y;
+        }
+        
     }
     total_tiles = tile_ordering.size();
 }
