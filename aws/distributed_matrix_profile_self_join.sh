@@ -11,7 +11,7 @@ job_definition=${10}
 
 tile_n=$(($tile_size - $window_size + 1))
 time_series_n=$(($time_series_length - $window_size + 1))
-scrimp_tile_size=2097152
+scrimp_tile_size=1048576
 self_join=1
 width=$(($time_series_length / $tile_n))
 num_jobs=0
@@ -30,6 +30,11 @@ cmd="./run_job_preprocess.sh $input_bucket/$time_series_A_dir/$time_series_A_nam
 echo $cmd
 $cmd
 
+if [ $? != 0 ];
+    echo "Could not preprocess data and upload to s3"
+    exit 1
+fi
+
 
 #Requires CLI access to batch
 #Requires user specified job queue and job definition
@@ -39,7 +44,7 @@ X=`aws batch submit-job --job-name "scrimp-$time_series_A_name" \
                      --job-queue $job_queue \
                      --job-definition $job_definition \
                      --retry-strategy "attempts=2" \
-                     --parameters input_bucket=$input_bucket,output_bucket=$output_bucket,output_dir=$time_series_A_name$time_series_A_name,input_dir="split_$time_series_A_dir",num_tiles_wide="$width",tile_width=$tile_size,SCRIMP_Tile_size="$scrimp_tile_size",prefix="segment_",fp64_flag=$fp64 \
+                     --parameters input_bucket=$input_bucket,output_bucket=$output_bucket,output_dir=$time_series_A_name$time_series_A_name,input_dir="split_$time_series_A_dir",num_tiles_wide="$width",tile_width=$tile_size,SCRIMP_Tile_size="$scrimp_tile_size",prefix="segment_",fp64_flag=$fp64,window_size=$window_size \
                      --array-properties size=$num_jobs \
                      | python -c "import sys, json; print json.load(sys.stdin)['jobId']"`
 
