@@ -703,7 +703,7 @@ SCRIMPError_t kernel_ab_join_upper(const double *QT, const double *timeseries_A,
         int blocksz = get_blocksz(fp64, props);
         dim3 grid(1,1,1);
         dim3 block(blocksz, 1, 1);
-        int num_workers = ceil(tile_width / diags_per_thread);
+        int num_workers = ceil(tile_width / (float) diags_per_thread);
         grid.x = ceil(num_workers / (double) blocksz);
         if(full_join) {
             // We can have an exclusion zone if this ab join is part of a larger self-join
@@ -752,13 +752,13 @@ SCRIMPError_t kernel_ab_join_lower(const double *QT, const double *timeseries_A,
         int blocksz = get_blocksz(fp64, props);
         dim3 grid(1,1,1);
         dim3 block(blocksz, 1, 1);
-        int num_workers = ceil(tile_height / diags_per_thread);
+        int num_workers = ceil(tile_height / (float) diags_per_thread);
         grid.x = ceil(num_workers / (double) blocksz);
         if(full_join) {
             // We can have an exclusion zone if this ab join is part of a larger self-join
             int exclusion = window_size / 4;
             if(global_y + global_start_y + tile_height >= global_x + global_start_x && global_y + global_start_y + tile_height <= global_x + global_start_x + exclusion) {
-                num_workers = ceil((tile_height - exclusion) / diags_per_thread);
+                num_workers = ceil((tile_height - exclusion) / (float) diags_per_thread);
                 grid.x = ceil(num_workers / (double) blocksz);
             } else {
                 exclusion = 0;
@@ -844,10 +844,10 @@ SCRIMPError_t kernel_self_join_lower(const double *QT, const double *timeseries_
         dim3 grid(1,1,1);
         dim3 block(blocksz, 1, 1);
         if(global_y + tile_height >= global_x && global_y + tile_height <= global_x + exclusion) {
-            int num_workers = ceil((tile_height - exclusion) / diags_per_thread);
+            int num_workers = ceil((tile_height - exclusion) / (float) diags_per_thread);
             grid.x = ceil(num_workers / (double) blocksz);
         } else {
-            int num_workers = ceil(tile_height / diags_per_thread);
+            int num_workers = ceil(tile_height / (float) diags_per_thread);
             grid.x = ceil(num_workers / (double) blocksz);
             exclusion = 0;
         }
