@@ -715,7 +715,7 @@ SCRIMPError_t kernel_ab_join_upper(const double *QT, const double *timeseries_A,
                 exclusion = 0;
             }
             if(tile_width <= exclusion) {
-                return SCRIMP_NO_ERROR
+                return SCRIMP_NO_ERROR;
             }
             if(fp64) {
                 int smem = get_smem<double>(TILE_HEIGHT_DP, fp64, true, true, props);
