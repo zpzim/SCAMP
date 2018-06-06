@@ -714,6 +714,9 @@ SCRIMPError_t kernel_ab_join_upper(const double *QT, const double *timeseries_A,
             }else {
                 exclusion = 0;
             }
+            if(tile_width <= exclusion) {
+                return SCRIMP_NO_ERROR
+            }
             if(fp64) {
                 int smem = get_smem<double>(TILE_HEIGHT_DP, fp64, true, true, props);
                 do_tile<double, double2, double4, true, true, true, BLOCKSPERSM_AB, 4, TILE_HEIGHT_DP, BLOCKSZ_DP><<<grid,block,smem,s>>>(QT,df_A,df_B,dg_A,dg_B,norms_A,norms_B,profile_A, profile_B,
@@ -762,6 +765,9 @@ SCRIMPError_t kernel_ab_join_lower(const double *QT, const double *timeseries_A,
                 grid.x = ceil(num_workers / (double) blocksz);
             } else {
                 exclusion = 0;
+            }
+            if(tile_height <= exclusion) {
+                return SCRIMP_NO_ERROR;
             }
             if(fp64) {
                 int smem = get_smem<double>(TILE_HEIGHT_DP, fp64, true, true, props);

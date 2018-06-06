@@ -19,14 +19,16 @@ def try_cmd(cmd, err):
 def merge(info,tile_height,tile_width,self_join):
     f = 'result_'+str(info[0])
     fzip = f+'.tar.xz'
-    cmd = 'pxz --decompress' + fzip + '> ' + f + '.tar'
+    cmd = 'pxz --decompress ' + fzip
     try_cmd(cmd, "Could not unzip file") 
      
-    os.remove(fzip)
+    #os.remove(fzip)
     cmd = 'tar xvf ' + f + '.tar'
+    try_cmd(cmd, "Could not utar file") 
+
     start_row = int(info[1]) * tile_height
     start_col = int(info[2]) * tile_width
-    
+    f = 'result_'+str(info[1])+'_'+str(info[2])
     mp = open(f + '/mpA',"r")
     mpi = open(f + '/mpiA', "r")
     count = 0
@@ -71,7 +73,7 @@ def write_result_s3(out_s3_path):
 
 
 if len(sys.argv) < 7:
-    print "usage: s3_bucket s3_directory tile_width tile_height matrix_profile_length self_join_flag [Optional: out_s3_path]"
+    print("usage: s3_bucket s3_directory tile_width tile_height matrix_profile_length self_join_flag [Optional: out_s3_path]")
     exit(1)
 
 bucket = sys.argv[1]
@@ -107,8 +109,8 @@ fails = {}
 for i, line in enumerate(files):
     x = line.split('/')[1]
     print x
-    m = re.search('^\w+_(\d)_(\d)\.zip',x)
-    info = (i, m.group(1), m.group(2), 'aws s3 cp s3://'+bucket+'/'+directory+'/'+x+' result_'+str(i)+'.zip')
+    m = re.search('^\w+_(\d)_(\d)\.tar.xz',x)
+    info = (i, m.group(1), m.group(2), 'aws s3 cp s3://'+bucket+'/'+directory+'/'+x+' result_'+str(i)+'.tar.xz')
     copy_commands.append(info)
     fails[info] = 0 
 
