@@ -105,7 +105,7 @@ then
         echo "Unable to extract input from archive $file_A.zip"
         exit 1
     fi
-    echo Running SCRIMP: $executable_path -s $max_tile_size $fp_64 -f B -b "$file_B/$x_file_B_name" -r $g_start_row -c $g_start_c $window_len "$file_A/$x_file_A_name" mpA mpiA
+    echo Running SCRIMP: $executable_path -s $max_tile_size $fp_64 -f B -b "$file_B/$x_file_B_name" -r $g_start_row -c $g_start_col $window_len "$file_A/$x_file_A_name" mpA mpiA
     $executable_path -s $max_tile_size $fp_64 -f B -b "$file_B/$x_file_B_name" -r $g_start_row -c $g_start_col $window_len "$file_A/$x_file_A_name" mpA mpiA
     rm -rf $file_A $file_B
 
