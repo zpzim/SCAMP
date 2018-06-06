@@ -112,7 +112,7 @@ mkdir $result_file
 mv mpA $result_file
 mv mpiA $result_file
 tar cvf $result_file.tar $result_file
-pxz -D 32 -T 32 -cv $result_file.tar > $result_file.tar.xz
+pxz -D 32 -T 32 -0 -cv $result_file.tar > $result_file.tar.xz
 
 if [ ! -f $result_file.tar.xz ];
 then 

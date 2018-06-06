@@ -118,10 +118,10 @@ then
     mkdir $result_file
     mv mpA $result_file
     mv mpiA $result_file
-    mv mpB $result_file
-    mv mpiB $result_file
+    mv B_mp $result_file
+    mv B_mpi $result_file
     tar cvf $result_file.tar $result_file
-    pxz -D 32 -T 32 -cv $result_file.tar > $result_file.tar.xz
+    pxz -D 32 -T 32 -0 -cv $result_file.tar > $result_file.tar.xz
 else
     echo Running SCRIMP: $executable_path -s $max_tile_size $fp_64 $window_len "$file_A/$x_file_A_name" mpA mpiA
     $executable_path -s $max_tile_size $fp_64 $window_len "$file_A/$x_file_A_name" mpA mpiA
@@ -137,7 +137,7 @@ else
     mv mpA $result_file
     mv mpiA $result_file
     tar cvf $result_file.tar $result_file
-    pxz -D 32 -T 32 -cv $result_file.tar > $result_file.tar.xz
+    pxz -D 32 -T 32 -0 -cv $result_file.tar > $result_file.tar.xz
 fi
         
 
