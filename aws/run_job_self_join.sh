@@ -114,9 +114,14 @@ then
         echo "SCRIMP did not produce output files"
         exit 1
     fi
-    result_file=result_"$idx_row"_"$idx_col".zip
-    zip $result_file mpA mpiA B_mp B_mpi
-    rm mpA mpiA B_mp B_mpi
+    result_file=result_"$idx_row"_"$idx_col"
+    mkdir $result_file
+    mv mpA $result_file
+    mv mpiA $result_file
+    mv mpB $result_file
+    mv mpiB $result_file
+    tar cvf $result_file.tar $result_file
+    pxz -D 32 -T 32 -cv $result_file.tar > $result_file.tar.xz
 else
     echo Running SCRIMP: $executable_path -s $max_tile_size $fp_64 $window_len "$file_A/$x_file_A_name" mpA mpiA
     $executable_path -s $max_tile_size $fp_64 $window_len "$file_A/$x_file_A_name" mpA mpiA
@@ -127,22 +132,25 @@ else
         echo "SCRIMP did not produce output files"
         exit 1
     fi
-    result_file=result_"$idx_row"_"$idx_col".zip
-    zip $result_file mpA mpiA
-    rm mpA mpiA
+    result_file=result_"$idx_row"_"$idx_col"
+    mkdir $result_file
+    mv mpA $result_file
+    mv mpiA $result_file
+    tar cvf $result_file.tar $result_file
+    pxz -D 32 -T 32 -cv $result_file.tar > $result_file.tar.xz
 fi
         
 
 
-if [ ! -f $result_file ];
+if [ ! -f $result_file.tar.xz ];
 then 
     echo "Unable to zip output"
     exit 1
 fi
   
-cmd="aws s3 cp $result_file s3://$output_bucket/$output_dir/$result_file"
+cmd="aws s3 cp $result_file.tar.xz s3://$output_bucket/$output_dir/$result_file.tar.xz"
 for i in 1 2 3 4 5; do $cmd && break || sleep 5; done
 
-rm $result_file
+rm $result_file.tar.xz
 
 echo "Finished!"

@@ -18,11 +18,12 @@ def try_cmd(cmd, err):
 
 def merge(info,tile_height,tile_width,self_join):
     f = 'result_'+str(info[0])
-    fzip = f+'.zip'
-    cmd = 'unzip ' + fzip + ' -d ' + f
+    fzip = f+'.tar.xz'
+    cmd = 'pxz --decompress' + fzip + '> ' + f + '.tar'
     try_cmd(cmd, "Could not unzip file") 
-        
+     
     os.remove(fzip)
+    cmd = 'tar xvf ' + f + '.tar'
     start_row = int(info[1]) * tile_height
     start_col = int(info[2]) * tile_width
     

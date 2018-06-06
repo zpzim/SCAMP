@@ -15,6 +15,8 @@ RUN apt-get install -y \
     python-pip \
     python-virtualenv \
     zip \
-    unzip 
+    unzip \
+    pxz \
+    tar 
 
 RUN pip install awscli

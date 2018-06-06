@@ -107,19 +107,20 @@ then
     exit 1
 fi
 
-result_file=result_"$idx_row"_"$idx_col".zip
-zip $result_file mpA mpiA
-rm mpA mpiA
+result_file=result_"$idx_row"_"$idx_col"
+mkdir $result_file
+mv mpA $result_file
+mv mpiA $result_file
+tar cvf $result_file.tar $result_file
+pxz -D 32 -T 32 -cv $result_file.tar > $result_file.tar.xz
 
-if [ ! -f $result_file ];
+if [ ! -f $result_file.tar.xz ];
 then 
     echo "Unable to zip output"
     exit 1
 fi
   
-cmd="aws s3 cp $result_file s3://$output_bucket/$output_dir/$result_file"
+cmd="aws s3 cp $result_file.tar.xz s3://$output_bucket/$output_dir/$result_file.tar.xz"
 for i in 1 2 3 4 5; do $cmd && break || sleep 5; done
-
-rm $result_file
 
 echo "Finished!"
