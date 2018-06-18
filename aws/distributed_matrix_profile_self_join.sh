@@ -13,7 +13,8 @@ tile_n=$(($tile_size - $window_size + 1))
 time_series_n=$(($time_series_length - $window_size + 1))
 scrimp_tile_size=1048576
 self_join=1
-width=$(($time_series_length / $tile_n))
+width=`python -c "from math import ceil; print int(ceil($time_series_length / float($tile_n)))"`
+echo $width
 num_jobs=0
 
 for i in `seq 1 $width`;
@@ -23,19 +24,6 @@ done
 
 echo $num_jobs
 
-
-#Split up the input and write to s3 requires CLI access to s3
-
-cmd="./run_job_preprocess.sh $input_bucket/$time_series_A_dir/$time_series_A_name.zip $input_bucket split_$time_series_A_dir $window_size $tile_size"
-echo $cmd
-$cmd
-
-if [ $? != 0 ];
-    echo "Could not preprocess data and upload to s3"
-    exit 1
-fi
-
-
 #Requires CLI access to batch
 #Requires user specified job queue and job definition
 #Submit scrimp job, see documentation for instructions on how to set up
@@ -43,10 +31,11 @@ fi
 X=`aws batch submit-job --job-name "scrimp-$time_series_A_name" \
                      --job-queue $job_queue \
                      --job-definition $job_definition \
-                     --retry-strategy "attempts=2" \
+                     --retry-strategy "attempts=3" \
                      --parameters input_bucket=$input_bucket,output_bucket=$output_bucket,output_dir=$time_series_A_name$time_series_A_name,input_dir="split_$time_series_A_dir",num_tiles_wide="$width",tile_width=$tile_size,SCRIMP_Tile_size="$scrimp_tile_size",prefix="segment_",fp64_flag=$fp64,window_size=$window_size \
                      --array-properties size=$num_jobs \
-                     | python -c "import sys, json; print json.load(sys.stdin)['jobId']"`
+		     --output 'json' \
+		     --query 'jobId'`
 
 if [ $? -ne 0 ];
 then
@@ -54,13 +43,16 @@ then
     exit 1
 fi
 
+temp="${X%\"}"
+X="${temp#\"}"
 
+echo Got Job $X
 #wait for job to finish
 Y="UNKNOWN"
 while [ "$Y" != "SUCCEEDED" ] && [ "$Y" != "FAILED" ];
 do
     sleep 20s
-    Z=`aws batch describe-jobs --jobs $X`
+    Z=`aws batch describe-jobs --jobs $X --output "json"`
     Y=`echo $Z | python -c "import sys, json; print json.load(sys.stdin)['jobs'][0]['status']"`
     W=`echo $Z | python -c "import sys, json; print json.load(sys.stdin)['jobs'][0]['arrayProperties']['statusSummary']"`
     echo "Current Job State: $Y"

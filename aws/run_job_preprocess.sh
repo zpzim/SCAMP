@@ -17,7 +17,7 @@ inputfile=$1
 
 mkdir -p splitfiles
 
-cmd="python split_ts.py input/$inputfile $tile_size $window_len splitfiles"
+cmd="python split_ts.py $inputfile $tile_size $window_len splitfiles"
 echo $cmd
 
 $cmd
@@ -50,6 +50,7 @@ cmd="aws s3 cp --recursive $output_s3_dir s3://$output_s3_bucket/$output_s3_dir/
 for i in 1 2 3; do $cmd && break || sleep 5; done
 
 if [ $? != 0 ];
+then
     echo "Could not upload split input to s3"
     exit 1
 fi
