@@ -1,4 +1,5 @@
 import os, shutil,re,sys,subprocess
+import math
 import numpy as np
 import pandas as pd
 
@@ -31,11 +32,16 @@ def merge(info,tile_height,tile_width,self_join):
 
     start_row = int(info[1]) * tile_height
     start_col = int(info[2]) * tile_width
+    
     f = 'result_'+str(info[1])+'_'+str(info[2])
+    print("Merging ", f)
     if f+'.tar.xz' in a_needed:
         mp = pd.read_csv(f + '/mpA', header=None).values[:,0]
         mpi = pd.read_csv(f + '/mpiA', header=None).values[:,0]
         start = start_col - true_start_col
+        print("Merging A from ", f)
+        print("Merge columns begin at position: ", start)
+        print("Merge rows begin at position: ", start_row - true_start_row)
         c = matrix_profile[start:start+len(mp)] > mp
         comp = np.nonzero(c)[0]
         matrix_profile_index[comp + start] = mpi[comp] + start_row - true_start_row
@@ -44,10 +50,13 @@ def merge(info,tile_height,tile_width,self_join):
     if info[1] != info[2] and self_join and f+'.tar.xz' in b_needed:
         mp = pd.read_csv(f + '/B_mp', header=None).values[:,0]
         mpi = pd.read_csv(f + '/B_mpi', header=None).values[:,0]
-        start = start_row - true_start_row
+        start = start_row - true_start_col
+        print("Merging B from ", f)
+        print("Merge columns begin at position: ", start)
+        print("Merge rows begin at position: ", start_col - true_start_row)
         c = matrix_profile[start:start+len(mp)] > mp
         comp = np.nonzero(c)[0]
-        matrix_profile_index[comp + start] = mpi[comp] + start_col - true_start_col
+        matrix_profile_index[comp + start] = mpi[comp] + start_col - true_start_row
         matrix_profile[comp+start] = mp[comp]
     
     shutil.rmtree(f)
@@ -95,11 +104,45 @@ def consumer(q,tile_height,tile_width,self_join):
             break;
         else:
             merge(f.result(),tile_height,tile_width,self_join)
+#TODO assumes self join
+def get_tiles_from_range(tile_width, num_tiles_wide, a_begin, a_end, b_begin, b_end):
+    a_all_but_last_start = (num_tiles_wide - 1) * tile_width    
+    a_tile_begin = 0
+    b_tile_begin = 0
+    a_tile_end = 0
+    b_tile_end = 0 
+    if a_begin >= a_all_but_last_start:
+        a_tile_begin = num_tiles_wide - 1
+    else:
+        a_tile_begin = a_begin // tile_width
+
+    if a_end >= a_all_but_last_start:
+        a_tile_end = num_tiles_wide - 1
+    else:
+        a_tile_end = a_end // tile_width
+
+    if b_begin >= a_all_but_last_start:
+        b_tile_begin = num_tiles_wide - 1
+    else:
+        b_tile_begin = b_begin // tile_width
+    
+    if b_end >= a_all_but_last_start:
+        b_tile_end = num_tiles_wide - 1
+    else:
+        b_tile_end = b_end // tile_width
+    
+    tiles = []
+    for i in range(a_tile_begin, a_tile_end+1):
+        for j in range(b_tile_begin, b_tile_end+1):    
+            tiles.append("result_"+str(j)+"_"+str(i))
+
+    return tiles
+
 NUM_CPUS = 8
 NUM_THREADS = 1
 MAX_QUEUE_SIZE = 15
-if len(sys.argv) < 7:
-    print("usage: s3_bucket s3_directory tile_width tile_height matrix_profile_length self_join_flag [List of partial tiles to merge]")
+if len(sys.argv) < 10:
+    print("usage: s3_bucket s3_directory tile_width tile_height matrix_profile_length self_join_flag a_range_begin a_range_end b_range_begin b_range_end")
     exit(1)
 
 bucket = sys.argv[1]
@@ -111,31 +154,66 @@ self_join = bool(int(sys.argv[6]))
 write_s3 = False
 remove_s3_input = False
 true_mp_length = matrix_profile_length
-if len(sys.argv) > 7:
-    min_row = 99999
-    min_col = 99999
-    max_col = 0
-    for f in sys.argv[7:]:
-        m = re.search('^\w+_(\d+)_(\d+)',f)
-        if self_join and int(m.group(2)) < int(m.group(1)):
-            min_row = min(int(m.group(1)), min_row)
-            f_flip = 'result_'+m.group(2)+'_'+m.group(1)+'.tar.xz'
-            tiles_to_get.add(f_flip)
-            b_needed.add(f_flip)
-        else:
-            min_row = min(int(m.group(1)), min_row)
-            min_col = min(int(m.group(2)), min_col)
-            max_col = max(int(m.group(2)), max_col)
-            tiles_to_get.add(f+'.tar.xz')
-            a_needed.add(f+'.tar.xz')
-    if min_row is 99999:
-        min_row = 0
-    if min_col is 99999:
-        min_col = 0
-    true_start_row = min_row * tile_height
-    true_start_col = min_col * tile_width
-    true_mp_length = (max_col + 1) * tile_width - true_start_col
+output_a_begin = int(sys.argv[7])
+output_a_end = int(sys.argv[8])
+output_b_begin = int(sys.argv[9])
+output_b_end = int(sys.argv[10])
+output_contains_last_tile_col = False 
+output_contains_last_tile_row = False 
 
+num_tiles_wide = math.ceil(matrix_profile_length / tile_width)
+last_tile_width = matrix_profile_length - ((num_tiles_wide - 1) * tile_width)
+if last_tile_width < 0.5 * tile_width:
+    last_tile_width += tile_width
+    num_tiles_wide -= 1
+
+print("Total tiles wide: ", num_tiles_wide)
+print("Last tile width: ", last_tile_width)
+
+tiles_to_use = get_tiles_from_range(tile_width, num_tiles_wide, int(sys.argv[7]),int(sys.argv[8]), int(sys.argv[9]), int(sys.argv[10]))
+print("Using tiles: ", tiles_to_use)
+
+min_row = 99999
+min_col = 99999
+max_col = 0
+max_row = 0
+
+
+for f in tiles_to_use:
+    m = re.search('^\w+_(\d+)_(\d+)',f)
+    min_row = min(int(m.group(1)), min_row)
+    min_col = min(int(m.group(2)), min_col)
+    max_col = max(int(m.group(2)), max_col) 
+    max_row = max(int(m.group(1)), max_row) 
+    if self_join and int(m.group(2)) < int(m.group(1)):
+        f_flip = 'result_'+m.group(2)+'_'+m.group(1)+'.tar.xz'
+        tiles_to_get.add(f_flip)
+        b_needed.add(f_flip)
+    else:
+        tiles_to_get.add(f+'.tar.xz')
+        a_needed.add(f+'.tar.xz')
+if min_row is 99999:
+    min_row = 0
+if min_col is 99999:
+    min_col = 0
+
+true_start_row = min_row * tile_height
+true_start_col = min_col * tile_width
+
+if max_col == num_tiles_wide - 1:
+    true_mp_length = (max_col - min_col) * tile_width + last_tile_width
+else:
+    true_mp_length = (max_col - min_col + 1) * tile_width
+
+#TODO:assumes self join
+if max_row == num_tiles_wide - 1:    
+    true_mp_height = (max_row - min_row) * tile_height + last_tile_width
+else:
+    true_mp_height = (max_row - min_row + 1) * tile_height
+
+print("Join start column: ",  true_start_col, " Join start row: ", true_start_row)
+print("Join length: ", true_mp_length, " Join height: ", true_mp_height)
+print("Join end column: ", true_start_col + true_mp_length, " Join end row: ",true_start_row + true_mp_height)
 cmd = 'aws s3 ls --recursive s3://'+bucket+'/'+directory
 process = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
 output, error = process.communicate()
@@ -164,11 +242,11 @@ sumlock = threading.Lock()
 result_queue = queue.Queue(MAX_QUEUE_SIZE)
 total = 0
 NUM_TO_DO = len(copy_commands)
-
+consumer_f = []
 with cf.ThreadPoolExecutor(NUM_THREADS) as tp:
     # start the threads running `merge`
     for _ in range(NUM_THREADS):
-        tp.submit(consumer, result_queue, tile_height, tile_width, self_join)
+        consumer_f.append(tp.submit(consumer, result_queue, tile_height, tile_width, self_join))
     # start the worker processes
     with cf.ProcessPoolExecutor(NUM_CPUS) as pp:
         for i in copy_commands:
@@ -179,6 +257,7 @@ with cf.ThreadPoolExecutor(NUM_THREADS) as tp:
     for _ in range(NUM_THREADS):
         result_queue.put(None)
 
+print(consumer_f[0].result())
 mp = open('full_matrix_profile.txt', "w")
 mpi = open('full_matrix_profile_index.txt', "w")
 
