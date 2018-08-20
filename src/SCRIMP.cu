@@ -12,6 +12,7 @@
 #include <thrust/extrema.h>
 #include <unistd.h>
 #include "SCRIMP.h"
+#include "common.h"
 #include "tile.h"
 
 using std::vector;
@@ -294,7 +295,7 @@ SCRIMPError_t SCRIMP_Operation::do_tile(SCRIMPTileType t, int device, const vect
         SCRIMP_Tile tile(t, T_A_dev[device], T_B_dev[device], df_A[device], df_B[device], dg_A[device], dg_B[device],
                          norms_A[device], norms_B[device], means_A[device], means_B[device],  QT_dev[device],
                          profile_A_merged[device], profile_B_merged[device], start_x, start_y, tile_start_col_position,
-                         tile_start_row_position, n_y[device], n_x[device], m, scratch[device], dev_props.at(device), compute_fp64);
+                         tile_start_row_position, n_y[device], n_x[device], m, scratch[device], dev_props.at(device), fp_type);
         cudaEventRecord(clocks_start[device], streams.at(device));
         gpuErrchk(cudaPeekAtLastError());
         err = tile.execute(streams.at(device));
@@ -377,18 +378,22 @@ bool SCRIMP_Operation::pick_and_start_next_tile(int dev, const vector<double> &T
     pos_y[dev] = tile_row * tile_n_y;
     n_x[dev] = min(tile_size, size_A - pos_x[dev]);
     n_y[dev] = min(tile_size, size_B - pos_y[dev]);
+    SCRIMPError_t err;
     if(self_join) {
         if(tile_row == tile_col) {
             //partial tile on diagonal
-            do_tile(SELF_JOIN_UPPER_TRIANGULAR, dev, Ta_h, Tb_h, profile_h, profile_idx_h, profile_B_h, profile_idx_B_h);
+            err = do_tile(SELF_JOIN_UPPER_TRIANGULAR, dev, Ta_h, Tb_h, profile_h, profile_idx_h, profile_B_h, profile_idx_B_h);
         } else {
             // full tile
-            do_tile(SELF_JOIN_FULL_TILE, dev, Ta_h, Tb_h, profile_h, profile_idx_h, profile_B_h, profile_idx_B_h);
+            err = do_tile(SELF_JOIN_FULL_TILE, dev, Ta_h, Tb_h, profile_h, profile_idx_h, profile_B_h, profile_idx_B_h);
         }
     } else if(full_join) {
-        do_tile(AB_FULL_JOIN_FULL_TILE, dev, Ta_h, Tb_h, profile_h, profile_idx_h, profile_B_h, profile_idx_B_h);
+        err = do_tile(AB_FULL_JOIN_FULL_TILE, dev, Ta_h, Tb_h, profile_h, profile_idx_h, profile_B_h, profile_idx_B_h);
     } else {
-        do_tile(AB_JOIN_FULL_TILE, dev, Ta_h, Tb_h, profile_h, profile_idx_h, profile_B_h, profile_idx_B_h);
+        err = do_tile(AB_JOIN_FULL_TILE, dev, Ta_h, Tb_h, profile_h, profile_idx_h, profile_B_h, profile_idx_B_h);
+    }
+    if (err != SCRIMP_NO_ERROR) {
+        printf("ERROR %d executing tile. \n", err);
     }
     tile_ordering.pop_front();
     if(tile_ordering.empty()){
@@ -496,7 +501,7 @@ SCRIMPError_t SCRIMP_Operation::do_join(const vector<double> &Ta_host, const vec
 
 void do_SCRIMP(const vector<double> &Ta_h, const vector<double> &Tb_h, vector<float> &profile_h, vector<unsigned int> &profile_idx_h,
                vector<float> &profile_B_h, vector<unsigned int> &profile_idx_B_h, const unsigned int m, const size_t max_tile_size, 
-               const vector<int> &devices, bool self_join, bool fp64, bool full_join, size_t start_row, size_t start_col)
+               const vector<int> &devices, bool self_join, FPtype t, bool full_join, size_t start_row, size_t start_col)
 {
     if(devices.empty()) {
         printf("Error: no gpu provided\n");
@@ -504,7 +509,7 @@ void do_SCRIMP(const vector<double> &Ta_h, const vector<double> &Tb_h, vector<fl
     }
     // Allocate and initialize memory
     clock_t start, end;
-    SCRIMP_Operation op(Ta_h.size(), Tb_h.size(), m, max_tile_size, devices, self_join, fp64, full_join, start_row, start_col);
+    SCRIMP_Operation op(Ta_h.size(), Tb_h.size(), m, max_tile_size, devices, self_join, t, full_join, start_row, start_col);
     op.init();
     gpuErrchk(cudaPeekAtLastError());
     start = clock();
@@ -543,9 +548,7 @@ void readFile(const char* filename, vector<DTYPE>& v, const char *format_str)
 }
 
 int main(int argc, char** argv) {
-
-
-    bool fp_64 = false;
+    SCRIMP::FPtype t = SCRIMP::FP_SINGLE;
     bool full_join = false;
     bool self_join = true;
     size_t start_row = 0;
@@ -555,9 +558,10 @@ int main(int argc, char** argv) {
     vector<int> devices;
     vector<double> Ta_h, Tb_h;
     char *output_B_prefix, *input_B;
-    while ((opt = getopt(argc, argv, "df:r:c:s:b:g:")) != -1) {
+    while ((opt = getopt(argc, argv, "mdf:r:c:s:b:g:")) != -1) {
         switch (opt) {
-        case 'd': fp_64 = true; break;
+        case 'd': t = SCRIMP::FP_DOUBLE; break;
+        case 'm': t = SCRIMP::FP_MIXED; break;
         case 'f': output_B_prefix = optarg; full_join = true; break;
         case 'r': start_row = atoi(optarg); break;
         case 'c': start_col = atoi(optarg); break;
@@ -614,7 +618,7 @@ int main(int argc, char** argv) {
     }
 
     printf("Starting SCRIMP\n");     
-    SCRIMP::do_SCRIMP(Ta_h, Tb_h, profile, profile_idx, profile_B, profile_idx_B, window_size, max_tile_size, devices, self_join, fp_64, full_join, start_row, start_col);
+    SCRIMP::do_SCRIMP(Ta_h, Tb_h, profile, profile_idx, profile_B, profile_idx_B, window_size, max_tile_size, devices, self_join, t, full_join, start_row, start_col);
     
     printf("Now writing result to files\n");
     FILE* f1 = fopen( argv[index++], "w");

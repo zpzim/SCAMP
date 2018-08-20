@@ -32,7 +32,7 @@ private:
     size_t tile_width;
     const size_t window_size;
     bool full_join;
-    const bool fp64;
+    const FPtype fp_type;
     const cudaDeviceProp props;
 
     SCRIMPError_t do_self_join_full(cudaStream_t s);
@@ -48,12 +48,12 @@ public:
                 unsigned long long int *profileA, unsigned long long int *profileB,
                 size_t start_A, size_t start_B, size_t g_start_A, size_t g_start_B,
                 size_t height, size_t width, size_t m,
-                fft_precompute_helper *scratch, const cudaDeviceProp &prop, bool use_double)
+                fft_precompute_helper *scratch, const cudaDeviceProp &prop, FPtype fp_t)
                 : type(t), timeseries_A(ts_A), timeseries_B(ts_B), df_A(dfA), df_B(dfB), means_A(meansA), means_B(meansB),
                   dg_A(dgA), dg_B(dgB), norms_A(normA), norms_B(normB), QT_scratch(QT), profile_A(profileA),
                   profile_B(profileB), tile_start_A(start_A), tile_start_B(start_B), global_start_A(g_start_A),
                   global_start_B(g_start_B), tile_height(height), tile_width(width), fft_info(scratch),
-                  window_size(m), props(prop), fp64(use_double), full_join(false) {}
+                  window_size(m), props(prop), fp_type(fp_t), full_join(false) {}
     SCRIMPError_t execute(cudaStream_t s) {
         SCRIMPError_t error;
         switch (type) {

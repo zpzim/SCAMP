@@ -2,7 +2,7 @@
 This is a GPU implementation of the SCAMP algorithm. SCAMP takes a time series as input and computes the matrix profile for a particular window size. You can read more at the [Matrix Profile Homepage](http://www.cs.ucr.edu/~eamonn/MatrixProfile.html)
 This is a more fleshed out implementation of [GPU-STOMP](https://github.com/zpzim/STOMPSelfJoin) which has the following additional features:
  * Tiling for large inputs 
- * Computation in fp32 or fp64 (fp32 is recommended for most datasets and is much faster)
+ * Computation in fp32, mixed fp32/fp64, or fp64 (mixed is recommended for most datasets)
  * fp32 version should be compatible with GeForce cards
  * AB joins (you can produce the matrix profile from 2 different time series)
  * Distributable (we use AWS but other cloud platforms can work)
@@ -28,6 +28,7 @@ This base project requires:
     * "-b [input B name]": allows a second input file which acts as the second time series for an AB join. An AB join compares every subsequence in input A with every subsequence in input B, the length of the matrix profile produced by this operation is always determined by input A, but the matrix profile index's values will reference subsequences in input B.
     * "-s [max tile size]": allows you to specify the max tile size used by the SCAMP tile scheme. By default this is set to 2M, but you can adjust this as desired. Note that a tile size smaller than ~1M will likely fail to saturate the compute resources of newer GPUs
     * "-d": forces SCAMP to compute the result in double precision. This is about 2x slower than single precision. This is uncessessary for most datasets, but if your input massively fluctuates in a wide range you may need it, see test/SampleInput/earthquake_precision_test.txt for an example of a dataset that fails in single precision.
+    * "-m": forces SCAMP to compute the result in mixed precision. This is slower than single precision, and faster than double precision.
     * "-g [device number to use]": allows you to specify which gpus to use on the machine, by default we try to use all of them. The device numbers must be valid cuda devices on your system. You can chain these to add more gpus. Example: -g 0 -g 1 will use gpu 0 and 1 on the system.
     * "-f [secondary output prefix]": only set this in a distributed environment. This forces AB joins to output a second matrix profile and index file which correspond to the reverse "BA" join. This is used to compute independant pieces of a large self-join that is distributed in separate jobs
     * "-r [global tile row]" : allows you to specify the tile row where this join starts, assuming that it is part of some larger join, this is required if you use -f
