@@ -633,13 +633,13 @@ SCRIMPError_t kernel_ab_join_upper(const double *QT, const double *timeseries_A,
 
 SCRIMPError_t kernel_ab_join_lower(const double *QT, const double *timeseries_A, const double *timeseries_B, const double *df_A, const double *df_B, const double *dg_A, const double *dg_B, const double *norms_A, const double *norms_B, unsigned long long int *profile_A, unsigned long long int *profile_B, size_t window_size, size_t tile_width, size_t tile_height, size_t global_x, size_t global_y, size_t global_start_x, size_t global_start_y, const cudaDeviceProp &props, FPtype t, bool full_join, cudaStream_t s)
 {
-/*
-        int diags_per_thread = get_diags_per_thread(fp64, props);
-        int blocksz = get_blocksz(fp64, props);
+        int diags_per_thread = get_diags_per_thread(t, props);
+        int blocksz = get_blocksz(t, props);
         dim3 grid(1,1,1);
         dim3 block(blocksz, 1, 1);
         int num_workers = ceil(tile_height / (float) diags_per_thread);
         grid.x = ceil(num_workers / (double) blocksz);
+        int smem;
         if(full_join) {
             // We can have an exclusion zone if this ab join is part of a larger self-join
             int exclusion = window_size / 4;
@@ -652,41 +652,45 @@ SCRIMPError_t kernel_ab_join_lower(const double *QT, const double *timeseries_A,
             if(tile_height <= exclusion) {
                 return SCRIMP_NO_ERROR;
             }
-            if(fp64) {
-                int smem = get_smem<double>(TILE_HEIGHT_DP, fp64, true, true, props);
-                do_tile<double, double2, double4, true, true, true, BLOCKSPERSM_AB, 4, TILE_HEIGHT_DP, BLOCKSZ_DP><<<grid,block,smem,s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A,
-                                                   window_size, tile_height, tile_width, global_y, global_x,
-                                                   0,exclusion);
-
-            } else {
-                int smem = get_smem<float>(TILE_HEIGHT, fp64, true, true, props);
-                do_tile<float, float2, float4, false, true, true, BLOCKSPERSM_AB, 4, TILE_HEIGHT, BLOCKSZ_SP><<<grid,block,smem,s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A,
-                                                   window_size, tile_height, tile_width, global_y, global_x,
-                                                   0,exclusion);
+            switch(t) {
+            case FP_DOUBLE:
+                smem = get_smem<double>(TILE_HEIGHT_DP, t, true, true, props);
+                do_tile<double, double2, double4, double, false, true, true, BLOCKSPERSM_AB, TILE_HEIGHT_DP, BLOCKSZ_DP><<<grid,block,smem,s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A, window_size, tile_height, tile_width, global_y, global_x, 0, exclusion);
+                break;
+            case FP_MIXED:
+                smem = get_smem<float>(TILE_HEIGHT, t, true, true, props);
+                do_tile<float, float2, float4, double, true, true, true, BLOCKSPERSM_AB, TILE_HEIGHT, BLOCKSZ_SP><<<grid,block,smem,s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A, window_size, tile_height, tile_width, global_y, global_x, 0, exclusion);
+                break;
+            case FP_SINGLE:
+                smem = get_smem<float>(TILE_HEIGHT, t, true, true, props);
+                do_tile<float, float2, float4, float, false, true, true, BLOCKSPERSM_AB, TILE_HEIGHT, BLOCKSZ_SP><<<grid,block,smem,s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A, window_size, tile_height, tile_width, global_y, global_x, 0, exclusion);
+                break;
+            default:
+                return SCRIMP_CUDA_ERROR;
             }
         } else {
-            if(fp64) {
-                int smem = get_smem<double>(TILE_HEIGHT_DP, fp64, false, false, props);
-                do_tile<double, double2, double4, true, false, false, BLOCKSPERSM_AB, 4, TILE_HEIGHT_DP, BLOCKSZ_DP><<<grid,block,smem,s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A,
-                                                   window_size, tile_height, tile_width, global_y, global_x,
-                                                   0,0);
-
-            } else {
-                int smem = get_smem<float>(TILE_HEIGHT, fp64, false, false, props);
-                do_tile<float, float2, float4, false, false, false, BLOCKSPERSM_AB, 4, TILE_HEIGHT, BLOCKSZ_SP><<<grid,block,smem,s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A,
-                                                   window_size, tile_height, tile_width, global_y, global_x,
-                                                   0,0);
+            switch(t) {
+            case FP_DOUBLE:
+                smem = get_smem<double>(TILE_HEIGHT_DP, t, false, false, props);
+                do_tile<double, double2, double4, double, false, false, false, BLOCKSPERSM_AB, TILE_HEIGHT_DP, BLOCKSZ_DP><<<grid,block,smem,s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A, window_size, tile_height, tile_width, global_y, global_x, 0, 0);
+                break;
+            case FP_MIXED:
+                smem = get_smem<float>(TILE_HEIGHT, t, false, false, props);
+                do_tile<float, float2, float4, double, true, false, false, BLOCKSPERSM_AB, TILE_HEIGHT, BLOCKSZ_SP><<<grid,block,smem,s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A, window_size, tile_height, tile_width, global_y, global_x, 0, 0);
+                break;
+            case FP_SINGLE:
+                smem = get_smem<float>(TILE_HEIGHT, t, false, false, props);
+                do_tile<float, float2, float4, float, false, false, false, BLOCKSPERSM_AB, TILE_HEIGHT, BLOCKSZ_SP><<<grid,block,smem,s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A, window_size, tile_height, tile_width, global_y, global_x, 0, 0);
+                break;
+            default:
+                return SCRIMP_CUDA_ERROR;
             }
         }
         cudaError_t err = cudaPeekAtLastError();
         if(err != cudaSuccess) {
             return SCRIMP_CUDA_ERROR;
         }
-*/  
-      return SCRIMP_NO_ERROR;
-
-
-
+        return SCRIMP_NO_ERROR;
 }
 
 SCRIMPError_t kernel_self_join_upper(const double *QT, const double *timeseries_A, const double *timeseries_B, const double *df_A, const double *df_B, const double *dg_A, const double *dg_B, const double *norms_A, const double *norms_B, unsigned long long int *profile_A, unsigned long long int *profile_B, size_t window_size, size_t tile_width, size_t tile_height, size_t global_x, size_t global_y, const cudaDeviceProp &props, FPtype t, cudaStream_t s)
