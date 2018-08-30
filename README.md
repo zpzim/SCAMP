@@ -1,14 +1,14 @@
 # SCAMP: SCAlable Matrix Profile
 This is a GPU implementation of the SCAMP algorithm. SCAMP takes a time series as input and computes the matrix profile for a particular window size. You can read more at the [Matrix Profile Homepage](http://www.cs.ucr.edu/~eamonn/MatrixProfile.html)
-This is a more fleshed out implementation of [GPU-STOMP](https://github.com/zpzim/STOMPSelfJoin) which has the following additional features:
+This is a much improved framework over [GPU-STOMP](https://github.com/zpzim/STOMPSelfJoin) which has the following additional features:
  * Tiling for large inputs 
- * Computation in fp32, mixed fp32/fp64, or fp64 (mixed is recommended for most datasets)
+ * Computation in fp32, mixed fp32/fp64, or fp64 (mixed is recommended for most datasets, but if it doesn't work try double precision)
  * fp32 version should be compatible with GeForce cards
  * AB joins (you can produce the matrix profile from 2 different time series)
- * Distributable (we use AWS but other cloud platforms can work)
+ * Distributable (we use AWS but other cloud platforms can work) with verified scalability to billions of datapoints
  * Some optimizations for architectures other than Volta
 
-Note: for self-joins on small inputs (~2M or less) the features in this repository are probably overkill. You should probably use [GPU-STOMP](https://github.com/zpzim/STOMPSelfJoin)
+Note: for self-joins on small inputs (~2M or less) the features in this repository are probably overkill. You can use [GPU-STOMP](https://github.com/zpzim/STOMPSelfJoin) with little performance difference.
 
 # Environment
 This base project requires:
@@ -37,5 +37,13 @@ This base project requires:
 
 # AWS operation
 * This framework can be used with [AWS Batch](https://aws.amazon.com/batch) to distribute the computation to a cluster of p2 or p3 instances
-* Information forthcoming
+* Information forthcoming, but the scripts we used to scale out the algorithm are included in the aws/ directory
+
+# TODOs (Contributors welcome):
+* Cleanup codebase, add linting and additional compile-time code health checks (maybe via clang-tidy)
+* Get better test infrastructure in place, add automated unit/integration testing.
+* Add an optimized CPU code path to this framework, we have optimized code [here](https://github.com/kavj/matrixProfile)
+* Add documentation for and improve the general usability of the distributed portion of the framework, ease of use and portability would be great
+
+
 
