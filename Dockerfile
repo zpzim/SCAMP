@@ -7,7 +7,7 @@ ADD aws/split_ts.py .
 ADD aws/run_job_postprocess.py .
 ADD aws/run_tile_self_join.sh .
 
-ADD src/SCRIMP-GPU .
+ADD src/SCAMP .
 
 RUN apt-get update && \
     apt-get upgrade -y

@@ -2,7 +2,7 @@
 
 if [ $# != 5 ];
 then
-    echo "Usage: <input time series file path> <output s3 bucket> <output s3 dir> <SCRIMP window length> <SCRIMP meta tile size>"
+    echo "Usage: <input time series file path> <output s3 bucket> <output s3 dir> <SCAMP window length> <SCAMP meta tile size>"
     exit 1
 fi
 

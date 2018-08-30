@@ -23,7 +23,7 @@ This base project requires:
     * "-gencode=arch=compute_code,code=sm_code" where code corresponds to the compute capability or arch you wish to add.
   * Make sure CUDA_DIRECTORY corresponds to the location where cuda is installed on your system. This is usually `/usr/local/cuda-(VERSION)/` on linux
 * `(cd src && make)`
-* `src/SCRIMP-GPU window_size input_A_file_path output_matrix_profile_path output_index_path`
+* `src/SCAMP window_size input_A_file_path output_matrix_profile_path output_index_path`
   * Optional Arguments:
     * "-b [input B name]": allows a second input file which acts as the second time series for an AB join. An AB join compares every subsequence in input A with every subsequence in input B, the length of the matrix profile produced by this operation is always determined by input A, but the matrix profile index's values will reference subsequences in input B.
     * "-s [max tile size]": allows you to specify the max tile size used by the SCAMP tile scheme. By default this is set to 2M, but you can adjust this as desired. Note that a tile size smaller than ~1M will likely fail to saturate the compute resources of newer GPUs

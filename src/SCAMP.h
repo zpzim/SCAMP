@@ -9,7 +9,7 @@ using std::unordered_map;
 using std::list;
 using std::pair;
 
-namespace SCRIMP {
+namespace SCAMP {
 
 //For computing the prefix squared sum
 template<class DTYPE>
@@ -22,7 +22,7 @@ struct square
 	}
 };
 
-class SCRIMP_Operation
+class SCAMP_Operation
 {
 private:
     unordered_map<int, double*> T_A_dev, T_B_dev, QT_dev, means_A, means_B, norms_A, norms_B, df_A, df_B, dg_A, dg_B, scratchpad;
@@ -59,7 +59,7 @@ private:
     unordered_map<int,size_t> pos_x_2;
     unordered_map<int,size_t> pos_y_2;
 
-    SCRIMPError_t do_tile(SCRIMPTileType t, int device, const vector<double> &Ta_h,
+    SCAMPError_t do_tile(SCAMPTileType t, int device, const vector<double> &Ta_h,
                           const vector<double> &Tb_h,
                           const vector<float> &profile_h,
                           const vector<unsigned int> &profile_idx_h,
@@ -82,7 +82,7 @@ private:
     void get_tile_ordering();
 
 public:
-    SCRIMP_Operation(size_t Asize, size_t Bsize, size_t window_sz, size_t max_tile_size, const vector<int> &dev, bool selfjoin, FPtype t, bool do_full_join, size_t start_row, size_t start_col) :
+    SCAMP_Operation(size_t Asize, size_t Bsize, size_t window_sz, size_t max_tile_size, const vector<int> &dev, bool selfjoin, FPtype t, bool do_full_join, size_t start_row, size_t start_col) :
                      size_A(Asize), m(window_sz), MAX_TILE_SIZE(max_tile_size), devices(dev), self_join(selfjoin),
                      completed_tiles(0), fp_type(t), full_join(do_full_join), tile_start_row_position(start_row), tile_start_col_position(start_col)
     {
@@ -114,11 +114,11 @@ public:
          tile_n_y = tile_n_x;
         
     }
-    SCRIMPError_t do_join(const vector<double> &Ta_host, const vector<double> &Tb_host,
+    SCAMPError_t do_join(const vector<double> &Ta_host, const vector<double> &Tb_host,
                           vector<float> &profile, vector<unsigned int> &profile_idx,
                           vector<float> &profile_B, vector<unsigned int> &profile_idx_B);
-    SCRIMPError_t init();
-    SCRIMPError_t destroy();
+    SCAMPError_t init();
+    SCAMPError_t destroy();
 };
 
 }

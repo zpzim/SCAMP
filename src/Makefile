@@ -5,18 +5,18 @@ ARCH=-gencode=arch=compute_60,code=sm_70 -gencode=arch=compute_60,code=sm_60 -ge
 CFLAGS=-c -use_fast_math -lineinfo -O2 -std=c++11 $(ARCH) -I$(CUDA_DIRECTORY)/include
 
 LDFLAGS=-L$(CUDA_DIRECTORY)/lib64 -lcufft
-SOURCES=fft_helper.cu tile.cu SCRIMP.cu
-HEADERS=fft_helper.h tile.h SCRIMP.h
-OBJECTS=SCRIMP.o fft_helper.o tile.o kernels.o
-EXECUTABLE=SCRIMP-GPU
+SOURCES=fft_helper.cu tile.cu SCAMP.cu
+HEADERS=fft_helper.h tile.h SCAMP.h
+OBJECTS=SCAMP.o fft_helper.o tile.o kernels.o
+EXECUTABLE=SCAMP
 
 all: $(SOURCES) $(EXECUTABLE)
 
 $(EXECUTABLE): $(OBJECTS)  $(SOURCES) $(HEADERS)
 	$(CC) $(LDFLAGS) $(OBJECTS) -o $@
 	
-SCRIMP.o: SCRIMP.cu SCRIMP.h
-	$(CC) $(CFLAGS) SCRIMP.cu -o $@
+SCAMP.o: SCAMP.cu SCAMP.h
+	$(CC) $(CFLAGS) SCAMP.cu -o $@
 
 tile.o: tile.h tile.cu
 	$(CC) $(CFLAGS) tile.cu -o $@
@@ -29,4 +29,4 @@ kernels.o: kernels.h kernels.cu
 
 
 clean:
-	rm -f *.o SCRIMP-GPU
+	rm -f *.o SCAMP

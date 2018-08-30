@@ -14,7 +14,7 @@ job_definition=${13}
 
 tile_n=$(($tile_size - $window_size + 1))
 time_series_A_n=$(($time_series_A_length - $window_size + 1))
-scrimp_tile_size=2097152
+SCAMP_tile_size=1048576
 self_join=0
 width=$(($time_series_A_length / $tile_n))
 height=$(($time_series_B_length / $tile_n))
@@ -35,13 +35,13 @@ $cmd
 
 #Requires CLI access to batch
 #Requires user specified job queue and job definition
-#Submit scrimp job, see documentation for instructions on how to set up
+#Submit SCAMP job, see documentation for instructions on how to set up
 #your own job defintion so that it works with this script
-X=`aws batch submit-job --job-name "scrimp-$time_series_A_name$time_series_B_name" \
+X=`aws batch submit-job --job-name "SCAMP-$time_series_A_name$time_series_B_name" \
                      --job-queue $job_queue \
                      --job-definition $job_definition \
                      --retry-strategy "attempts=2" \
-                     --parameters input_bucket=$input_bucket,input_A_dir="split_$time_series_A_dir",input_B_dir="split_$time_series_B_dir",output_bucket=$output_bucket,output_dir=$time_series_A_name$time_series_B_name,prefix="segment_",num_tiles_wide="$width",num_tiles_high="$height",window_size=$window_size,SCRIMP_Tile_size="$scrimp_tile_size",fp64_flag=$fp64 \
+                     --parameters input_bucket=$input_bucket,input_A_dir="split_$time_series_A_dir",input_B_dir="split_$time_series_B_dir",output_bucket=$output_bucket,output_dir=$time_series_A_name$time_series_B_name,prefix="segment_",num_tiles_wide="$width",num_tiles_high="$height",window_size=$window_size,SCAMP_Tile_size="$SCAMP_tile_size",fp64_flag=$fp64 \
                      --array-properties size=$num_jobs \
                      | python -c "import sys, json; print json.load(sys.stdin)['jobId']"`
 

@@ -1,6 +1,6 @@
 #include "kernels.h"
 
-namespace SCRIMP {
+namespace SCAMP {
 
 #define BLOCKSZ_SP 512
 #define BLOCKSZ_DP 256
@@ -139,34 +139,17 @@ __device__ inline void do_unrolled_row4(ACC &cov1, ACC &cov2, ACC &cov3, ACC &co
 
     float4 dist;
 
-    if (mixed) {
-        // Compute the row's distances
-        dist.x = cov1 * static_cast<ACC>(inormcx * inormr);
-        dist.y = cov2 * static_cast<ACC>(inormcy * inormr);
-        dist.z = cov3 * static_cast<ACC>(inormcz * inormr);
-        dist.w = cov4 * static_cast<ACC>(inormcw * inormr);
+    dist.x = cov1 * inormcx * inormr;
+    dist.y = cov2 * inormcy * inormr;
+    dist.z = cov3 * inormcz * inormr;
+    dist.w = cov4 * inormcw * inormr;
 
-        // Compute the next covariance values
-        cov1 = cov1 + static_cast<ACC>(df_colx * dg_row) + static_cast<ACC>(dg_colx * df_row);
-        cov2 = cov2 + static_cast<ACC>(df_coly * dg_row) + static_cast<ACC>(dg_coly * df_row);
-        cov3 = cov3 + static_cast<ACC>(df_colz * dg_row) + static_cast<ACC>(dg_colz * df_row);
-        cov4 = cov4 + static_cast<ACC>(df_colw * dg_row) + static_cast<ACC>(dg_colw * df_row);
-    } else {
-        
-        dist.x = cov1 * inormcx * inormr;
-        dist.y = cov2 * inormcy * inormr;
-        dist.z = cov3 * inormcz * inormr;
-        dist.w = cov4 * inormcw * inormr;
+    // Compute the next covariance values
+    cov1 = cov1 + df_colx * dg_row + dg_colx * df_row;
+    cov2 = cov2 + df_coly * dg_row + dg_coly * df_row;
+    cov3 = cov3 + df_colz * dg_row + dg_colz * df_row;
+    cov4 = cov4 + df_colw * dg_row + dg_colw * df_row;
 
-        // Compute the next covariance values
-        cov1 = cov1 + df_colx * dg_row + dg_colx * df_row;
-        cov2 = cov2 + df_coly * dg_row + dg_coly * df_row;
-        cov3 = cov3 + df_colz * dg_row + dg_colz * df_row;
-        cov4 = cov4 + df_colw * dg_row + dg_colw * df_row;
-
-
-    }
-    
     // Update the column best-so-far values
     if(full_join || only_col) {
         MPMax2(distcol1, dist.x, idxcol1, global_row);
@@ -330,29 +313,17 @@ __device__ inline void do_iteration_4diag(int i, int j, int x, int y,
     T dgr = dg_row[i];
     T dfr = df_row[i];
 
-    if (mixed) {
-        // Compute the next set of distances (row y)
-        dist.x = cov1 * static_cast<ACC>(inorm_col[j] * inormr);
-        dist.y = cov2 * static_cast<ACC>(inorm_col[j+1] * inormr);
-        dist.z = cov3 * static_cast<ACC>(inorm_col[j+2] * inormr);
-        dist.w = cov4 * static_cast<ACC>(inorm_col[j+3] * inormr);
-        // Update cov and compute the next distance values (row y)
-        cov1 = cov1 + static_cast<ACC>(df_col[j] * dgr) + static_cast<ACC>(dg_col[j] * dfr);
-        cov2 = cov2 + static_cast<ACC>(df_col[j+1] * dgr) + static_cast<ACC>(dg_col[j+1] * dfr);
-        cov3 = cov3 + static_cast<ACC>(df_col[j+2] * dgr) + static_cast<ACC>(dg_col[j+2] * dfr);
-        cov4 = cov4 + static_cast<ACC>(df_col[j+3] * dgr) + static_cast<ACC>(dg_col[j+3] * dfr);
-    } else {
-        // Compute the next set of distances (row y)
-        dist.x = cov1 * inorm_col[j] * inormr;
-        dist.y = cov2 * inorm_col[j+1] * inormr;
-        dist.z = cov3 * inorm_col[j+2] * inormr;
-        dist.w = cov4 * inorm_col[j+3] * inormr;
-        // Update cov and compute the next distance values (row y)
-        cov1 = cov1 + df_col[j] * dgr + dg_col[j] * dfr;
-        cov2 = cov2 + df_col[j+1] * dgr + dg_col[j+1] * dfr;
-        cov3 = cov3 + df_col[j+2] * dgr + dg_col[j+2] * dfr;
-        cov4 = cov4 + df_col[j+3] * dgr + dg_col[j+3] * dfr;
-    }
+    // Compute the next set of distances (row y)
+    dist.x = cov1 * inorm_col[j] * inormr;
+    dist.y = cov2 * inorm_col[j+1] * inormr;
+    dist.z = cov3 * inorm_col[j+2] * inormr;
+    dist.w = cov4 * inorm_col[j+3] * inormr;
+    // Update cov and compute the next distance values (row y)
+    cov1 = cov1 + df_col[j] * dgr + dg_col[j] * dfr;
+    cov2 = cov2 + df_col[j+1] * dgr + dg_col[j+1] * dfr;
+    cov3 = cov3 + df_col[j+2] * dgr + dg_col[j+2] * dfr;
+    cov4 = cov4 + df_col[j+3] * dgr + dg_col[j+3] * dfr;
+
     if(full_join || only_col) {
         MPatomicMax((unsigned long long*) (local_mp_col + j), dist.x, y + global_start_y);
     }
@@ -569,7 +540,7 @@ int get_smem(int tile_height, FPtype t, bool full_join, bool only_column_join, c
 } 
 
 
-SCRIMPError_t kernel_ab_join_upper(const double *QT, const double *timeseries_A, const double *timeseries_B, const double *df_A, const double *df_B, const double *dg_A, const double *dg_B, const double *norms_A, const double *norms_B, unsigned long long int *profile_A, unsigned long long int *profile_B, size_t window_size, size_t tile_width, size_t tile_height, size_t global_x, size_t global_y, size_t global_start_x, size_t global_start_y, const cudaDeviceProp &props, FPtype t, bool full_join, cudaStream_t s)
+SCAMPError_t kernel_ab_join_upper(const double *QT, const double *timeseries_A, const double *timeseries_B, const double *df_A, const double *df_B, const double *dg_A, const double *dg_B, const double *norms_A, const double *norms_B, unsigned long long int *profile_A, unsigned long long int *profile_B, size_t window_size, size_t tile_width, size_t tile_height, size_t global_x, size_t global_y, size_t global_start_x, size_t global_start_y, const cudaDeviceProp &props, FPtype t, bool full_join, cudaStream_t s)
 {
         int diags_per_thread = get_diags_per_thread(t, props);
         int blocksz = get_blocksz(t, props);
@@ -588,7 +559,7 @@ SCRIMPError_t kernel_ab_join_upper(const double *QT, const double *timeseries_A,
                 exclusion = 0;
             }
             if(tile_width <= exclusion) {
-                return SCRIMP_NO_ERROR;
+                return SCAMP_NO_ERROR;
             }
             switch(t) {
             case FP_DOUBLE:
@@ -626,12 +597,12 @@ SCRIMPError_t kernel_ab_join_upper(const double *QT, const double *timeseries_A,
         }
         cudaError_t err = cudaPeekAtLastError();
         if(err != cudaSuccess) {
-            return SCRIMP_CUDA_ERROR;
+            return SCAMP_CUDA_ERROR;
         }
-        return SCRIMP_NO_ERROR;
+        return SCAMP_NO_ERROR;
 }
 
-SCRIMPError_t kernel_ab_join_lower(const double *QT, const double *timeseries_A, const double *timeseries_B, const double *df_A, const double *df_B, const double *dg_A, const double *dg_B, const double *norms_A, const double *norms_B, unsigned long long int *profile_A, unsigned long long int *profile_B, size_t window_size, size_t tile_width, size_t tile_height, size_t global_x, size_t global_y, size_t global_start_x, size_t global_start_y, const cudaDeviceProp &props, FPtype t, bool full_join, cudaStream_t s)
+SCAMPError_t kernel_ab_join_lower(const double *QT, const double *timeseries_A, const double *timeseries_B, const double *df_A, const double *df_B, const double *dg_A, const double *dg_B, const double *norms_A, const double *norms_B, unsigned long long int *profile_A, unsigned long long int *profile_B, size_t window_size, size_t tile_width, size_t tile_height, size_t global_x, size_t global_y, size_t global_start_x, size_t global_start_y, const cudaDeviceProp &props, FPtype t, bool full_join, cudaStream_t s)
 {
         int diags_per_thread = get_diags_per_thread(t, props);
         int blocksz = get_blocksz(t, props);
@@ -650,7 +621,7 @@ SCRIMPError_t kernel_ab_join_lower(const double *QT, const double *timeseries_A,
                 exclusion = 0;
             }
             if(tile_height <= exclusion) {
-                return SCRIMP_NO_ERROR;
+                return SCAMP_NO_ERROR;
             }
             switch(t) {
             case FP_DOUBLE:
@@ -666,7 +637,7 @@ SCRIMPError_t kernel_ab_join_lower(const double *QT, const double *timeseries_A,
                 do_tile<float, float2, float4, float, false, true, true, BLOCKSPERSM_AB, TILE_HEIGHT, BLOCKSZ_SP><<<grid,block,smem,s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A, window_size, tile_height, tile_width, global_y, global_x, 0, exclusion);
                 break;
             default:
-                return SCRIMP_CUDA_ERROR;
+                return SCAMP_CUDA_ERROR;
             }
         } else {
             switch(t) {
@@ -683,17 +654,17 @@ SCRIMPError_t kernel_ab_join_lower(const double *QT, const double *timeseries_A,
                 do_tile<float, float2, float4, float, false, false, false, BLOCKSPERSM_AB, TILE_HEIGHT, BLOCKSZ_SP><<<grid,block,smem,s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A, window_size, tile_height, tile_width, global_y, global_x, 0, 0);
                 break;
             default:
-                return SCRIMP_CUDA_ERROR;
+                return SCAMP_CUDA_ERROR;
             }
         }
         cudaError_t err = cudaPeekAtLastError();
         if(err != cudaSuccess) {
-            return SCRIMP_CUDA_ERROR;
+            return SCAMP_CUDA_ERROR;
         }
-        return SCRIMP_NO_ERROR;
+        return SCAMP_NO_ERROR;
 }
 
-SCRIMPError_t kernel_self_join_upper(const double *QT, const double *timeseries_A, const double *timeseries_B, const double *df_A, const double *df_B, const double *dg_A, const double *dg_B, const double *norms_A, const double *norms_B, unsigned long long int *profile_A, unsigned long long int *profile_B, size_t window_size, size_t tile_width, size_t tile_height, size_t global_x, size_t global_y, const cudaDeviceProp &props, FPtype t, cudaStream_t s)
+SCAMPError_t kernel_self_join_upper(const double *QT, const double *timeseries_A, const double *timeseries_B, const double *df_A, const double *df_B, const double *dg_A, const double *dg_B, const double *norms_A, const double *norms_B, unsigned long long int *profile_A, unsigned long long int *profile_B, size_t window_size, size_t tile_width, size_t tile_height, size_t global_x, size_t global_y, const cudaDeviceProp &props, FPtype t, cudaStream_t s)
 {
         int exclusion = window_size / 4;
         int diags_per_thread = get_diags_per_thread(t,props);
@@ -724,17 +695,17 @@ SCRIMPError_t kernel_self_join_upper(const double *QT, const double *timeseries_
                 do_tile<float, float2, float4, float, false, true,false, BLOCKSPERSM_SELF, TILE_HEIGHT, BLOCKSZ_SP><<<grid,block,smem,s>>>(QT,df_A,df_B,dg_A,dg_B,norms_A,norms_B,profile_A, profile_B, window_size, tile_width, tile_height, global_x, global_y, exclusion,0);
                 break;
             default:
-                return SCRIMP_CUDA_ERROR;
+                return SCAMP_CUDA_ERROR;
             }
         }
         cudaError_t err = cudaPeekAtLastError();
         if(err != cudaSuccess) {
-            return SCRIMP_CUDA_ERROR;
+            return SCAMP_CUDA_ERROR;
         }
-        return SCRIMP_NO_ERROR;
+        return SCAMP_NO_ERROR;
 }
 
-SCRIMPError_t kernel_self_join_lower(const double *QT, const double *timeseries_A, const double *timeseries_B, const double *df_A, const double *df_B, const double *dg_A, const double *dg_B, const double *norms_A, const double *norms_B, unsigned long long int *profile_A, unsigned long long int *profile_B, size_t window_size, size_t tile_width, size_t tile_height, size_t global_x, size_t global_y, const cudaDeviceProp &props, FPtype t, cudaStream_t s)
+SCAMPError_t kernel_self_join_lower(const double *QT, const double *timeseries_A, const double *timeseries_B, const double *df_A, const double *df_B, const double *dg_A, const double *dg_B, const double *norms_A, const double *norms_B, unsigned long long int *profile_A, unsigned long long int *profile_B, size_t window_size, size_t tile_width, size_t tile_height, size_t global_x, size_t global_y, const cudaDeviceProp &props, FPtype t, cudaStream_t s)
 {
         int exclusion = window_size / 4;
         int diags_per_thread = get_diags_per_thread(t, props);
@@ -765,17 +736,17 @@ SCRIMPError_t kernel_self_join_lower(const double *QT, const double *timeseries_
                 do_tile<float,float2,float4,float, false, true,false, BLOCKSPERSM_SELF, TILE_HEIGHT, BLOCKSZ_SP><<<grid,block,smem,s>>>(QT,df_B,df_A,dg_B,dg_A,norms_B,norms_A,profile_B, profile_A, window_size, tile_height, tile_width, global_y, global_x, 0, exclusion);
                 break;
             default:
-                return SCRIMP_CUDA_ERROR;
+                return SCAMP_CUDA_ERROR;
             }
         }
         cudaError_t err = cudaPeekAtLastError();
         if(err != cudaSuccess) {
-            return SCRIMP_CUDA_ERROR;
+            return SCAMP_CUDA_ERROR;
         }
-        return SCRIMP_NO_ERROR;
+        return SCAMP_NO_ERROR;
 
 
 
 }
 
-} // namespace SCRIMP
+} // namespace SCAMP

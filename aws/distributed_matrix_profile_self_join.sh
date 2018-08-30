@@ -11,7 +11,7 @@ job_definition=${10}
 
 tile_n=$(($tile_size - $window_size + 1))
 time_series_n=$(($time_series_length - $window_size + 1))
-scrimp_tile_size=1048576
+SCAMP_tile_size=1048576
 self_join=1
 width=`python -c "from math import ceil; print int(ceil($time_series_length / float($tile_n)))"`
 echo $width
@@ -26,13 +26,13 @@ echo $num_jobs
 
 #Requires CLI access to batch
 #Requires user specified job queue and job definition
-#Submit scrimp job, see documentation for instructions on how to set up
+#Submit SCAMP job, see documentation for instructions on how to set up
 #your own job defintion so that it works with this script
-X=`aws batch submit-job --job-name "scrimp-$time_series_A_name" \
+X=`aws batch submit-job --job-name "SCAMP-$time_series_A_name" \
                      --job-queue $job_queue \
                      --job-definition $job_definition \
                      --retry-strategy "attempts=3" \
-                     --parameters input_bucket=$input_bucket,output_bucket=$output_bucket,output_dir=$time_series_A_name$time_series_A_name,input_dir="split_$time_series_A_dir",num_tiles_wide="$width",tile_width=$tile_size,SCRIMP_Tile_size="$scrimp_tile_size",prefix="segment_",fp64_flag=$fp64,window_size=$window_size \
+                     --parameters input_bucket=$input_bucket,output_bucket=$output_bucket,output_dir=$time_series_A_name$time_series_A_name,input_dir="split_$time_series_A_dir",num_tiles_wide="$width",tile_width=$tile_size,SCAMP_Tile_size="$SCAMP_tile_size",prefix="segment_",fp64_flag=$fp64,window_size=$window_size \
                      --array-properties size=$num_jobs \
 		     --output 'json' \
 		     --query 'jobId'`

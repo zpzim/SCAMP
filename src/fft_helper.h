@@ -3,7 +3,7 @@
 #include <cufft.h>
 #include "common.h"
 
-namespace SCRIMP {
+namespace SCAMP {
 
 class fft_precompute_helper {
 private:
@@ -41,7 +41,7 @@ public:
         CHECK_CUFFT_ERRORS(cufftDestroy(fft_plan));
         CHECK_CUFFT_ERRORS(cufftDestroy(ifft_plan));
     }
-    SCRIMPError_t compute_QT(double *QT_scratch, const double *timeseries, const double *query, const double *qmeans, cudaStream_t s);
+    SCAMPError_t compute_QT(double *QT_scratch, const double *timeseries, const double *query, const double *qmeans, cudaStream_t s);
 
 };
 

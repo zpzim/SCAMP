@@ -11,7 +11,7 @@
 #include <thrust/execution_policy.h>
 #include <thrust/extrema.h>
 #include <unistd.h>
-#include "SCRIMP.h"
+#include "SCAMP.h"
 #include "common.h"
 #include "tile.h"
 
@@ -19,7 +19,7 @@ using std::vector;
 using std::unordered_map;
 using std::make_pair;
 
-namespace SCRIMP {
+namespace SCAMP {
 
 static const int ISSUED_ALL_DEVICES = -2;
 
@@ -134,7 +134,7 @@ void compute_statistics(const double *T, double *norms, double *df, double *dg,
     
 }
 
-SCRIMPError_t SCRIMP_Operation::init()
+SCAMPError_t SCAMP_Operation::init()
 {
     for (auto device : devices) {
         cudaSetDevice(device);
@@ -211,11 +211,11 @@ SCRIMPError_t SCRIMP_Operation::init()
         gpuErrchk(cudaPeekAtLastError());
         streams.emplace(device, s);
     }
-    return SCRIMP_NO_ERROR;
+    return SCAMP_NO_ERROR;
 
 }
 
-SCRIMPError_t SCRIMP_Operation::destroy()
+SCAMPError_t SCAMP_Operation::destroy()
 {
     for (auto device : devices) {
         cudaSetDevice(device);
@@ -244,18 +244,18 @@ SCRIMPError_t SCRIMP_Operation::destroy()
         cudaEventDestroy(copy_to_host_done[device]);
         cudaStreamDestroy(streams.at(device));
     }
-    return SCRIMP_NO_ERROR;
+    return SCAMP_NO_ERROR;
 
 }
 
-SCRIMPError_t SCRIMP_Operation::do_tile(SCRIMPTileType t, int device, const vector<double> &Ta_h, const vector<double> &Tb_h,
+SCAMPError_t SCAMP_Operation::do_tile(SCAMPTileType t, int device, const vector<double> &Ta_h, const vector<double> &Tb_h,
                                         const vector<float> &profile_h, const vector<unsigned int> &profile_idx_h,
                                         const vector<float> &profile_B_h, const vector<unsigned int> &profile_idx_B_h)
 {
         size_t start_x = pos_x[device];
         size_t start_y = pos_y[device];
         MPIDXCombine combiner;
-        SCRIMPError_t err;
+        SCAMPError_t err;
         size_t t_n_x = n_x[device] - m + 1;
         size_t t_n_y = n_y[device] - m + 1;
         printf("tile type = %d start_pos = [%lu, %lu]...\n", t, start_y, start_x);
@@ -292,7 +292,7 @@ SCRIMPError_t SCRIMP_Operation::do_tile(SCRIMPTileType t, int device, const vect
             thrust::transform(thrust::cuda::par.on(streams.at(device)), profile_B_dev[device], profile_B_dev[device] + t_n_y, profile_idx_B_dev[device], profile_B_merged[device], combiner);
             gpuErrchk(cudaPeekAtLastError());
         }
-        SCRIMP_Tile tile(t, T_A_dev[device], T_B_dev[device], df_A[device], df_B[device], dg_A[device], dg_B[device],
+        SCAMP_Tile tile(t, T_A_dev[device], T_B_dev[device], df_A[device], df_B[device], dg_A[device], dg_B[device],
                          norms_A[device], norms_B[device], means_A[device], means_B[device],  QT_dev[device],
                          profile_A_merged[device], profile_B_merged[device], start_x, start_y, tile_start_col_position,
                          tile_start_row_position, n_y[device], n_x[device], m, scratch[device], dev_props.at(device), fp_type);
@@ -305,7 +305,7 @@ SCRIMPError_t SCRIMP_Operation::do_tile(SCRIMPTileType t, int device, const vect
 
 }
 
-void SCRIMP_Operation::get_tile_ordering() {
+void SCAMP_Operation::get_tile_ordering() {
     tile_ordering.clear();
     size_t num_tile_rows = ceil((size_B - m + 1) / (float) tile_n_y);
     size_t num_tile_cols = ceil((size_A - m + 1) / (float) tile_n_x);
@@ -366,7 +366,7 @@ void SCRIMP_Operation::get_tile_ordering() {
 }
 
 
-bool SCRIMP_Operation::pick_and_start_next_tile(int dev, const vector<double> &Ta_h, const vector<double> &Tb_h,
+bool SCAMP_Operation::pick_and_start_next_tile(int dev, const vector<double> &Ta_h, const vector<double> &Tb_h,
                                                 const vector<float> &profile_h, const vector<unsigned int> &profile_idx_h,
                                                 const vector<float> &profile_B_h, const vector<unsigned int> &profile_idx_B_h)
 {
@@ -378,7 +378,7 @@ bool SCRIMP_Operation::pick_and_start_next_tile(int dev, const vector<double> &T
     pos_y[dev] = tile_row * tile_n_y;
     n_x[dev] = min(tile_size, size_A - pos_x[dev]);
     n_y[dev] = min(tile_size, size_B - pos_y[dev]);
-    SCRIMPError_t err;
+    SCAMPError_t err;
     if(self_join) {
         if(tile_row == tile_col) {
             //partial tile on diagonal
@@ -392,7 +392,7 @@ bool SCRIMP_Operation::pick_and_start_next_tile(int dev, const vector<double> &T
     } else {
         err = do_tile(AB_JOIN_FULL_TILE, dev, Ta_h, Tb_h, profile_h, profile_idx_h, profile_B_h, profile_idx_B_h);
     }
-    if (err != SCRIMP_NO_ERROR) {
+    if (err != SCAMP_NO_ERROR) {
         printf("ERROR %d executing tile. \n", err);
     }
     tile_ordering.pop_front();
@@ -412,7 +412,7 @@ void merge_partial_on_host(vector<unsigned long long int> &profile_to_merge, vec
 }
 
 
-int SCRIMP_Operation::issue_and_merge_tiles_on_devices(const vector<double> &Ta_host, const vector<double> &Tb_host,
+int SCAMP_Operation::issue_and_merge_tiles_on_devices(const vector<double> &Ta_host, const vector<double> &Tb_host,
                                                        vector<float> &profile_A_full_host, vector<unsigned int> &profile_idx_A_full_host,
                                                        vector<float> &profile_B_full_host, vector<unsigned int> &profile_idx_B_full_host,
                                                        vector<vector<unsigned long long int>> &profileA_h,
@@ -470,7 +470,7 @@ int SCRIMP_Operation::issue_and_merge_tiles_on_devices(const vector<double> &Ta_
 }
 
 
-SCRIMPError_t SCRIMP_Operation::do_join(const vector<double> &Ta_host, const vector<double> &Tb_host, vector<float> &profile, vector<unsigned int> &profile_idx, vector<float> &profile_B, vector<unsigned int> &profile_idx_B)
+SCAMPError_t SCAMP_Operation::do_join(const vector<double> &Ta_host, const vector<double> &Tb_host, vector<float> &profile, vector<unsigned int> &profile_idx, vector<float> &profile_B, vector<unsigned int> &profile_idx_B)
 {
 
     vector< vector<unsigned long long int> > profileA_h(devices.size(), vector<unsigned long long int>(tile_n_y)), profileB_h(devices.size(), vector<unsigned long long int>(tile_n_x));
@@ -496,10 +496,10 @@ SCRIMPError_t SCRIMP_Operation::do_join(const vector<double> &Ta_host, const vec
 
     issue_and_merge_tiles_on_devices(Ta_host, Tb_host, profile, profile_idx, profile_B, profile_idx_B, profileA_h, profileB_h, last_dev);
 
-    return SCRIMP_NO_ERROR;
+    return SCAMP_NO_ERROR;
 }
 
-void do_SCRIMP(const vector<double> &Ta_h, const vector<double> &Tb_h, vector<float> &profile_h, vector<unsigned int> &profile_idx_h,
+void do_SCAMP(const vector<double> &Ta_h, const vector<double> &Tb_h, vector<float> &profile_h, vector<unsigned int> &profile_idx_h,
                vector<float> &profile_B_h, vector<unsigned int> &profile_idx_B_h, const unsigned int m, const size_t max_tile_size, 
                const vector<int> &devices, bool self_join, FPtype t, bool full_join, size_t start_row, size_t start_col)
 {
@@ -509,7 +509,7 @@ void do_SCRIMP(const vector<double> &Ta_h, const vector<double> &Tb_h, vector<fl
     }
     // Allocate and initialize memory
     clock_t start, end;
-    SCRIMP_Operation op(Ta_h.size(), Tb_h.size(), m, max_tile_size, devices, self_join, t, full_join, start_row, start_col);
+    SCAMP_Operation op(Ta_h.size(), Tb_h.size(), m, max_tile_size, devices, self_join, t, full_join, start_row, start_col);
     op.init();
     gpuErrchk(cudaPeekAtLastError());
     start = clock();
@@ -524,7 +524,7 @@ void do_SCRIMP(const vector<double> &Ta_h, const vector<double> &Tb_h, vector<fl
     gpuErrchk(cudaPeekAtLastError());
     op.destroy();
     gpuErrchk(cudaPeekAtLastError());
-    printf("Finished SCRIMP to generate partial matrix profile of size %lu in %f seconds on %lu devices:\n", profile_h.size(), (end - start) / (double) CLOCKS_PER_SEC, devices.size());
+    printf("Finished SCAMP to generate partial matrix profile of size %lu in %f seconds on %lu devices:\n", profile_h.size(), (end - start) / (double) CLOCKS_PER_SEC, devices.size());
 }
 
 //Reads input time series from file
@@ -548,7 +548,7 @@ void readFile(const char* filename, vector<DTYPE>& v, const char *format_str)
 }
 
 int main(int argc, char** argv) {
-    SCRIMP::FPtype t = SCRIMP::FP_SINGLE;
+    SCAMP::FPtype t = SCAMP::FP_SINGLE;
     bool full_join = false;
     bool self_join = true;
     size_t start_row = 0;
@@ -560,8 +560,8 @@ int main(int argc, char** argv) {
     char *output_B_prefix, *input_B;
     while ((opt = getopt(argc, argv, "mdf:r:c:s:b:g:")) != -1) {
         switch (opt) {
-        case 'd': t = SCRIMP::FP_DOUBLE; break;
-        case 'm': t = SCRIMP::FP_MIXED; break;
+        case 'd': t = SCAMP::FP_DOUBLE; break;
+        case 'm': t = SCAMP::FP_MIXED; break;
         case 'f': output_B_prefix = optarg; full_join = true; break;
         case 'r': start_row = atoi(optarg); break;
         case 'c': start_col = atoi(optarg); break;
@@ -581,10 +581,10 @@ int main(int argc, char** argv) {
     int window_size = atoi(argv[index++]);
     char *input_A = argv[index++];
      
-    SCRIMP::readFile<double>(input_A, Ta_h, "%lf");
+    SCAMP::readFile<double>(input_A, Ta_h, "%lf");
     
     if(!self_join) {
-        SCRIMP::readFile<double>(input_B, Tb_h, "%lf"); 
+        SCAMP::readFile<double>(input_B, Tb_h, "%lf"); 
     }
 
     int n_x = Ta_h.size() - window_size + 1;
@@ -617,15 +617,15 @@ int main(int argc, char** argv) {
         }
     }
 
-    printf("Starting SCRIMP\n");     
-    SCRIMP::do_SCRIMP(Ta_h, Tb_h, profile, profile_idx, profile_B, profile_idx_B, window_size, max_tile_size, devices, self_join, t, full_join, start_row, start_col);
+    printf("Starting SCAMP\n");     
+    SCAMP::do_SCAMP(Ta_h, Tb_h, profile, profile_idx, profile_B, profile_idx_B, window_size, max_tile_size, devices, self_join, t, full_join, start_row, start_col);
     
     printf("Now writing result to files\n");
     FILE* f1 = fopen( argv[index++], "w");
     FILE* f2 = fopen( argv[index++], "w");
     FILE* f3, *f4;
     for(int i = 0; i < profile.size(); ++i){
-         fprintf(f1, "%f\n", sqrt(max(2*window_size*(1 - profile[i]), 0.0)));
+         fprintf(f1, "%f\n", min(profile[i], 1.0));
          fprintf(f2, "%u\n", profile_idx[i] + 1);
     }
     fclose(f1);
@@ -634,7 +634,7 @@ int main(int argc, char** argv) {
         f3 = fopen(strcat(output_B_prefix,"_mp") , "w");
         f4 = fopen(strcat(output_B_prefix,"i"), "w");
         for(int i = 0; i < profile_B.size(); ++i) {
-            fprintf(f3, "%f\n", sqrt(max(2*window_size*(1 - profile_B[i]), 0.0)));
+            fprintf(f3, "%f\n", min(profile_B[i], 1.0));
             fprintf(f4, "%u\n", profile_idx_B[i] + 1);
         }
     }

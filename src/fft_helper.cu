@@ -1,7 +1,7 @@
 #include "fft_helper.h"
 #include <cufft.h> 
 
-namespace SCRIMP {
+namespace SCAMP {
 
 __global__ void elementwise_multiply_inplace(const cuDoubleComplex* A, cuDoubleComplex* B, const int size)
 {
@@ -34,7 +34,7 @@ __global__ void populate_reverse_pad(const double *Q, double *Q_reverse_pad, con
     }
 }
 
-SCRIMPError_t fft_precompute_helper::compute_QT(double* QT, const double* T, const double *Q, const double *qmeans, cudaStream_t s)
+SCAMPError_t fft_precompute_helper::compute_QT(double* QT, const double* T, const double *Q, const double *qmeans, cudaStream_t s)
 {        
 
     cufftResult cufftError;
@@ -46,52 +46,52 @@ SCRIMPError_t fft_precompute_helper::compute_QT(double* QT, const double* T, con
 
     cufftError = cufftSetStream(fft_plan, s);
     if (cufftError != CUFFT_SUCCESS) {
-        return SCRIMP_CUFFT_ERROR;
+        return SCAMP_CUFFT_ERROR;
     }
     cufftError = cufftSetStream(ifft_plan,s);
     if (cufftError != CUFFT_SUCCESS) {
-        return SCRIMP_CUFFT_ERROR;
+        return SCAMP_CUFFT_ERROR;
     }
     
     // Compute the FFT of the time series
     cufftError = cufftExecD2Z(fft_plan, const_cast<double*>(T), Tc);
 
     if (cufftError != CUFFT_SUCCESS) {
-        return SCRIMP_CUFFT_EXEC_ERROR;
+        return SCAMP_CUFFT_EXEC_ERROR;
     }
     
     // Reverse and zero pad the query
     populate_reverse_pad<<<dim3(ceil(size / (float) fft_work_size),1,1), block, 0, s>>>(Q, Q_reverse_pad, qmeans, window_size, size);
     error = cudaPeekAtLastError();
     if (error != cudaSuccess) {
-        return SCRIMP_CUDA_ERROR;
+        return SCAMP_CUDA_ERROR;
     }
     
     cufftError = cufftExecD2Z(fft_plan, Q_reverse_pad, Qc);
     if (cufftError != CUFFT_SUCCESS) {
-        return SCRIMP_CUFFT_EXEC_ERROR;
+        return SCAMP_CUFFT_EXEC_ERROR;
     }
     
     elementwise_multiply_inplace<<<dim3(ceil(cufft_data_size / (float) fft_work_size), 1, 1), block, 0, s>>>(Tc, Qc, cufft_data_size);
     error = cudaPeekAtLastError();
     if ( error != cudaSuccess) {
-        return SCRIMP_CUDA_ERROR;
+        return SCAMP_CUDA_ERROR;
     }
 
     cufftError = cufftExecZ2D(ifft_plan, Qc, Q_reverse_pad);
 
     if (cufftError != CUFFT_SUCCESS) {
-        return SCRIMP_CUFFT_EXEC_ERROR;
+        return SCAMP_CUFFT_EXEC_ERROR;
     }
     
     normalized_aligned_dot_products<<<dim3(ceil(n / (float) fft_work_size), 1, 1), block, 0, s>>>(Q_reverse_pad, size, window_size, n, QT);
     error = cudaPeekAtLastError();
 
     if(error != cudaSuccess) {
-        return SCRIMP_CUDA_ERROR;
+        return SCAMP_CUDA_ERROR;
     }
 
-    return SCRIMP_NO_ERROR;
+    return SCAMP_NO_ERROR;
     
 }
 
