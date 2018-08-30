@@ -625,7 +625,7 @@ int main(int argc, char** argv) {
     FILE* f2 = fopen( argv[index++], "w");
     FILE* f3, *f4;
     for(int i = 0; i < profile.size(); ++i){
-         fprintf(f1, "%f\n", min(profile[i], 1.0));
+         fprintf(f1, "%f\n", sqrt(max(2*window_size*(1 - profile[i]), 0.0)));
          fprintf(f2, "%u\n", profile_idx[i] + 1);
     }
     fclose(f1);
@@ -634,7 +634,7 @@ int main(int argc, char** argv) {
         f3 = fopen(strcat(output_B_prefix,"_mp") , "w");
         f4 = fopen(strcat(output_B_prefix,"i"), "w");
         for(int i = 0; i < profile_B.size(); ++i) {
-            fprintf(f3, "%f\n", min(profile_B[i], 1.0));
+            fprintf(f3, "%f\n", sqrt(max(2*window_size*(1 - profile_B[i]), 0.0)));
             fprintf(f4, "%u\n", profile_idx_B[i] + 1);
         }
     }
