@@ -3,7 +3,7 @@
 # Verify that this script is actually doing what you want it to do before running it
 # Requires aws cli push/pull access to AWS ECR
 
-(cd src/ && make)
+(cmake . && make)
 X=`nvidia-docker build . | tail -1 | awk '{print $NF}'`
 
 if [ $? -ne 0 ];
