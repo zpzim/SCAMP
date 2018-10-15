@@ -14,16 +14,14 @@ Note: for self-joins on small inputs (~2M or less) the features in this reposito
 This base project requires:
  * At least version 9.0 of the CUDA toolkit available [here](https://developer.nvidia.com/cuda-toolkit).
  * An NVIDIA GPU with CUDA support is also required. You can find a list of CUDA compatible GPUs [here](https://developer.nvidia.com/cuda-gpus)
- * Currently builds under linux with the Makefile. 
+ * Currently builds under linux with the cmake (3.8+ for cuda support), this version is not yet widely available in package managers (i.e. apt) so you will probably need to install it manually from [here](https://cmake.org/download/)
  * Should compile under windows, but untested. You will probably have to handle the parsing of command line arguments differently in windows.
+ * Build will be based on the architeture of the GPU attached to the system performing the build
  * We highly recommend using a Volta GPU (we get about a 3x improvement over Pascal)
 # Usage
-* Edit the Makefile (src/Makefile)
-  * Volta and Pascal are supported by default, but if needed set the value of ARCH to correspond to the compute capability of your GPU.
-    * "-gencode=arch=compute_code,code=sm_code" where code corresponds to the compute capability or arch you wish to add.
-  * Make sure CUDA_DIRECTORY corresponds to the location where cuda is installed on your system. This is usually `/usr/local/cuda-(VERSION)/` on linux
-* `(cd src && make)`
-* `src/SCAMP window_size input_A_file_path output_matrix_profile_path output_index_path`
+* `cmake CMakeLists.txt`
+* `make -j4`
+* `SCAMP window_size input_A_file_path output_matrix_profile_path output_index_path`
   * Optional Arguments:
     * "-b [input B name]": allows a second input file which acts as the second time series for an AB join. An AB join compares every subsequence in input A with every subsequence in input B, the length of the matrix profile produced by this operation is always determined by input A, but the matrix profile index's values will reference subsequences in input B.
     * "-s [max tile size]": allows you to specify the max tile size used by the SCAMP tile scheme. By default this is set to 2M, but you can adjust this as desired. Note that a tile size smaller than ~1M will likely fail to saturate the compute resources of newer GPUs
@@ -34,6 +32,8 @@ This base project requires:
     * "-r [global tile row]" : allows you to specify the tile row where this join starts, assuming that it is part of some larger join, this is required if you use -f
     * "-c [global tile col]" : allows you to specify the tile column where this join starts, assuming that it is part of some larger join, this is required if you use -f
 * By default, if no devices are specified, SCAMP will run on all available devices
+* cmake provides support for clang-tidy (when you build) and clang-format (using build target clang-format) to use these please make sure clang-tidy and clang-format are installed on your system
+
 
 # AWS operation
 * This framework can be used with [AWS Batch](https://aws.amazon.com/batch) to distribute the computation to a cluster of p2 or p3 instances
