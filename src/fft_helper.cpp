@@ -1,6 +1,7 @@
-#include "fft_helper.h"
 #include <cuda_runtime.h>
 #include <cufft.h>
+
+#include "fft_helper.h"
 #include "fft_kernels.h"
 
 namespace SCAMP {
@@ -24,7 +25,11 @@ SCAMPError_t fft_precompute_helper::compute_QT(double *QT, const double *T,
   }
 
   // Compute the FFT of the time series
-  cufftError = cufftExecD2Z(fft_plan, const_cast<double *>(T), Tc);
+  // For some reason the input parameter to cufftExecD2Z is not held const by
+  // cufft
+  // I see nowhere in the documentation that the input vector is modified
+  // using const_cast as a hack to get around this...
+  cufftError = cufftExecD2Z(fft_plan, const_cast<double *>(T), Tc);  // NOLINT
 
   if (cufftError != CUFFT_SUCCESS) {
     return SCAMP_CUFFT_EXEC_ERROR;

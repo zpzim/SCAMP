@@ -1,5 +1,6 @@
 #pragma once
 #include <stdio.h>
+#include <cinttypes>
 #include <cuda_runtime.h>
 namespace SCAMP {
 
@@ -7,7 +8,7 @@ namespace SCAMP {
 typedef union  {
   float floats[2];                 // floats[0] = lowest
   unsigned int ints[2];                     // ints[1] = lowIdx
-  unsigned long long int ulong;    // for atomic update
+  uint64_t ulong;    // for atomic update
 } mp_entry;
 
 template<unsigned int count>

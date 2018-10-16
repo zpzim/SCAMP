@@ -13,8 +13,8 @@ namespace SCAMP {
 // amount of precision in the output, if we do not do this we are unable
 // to atomically update both the matrix profile and the indexes without using a
 // critical section and dedicated locks.
-__device__ inline void MPatomicMax(volatile unsigned long long int *address,
-                                   float val, unsigned int idx) {
+__device__ inline void MPatomicMax(volatile uint64_t *address, float val,
+                                   unsigned int idx) {
   mp_entry loc, loctest;
   loc.floats[0] = val;
   loc.ints[1] = idx;
@@ -28,8 +28,8 @@ __device__ inline void MPatomicMax(volatile unsigned long long int *address,
 // As above, but checks a previously read value before attempting another read
 // This allows us to exploit vectorized loads of the matrix profile
 __device__ inline void MPatomicMax_check(
-    volatile unsigned long long int *__restrict__ address, float val,
-    unsigned int idx, float curr_val) {
+    volatile uint64_t *__restrict__ address, float val, unsigned int idx,
+    float curr_val) {
   if (val > curr_val) {
     mp_entry loc, loctest;
     loc.floats[0] = val;
@@ -86,16 +86,16 @@ __device__ inline float max4(const float4 &d, const unsigned int init,
 template <class T, int tile_height, int tile_width, bool full_join,
           bool only_col, int BLOCKSZ>
 __device__ inline void initialize_tile_memory(
-    const unsigned long long int *__restrict__ profile_A,
-    const unsigned long long int *__restrict__ profile_B,
-    const double *__restrict__ df_A, const double *__restrict__ df_B,
-    const double *__restrict__ dg_A, const double *__restrict__ dg_B,
-    const double *__restrict__ norms_A, const double *__restrict__ norms_B,
-    mp_entry *__restrict__ local_mp_col, mp_entry *__restrict__ local_mp_row,
-    T *__restrict__ df_col, T *__restrict__ df_row, T *__restrict__ dg_col,
-    T *__restrict__ dg_row, T *__restrict__ norm_col, T *__restrict__ norm_row,
-    const unsigned int n_x, const unsigned int n_y,
-    const unsigned int col_start, const unsigned int row_start) {
+    const uint64_t *__restrict__ profile_A,
+    const uint64_t *__restrict__ profile_B, const double *__restrict__ df_A,
+    const double *__restrict__ df_B, const double *__restrict__ dg_A,
+    const double *__restrict__ dg_B, const double *__restrict__ norms_A,
+    const double *__restrict__ norms_B, mp_entry *__restrict__ local_mp_col,
+    mp_entry *__restrict__ local_mp_row, T *__restrict__ df_col,
+    T *__restrict__ df_row, T *__restrict__ dg_col, T *__restrict__ dg_row,
+    T *__restrict__ norm_col, T *__restrict__ norm_row, const unsigned int n_x,
+    const unsigned int n_y, const unsigned int col_start,
+    const unsigned int row_start) {
   int global_position = col_start + threadIdx.x;
   int local_position = threadIdx.x;
   while (local_position < tile_width && global_position < n_x) {
@@ -161,7 +161,7 @@ __device__ inline void do_unrolled_row4(
     // We take the maximum of the columns we computed for the row
     // And use that value to check the matrix profile
     float d = max4(dist, global_col, idx);
-    MPatomicMax_check((unsigned long long *)(mp_row + row), d, idx, curr_val);
+    MPatomicMax_check((uint64_t *)(mp_row + row), d, idx, curr_val);
   }
 }
 
@@ -235,7 +235,7 @@ __device__ inline void do_iteration_unroll_4(
   // completes column 1
   if (full_join || only_col) {
     e.ulong = mp_col_check1.x;
-    MPatomicMax_check((unsigned long long *)(local_mp_col + j), distc.x, idxc.x,
+    MPatomicMax_check((uint64_t *)(local_mp_col + j), distc.x, idxc.x,
                       e.floats[0]);
   }
 
@@ -249,8 +249,8 @@ __device__ inline void do_iteration_unroll_4(
   // The second row completes column 2
   if (full_join || only_col) {
     e.ulong = mp_col_check1.y;
-    MPatomicMax_check((unsigned long long *)(local_mp_col + j + 1), distc.y,
-                      idxc.y, e.floats[0]);
+    MPatomicMax_check((uint64_t *)(local_mp_col + j + 1), distc.y, idxc.y,
+                      e.floats[0]);
   }
 
   // Load the values for the next 2 rows
@@ -273,8 +273,8 @@ __device__ inline void do_iteration_unroll_4(
   if (full_join || only_col) {
     mp_col_check2 = reinterpret_cast<ulonglong2 *>(local_mp_col)[c2 + 1];
     e.ulong = mp_col_check2.x;
-    MPatomicMax_check((unsigned long long *)(local_mp_col + j + 2), distc.z,
-                      idxc.z, e.floats[0]);
+    MPatomicMax_check((uint64_t *)(local_mp_col + j + 2), distc.z, idxc.z,
+                      e.floats[0]);
   }
 
   e.ulong = mp_row_check.y;
@@ -289,17 +289,17 @@ __device__ inline void do_iteration_unroll_4(
     e.ulong = mp_col_check2.y;
     mp_col_check1 = reinterpret_cast<ulonglong2 *>(local_mp_col)[c2 + 2];
     mp_col_check2 = reinterpret_cast<ulonglong2 *>(local_mp_col)[c2 + 3];
-    MPatomicMax_check((unsigned long long *)(local_mp_col + j + 3), distc.w,
-                      idxc.w, e.floats[0]);
+    MPatomicMax_check((uint64_t *)(local_mp_col + j + 3), distc.w, idxc.w,
+                      e.floats[0]);
     e.ulong = mp_col_check1.x;
-    MPatomicMax_check((unsigned long long *)(local_mp_col + j + 4), distc2.x,
-                      idxc2.x, e.floats[0]);
+    MPatomicMax_check((uint64_t *)(local_mp_col + j + 4), distc2.x, idxc2.x,
+                      e.floats[0]);
     e.ulong = mp_col_check1.y;
-    MPatomicMax_check((unsigned long long *)(local_mp_col + j + 5), distc2.y,
-                      idxc2.y, e.floats[0]);
+    MPatomicMax_check((uint64_t *)(local_mp_col + j + 5), distc2.y, idxc2.y,
+                      e.floats[0]);
     e.ulong = mp_col_check2.x;
-    MPatomicMax_check((unsigned long long *)(local_mp_col + j + 6), distc2.z,
-                      idxc2.z, e.floats[0]);
+    MPatomicMax_check((uint64_t *)(local_mp_col + j + 6), distc2.z, idxc2.z,
+                      e.floats[0]);
   }
 }
 
@@ -335,8 +335,7 @@ __device__ inline void do_iteration_4diag(
   cov4 = cov4 + df_col[j + 3] * dgr + dg_col[j + 3] * dfr;
 
   if (full_join || only_col) {
-    MPatomicMax((unsigned long long *)(local_mp_col + j), dist.x,
-                y + global_start_y);
+    MPatomicMax((uint64_t *)(local_mp_col + j), dist.x, y + global_start_y);
   }
   dist_1 = dist.x;
   idx_1 = x + global_start_x;
@@ -345,7 +344,7 @@ __device__ inline void do_iteration_4diag(
       MPMax(dist_1, dist.y, idx_1, global_start_x + x + 1, dist_1, idx_1);
     }
     if (full_join || only_col) {
-      MPatomicMax((unsigned long long *)(local_mp_col + j + 1), dist.y,
+      MPatomicMax((uint64_t *)(local_mp_col + j + 1), dist.y,
                   y + global_start_y);
     }
   }
@@ -354,7 +353,7 @@ __device__ inline void do_iteration_4diag(
       MPMax(dist_1, dist.z, idx_1, global_start_x + x + 2, dist_1, idx_1);
     }
     if (full_join || only_col) {
-      MPatomicMax((unsigned long long *)(local_mp_col + j + 2), dist.z,
+      MPatomicMax((uint64_t *)(local_mp_col + j + 2), dist.z,
                   y + global_start_y);
     }
   }
@@ -363,12 +362,12 @@ __device__ inline void do_iteration_4diag(
       MPMax(dist_1, dist.w, idx_1, global_start_x + x + 3, dist_1, idx_1);
     }
     if (full_join || only_col) {
-      MPatomicMax((unsigned long long *)(local_mp_col + j + 3), dist.w,
+      MPatomicMax((uint64_t *)(local_mp_col + j + 3), dist.w,
                   y + global_start_y);
     }
   }
   if (full_join || !only_col) {
-    MPatomicMax((unsigned long long *)(local_mp_row + i), dist_1, idx_1);
+    MPatomicMax((uint64_t *)(local_mp_row + i), dist_1, idx_1);
   }
 }
 
@@ -380,9 +379,8 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
     do_tile(const double *__restrict__ Cov, const double *__restrict__ dfa,
             const double *__restrict__ dfb, const double *__restrict__ dga,
             const double *__restrict__ dgb, const double *__restrict__ normsa,
-            const double *__restrict__ normsb,
-            unsigned long long *__restrict__ profile_A,
-            unsigned long long *__restrict__ profile_B, const unsigned int m,
+            const double *__restrict__ normsb, uint64_t *__restrict__ profile_A,
+            uint64_t *__restrict__ profile_B, const unsigned int m,
             const unsigned int n_x, const unsigned int n_y,
             const unsigned int global_start_x,
             const unsigned int global_start_y, const int exclusion_lower,
@@ -563,7 +561,6 @@ int get_smem(int tile_height, FPtype t, bool full_join, bool only_column_join,
   } else {
     smem += tile_height * sizeof(mp_entry);
   }
-  printf("Using %d KiB smem per block\n", smem / 1024);
   return smem;
 }
 
@@ -571,10 +568,10 @@ SCAMPError_t kernel_ab_join_upper(
     const double *QT, const double *timeseries_A, const double *timeseries_B,
     const double *df_A, const double *df_B, const double *dg_A,
     const double *dg_B, const double *norms_A, const double *norms_B,
-    unsigned long long int *profile_A, unsigned long long int *profile_B,
-    size_t window_size, size_t tile_width, size_t tile_height, size_t global_x,
-    size_t global_y, size_t global_start_x, size_t global_start_y,
-    const cudaDeviceProp &props, FPtype t, bool full_join, cudaStream_t s) {
+    uint64_t *profile_A, uint64_t *profile_B, size_t window_size,
+    size_t tile_width, size_t tile_height, size_t global_x, size_t global_y,
+    size_t global_start_x, size_t global_start_y, const cudaDeviceProp &props,
+    FPtype t, bool full_join, cudaStream_t s) {
   int diags_per_thread = get_diags_per_thread(t, props);
   int blocksz = get_blocksz(t, props);
   dim3 grid(1, 1, 1);
@@ -666,10 +663,10 @@ SCAMPError_t kernel_ab_join_lower(
     const double *QT, const double *timeseries_A, const double *timeseries_B,
     const double *df_A, const double *df_B, const double *dg_A,
     const double *dg_B, const double *norms_A, const double *norms_B,
-    unsigned long long int *profile_A, unsigned long long int *profile_B,
-    size_t window_size, size_t tile_width, size_t tile_height, size_t global_x,
-    size_t global_y, size_t global_start_x, size_t global_start_y,
-    const cudaDeviceProp &props, FPtype t, bool full_join, cudaStream_t s) {
+    uint64_t *profile_A, uint64_t *profile_B, size_t window_size,
+    size_t tile_width, size_t tile_height, size_t global_x, size_t global_y,
+    size_t global_start_x, size_t global_start_y, const cudaDeviceProp &props,
+    FPtype t, bool full_join, cudaStream_t s) {
   int diags_per_thread = get_diags_per_thread(t, props);
   int blocksz = get_blocksz(t, props);
   dim3 grid(1, 1, 1);
@@ -762,9 +759,9 @@ SCAMPError_t kernel_self_join_upper(
     const double *QT, const double *timeseries_A, const double *timeseries_B,
     const double *df_A, const double *df_B, const double *dg_A,
     const double *dg_B, const double *norms_A, const double *norms_B,
-    unsigned long long int *profile_A, unsigned long long int *profile_B,
-    size_t window_size, size_t tile_width, size_t tile_height, size_t global_x,
-    size_t global_y, const cudaDeviceProp &props, FPtype t, cudaStream_t s) {
+    uint64_t *profile_A, uint64_t *profile_B, size_t window_size,
+    size_t tile_width, size_t tile_height, size_t global_x, size_t global_y,
+    const cudaDeviceProp &props, FPtype t, cudaStream_t s) {
   int exclusion = window_size / 4;
   int diags_per_thread = get_diags_per_thread(t, props);
   int blocksz = get_blocksz(t, props);
@@ -823,9 +820,9 @@ SCAMPError_t kernel_self_join_lower(
     const double *QT, const double *timeseries_A, const double *timeseries_B,
     const double *df_A, const double *df_B, const double *dg_A,
     const double *dg_B, const double *norms_A, const double *norms_B,
-    unsigned long long int *profile_A, unsigned long long int *profile_B,
-    size_t window_size, size_t tile_width, size_t tile_height, size_t global_x,
-    size_t global_y, const cudaDeviceProp &props, FPtype t, cudaStream_t s) {
+    uint64_t *profile_A, uint64_t *profile_B, size_t window_size,
+    size_t tile_width, size_t tile_height, size_t global_x, size_t global_y,
+    const cudaDeviceProp &props, FPtype t, cudaStream_t s) {
   int exclusion = window_size / 4;
   int diags_per_thread = get_diags_per_thread(t, props);
   int blocksz = get_blocksz(t, props);

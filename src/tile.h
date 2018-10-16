@@ -1,5 +1,5 @@
 #pragma once
-
+#include <memory>
 #include "common.h"
 #include "fft_helper.h"
 #include "kernels.h"
@@ -19,10 +19,10 @@ class SCAMP_Tile {
   const double *means_B;
   const double *norms_A;
   const double *norms_B;
-  fft_precompute_helper *fft_info;
+  std::shared_ptr<fft_precompute_helper> fft_info;
   double *QT_scratch;
-  unsigned long long int *profile_A;
-  unsigned long long int *profile_B;
+  uint64_t *profile_A;
+  uint64_t *profile_B;
 
   size_t global_start_A;
   size_t global_start_B;
@@ -46,11 +46,11 @@ class SCAMP_Tile {
              const double *dfA, const double *dfB, const double *dgA,
              const double *dgB, const double *normA, const double *normB,
              const double *meansA, const double *meansB, double *QT,
-             unsigned long long int *profileA, unsigned long long int *profileB,
-             size_t start_A, size_t start_B, size_t g_start_A, size_t g_start_B,
-             size_t height, size_t width, size_t m,
-             fft_precompute_helper *scratch, const cudaDeviceProp &prop,
-             FPtype fp_t)
+             uint64_t *profileA, uint64_t *profileB, size_t start_A,
+             size_t start_B, size_t g_start_A, size_t g_start_B, size_t height,
+             size_t width, size_t m,
+             std::shared_ptr<fft_precompute_helper> scratch,
+             const cudaDeviceProp &prop, FPtype fp_t)
       : type(t),
         timeseries_A(ts_A),
         timeseries_B(ts_B),

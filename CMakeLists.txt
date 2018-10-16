@@ -19,7 +19,7 @@ if(NOT CLANG_TIDY_EXE)
   message(STATUS "clang-tidy not found.")
 else()
   message(STATUS "clang-tidy found: ${CLANG_TIDY_EXE}")
-  set(DO_CLANG_TIDY "${CLANG_TIDY_EXE}" "-checks=*,-clang-analyzer-alpha.*")
+  set(DO_CLANG_TIDY "${CLANG_TIDY_EXE}" "-checks=*,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-fuchsia-default-arguments,-hicpp-vararg,-cppcoreguidelines-pro-type-vararg")
 endif()
 find_program(
   CLANG_FORMAT_EXE
@@ -60,10 +60,10 @@ set(
 
 # ----------------------------------------------------------------------------------------
 #                         ===== Compiler Configuration =====
-add_definitions("--std=c++11 ")
+add_definitions("--std=c++14 ")
 include_directories("${CUDA_TOOLKIT_ROOT_DIR}/include")
 
-set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} --std=c++11 -use_fast_math -O3")
+set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} --std=c++14 -use_fast_math -O3")
 
 # optimize in release
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native")
@@ -102,22 +102,22 @@ target_link_libraries(scamp utils tile common fft)
 
 
 set_target_properties(fft PROPERTIES
-    CXX_STANDARD 11
+    CXX_STANDARD 14
     CXX_STANDARD_REQUIRED ON
     COMPILE_FLAGS "${WARNING_FLAGS}"
 )
 set_target_properties(kernels PROPERTIES
-    CXX_STANDARD 11
+    CXX_STANDARD 14
     CXX_STANDARD_REQUIRED ON
     COMPILE_FLAGS "${WARNING_FLAGS}"
 )
 set_target_properties(utils PROPERTIES
-    CXX_STANDARD 11
+    CXX_STANDARD 14
     CXX_STANDARD_REQUIRED ON
     COMPILE_FLAGS "${WARNING_FLAGS}"
 )
 set_target_properties(scamp PROPERTIES
-    CXX_STANDARD 11
+    CXX_STANDARD 14
     CXX_STANDARD_REQUIRED ON
     COMPILE_FLAGS "${WARNING_FLAGS}"
 )

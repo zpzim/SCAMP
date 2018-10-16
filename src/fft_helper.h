@@ -96,9 +96,8 @@ class fft_precompute_helper {
     CHECK_CUFFT_ERRORS(cufftDestroy(fft_plan));
     CHECK_CUFFT_ERRORS(cufftDestroy(ifft_plan));
   }
-  SCAMPError_t compute_QT(double *QT_scratch, const double *timeseries,
-                          const double *query, const double *qmeans,
-                          cudaStream_t s);
+  SCAMPError_t compute_QT(double *QT, const double *T, const double *Q,
+                          const double *qmeans, cudaStream_t s);
 };
 
 }  // namespace SCAMP

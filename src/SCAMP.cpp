@@ -1,13 +1,14 @@
-#include "SCAMP.h"
-#include <float.h>
+#include <cfloat>
+#include <cinttypes>
+#include <memory>
 #include <numeric>
 #include <unordered_map>
 #include <vector>
+
+#include "SCAMP.h"
 #include "common.h"
 #include "tile.h"
 #include "utils.h"
-using std::make_pair;
-using std::unordered_map;
 using std::vector;
 
 namespace SCAMP {
@@ -19,24 +20,24 @@ SCAMPError_t SCAMP_Operation::init() {
     cudaSetDevice(device);
     gpuErrchk(cudaPeekAtLastError());
 
-    T_A_dev.insert(make_pair(device, (double *)0));
-    T_B_dev.insert(make_pair(device, (double *)0));
-    QT_dev.insert(make_pair(device, (double *)0));
-    means_A.insert(make_pair(device, (double *)0));
-    means_B.insert(make_pair(device, (double *)0));
-    norms_A.insert(make_pair(device, (double *)0));
-    norms_B.insert(make_pair(device, (double *)0));
-    df_A.insert(make_pair(device, (double *)0));
-    df_B.insert(make_pair(device, (double *)0));
-    dg_A.insert(make_pair(device, (double *)0));
-    dg_B.insert(make_pair(device, (double *)0));
-    profile_A_dev.insert(make_pair(device, (float *)NULL));
-    profile_B_dev.insert(make_pair(device, (float *)NULL));
-    profile_A_merged.insert(make_pair(device, (unsigned long long int *)NULL));
-    profile_B_merged.insert(make_pair(device, (unsigned long long int *)NULL));
-    profile_idx_A_dev.insert(make_pair(device, (unsigned int *)NULL));
-    profile_idx_B_dev.insert(make_pair(device, (unsigned int *)NULL));
-    scratchpad.insert(make_pair(device, (double *)NULL));
+    T_A_dev.insert({device, nullptr});
+    T_B_dev.insert({device, nullptr});
+    QT_dev.insert({device, nullptr});
+    means_A.insert({device, nullptr});
+    means_B.insert({device, nullptr});
+    norms_A.insert({device, nullptr});
+    norms_B.insert({device, nullptr});
+    df_A.insert({device, nullptr});
+    df_B.insert({device, nullptr});
+    dg_A.insert({device, nullptr});
+    dg_B.insert({device, nullptr});
+    profile_A_dev.insert({device, nullptr});
+    profile_B_dev.insert({device, nullptr});
+    profile_A_merged.insert({device, nullptr});
+    profile_B_merged.insert({device, nullptr});
+    profile_idx_A_dev.insert({device, nullptr});
+    profile_idx_B_dev.insert({device, nullptr});
+    scratchpad.insert({device, nullptr});
 
     cudaMalloc(&T_A_dev.at(device), sizeof(double) * tile_size);
     gpuErrchk(cudaPeekAtLastError());
@@ -68,14 +69,13 @@ SCAMPError_t SCAMP_Operation::init() {
     gpuErrchk(cudaPeekAtLastError());
     cudaMalloc(&dg_B.at(device), sizeof(double) * tile_n_y);
     gpuErrchk(cudaPeekAtLastError());
-    cudaMalloc(&profile_A_merged.at(device),
-               sizeof(unsigned long long int) * tile_n_x);
+    cudaMalloc(&profile_A_merged.at(device), sizeof(uint64_t) * tile_n_x);
     gpuErrchk(cudaPeekAtLastError());
-    cudaMalloc(&profile_B_merged.at(device),
-               sizeof(unsigned long long int) * tile_n_y);
+    cudaMalloc(&profile_B_merged.at(device), sizeof(uint64_t) * tile_n_y);
     gpuErrchk(cudaPeekAtLastError());
     cudaMalloc(&scratchpad.at(device), sizeof(double) * tile_size);
-    scratch[device] = new fft_precompute_helper(tile_size, m, true);
+    scratch[device] =
+        std::make_shared<fft_precompute_helper>(tile_size, m, true);
     cudaEvent_t st, ed, copy;
     cudaEventCreate(&ed);
     gpuErrchk(cudaPeekAtLastError());
@@ -117,7 +117,6 @@ SCAMPError_t SCAMP_Operation::destroy() {
     cudaFree(profile_idx_A_dev[device]);
     cudaFree(profile_idx_B_dev[device]);
     cudaFree(scratchpad.at(device));
-    delete scratch[device];
     cudaEventDestroy(clocks_start[device]);
     cudaEventDestroy(clocks_end[device]);
     cudaEventDestroy(copy_to_host_done[device]);
@@ -167,7 +166,6 @@ SCAMPError_t SCAMP_Operation::do_tile(
                     sizeof(float) * t_n_y, cudaMemcpyHostToDevice,
                     streams.at(device));
     gpuErrchk(cudaPeekAtLastError());
-    printf("start = %lu, size = %lu\n", start_y, profile_idx_B_h.size());
     cudaMemcpyAsync(profile_idx_B_dev[device], profile_idx_B_h.data() + start_y,
                     sizeof(unsigned int) * t_n_y, cudaMemcpyHostToDevice,
                     streams.at(device));
@@ -208,8 +206,8 @@ SCAMPError_t SCAMP_Operation::do_tile(
 
 void SCAMP_Operation::get_tile_ordering() {
   tile_ordering.clear();
-  size_t num_tile_rows = ceil((size_B - m + 1) / (float)tile_n_y);
-  size_t num_tile_cols = ceil((size_A - m + 1) / (float)tile_n_x);
+  size_t num_tile_rows = ceil((size_B - m + 1) / static_cast<double>(tile_n_y));
+  size_t num_tile_cols = ceil((size_A - m + 1) / static_cast<double>(tile_n_x));
 
   if (self_join) {
     for (int offset = 0; offset < num_tile_rows - 1; ++offset) {
@@ -319,8 +317,7 @@ int SCAMP_Operation::issue_and_merge_tiles_on_devices(
     vector<unsigned int> &profile_idx_A_full_host,
     vector<float> &profile_B_full_host,
     vector<unsigned int> &profile_idx_B_full_host,
-    vector<vector<unsigned long long int>> &profileA_h,
-    vector<vector<unsigned long long int>> &profileB_h,
+    vector<vector<uint64_t>> &profileA_h, vector<vector<uint64_t>> &profileB_h,
     int last_device_idx = ISSUED_ALL_DEVICES) {
   bool done = last_device_idx != ISSUED_ALL_DEVICES;
   int last_dev = ISSUED_ALL_DEVICES;
@@ -332,12 +329,12 @@ int SCAMP_Operation::issue_and_merge_tiles_on_devices(
     cudaSetDevice(device);
     gpuErrchk(cudaPeekAtLastError());
     cudaMemcpyAsync(profileA_h.at(i).data(), profile_A_merged[device],
-                    sizeof(unsigned long long int) * (n_x[device] - m + 1),
+                    sizeof(uint64_t) * (n_x[device] - m + 1),
                     cudaMemcpyDeviceToHost, streams.at(device));
     gpuErrchk(cudaPeekAtLastError());
     if (self_join || full_join) {
       cudaMemcpyAsync(profileB_h.at(i).data(), profile_B_merged[device],
-                      sizeof(unsigned long long int) * (n_y[device] - m + 1),
+                      sizeof(uint64_t) * (n_y[device] - m + 1),
                       cudaMemcpyDeviceToHost, streams.at(device));
       gpuErrchk(cudaPeekAtLastError());
     }
@@ -364,15 +361,11 @@ int SCAMP_Operation::issue_and_merge_tiles_on_devices(
     gpuErrchk(cudaPeekAtLastError());
     cudaEventSynchronize(copy_to_host_done[device]);
     gpuErrchk(cudaPeekAtLastError());
-    printf("%lu %lu, %lu, %lu, %lu, %lu\n", profile_idx_A_full_host.size(),
-           profileA_h.at(i).size(), pos_x_2[device], n_x_2[device] - m + 1,
-           pos_y_2[device], n_y_2[device] - m + 1);
     elementwise_max_with_index(profile_A_full_host, profile_idx_A_full_host,
                                pos_x_2[device], n_x_2[device] - m + 1,
                                &profileA_h.at(i));
     gpuErrchk(cudaPeekAtLastError());
     if (self_join) {
-      printf("Second Elementwise\n");
       elementwise_max_with_index(profile_A_full_host, profile_idx_A_full_host,
                                  pos_y_2[device], n_y_2[device] - m + 1,
                                  &profileB_h.at(i));
@@ -385,7 +378,7 @@ int SCAMP_Operation::issue_and_merge_tiles_on_devices(
     }
     completed_tiles++;
     printf("%f percent complete\n",
-           (completed_tiles / (float)total_tiles) * 100);
+           (completed_tiles / static_cast<float>(total_tiles)) * 100);
   }
   return last_dev;
 }
@@ -396,9 +389,9 @@ SCAMPError_t SCAMP_Operation::do_join(const vector<double> &Ta_host,
                                       vector<unsigned int> &profile_idx,
                                       vector<float> &profile_B,
                                       vector<unsigned int> &profile_idx_B) {
-  vector<vector<unsigned long long int>> profileA_h(
-      devices.size(), vector<unsigned long long int>(tile_n_y)),
-      profileB_h(devices.size(), vector<unsigned long long int>(tile_n_x));
+  vector<vector<uint64_t>> profileA_h(devices.size(),
+                                      vector<uint64_t>(tile_n_y)),
+      profileB_h(devices.size(), vector<uint64_t>(tile_n_x));
   bool done = false;
   int last_dev = ISSUED_ALL_DEVICES;
   get_tile_ordering();
@@ -461,7 +454,8 @@ void do_SCAMP(const vector<double> &Ta_h, const vector<double> &Tb_h,
   printf(
       "Finished SCAMP to generate partial matrix profile of size %lu in %f "
       "seconds on %lu devices:\n",
-      profile_h.size(), (end - start) / (double)CLOCKS_PER_SEC, devices.size());
+      profile_h.size(), (end - start) / static_cast<double>(CLOCKS_PER_SEC),
+      devices.size());
 }
 
 }  // namespace SCAMP
