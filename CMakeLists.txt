@@ -7,9 +7,6 @@ project(SCAMP LANGUAGES CXX CUDA)
 set(VERSION_MAJOR 1)
 set(VERSION_MINOR 1)
 
-# cuda
-find_package(CUDA REQUIRED)
-
 find_program(
   CLANG_TIDY_EXE
   NAMES "clang-tidy"
@@ -51,12 +48,6 @@ set(
   src/fft_kernels.cu
   src/main.cpp
   )
-
-# opengl and libraries to make windows and stuff
-#find_package(glfw3 3.2 REQUIRED) # http://www.glfw.org/docs/latest/build_guide.html#build_link_cmake_package
-#find_package(OpenGL REQUIRED)
-#find_package(PNG REQUIRED)
-#find_package(OpenMP REQUIRED)
 
 # ----------------------------------------------------------------------------------------
 #                         ===== Compiler Configuration =====
