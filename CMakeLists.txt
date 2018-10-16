@@ -9,19 +9,19 @@ set(VERSION_MINOR 1)
 
 find_program(
   CLANG_TIDY_EXE
-  NAMES "clang-tidy"
-  DOC "Path to clang-tidy executable"
+  NAMES "clang-tidy-6.0 clang-tidy-5.0 clang-tidy"
+  DOC "Path to clang-tidy executable (v5+)"
   )
 if(NOT CLANG_TIDY_EXE)
   message(STATUS "clang-tidy not found.")
 else()
   message(STATUS "clang-tidy found: ${CLANG_TIDY_EXE}")
-  set(DO_CLANG_TIDY "${CLANG_TIDY_EXE}" "-checks=*,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-fuchsia-default-arguments,-hicpp-vararg,-cppcoreguidelines-pro-type-vararg")
+  set(DO_CLANG_TIDY "${CLANG_TIDY_EXE}" "-checks=*,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-fuchsia-default-arguments,-hicpp-vararg,-cppcoreguidelines-pro-type-vararg" "-warnings-as-errors=*")
 endif()
 find_program(
   CLANG_FORMAT_EXE
-  NAMES "clang-format"
-  DOC "Path to clang-format executable"
+  NAMES "clang-format-6.0 clang-format-5.0 clang-format"
+  DOC "Path to clang-format executable (v5+)"
   )
 if(NOT CLANG_FORMAT_EXE)
   message(STATUS "clang-format not found.")
@@ -34,6 +34,7 @@ endif()
 
 set(
   PROJECT_SOURCE_FILES
+  src/common.h
   src/kernels.h
   src/utils.h
   src/tile.h
@@ -47,11 +48,13 @@ set(
   src/fft_helper.cpp
   src/fft_kernels.cu
   src/main.cpp
+  src/common.cpp
   )
 
 # ----------------------------------------------------------------------------------------
 #                         ===== Compiler Configuration =====
 add_definitions("--std=c++14 ")
+message(STATUS "CUDA Root Directory is ${CUDA_TOOLKIT_ROOT_DIR}")
 include_directories("${CUDA_TOOLKIT_ROOT_DIR}/include")
 
 set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} --std=c++14 -use_fast_math -O3")
@@ -67,8 +70,6 @@ if(${COMPILER_ID} MATCHES "GNU") # gcc specific flags
 elseif(${COMPILER_ID} MATCHES "clang") # clang specific flags
     add_definitions("-Weverything")
 endif()
-
-message(STATUS, ${COMPILER_ID})
 
 # ----------------------------------------------------------------------------------------
 #                              ===== Build targets =====

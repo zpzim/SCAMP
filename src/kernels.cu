@@ -597,11 +597,11 @@ SCAMPError_t kernel_ab_join_upper(
       case FP_DOUBLE:
         smem = get_smem<double>(TILE_HEIGHT_DP, t, true, true, props);
         do_tile<double, double2, double4, double, false, true, true,
-                BLOCKSPERSM_AB, TILE_HEIGHT_DP,
-                BLOCKSZ_DP><<<grid, block, smem, s>>>(
-            QT, df_A, df_B, dg_A, dg_B, norms_A, norms_B, profile_A, profile_B,
-            window_size, tile_width, tile_height, global_x, global_y, exclusion,
-            0);
+                BLOCKSPERSM_AB, TILE_HEIGHT_DP, BLOCKSZ_DP>
+            <<<grid, block, smem, s>>>(QT, df_A, df_B, dg_A, dg_B, norms_A,
+                                       norms_B, profile_A, profile_B,
+                                       window_size, tile_width, tile_height,
+                                       global_x, global_y, exclusion, 0);
         break;
       case FP_MIXED:
         smem = get_smem<float>(TILE_HEIGHT, t, true, true, props);
@@ -627,26 +627,29 @@ SCAMPError_t kernel_ab_join_upper(
       case FP_DOUBLE:
         smem = get_smem<double>(TILE_HEIGHT_DP, t, false, true, props);
         do_tile<double, double2, double4, double, false, false, true,
-                BLOCKSPERSM_AB, TILE_HEIGHT_DP,
-                BLOCKSZ_DP><<<grid, block, smem, s>>>(
-            QT, df_A, df_B, dg_A, dg_B, norms_A, norms_B, profile_A, profile_B,
-            window_size, tile_width, tile_height, global_x, global_y, 0, 0);
+                BLOCKSPERSM_AB, TILE_HEIGHT_DP, BLOCKSZ_DP>
+            <<<grid, block, smem, s>>>(QT, df_A, df_B, dg_A, dg_B, norms_A,
+                                       norms_B, profile_A, profile_B,
+                                       window_size, tile_width, tile_height,
+                                       global_x, global_y, 0, 0);
         break;
       case FP_MIXED:
         smem = get_smem<float>(TILE_HEIGHT, t, false, true, props);
         do_tile<float, float2, float4, double, true, false, true,
-                BLOCKSPERSM_AB, TILE_HEIGHT,
-                BLOCKSZ_SP><<<grid, block, smem, s>>>(
-            QT, df_A, df_B, dg_A, dg_B, norms_A, norms_B, profile_A, profile_B,
-            window_size, tile_width, tile_height, global_x, global_y, 0, 0);
+                BLOCKSPERSM_AB, TILE_HEIGHT, BLOCKSZ_SP>
+            <<<grid, block, smem, s>>>(QT, df_A, df_B, dg_A, dg_B, norms_A,
+                                       norms_B, profile_A, profile_B,
+                                       window_size, tile_width, tile_height,
+                                       global_x, global_y, 0, 0);
         break;
       case FP_SINGLE:
         smem = get_smem<float>(TILE_HEIGHT, t, false, true, props);
         do_tile<float, float2, float4, float, false, false, true,
-                BLOCKSPERSM_AB, TILE_HEIGHT,
-                BLOCKSZ_SP><<<grid, block, smem, s>>>(
-            QT, df_A, df_B, dg_A, dg_B, norms_A, norms_B, profile_A, profile_B,
-            window_size, tile_width, tile_height, global_x, global_y, 0, 0);
+                BLOCKSPERSM_AB, TILE_HEIGHT, BLOCKSZ_SP>
+            <<<grid, block, smem, s>>>(QT, df_A, df_B, dg_A, dg_B, norms_A,
+                                       norms_B, profile_A, profile_B,
+                                       window_size, tile_width, tile_height,
+                                       global_x, global_y, 0, 0);
         break;
       default:
         break;
@@ -693,11 +696,11 @@ SCAMPError_t kernel_ab_join_lower(
       case FP_DOUBLE:
         smem = get_smem<double>(TILE_HEIGHT_DP, t, true, true, props);
         do_tile<double, double2, double4, double, false, true, true,
-                BLOCKSPERSM_AB, TILE_HEIGHT_DP,
-                BLOCKSZ_DP><<<grid, block, smem, s>>>(
-            QT, df_B, df_A, dg_B, dg_A, norms_B, norms_A, profile_B, profile_A,
-            window_size, tile_height, tile_width, global_y, global_x, 0,
-            exclusion);
+                BLOCKSPERSM_AB, TILE_HEIGHT_DP, BLOCKSZ_DP>
+            <<<grid, block, smem, s>>>(QT, df_B, df_A, dg_B, dg_A, norms_B,
+                                       norms_A, profile_B, profile_A,
+                                       window_size, tile_height, tile_width,
+                                       global_y, global_x, 0, exclusion);
         break;
       case FP_MIXED:
         smem = get_smem<float>(TILE_HEIGHT, t, true, true, props);
@@ -723,26 +726,29 @@ SCAMPError_t kernel_ab_join_lower(
       case FP_DOUBLE:
         smem = get_smem<double>(TILE_HEIGHT_DP, t, false, false, props);
         do_tile<double, double2, double4, double, false, false, false,
-                BLOCKSPERSM_AB, TILE_HEIGHT_DP,
-                BLOCKSZ_DP><<<grid, block, smem, s>>>(
-            QT, df_B, df_A, dg_B, dg_A, norms_B, norms_A, profile_B, profile_A,
-            window_size, tile_height, tile_width, global_y, global_x, 0, 0);
+                BLOCKSPERSM_AB, TILE_HEIGHT_DP, BLOCKSZ_DP>
+            <<<grid, block, smem, s>>>(QT, df_B, df_A, dg_B, dg_A, norms_B,
+                                       norms_A, profile_B, profile_A,
+                                       window_size, tile_height, tile_width,
+                                       global_y, global_x, 0, 0);
         break;
       case FP_MIXED:
         smem = get_smem<float>(TILE_HEIGHT, t, false, false, props);
         do_tile<float, float2, float4, double, true, false, false,
-                BLOCKSPERSM_AB, TILE_HEIGHT,
-                BLOCKSZ_SP><<<grid, block, smem, s>>>(
-            QT, df_B, df_A, dg_B, dg_A, norms_B, norms_A, profile_B, profile_A,
-            window_size, tile_height, tile_width, global_y, global_x, 0, 0);
+                BLOCKSPERSM_AB, TILE_HEIGHT, BLOCKSZ_SP>
+            <<<grid, block, smem, s>>>(QT, df_B, df_A, dg_B, dg_A, norms_B,
+                                       norms_A, profile_B, profile_A,
+                                       window_size, tile_height, tile_width,
+                                       global_y, global_x, 0, 0);
         break;
       case FP_SINGLE:
         smem = get_smem<float>(TILE_HEIGHT, t, false, false, props);
         do_tile<float, float2, float4, float, false, false, false,
-                BLOCKSPERSM_AB, TILE_HEIGHT,
-                BLOCKSZ_SP><<<grid, block, smem, s>>>(
-            QT, df_B, df_A, dg_B, dg_A, norms_B, norms_A, profile_B, profile_A,
-            window_size, tile_height, tile_width, global_y, global_x, 0, 0);
+                BLOCKSPERSM_AB, TILE_HEIGHT, BLOCKSZ_SP>
+            <<<grid, block, smem, s>>>(QT, df_B, df_A, dg_B, dg_A, norms_B,
+                                       norms_A, profile_B, profile_A,
+                                       window_size, tile_height, tile_width,
+                                       global_y, global_x, 0, 0);
         break;
       default:
         return SCAMP_CUDA_ERROR;
@@ -781,29 +787,29 @@ SCAMPError_t kernel_self_join_upper(
       case FP_DOUBLE:
         smem = get_smem<double>(TILE_HEIGHT_DP, t, true, false, props);
         do_tile<double, double2, double4, double, false, true, false,
-                BLOCKSPERSM_SELF, TILE_HEIGHT_DP,
-                BLOCKSZ_DP><<<grid, block, smem, s>>>(
-            QT, df_A, df_B, dg_A, dg_B, norms_A, norms_B, profile_A, profile_B,
-            window_size, tile_width, tile_height, global_x, global_y, exclusion,
-            0);
+                BLOCKSPERSM_SELF, TILE_HEIGHT_DP, BLOCKSZ_DP>
+            <<<grid, block, smem, s>>>(QT, df_A, df_B, dg_A, dg_B, norms_A,
+                                       norms_B, profile_A, profile_B,
+                                       window_size, tile_width, tile_height,
+                                       global_x, global_y, exclusion, 0);
         break;
       case FP_MIXED:
         smem = get_smem<float>(TILE_HEIGHT, t, true, false, props);
         do_tile<float, float2, float4, double, true, true, false,
-                BLOCKSPERSM_SELF, TILE_HEIGHT,
-                BLOCKSZ_SP><<<grid, block, smem, s>>>(
-            QT, df_A, df_B, dg_A, dg_B, norms_A, norms_B, profile_A, profile_B,
-            window_size, tile_width, tile_height, global_x, global_y, exclusion,
-            0);
+                BLOCKSPERSM_SELF, TILE_HEIGHT, BLOCKSZ_SP>
+            <<<grid, block, smem, s>>>(QT, df_A, df_B, dg_A, dg_B, norms_A,
+                                       norms_B, profile_A, profile_B,
+                                       window_size, tile_width, tile_height,
+                                       global_x, global_y, exclusion, 0);
         break;
       case FP_SINGLE:
         smem = get_smem<float>(TILE_HEIGHT, t, true, false, props);
         do_tile<float, float2, float4, float, false, true, false,
-                BLOCKSPERSM_SELF, TILE_HEIGHT,
-                BLOCKSZ_SP><<<grid, block, smem, s>>>(
-            QT, df_A, df_B, dg_A, dg_B, norms_A, norms_B, profile_A, profile_B,
-            window_size, tile_width, tile_height, global_x, global_y, exclusion,
-            0);
+                BLOCKSPERSM_SELF, TILE_HEIGHT, BLOCKSZ_SP>
+            <<<grid, block, smem, s>>>(QT, df_A, df_B, dg_A, dg_B, norms_A,
+                                       norms_B, profile_A, profile_B,
+                                       window_size, tile_width, tile_height,
+                                       global_x, global_y, exclusion, 0);
         break;
       default:
         return SCAMP_CUDA_ERROR;
@@ -843,29 +849,29 @@ SCAMPError_t kernel_self_join_lower(
       case FP_DOUBLE:
         smem = get_smem<double>(TILE_HEIGHT_DP, t, true, false, props);
         do_tile<double, double2, double4, double, false, true, false,
-                BLOCKSPERSM_SELF, TILE_HEIGHT_DP,
-                BLOCKSZ_DP><<<grid, block, smem, s>>>(
-            QT, df_B, df_A, dg_B, dg_A, norms_B, norms_A, profile_B, profile_A,
-            window_size, tile_height, tile_width, global_y, global_x, 0,
-            exclusion);
+                BLOCKSPERSM_SELF, TILE_HEIGHT_DP, BLOCKSZ_DP>
+            <<<grid, block, smem, s>>>(QT, df_B, df_A, dg_B, dg_A, norms_B,
+                                       norms_A, profile_B, profile_A,
+                                       window_size, tile_height, tile_width,
+                                       global_y, global_x, 0, exclusion);
         break;
       case FP_MIXED:
         smem = get_smem<float>(TILE_HEIGHT, t, true, false, props);
         do_tile<float, float2, float4, float, true, true, false,
-                BLOCKSPERSM_SELF, TILE_HEIGHT,
-                BLOCKSZ_SP><<<grid, block, smem, s>>>(
-            QT, df_B, df_A, dg_B, dg_A, norms_B, norms_A, profile_B, profile_A,
-            window_size, tile_height, tile_width, global_y, global_x, 0,
-            exclusion);
+                BLOCKSPERSM_SELF, TILE_HEIGHT, BLOCKSZ_SP>
+            <<<grid, block, smem, s>>>(QT, df_B, df_A, dg_B, dg_A, norms_B,
+                                       norms_A, profile_B, profile_A,
+                                       window_size, tile_height, tile_width,
+                                       global_y, global_x, 0, exclusion);
         break;
       case FP_SINGLE:
         smem = get_smem<float>(TILE_HEIGHT, t, true, false, props);
         do_tile<float, float2, float4, float, false, true, false,
-                BLOCKSPERSM_SELF, TILE_HEIGHT,
-                BLOCKSZ_SP><<<grid, block, smem, s>>>(
-            QT, df_B, df_A, dg_B, dg_A, norms_B, norms_A, profile_B, profile_A,
-            window_size, tile_height, tile_width, global_y, global_x, 0,
-            exclusion);
+                BLOCKSPERSM_SELF, TILE_HEIGHT, BLOCKSZ_SP>
+            <<<grid, block, smem, s>>>(QT, df_B, df_A, dg_B, dg_A, norms_B,
+                                       norms_A, profile_B, profile_A,
+                                       window_size, tile_height, tile_width,
+                                       global_y, global_x, 0, exclusion);
         break;
       default:
         return SCAMP_CUDA_ERROR;

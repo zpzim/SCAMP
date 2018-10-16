@@ -1,3 +1,4 @@
+[![Build Status](https://travis-ci.org/zpzim/SCAMP.svg?branch=master)](https://travis-ci.org/zpzim/SCAMP)
 # SCAMP: SCAlable Matrix Profile
 This is a GPU implementation of the SCAMP algorithm. SCAMP takes a time series as input and computes the matrix profile for a particular window size. You can read more at the [Matrix Profile Homepage](http://www.cs.ucr.edu/~eamonn/MatrixProfile.html)
 This is a much improved framework over [GPU-STOMP](https://github.com/zpzim/STOMPSelfJoin) which has the following additional features:
@@ -13,8 +14,9 @@ Note: for self-joins on small inputs (~2M or less) the features in this reposito
 # Environment
 This base project requires:
  * At least version 9.0 of the CUDA toolkit available [here](https://developer.nvidia.com/cuda-toolkit).
+ * At least version 6.0 of clang (for clang-tidy and clang-format)
+ * Currently builds under linux using gcc/clang and nvcc with the cmake (3.8+ for cuda support), this version is not yet widely available in package managers (i.e. apt) so you will probably need to install it manually from [here](https://cmake.org/download/)
  * An NVIDIA GPU with CUDA support is also required. You can find a list of CUDA compatible GPUs [here](https://developer.nvidia.com/cuda-gpus)
- * Currently builds under linux with the cmake (3.8+ for cuda support), this version is not yet widely available in package managers (i.e. apt) so you will probably need to install it manually from [here](https://cmake.org/download/)
  * Should compile under windows, but untested. You will probably have to handle the parsing of command line arguments differently in windows.
  * Build will be based on the architeture of the GPU attached to the system performing the build
  * We highly recommend using a Volta GPU (we get about a 3x improvement over Pascal)
@@ -40,8 +42,7 @@ This base project requires:
 * Information forthcoming, but the scripts we used to scale out the algorithm are included in the aws/ directory
 
 # TODOs (Contributors welcome):
-* Cleanup codebase, add linting and additional compile-time code health checks (maybe via clang-tidy)
-* Get better test infrastructure in place, add automated unit/integration testing.
+* Cleanup codebase, improve integration testing
 * Add an optimized CPU code path to this framework, we have optimized code [here](https://github.com/kavj/matrixProfile)
 * Add documentation for and improve the general usability of the distributed portion of the framework, ease of use and portability would be great
 

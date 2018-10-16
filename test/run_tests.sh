@@ -36,11 +36,19 @@ do
                 $EXECUTABLE $j -s $tile_sz $fp64 $INPUT_FILE mp mpi > /dev/null
                 X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mpi | grep '^' | wc -l`
                 echo "$X matrix profile index differences"
+                if [ X -gt 50 ] ; then
+                    exit 1
+                fi
                 ./difference.py mp $COMPARE_MP out
+                if [ $? -ne 0 ] ; then
+                    exit $?
+                fi
             fi
         done
     done
 done
+exit 0
+
 
 for i in `seq 0 $NUM_AB`;
 do

@@ -59,9 +59,9 @@ __global__ void __launch_bounds__(512, 4)
   norm[start] = sum;
 
   for (int i = start + 1; i < end; ++i) {
-    norm[i] = norm[i - 1] +
-              ((T[i - 1] - mean[i - 1]) + (T[i + m - 1] - mean[i])) *
-                  (T[i + m - 1] - T[i - 1]);
+    norm[i] =
+        norm[i - 1] + ((T[i - 1] - mean[i - 1]) + (T[i + m - 1] - mean[i])) *
+                          (T[i + m - 1] - T[i - 1]);
   }
   for (int i = start; i < end; ++i) {
     norm[i] = 1.0 / sqrt(norm[i]);
