@@ -15,13 +15,13 @@ Note: for self-joins on small inputs (~2M or less) the features in this reposito
 This base project requires:
  * At least version 9.0 of the CUDA toolkit available [here](https://developer.nvidia.com/cuda-toolkit).
  * At least version 6.0 of clang (for clang-tidy and clang-format)
- * Currently builds under linux using gcc/clang and nvcc with the cmake (3.8+ for cuda support), this version is not yet widely available in package managers (i.e. apt) so you will probably need to install it manually from [here](https://cmake.org/download/)
+ * Currently builds under linux using gcc/clang and nvcc with cmake (3.8+ for cuda support), this version is not yet widely available in package managers (i.e. apt) so you will probably need to install it manually from [here](https://cmake.org/download/)
  * An NVIDIA GPU with CUDA support is also required. You can find a list of CUDA compatible GPUs [here](https://developer.nvidia.com/cuda-gpus)
+ * Currently Supports Kepler-Volta, but Turing and beyond will likely work as well, just add the -gencode flag for your specific architecture in CMakeLists.txt
  * Should compile under windows, but untested. You will probably have to handle the parsing of command line arguments differently in windows.
- * Build will be based on the architeture of the GPU attached to the system performing the build
  * We highly recommend using a Volta GPU (we get about a 3x improvement over Pascal)
 # Usage
-* `cmake CMakeLists.txt`
+* `cmake -D CUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda -D CMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc -D CMAKE_CXX_COMPILER=clang++.`
 * `make -j4`
 * `SCAMP window_size input_A_file_path output_matrix_profile_path output_index_path`
   * Optional Arguments:

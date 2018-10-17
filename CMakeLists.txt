@@ -9,7 +9,7 @@ set(VERSION_MINOR 1)
 
 find_program(
   CLANG_TIDY_EXE
-  NAMES "clang-tidy-6.0 clang-tidy-5.0 clang-tidy"
+  NAMES clang-tidy-6.0 clang-tidy-5.0 clang-tidy
   DOC "Path to clang-tidy executable (v5+)"
   )
 if(NOT CLANG_TIDY_EXE)
@@ -20,7 +20,7 @@ else()
 endif()
 find_program(
   CLANG_FORMAT_EXE
-  NAMES "clang-format-6.0 clang-format-5.0 clang-format"
+  NAMES clang-format-6.0 clang-format-5.0 clang-format
   DOC "Path to clang-format executable (v5+)"
   )
 if(NOT CLANG_FORMAT_EXE)
@@ -57,7 +57,14 @@ add_definitions("--std=c++14 ")
 message(STATUS "CUDA Root Directory is ${CUDA_TOOLKIT_ROOT_DIR}")
 include_directories("${CUDA_TOOLKIT_ROOT_DIR}/include")
 
-set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} --std=c++14 -use_fast_math -O3")
+set(CUDA_COMPILATION_FLAGS "-use_fast_math -O3")
+set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_70,code=sm_70")
+set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_61,code=sm_61")
+set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_60,code=sm_60")
+set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_50,code=sm_50")
+set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_37,code=sm_37")
+set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_35,code=sm_35")
+set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_30,code=sm_30")
 
 # optimize in release
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native")
@@ -93,27 +100,16 @@ add_library(scamp src/SCAMP.cpp)
 target_link_libraries(scamp utils tile common fft)
 
 
-set_target_properties(fft PROPERTIES
-    CXX_STANDARD 14
-    CXX_STANDARD_REQUIRED ON
-    COMPILE_FLAGS "${WARNING_FLAGS}"
-)
 set_target_properties(kernels PROPERTIES
     CXX_STANDARD 14
     CXX_STANDARD_REQUIRED ON
-    COMPILE_FLAGS "${WARNING_FLAGS}"
+    COMPILE_FLAGS "${CUDA_COMPILATION_FLAGS} ${CUDA_GENCODE_FLAGS}"
 )
 set_target_properties(utils PROPERTIES
     CXX_STANDARD 14
     CXX_STANDARD_REQUIRED ON
-    COMPILE_FLAGS "${WARNING_FLAGS}"
+    COMPILE_FLAGS "${CUDA_COMPILATION_FLAGS} ${CUDA_GENCODE_FLAGS}"
 )
-set_target_properties(scamp PROPERTIES
-    CXX_STANDARD 14
-    CXX_STANDARD_REQUIRED ON
-    COMPILE_FLAGS "${WARNING_FLAGS}"
-)
-
 
 if(CLANG_TIDY_EXE)
   set_target_properties(
@@ -126,10 +122,6 @@ if(CLANG_TIDY_EXE)
   )
   set_target_properties(
     tile PROPERTIES
-    CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
-  )
-  set_target_properties(
-    utils PROPERTIES
     CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
   )
   set_target_properties(

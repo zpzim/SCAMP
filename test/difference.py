@@ -15,7 +15,7 @@ for line1, line2 in zip(fd1,fd2):
     fd3.write(str(x - x2) + "\n")
     if(abs(diff) > maxdiff):
         maxdiff = abs(diff)
-    if abs(diff) > 0.0005:
+    if abs(diff) > 0.01:
         exit(1)
     count += 1
 
