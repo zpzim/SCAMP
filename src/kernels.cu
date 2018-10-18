@@ -86,12 +86,12 @@ __device__ inline float max4(const float4 &d, const unsigned int init,
 template <class T, int tile_height, int tile_width, bool full_join,
           bool only_col, int BLOCKSZ>
 __device__ inline void initialize_tile_memory(
-    const uint64_t *__restrict__ profile_A,
-    const uint64_t *__restrict__ profile_B, const double *__restrict__ df_A,
+    const uint32_t *__restrict__ profile_A,
+    const uint32_t *__restrict__ profile_B, const double *__restrict__ df_A,
     const double *__restrict__ df_B, const double *__restrict__ dg_A,
     const double *__restrict__ dg_B, const double *__restrict__ norms_A,
-    const double *__restrict__ norms_B, mp_entry *__restrict__ local_mp_col,
-    mp_entry *__restrict__ local_mp_row, T *__restrict__ df_col,
+    const double *__restrict__ norms_B, uint32_t *__restrict__ local_mp_col,
+    uint32_t *__restrict__ local_mp_row, T *__restrict__ df_col,
     T *__restrict__ df_row, T *__restrict__ dg_col, T *__restrict__ dg_row,
     T *__restrict__ norm_col, T *__restrict__ norm_row, const unsigned int n_x,
     const unsigned int n_y, const unsigned int col_start,
@@ -103,7 +103,7 @@ __device__ inline void initialize_tile_memory(
     df_col[local_position] = df_A[global_position];
     norm_col[local_position] = norms_A[global_position];
     if (full_join || only_col) {
-      local_mp_col[local_position].ulong = profile_A[global_position];
+      local_mp_col[local_position] = 0;
     }
     local_position += BLOCKSZ;
     global_position += BLOCKSZ;
@@ -116,7 +116,7 @@ __device__ inline void initialize_tile_memory(
     df_row[local_position] = df_B[global_position];
     norm_row[local_position] = norms_B[global_position];
     if (full_join || !only_col) {
-      local_mp_row[local_position].ulong = profile_B[global_position];
+      local_mp_row[local_position] = 0;
     }
     local_position += BLOCKSZ;
     global_position += BLOCKSZ;
@@ -126,15 +126,14 @@ __device__ inline void initialize_tile_memory(
 // This does one row of work for 4 diagonals in a single thread
 template <class T, class ACC, bool mixed, bool full_join, bool only_col>
 __device__ inline void do_unrolled_row4(
-    ACC &cov1, ACC &cov2, ACC &cov3, ACC &cov4, float &distcol1,
-    float &distcol2, float &distcol3, float &distcol4, unsigned int &idxcol1,
-    unsigned int &idxcol2, unsigned int &idxcol3, unsigned int &idxcol4,
+    ACC &cov1, ACC &cov2, ACC &cov3, ACC &cov4, uint8_t &count_col1,
+    uint8_t &count_col2, uint8_t &count_col3, uint8_t &count_col4,
     const T &inormcx, const T &inormcy, const T &inormcz, const T &inormcw,
     const T &inormr, const T &df_colx, const T &df_coly, const T &df_colz,
     const T &df_colw, const T &dg_colx, const T &dg_coly, const T &dg_colz,
     const T &dg_colw, const T &df_row, const T &dg_row, const int &row,
     const int &col, const int &global_row, const int &global_col,
-    mp_entry *__restrict__ mp_row, const float &curr_val) {
+    uint32_t *__restrict__ mp_row, float thresh) {
   float4 dist;
 
   dist.x = cov1 * inormcx * inormr;
@@ -148,20 +147,40 @@ __device__ inline void do_unrolled_row4(
   cov3 = cov3 + df_colz * dg_row + dg_colz * df_row;
   cov4 = cov4 + df_colw * dg_row + dg_colw * df_row;
 
-  // Update the column best-so-far values
-  if (full_join || only_col) {
-    MPMax2(distcol1, dist.x, idxcol1, global_row);
-    MPMax2(distcol2, dist.y, idxcol2, global_row);
-    MPMax2(distcol3, dist.z, idxcol3, global_row);
-    MPMax2(distcol4, dist.w, idxcol4, global_row);
-  }
+  char count_row = 0;
 
+  if (dist.x > thresh) {
+    count_col1++;
+    count_row++;
+  }
+  if (dist.y > thresh) {
+    count_col2++;
+    count_row++;
+  }
+  if (dist.z > thresh) {
+    count_col3++;
+    count_row++;
+  }
+  if (dist.w > thresh) {
+    count_col4++;
+    count_row++;
+  }
+  /*
+    // Update the column best-so-far values
+    if (full_join || only_col) {
+      MPMax2(distcol1, dist.x, idxcol1, global_row);
+      MPMax2(distcol2, dist.y, idxcol2, global_row);
+      MPMax2(distcol3, dist.z, idxcol3, global_row);
+      MPMax2(distcol4, dist.w, idxcol4, global_row);
+    }
+  */
   if (full_join || !only_col) {
-    unsigned int idx;
+    // unsigned int idx;
     // We take the maximum of the columns we computed for the row
     // And use that value to check the matrix profile
-    float d = max4(dist, global_col, idx);
-    MPatomicMax_check((uint64_t *)(mp_row + row), d, idx, curr_val);
+    // float d = max4(dist, global_col, idx);
+    // MPatomicMax_check((uint64_t *)(mp_row + row), d, idx, curr_val);
+    atomicAdd_block(mp_row + row, count_row);
   }
 }
 
@@ -175,16 +194,14 @@ __device__ inline void do_iteration_unroll_4(
     int i, int j, int x, int y, ACC &cov1, ACC &cov2, ACC &cov3, ACC &cov4,
     T *__restrict__ df_col, T *__restrict__ df_row, T *__restrict__ dg_col,
     T *__restrict__ dg_row, T *__restrict__ inorm_col,
-    T *__restrict__ inorm_row, mp_entry *__restrict__ local_mp_col,
-    mp_entry *__restrict__ local_mp_row) {
-  float4 distc = make_float4(CC_MIN, CC_MIN, CC_MIN, CC_MIN);
-  float4 distc2 = make_float4(CC_MIN, CC_MIN, CC_MIN, CC_MIN);
-  uint4 idxc, idxc2;
+    T *__restrict__ inorm_row, uint32_t *__restrict__ local_mp_col,
+    uint32_t *__restrict__ local_mp_row, float thresh) {
+  uchar4 col_count = make_uchar4(0, 0, 0, 0);
+  uchar4 col_count2 = make_uchar4(0, 0, 0, 0);
 
   // Load row values 2 at a time, load column values 4 at a time
   int r = i >> 1;
   int c = j >> 2;
-  int c2 = j >> 1;
 
   // Preload the shared memory values we will use into registers
   // We load 4 values per thread into a float4 vector type
@@ -194,17 +211,6 @@ __device__ inline void do_iteration_unroll_4(
   VT4 dfc2 = reinterpret_cast<VT4 *>(df_col)[c + 1];
   VT4 dgc2 = reinterpret_cast<VT4 *>(dg_col)[c + 1];
   VT4 inormc2 = reinterpret_cast<VT4 *>(inorm_col)[c + 1];
-  ulonglong2 mp_col_check1, mp_col_check2;
-  ulonglong2 mp_row_check;
-
-  // Copy the pieces of the cache we will use into registers with vectorized
-  // loads
-  if (full_join || only_col) {
-    mp_col_check1 = reinterpret_cast<ulonglong2 *>(local_mp_col)[c2];
-  }
-  if (full_join || !only_col) {
-    mp_row_check = reinterpret_cast<ulonglong2 *>(local_mp_row)[r];
-  }
 
   // Due to a lack of registers on volta, we only load these row values 2 at a
   // time
@@ -223,34 +229,27 @@ __device__ inline void do_iteration_unroll_4(
   // These distances cover 4 possible rows and 7 possible columns, so we need to
   // check the matrix profile 11 times total, once for each row and once for
   // each column
-  mp_entry e;
-  e.ulong = mp_row_check.x;
   do_unrolled_row4<T, ACC, mixed, full_join, only_col>(
-      cov1, cov2, cov3, cov4, distc.x, distc.y, distc.z, distc.w, idxc.x,
-      idxc.y, idxc.z, idxc.w, inormc.x, inormc.y, inormc.z, inormc.w, inormr.x,
-      dfc.x, dfc.y, dfc.z, dfc.w, dgc.x, dgc.y, dgc.z, dgc.w, dfr.x, dgr.x, i,
-      j, y, x, local_mp_row, e.floats[0]);
+      cov1, cov2, cov3, cov4, col_count.x, col_count.y, col_count.z,
+      col_count.w, inormc.x, inormc.y, inormc.z, inormc.w, inormr.x, dfc.x,
+      dfc.y, dfc.z, dfc.w, dgc.x, dgc.y, dgc.z, dgc.w, dfr.x, dgr.x, i, j, y, x,
+      local_mp_row, thresh);
 
   // Each row's computation allows us to complete a column, the first row
   // completes column 1
   if (full_join || only_col) {
-    e.ulong = mp_col_check1.x;
-    MPatomicMax_check((uint64_t *)(local_mp_col + j), distc.x, idxc.x,
-                      e.floats[0]);
+    atomicAdd_block(local_mp_col + j, col_count.x);
   }
 
-  e.ulong = mp_row_check.y;
   do_unrolled_row4<T, ACC, mixed, full_join, only_col>(
-      cov1, cov2, cov3, cov4, distc.y, distc.z, distc.w, distc2.x, idxc.y,
-      idxc.z, idxc.w, idxc2.x, inormc.y, inormc.z, inormc.w, inormc2.x,
-      inormr.y, dfc.y, dfc.z, dfc.w, dfc2.x, dgc.y, dgc.z, dgc.w, dgc2.x, dfr.y,
-      dgr.y, i + 1, j + 1, y + 1, x + 1, local_mp_row, e.floats[0]);
+      cov1, cov2, cov3, cov4, col_count.y, col_count.z, col_count.w,
+      col_count2.x, inormc.y, inormc.z, inormc.w, inormc2.x, inormr.y, dfc.y,
+      dfc.z, dfc.w, dfc2.x, dgc.y, dgc.z, dgc.w, dgc2.x, dfr.y, dgr.y, i + 1,
+      j + 1, y + 1, x + 1, local_mp_row, thresh);
 
   // The second row completes column 2
   if (full_join || only_col) {
-    e.ulong = mp_col_check1.y;
-    MPatomicMax_check((uint64_t *)(local_mp_col + j + 1), distc.y, idxc.y,
-                      e.floats[0]);
+    atomicAdd_block(local_mp_col + j + 1, col_count.y);
   }
 
   // Load the values for the next 2 rows
@@ -258,48 +257,29 @@ __device__ inline void do_iteration_unroll_4(
   dfr = reinterpret_cast<VT2 *>(df_row)[r + 1];
   inormr = reinterpret_cast<VT2 *>(inorm_row)[r + 1];
 
-  if (full_join || !only_col) {
-    mp_row_check = reinterpret_cast<ulonglong2 *>(local_mp_row)[r + 1];
-  }
-
-  e.ulong = mp_row_check.x;
   do_unrolled_row4<T, ACC, mixed, full_join, only_col>(
-      cov1, cov2, cov3, cov4, distc.z, distc.w, distc2.x, distc2.y, idxc.z,
-      idxc.w, idxc2.x, idxc2.y, inormc.z, inormc.w, inormc2.x, inormc2.y,
-      inormr.x, dfc.z, dfc.w, dfc2.x, dfc2.y, dgc.z, dgc.w, dgc2.x, dgc2.y,
-      dfr.x, dgr.x, i + 2, j + 2, y + 2, x + 2, local_mp_row, e.floats[0]);
+      cov1, cov2, cov3, cov4, col_count.z, col_count.w, col_count2.x,
+      col_count2.y, inormc.z, inormc.w, inormc2.x, inormc2.y, inormr.x, dfc.z,
+      dfc.w, dfc2.x, dfc2.y, dgc.z, dgc.w, dgc2.x, dgc2.y, dfr.x, dgr.x, i + 2,
+      j + 2, y + 2, x + 2, local_mp_row, thresh);
 
   // The third row completes column 3
   if (full_join || only_col) {
-    mp_col_check2 = reinterpret_cast<ulonglong2 *>(local_mp_col)[c2 + 1];
-    e.ulong = mp_col_check2.x;
-    MPatomicMax_check((uint64_t *)(local_mp_col + j + 2), distc.z, idxc.z,
-                      e.floats[0]);
+    atomicAdd_block(local_mp_col + j + 2, col_count.z);
   }
 
-  e.ulong = mp_row_check.y;
   do_unrolled_row4<T, ACC, mixed, full_join, only_col>(
-      cov1, cov2, cov3, cov4, distc.w, distc2.x, distc2.y, distc2.z, idxc.w,
-      idxc2.x, idxc2.y, idxc2.z, inormc.w, inormc2.x, inormc2.y, inormc2.z,
-      inormr.y, dfc.w, dfc2.x, dfc2.y, dfc2.z, dgc.w, dgc2.x, dgc2.y, dgc2.z,
-      dfr.y, dgr.y, i + 3, j + 3, y + 3, x + 3, local_mp_row, e.floats[0]);
+      cov1, cov2, cov3, cov4, col_count.w, col_count2.x, col_count2.y,
+      col_count2.z, inormc.w, inormc2.x, inormc2.y, inormc2.z, inormr.y, dfc.w,
+      dfc2.x, dfc2.y, dfc2.z, dgc.w, dgc2.x, dgc2.y, dgc2.z, dfr.y, dgr.y,
+      i + 3, j + 3, y + 3, x + 3, local_mp_row, thresh);
 
   // After the 4th row, we have completed columns 4, 5, 6, and 7
   if (full_join || only_col) {
-    e.ulong = mp_col_check2.y;
-    mp_col_check1 = reinterpret_cast<ulonglong2 *>(local_mp_col)[c2 + 2];
-    mp_col_check2 = reinterpret_cast<ulonglong2 *>(local_mp_col)[c2 + 3];
-    MPatomicMax_check((uint64_t *)(local_mp_col + j + 3), distc.w, idxc.w,
-                      e.floats[0]);
-    e.ulong = mp_col_check1.x;
-    MPatomicMax_check((uint64_t *)(local_mp_col + j + 4), distc2.x, idxc2.x,
-                      e.floats[0]);
-    e.ulong = mp_col_check1.y;
-    MPatomicMax_check((uint64_t *)(local_mp_col + j + 5), distc2.y, idxc2.y,
-                      e.floats[0]);
-    e.ulong = mp_col_check2.x;
-    MPatomicMax_check((uint64_t *)(local_mp_col + j + 6), distc2.z, idxc2.z,
-                      e.floats[0]);
+    atomicAdd_block(local_mp_col + j + 3, col_count.w);
+    atomicAdd_block(local_mp_col + j + 4, col_count2.x);
+    atomicAdd_block(local_mp_col + j + 5, col_count2.y);
+    atomicAdd_block(local_mp_col + j + 6, col_count2.z);
   }
 }
 
@@ -313,10 +293,9 @@ __device__ inline void do_iteration_4diag(
     int n, ACC &cov1, ACC &cov2, ACC &cov3, ACC &cov4, T *__restrict__ df_col,
     T *__restrict__ df_row, T *__restrict__ dg_col, T *__restrict__ dg_row,
     T *__restrict__ inorm_col, T *__restrict__ inorm_row,
-    mp_entry *__restrict__ local_mp_col, mp_entry *__restrict__ local_mp_row,
-    size_t diag, size_t num_diags) {
-  float dist_1;
-  unsigned int idx_1;
+    uint32_t *__restrict__ local_mp_col, uint32_t *__restrict__ local_mp_row,
+    size_t diag, size_t num_diags, float thresh) {
+  char count_rolling = 0;
   float4 dist;
 
   T inormr = inorm_row[i];
@@ -334,40 +313,38 @@ __device__ inline void do_iteration_4diag(
   cov3 = cov3 + df_col[j + 2] * dgr + dg_col[j + 2] * dfr;
   cov4 = cov4 + df_col[j + 3] * dgr + dg_col[j + 3] * dfr;
 
-  if (full_join || only_col) {
-    MPatomicMax((uint64_t *)(local_mp_col + j), dist.x, y + global_start_y);
-  }
-  dist_1 = dist.x;
-  idx_1 = x + global_start_x;
-  if (x + 1 < n && diag + 1 < num_diags) {
-    if (full_join || !only_col) {
-      MPMax(dist_1, dist.y, idx_1, global_start_x + x + 1, dist_1, idx_1);
-    }
+  if (dist.x > thresh) {
+    count_rolling++;
     if (full_join || only_col) {
-      MPatomicMax((uint64_t *)(local_mp_col + j + 1), dist.y,
-                  y + global_start_y);
+      atomicAdd_block(local_mp_col + j, 1);
+    }
+  }
+  if (x + 1 < n && diag + 1 < num_diags) {
+    if (dist.y > thresh) {
+      count_rolling++;
+      if (full_join || only_col) {
+        atomicAdd_block(local_mp_col + j + 1, 1);
+      }
     }
   }
   if (x + 2 < n && diag + 2 < num_diags) {
-    if (full_join || !only_col) {
-      MPMax(dist_1, dist.z, idx_1, global_start_x + x + 2, dist_1, idx_1);
-    }
-    if (full_join || only_col) {
-      MPatomicMax((uint64_t *)(local_mp_col + j + 2), dist.z,
-                  y + global_start_y);
+    if (dist.z > thresh) {
+      count_rolling++;
+      if (full_join || only_col) {
+        atomicAdd_block(local_mp_col + j + 2, 1);
+      }
     }
   }
   if (x + 3 < n && diag + 3 < num_diags) {
-    if (full_join || !only_col) {
-      MPMax(dist_1, dist.w, idx_1, global_start_x + x + 3, dist_1, idx_1);
-    }
-    if (full_join || only_col) {
-      MPatomicMax((uint64_t *)(local_mp_col + j + 3), dist.w,
-                  y + global_start_y);
+    if (dist.w > thresh) {
+      count_rolling++;
+      if (full_join || only_col) {
+        atomicAdd_block(local_mp_col + j + 3, 1);
+      }
     }
   }
   if (full_join || !only_col) {
-    MPatomicMax((uint64_t *)(local_mp_row + i), dist_1, idx_1);
+    atomicAdd_block(local_mp_row + i, count_rolling);
   }
 }
 
@@ -379,16 +356,17 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
     do_tile(const double *__restrict__ Cov, const double *__restrict__ dfa,
             const double *__restrict__ dfb, const double *__restrict__ dga,
             const double *__restrict__ dgb, const double *__restrict__ normsa,
-            const double *__restrict__ normsb, uint64_t *__restrict__ profile_A,
-            uint64_t *__restrict__ profile_B, const unsigned int m,
+            const double *__restrict__ normsb, uint32_t *__restrict__ profile_A,
+            uint32_t *__restrict__ profile_B, const unsigned int m,
             const unsigned int n_x, const unsigned int n_y,
             const unsigned int global_start_x,
             const unsigned int global_start_y, const int exclusion_lower,
-            const int exclusion_upper) {
+            const int exclusion_upper, float thresh) {
   constexpr int diags_per_thread = 4;
   constexpr int tile_width = tile_height + BLOCKSZ * diags_per_thread;
   extern __shared__ char smem[];
-  mp_entry *local_mp_col, *local_mp_row;
+  uint32_t *local_mp_col;
+  uint32_t *local_mp_row;
   T *df_col, *dg_col, *inorm_col, *df_row, *dg_row, *inorm_row;
 
   df_col = (T *)smem;
@@ -397,7 +375,7 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
   df_row = inorm_col + tile_width;
   dg_row = df_row + tile_height;
   inorm_row = dg_row + tile_height;
-  mp_entry *pos = (mp_entry *)(inorm_row + tile_height);
+  uint32_t *pos = (uint32_t *)(inorm_row + tile_height);
 
   if (!full_join && only_col) {
     local_mp_col = pos;
@@ -405,7 +383,7 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
     local_mp_row = pos;
   } else {
     local_mp_col = pos;
-    local_mp_row = pos + tile_width;
+    local_mp_row = (uint32_t *)(pos + tile_width);
   }
 
   const unsigned int start_diag = (threadIdx.x * diags_per_thread) +
@@ -478,7 +456,7 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
         do_iteration_unroll_4<T, T2, T4, ACC, mixed, full_join, only_col>(
             i, j, x + global_start_x + i, y + global_start_y + i, cov1, cov2,
             cov3, cov4, df_col, df_row, dg_col, dg_row, inorm_col, inorm_row,
-            local_mp_col, local_mp_row);
+            local_mp_col, local_mp_row, thresh);
       }
       x += tile_height;
       y += tile_height;
@@ -489,7 +467,8 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
         do_iteration_4diag<T, T4, ACC, mixed, full_join, only_col>(
             localY, localX, x, y, global_start_x, global_start_y, n_x, cov1,
             cov2, cov3, cov4, df_col, df_row, dg_col, dg_row, inorm_col,
-            inorm_row, local_mp_col, local_mp_row, start_diag, num_diags);
+            inorm_row, local_mp_col, local_mp_row, start_diag, num_diags,
+            thresh);
         ++x;
         ++y;
         ++localX;
@@ -508,8 +487,7 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
       global_position = tile_start_x + threadIdx.x;
       local_position = threadIdx.x;
       while (local_position < tile_width && global_position < n_x) {
-        mp_entry e = local_mp_col[local_position];
-        MPatomicMax(profile_A + global_position, e.floats[0], e.ints[1]);
+        atomicAdd(profile_A + global_position, local_mp_col[local_position]);
         global_position += BLOCKSZ;
         local_position += BLOCKSZ;
       }
@@ -518,8 +496,7 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
       global_position = tile_start_y + threadIdx.x;
       local_position = threadIdx.x;
       while (local_position < tile_height && global_position < n_y) {
-        mp_entry e = local_mp_row[local_position];
-        MPatomicMax(profile_B + global_position, e.floats[0], e.ints[1]);
+        atomicAdd(profile_B + global_position, local_mp_row[local_position]);
         global_position += BLOCKSZ;
         local_position += BLOCKSZ;
       }
@@ -568,10 +545,10 @@ SCAMPError_t kernel_ab_join_upper(
     const double *QT, const double *timeseries_A, const double *timeseries_B,
     const double *df_A, const double *df_B, const double *dg_A,
     const double *dg_B, const double *norms_A, const double *norms_B,
-    uint64_t *profile_A, uint64_t *profile_B, size_t window_size,
+    uint32_t *profile_A, uint32_t *profile_B, size_t window_size,
     size_t tile_width, size_t tile_height, size_t global_x, size_t global_y,
     size_t global_start_x, size_t global_start_y, const cudaDeviceProp &props,
-    FPtype t, bool full_join, cudaStream_t s) {
+    FPtype t, bool full_join, float thresh, cudaStream_t s) {
   int diags_per_thread = get_diags_per_thread(t, props);
   int blocksz = get_blocksz(t, props);
   dim3 grid(1, 1, 1);
@@ -598,10 +575,10 @@ SCAMPError_t kernel_ab_join_upper(
         smem = get_smem<double>(TILE_HEIGHT_DP, t, true, true, props);
         do_tile<double, double2, double4, double, false, true, true,
                 BLOCKSPERSM_AB, TILE_HEIGHT_DP, BLOCKSZ_DP>
-            <<<grid, block, smem, s>>>(QT, df_A, df_B, dg_A, dg_B, norms_A,
-                                       norms_B, profile_A, profile_B,
-                                       window_size, tile_width, tile_height,
-                                       global_x, global_y, exclusion, 0);
+            <<<grid, block, smem, s>>>(
+                QT, df_A, df_B, dg_A, dg_B, norms_A, norms_B, profile_A,
+                profile_B, window_size, tile_width, tile_height, global_x,
+                global_y, exclusion, 0, thresh);
         break;
       case FP_MIXED:
         smem = get_smem<float>(TILE_HEIGHT, t, true, true, props);
@@ -609,7 +586,7 @@ SCAMPError_t kernel_ab_join_upper(
                 TILE_HEIGHT, BLOCKSZ_SP><<<grid, block, smem, s>>>(
             QT, df_A, df_B, dg_A, dg_B, norms_A, norms_B, profile_A, profile_B,
             window_size, tile_width, tile_height, global_x, global_y, exclusion,
-            0);
+            0, thresh);
         break;
       case FP_SINGLE:
         smem = get_smem<float>(TILE_HEIGHT, t, true, true, props);
@@ -617,7 +594,7 @@ SCAMPError_t kernel_ab_join_upper(
                 TILE_HEIGHT, BLOCKSZ_SP><<<grid, block, smem, s>>>(
             QT, df_A, df_B, dg_A, dg_B, norms_A, norms_B, profile_A, profile_B,
             window_size, tile_width, tile_height, global_x, global_y, exclusion,
-            0);
+            0, thresh);
         break;
       default:
         break;
@@ -631,7 +608,7 @@ SCAMPError_t kernel_ab_join_upper(
             <<<grid, block, smem, s>>>(QT, df_A, df_B, dg_A, dg_B, norms_A,
                                        norms_B, profile_A, profile_B,
                                        window_size, tile_width, tile_height,
-                                       global_x, global_y, 0, 0);
+                                       global_x, global_y, 0, 0, thresh);
         break;
       case FP_MIXED:
         smem = get_smem<float>(TILE_HEIGHT, t, false, true, props);
@@ -640,7 +617,7 @@ SCAMPError_t kernel_ab_join_upper(
             <<<grid, block, smem, s>>>(QT, df_A, df_B, dg_A, dg_B, norms_A,
                                        norms_B, profile_A, profile_B,
                                        window_size, tile_width, tile_height,
-                                       global_x, global_y, 0, 0);
+                                       global_x, global_y, 0, 0, thresh);
         break;
       case FP_SINGLE:
         smem = get_smem<float>(TILE_HEIGHT, t, false, true, props);
@@ -649,7 +626,7 @@ SCAMPError_t kernel_ab_join_upper(
             <<<grid, block, smem, s>>>(QT, df_A, df_B, dg_A, dg_B, norms_A,
                                        norms_B, profile_A, profile_B,
                                        window_size, tile_width, tile_height,
-                                       global_x, global_y, 0, 0);
+                                       global_x, global_y, 0, 0, thresh);
         break;
       default:
         break;
@@ -666,10 +643,10 @@ SCAMPError_t kernel_ab_join_lower(
     const double *QT, const double *timeseries_A, const double *timeseries_B,
     const double *df_A, const double *df_B, const double *dg_A,
     const double *dg_B, const double *norms_A, const double *norms_B,
-    uint64_t *profile_A, uint64_t *profile_B, size_t window_size,
+    uint32_t *profile_A, uint32_t *profile_B, size_t window_size,
     size_t tile_width, size_t tile_height, size_t global_x, size_t global_y,
     size_t global_start_x, size_t global_start_y, const cudaDeviceProp &props,
-    FPtype t, bool full_join, cudaStream_t s) {
+    FPtype t, bool full_join, float thresh, cudaStream_t s) {
   int diags_per_thread = get_diags_per_thread(t, props);
   int blocksz = get_blocksz(t, props);
   dim3 grid(1, 1, 1);
@@ -697,10 +674,10 @@ SCAMPError_t kernel_ab_join_lower(
         smem = get_smem<double>(TILE_HEIGHT_DP, t, true, true, props);
         do_tile<double, double2, double4, double, false, true, true,
                 BLOCKSPERSM_AB, TILE_HEIGHT_DP, BLOCKSZ_DP>
-            <<<grid, block, smem, s>>>(QT, df_B, df_A, dg_B, dg_A, norms_B,
-                                       norms_A, profile_B, profile_A,
-                                       window_size, tile_height, tile_width,
-                                       global_y, global_x, 0, exclusion);
+            <<<grid, block, smem, s>>>(
+                QT, df_B, df_A, dg_B, dg_A, norms_B, norms_A, profile_B,
+                profile_A, window_size, tile_height, tile_width, global_y,
+                global_x, 0, exclusion, thresh);
         break;
       case FP_MIXED:
         smem = get_smem<float>(TILE_HEIGHT, t, true, true, props);
@@ -708,7 +685,7 @@ SCAMPError_t kernel_ab_join_lower(
                 TILE_HEIGHT, BLOCKSZ_SP><<<grid, block, smem, s>>>(
             QT, df_B, df_A, dg_B, dg_A, norms_B, norms_A, profile_B, profile_A,
             window_size, tile_height, tile_width, global_y, global_x, 0,
-            exclusion);
+            exclusion, thresh);
         break;
       case FP_SINGLE:
         smem = get_smem<float>(TILE_HEIGHT, t, true, true, props);
@@ -716,7 +693,7 @@ SCAMPError_t kernel_ab_join_lower(
                 TILE_HEIGHT, BLOCKSZ_SP><<<grid, block, smem, s>>>(
             QT, df_B, df_A, dg_B, dg_A, norms_B, norms_A, profile_B, profile_A,
             window_size, tile_height, tile_width, global_y, global_x, 0,
-            exclusion);
+            exclusion, thresh);
         break;
       default:
         return SCAMP_CUDA_ERROR;
@@ -730,7 +707,7 @@ SCAMPError_t kernel_ab_join_lower(
             <<<grid, block, smem, s>>>(QT, df_B, df_A, dg_B, dg_A, norms_B,
                                        norms_A, profile_B, profile_A,
                                        window_size, tile_height, tile_width,
-                                       global_y, global_x, 0, 0);
+                                       global_y, global_x, 0, 0, thresh);
         break;
       case FP_MIXED:
         smem = get_smem<float>(TILE_HEIGHT, t, false, false, props);
@@ -739,7 +716,7 @@ SCAMPError_t kernel_ab_join_lower(
             <<<grid, block, smem, s>>>(QT, df_B, df_A, dg_B, dg_A, norms_B,
                                        norms_A, profile_B, profile_A,
                                        window_size, tile_height, tile_width,
-                                       global_y, global_x, 0, 0);
+                                       global_y, global_x, 0, 0, thresh);
         break;
       case FP_SINGLE:
         smem = get_smem<float>(TILE_HEIGHT, t, false, false, props);
@@ -748,7 +725,7 @@ SCAMPError_t kernel_ab_join_lower(
             <<<grid, block, smem, s>>>(QT, df_B, df_A, dg_B, dg_A, norms_B,
                                        norms_A, profile_B, profile_A,
                                        window_size, tile_height, tile_width,
-                                       global_y, global_x, 0, 0);
+                                       global_y, global_x, 0, 0, thresh);
         break;
       default:
         return SCAMP_CUDA_ERROR;
@@ -760,14 +737,13 @@ SCAMPError_t kernel_ab_join_lower(
   }
   return SCAMP_NO_ERROR;
 }
-
 SCAMPError_t kernel_self_join_upper(
     const double *QT, const double *timeseries_A, const double *timeseries_B,
     const double *df_A, const double *df_B, const double *dg_A,
     const double *dg_B, const double *norms_A, const double *norms_B,
-    uint64_t *profile_A, uint64_t *profile_B, size_t window_size,
+    uint32_t *profile_A, uint32_t *profile_B, size_t window_size,
     size_t tile_width, size_t tile_height, size_t global_x, size_t global_y,
-    const cudaDeviceProp &props, FPtype t, cudaStream_t s) {
+    const cudaDeviceProp &props, FPtype t, float thresh, cudaStream_t s) {
   int exclusion = window_size / 4;
   int diags_per_thread = get_diags_per_thread(t, props);
   int blocksz = get_blocksz(t, props);
@@ -776,9 +752,12 @@ SCAMPError_t kernel_self_join_upper(
   int smem;
   if (global_y >= global_x && global_y <= global_x + exclusion) {
     int num_workers = ceil((tile_width - exclusion) / (float)diags_per_thread);
+    printf("tile_width = %d\n", tile_width);
+    printf("num_workers exc = %d\n", num_workers);
     grid.x = ceil(num_workers / (double)blocksz);
   } else {
     int num_workers = ceil(tile_width / (float)diags_per_thread);
+    printf("num_workers = %d\n", num_workers);
     grid.x = ceil(num_workers / (double)blocksz);
     exclusion = 0;
   }
@@ -788,28 +767,28 @@ SCAMPError_t kernel_self_join_upper(
         smem = get_smem<double>(TILE_HEIGHT_DP, t, true, false, props);
         do_tile<double, double2, double4, double, false, true, false,
                 BLOCKSPERSM_SELF, TILE_HEIGHT_DP, BLOCKSZ_DP>
-            <<<grid, block, smem, s>>>(QT, df_A, df_B, dg_A, dg_B, norms_A,
-                                       norms_B, profile_A, profile_B,
-                                       window_size, tile_width, tile_height,
-                                       global_x, global_y, exclusion, 0);
+            <<<grid, block, smem, s>>>(
+                QT, df_A, df_B, dg_A, dg_B, norms_A, norms_B, profile_A,
+                profile_B, window_size, tile_width, tile_height, global_x,
+                global_y, exclusion, 0, thresh);
         break;
       case FP_MIXED:
         smem = get_smem<float>(TILE_HEIGHT, t, true, false, props);
         do_tile<float, float2, float4, double, true, true, false,
                 BLOCKSPERSM_SELF, TILE_HEIGHT, BLOCKSZ_SP>
-            <<<grid, block, smem, s>>>(QT, df_A, df_B, dg_A, dg_B, norms_A,
-                                       norms_B, profile_A, profile_B,
-                                       window_size, tile_width, tile_height,
-                                       global_x, global_y, exclusion, 0);
+            <<<grid, block, smem, s>>>(
+                QT, df_A, df_B, dg_A, dg_B, norms_A, norms_B, profile_A,
+                profile_B, window_size, tile_width, tile_height, global_x,
+                global_y, exclusion, 0, thresh);
         break;
       case FP_SINGLE:
         smem = get_smem<float>(TILE_HEIGHT, t, true, false, props);
         do_tile<float, float2, float4, float, false, true, false,
                 BLOCKSPERSM_SELF, TILE_HEIGHT, BLOCKSZ_SP>
-            <<<grid, block, smem, s>>>(QT, df_A, df_B, dg_A, dg_B, norms_A,
-                                       norms_B, profile_A, profile_B,
-                                       window_size, tile_width, tile_height,
-                                       global_x, global_y, exclusion, 0);
+            <<<grid, block, smem, s>>>(
+                QT, df_A, df_B, dg_A, dg_B, norms_A, norms_B, profile_A,
+                profile_B, window_size, tile_width, tile_height, global_x,
+                global_y, exclusion, 0, thresh);
         break;
       default:
         return SCAMP_CUDA_ERROR;
@@ -826,9 +805,9 @@ SCAMPError_t kernel_self_join_lower(
     const double *QT, const double *timeseries_A, const double *timeseries_B,
     const double *df_A, const double *df_B, const double *dg_A,
     const double *dg_B, const double *norms_A, const double *norms_B,
-    uint64_t *profile_A, uint64_t *profile_B, size_t window_size,
+    uint32_t *profile_A, uint32_t *profile_B, size_t window_size,
     size_t tile_width, size_t tile_height, size_t global_x, size_t global_y,
-    const cudaDeviceProp &props, FPtype t, cudaStream_t s) {
+    const cudaDeviceProp &props, FPtype t, float thresh, cudaStream_t s) {
   int exclusion = window_size / 4;
   int diags_per_thread = get_diags_per_thread(t, props);
   int blocksz = get_blocksz(t, props);
@@ -836,11 +815,14 @@ SCAMPError_t kernel_self_join_lower(
   dim3 block(blocksz, 1, 1);
   int smem;
   if (global_y + tile_height >= global_x &&
-      global_y + tile_height <= global_x + exclusion) {
+      global_y + tile_height < global_x + exclusion) {
     int num_workers = ceil((tile_height - exclusion) / (float)diags_per_thread);
+    printf("tile_width = %d\n", tile_width);
+    printf("num_workers exc = %d\n", num_workers);
     grid.x = ceil(num_workers / (double)blocksz);
   } else {
     int num_workers = ceil(tile_height / (float)diags_per_thread);
+    printf("num_workers = %d\n", num_workers);
     grid.x = ceil(num_workers / (double)blocksz);
     exclusion = 0;
   }
@@ -850,28 +832,28 @@ SCAMPError_t kernel_self_join_lower(
         smem = get_smem<double>(TILE_HEIGHT_DP, t, true, false, props);
         do_tile<double, double2, double4, double, false, true, false,
                 BLOCKSPERSM_SELF, TILE_HEIGHT_DP, BLOCKSZ_DP>
-            <<<grid, block, smem, s>>>(QT, df_B, df_A, dg_B, dg_A, norms_B,
-                                       norms_A, profile_B, profile_A,
-                                       window_size, tile_height, tile_width,
-                                       global_y, global_x, 0, exclusion);
+            <<<grid, block, smem, s>>>(
+                QT, df_B, df_A, dg_B, dg_A, norms_B, norms_A, profile_B,
+                profile_A, window_size, tile_height, tile_width, global_y,
+                global_x, 0, exclusion, thresh);
         break;
       case FP_MIXED:
         smem = get_smem<float>(TILE_HEIGHT, t, true, false, props);
         do_tile<float, float2, float4, float, true, true, false,
                 BLOCKSPERSM_SELF, TILE_HEIGHT, BLOCKSZ_SP>
-            <<<grid, block, smem, s>>>(QT, df_B, df_A, dg_B, dg_A, norms_B,
-                                       norms_A, profile_B, profile_A,
-                                       window_size, tile_height, tile_width,
-                                       global_y, global_x, 0, exclusion);
+            <<<grid, block, smem, s>>>(
+                QT, df_B, df_A, dg_B, dg_A, norms_B, norms_A, profile_B,
+                profile_A, window_size, tile_height, tile_width, global_y,
+                global_x, 0, exclusion, thresh);
         break;
       case FP_SINGLE:
         smem = get_smem<float>(TILE_HEIGHT, t, true, false, props);
         do_tile<float, float2, float4, float, false, true, false,
                 BLOCKSPERSM_SELF, TILE_HEIGHT, BLOCKSZ_SP>
-            <<<grid, block, smem, s>>>(QT, df_B, df_A, dg_B, dg_A, norms_B,
-                                       norms_A, profile_B, profile_A,
-                                       window_size, tile_height, tile_width,
-                                       global_y, global_x, 0, exclusion);
+            <<<grid, block, smem, s>>>(
+                QT, df_B, df_A, dg_B, dg_A, norms_B, norms_A, profile_B,
+                profile_A, window_size, tile_height, tile_width, global_y,
+                global_x, 0, exclusion, thresh);
         break;
       default:
         return SCAMP_CUDA_ERROR;

@@ -86,6 +86,13 @@ __global__ void merge_mp_idx(float *mp, uint32_t *mpi, uint32_t n,
     merged[tid] = item.ulong;
   }
 }
+void elementwise_sum(std::vector<uint32_t> &mp_full, int64_t merge_start,
+                     int64_t tile_sz, std::vector<uint32_t> *to_merge) {
+  for (int i = 0; i < tile_sz; ++i) {
+    mp_full[i + merge_start] += to_merge->at(i);
+    to_merge->at(i) = 0;
+  }
+}
 
 void elementwise_max_with_index(std::vector<float> &mp_full,
                                 std::vector<uint32_t> &mpi_full,

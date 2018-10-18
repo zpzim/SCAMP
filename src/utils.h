@@ -5,6 +5,8 @@
 
 namespace SCAMP {
 
+void elementwise_sum(std::vector<uint32_t> &mp_full, int64_t merge_start,
+                     int64_t tile_sz, std::vector<uint32_t> *to_merge);
 void elementwise_max_with_index(std::vector<float> &mp_full,
                                 std::vector<uint32_t> &mpi_full,
                                 int64_t merge_start, int64_t tile_sz,

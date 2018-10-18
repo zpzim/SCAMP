@@ -76,6 +76,7 @@ int main(int argc, char **argv) {
 
   int index = optind;
   int window_size = atoi(argv[index++]);
+  float threshold = atof(argv[index++]);
   char *input_A = argv[index++];
 
   readFile<double>(input_A, Ta_h, "%lf");
@@ -92,14 +93,11 @@ int main(int argc, char **argv) {
     n_y = Tb_h.size() - window_size + 1;
   }
 
-  vector<float> profile(n_x, std::numeric_limits<float>::lowest());
-  vector<unsigned int> profile_idx(n_x, 0);
-  vector<float> profile_B;
-  vector<unsigned int> profile_idx_B;
+  vector<uint32_t> profile(n_x, 0);
+  vector<uint32_t> profile_B;
 
   if (full_join) {
-    profile_B = vector<float>(n_y, std::numeric_limits<float>::lowest());
-    profile_idx_B = vector<unsigned int>(n_y, 0);
+    profile_B = vector<uint32_t>(n_y, 0);
   }
 
   if (devices.empty()) {
@@ -113,33 +111,36 @@ int main(int argc, char **argv) {
   }
 
   printf("Starting SCAMP\n");
-  SCAMP::do_SCAMP(Ta_h, Tb_h, profile, profile_idx, profile_B, profile_idx_B,
-                  window_size, max_tile_size, devices, self_join, t, full_join,
-                  start_row, start_col);
+  SCAMP::do_SCAMP(Ta_h, Tb_h, &profile, &profile_B, window_size, max_tile_size,
+                  devices, self_join, t, full_join, start_row, start_col,
+                  threshold);
 
   printf("Now writing result to files\n");
   FILE *f1 = fopen(argv[index++], "w");
-  FILE *f2 = fopen(argv[index++], "w");
+  //  FILE *f2 = fopen(argv[index++], "w");
   FILE *f3, *f4;
   for (int i = 0; i < profile.size(); ++i) {
-    fprintf(f1, "%f\n",
-            sqrt(std::max(2.0 * window_size * (1.0 - profile[i]), 0.0)));
-    fprintf(f2, "%u\n", profile_idx[i] + 1);
+    fprintf(f1, "%u\n", profile[i]);
+    //    fprintf(f1, "%f\n",
+    //            sqrt(std::max(2.0 * window_size * (1.0 - profile[i]), 0.0)));
+    //    fprintf(f2, "%u\n", profile_idx[i] + 1);
   }
   fclose(f1);
-  fclose(f2);
+  //  fclose(f2);
   if (full_join) {
     f3 = fopen(strcat(output_B_prefix, "_mp"), "w");
-    f4 = fopen(strcat(output_B_prefix, "i"), "w");
+    //    f4 = fopen(strcat(output_B_prefix, "i"), "w");
     for (int i = 0; i < profile_B.size(); ++i) {
-      fprintf(f3, "%f\n",
-              sqrt(std::max(2.0 * window_size * (1.0 - profile_B[i]), 0.0)));
-      fprintf(f4, "%u\n", profile_idx_B[i] + 1);
+      fprintf(f3, "%u\n", profile_B[i]);
+      //      fprintf(f3, "%f\n",
+      //              sqrt(std::max(2.0 * window_size * (1.0 - profile_B[i]),
+      //              0.0)));
+      //      fprintf(f4, "%u\n", profile_idx_B[i] + 1);
     }
   }
   if (full_join) {
     fclose(f3);
-    fclose(f4);
+    //    fclose(f4);
   }
   gpuErrchk(cudaDeviceSynchronize());
   gpuErrchk(cudaDeviceReset());

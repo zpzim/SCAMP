@@ -14,19 +14,16 @@ using std::vector;
 namespace SCAMP {
 
 void do_SCAMP(const vector<double> &Ta_h, const vector<double> &Tb_h,
-              vector<float> &profile_h, vector<uint32_t> &profile_idx_h,
-              vector<float> &profile_B_h, vector<uint32_t> &profile_idx_B_h,
+              vector<uint32_t> *profile_h, vector<uint32_t> *profile_B_h,
               const uint32_t m, const size_t max_tile_size,
               const vector<int> &devices, bool self_join, FPtype t,
-              bool full_join, size_t start_row, size_t start_col);
+              bool full_join, size_t start_row, size_t start_col, float thresh);
 
 class SCAMP_Operation {
  private:
   unordered_map<int, double *> T_A_dev, T_B_dev, QT_dev, means_A, means_B,
       norms_A, norms_B, df_A, df_B, dg_A, dg_B, scratchpad;
-  unordered_map<int, float *> profile_A_dev, profile_B_dev;
-  unordered_map<int, uint64_t *> profile_A_merged, profile_B_merged;
-  unordered_map<int, uint32_t *> profile_idx_A_dev, profile_idx_B_dev;
+  unordered_map<int, uint32_t *> profile_A_dev, profile_B_dev;
   unordered_map<int, cudaEvent_t> clocks_start, clocks_end, copy_to_host_done;
   unordered_map<int, cudaStream_t> streams;
   unordered_map<int, std::shared_ptr<fft_precompute_helper>> scratch;
@@ -37,6 +34,7 @@ class SCAMP_Operation {
   size_t tile_n_x;
   size_t tile_n_y;
   size_t m;
+  float thresh;
   const bool self_join;
   const bool full_join;
   const size_t MAX_TILE_SIZE;
@@ -58,34 +56,24 @@ class SCAMP_Operation {
   unordered_map<int, size_t> pos_y_2;
 
   SCAMPError_t do_tile(SCAMPTileType t, int device, const vector<double> &Ta_h,
-                       const vector<double> &Tb_h,
-                       const vector<float> &profile_h,
-                       const vector<uint32_t> &profile_idx_h,
-                       const vector<float> &profile_B_h,
-                       const vector<uint32_t> &profile_idx_B_h);
+                       const vector<double> &Tb_h);
 
   bool pick_and_start_next_tile(int dev, const vector<double> &Ta_h,
-                                const vector<double> &Tb_h,
-                                const vector<float> &profile_h,
-                                const vector<uint32_t> &profile_idx_h,
-                                const vector<float> &profile_B_h,
-                                const vector<uint32_t> &profile_idx_B_h);
-
-  int issue_and_merge_tiles_on_devices(
-      const vector<double> &Ta_host, const vector<double> &Tb_host,
-      vector<float> &profile_A_full_host,
-      vector<uint32_t> &profile_idx_A_full_host,
-      vector<float> &profile_B_full_host,
-      vector<uint32_t> &profile_idx_B_full_host,
-      vector<vector<uint64_t>> &profileA_h,
-      vector<vector<uint64_t>> &profileB_h, int last_device_idx);
+                                const vector<double> &Tb_h);
+  int issue_and_merge_tiles_on_devices(const vector<double> &Ta_host,
+                                       const vector<double> &Tb_host,
+                                       vector<uint32_t> &profile_A_full_host,
+                                       vector<uint32_t> &profile_B_full_host,
+                                       vector<vector<uint32_t>> &profileA_h,
+                                       vector<vector<uint32_t>> &profileB_h,
+                                       int last_device_idx);
   void get_tile_ordering();
 
  public:
   SCAMP_Operation(size_t Asize, size_t Bsize, size_t window_sz,
                   size_t max_tile_size, const vector<int> &dev, bool selfjoin,
                   FPtype t, bool do_full_join, size_t start_row,
-                  size_t start_col)
+                  size_t start_col, float th)
       : size_A(Asize),
         m(window_sz),
         MAX_TILE_SIZE(max_tile_size),
@@ -95,7 +83,8 @@ class SCAMP_Operation {
         fp_type(t),
         full_join(do_full_join),
         tile_start_row_position(start_row),
-        tile_start_col_position(start_col) {
+        tile_start_col_position(start_col),
+        thresh(th) {
     if (self_join) {
       size_B = size_A;
     } else {
@@ -124,9 +113,8 @@ class SCAMP_Operation {
     tile_n_y = tile_n_x;
   }
   SCAMPError_t do_join(const vector<double> &Ta_host,
-                       const vector<double> &Tb_host, vector<float> &profile,
-                       vector<uint32_t> &profile_idx, vector<float> &profile_B,
-                       vector<uint32_t> &profile_idx_B);
+                       const vector<double> &Tb_host, vector<uint32_t> &profile,
+                       vector<uint32_t> &profile_B);
   SCAMPError_t init();
   SCAMPError_t destroy();
 };

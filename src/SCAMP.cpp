@@ -1,4 +1,4 @@
-#include <cfloat>
+
 #include <cinttypes>
 #include <memory>
 #include <numeric>
@@ -33,10 +33,6 @@ SCAMPError_t SCAMP_Operation::init() {
     dg_B.insert({device, nullptr});
     profile_A_dev.insert({device, nullptr});
     profile_B_dev.insert({device, nullptr});
-    profile_A_merged.insert({device, nullptr});
-    profile_B_merged.insert({device, nullptr});
-    profile_idx_A_dev.insert({device, nullptr});
-    profile_idx_B_dev.insert({device, nullptr});
     scratchpad.insert({device, nullptr});
 
     cudaMalloc(&T_A_dev.at(device), sizeof(double) * tile_size);
@@ -46,10 +42,6 @@ SCAMPError_t SCAMP_Operation::init() {
     cudaMalloc(&profile_A_dev.at(device), sizeof(float) * tile_n_x);
     gpuErrchk(cudaPeekAtLastError());
     cudaMalloc(&profile_B_dev.at(device), sizeof(float) * tile_n_y);
-    gpuErrchk(cudaPeekAtLastError());
-    cudaMalloc(&profile_idx_A_dev.at(device), sizeof(unsigned int) * tile_n_x);
-    gpuErrchk(cudaPeekAtLastError());
-    cudaMalloc(&profile_idx_B_dev.at(device), sizeof(unsigned int) * tile_n_y);
     gpuErrchk(cudaPeekAtLastError());
     cudaMalloc(&QT_dev.at(device), sizeof(double) * tile_n_x);
     gpuErrchk(cudaPeekAtLastError());
@@ -68,10 +60,6 @@ SCAMPError_t SCAMP_Operation::init() {
     cudaMalloc(&dg_A.at(device), sizeof(double) * tile_n_x);
     gpuErrchk(cudaPeekAtLastError());
     cudaMalloc(&dg_B.at(device), sizeof(double) * tile_n_y);
-    gpuErrchk(cudaPeekAtLastError());
-    cudaMalloc(&profile_A_merged.at(device), sizeof(uint64_t) * tile_n_x);
-    gpuErrchk(cudaPeekAtLastError());
-    cudaMalloc(&profile_B_merged.at(device), sizeof(uint64_t) * tile_n_y);
     gpuErrchk(cudaPeekAtLastError());
     cudaMalloc(&scratchpad.at(device), sizeof(double) * tile_size);
     scratch[device] =
@@ -112,10 +100,6 @@ SCAMPError_t SCAMP_Operation::destroy() {
     cudaFree(dg_B[device]);
     cudaFree(profile_A_dev[device]);
     cudaFree(profile_B_dev[device]);
-    cudaFree(profile_A_merged[device]);
-    cudaFree(profile_B_merged[device]);
-    cudaFree(profile_idx_A_dev[device]);
-    cudaFree(profile_idx_B_dev[device]);
     cudaFree(scratchpad.at(device));
     cudaEventDestroy(clocks_start[device]);
     cudaEventDestroy(clocks_end[device]);
@@ -125,11 +109,9 @@ SCAMPError_t SCAMP_Operation::destroy() {
   return SCAMP_NO_ERROR;
 }
 
-SCAMPError_t SCAMP_Operation::do_tile(
-    SCAMPTileType t, int device, const vector<double> &Ta_h,
-    const vector<double> &Tb_h, const vector<float> &profile_h,
-    const vector<unsigned int> &profile_idx_h, const vector<float> &profile_B_h,
-    const vector<unsigned int> &profile_idx_B_h) {
+SCAMPError_t SCAMP_Operation::do_tile(SCAMPTileType t, int device,
+                                      const vector<double> &Ta_h,
+                                      const vector<double> &Tb_h) {
   size_t start_x = pos_x[device];
   size_t start_y = pos_y[device];
   SCAMPError_t err;
@@ -144,33 +126,12 @@ SCAMPError_t SCAMP_Operation::do_tile(
                   sizeof(double) * n_y[device], cudaMemcpyHostToDevice,
                   streams.at(device));
   gpuErrchk(cudaPeekAtLastError());
-  cudaMemcpyAsync(profile_A_dev[device], profile_h.data() + start_x,
-                  sizeof(float) * t_n_x, cudaMemcpyHostToDevice,
+  cudaMemsetAsync(profile_A_dev[device], 0, sizeof(uint32_t) * t_n_x,
                   streams.at(device));
   gpuErrchk(cudaPeekAtLastError());
-  cudaMemcpyAsync(profile_idx_A_dev[device], profile_idx_h.data() + start_x,
-                  sizeof(unsigned int) * t_n_x, cudaMemcpyHostToDevice,
+  cudaMemsetAsync(profile_B_dev[device], 0, sizeof(uint32_t) * t_n_y,
                   streams.at(device));
   gpuErrchk(cudaPeekAtLastError());
-  if (self_join) {
-    cudaMemcpyAsync(profile_B_dev[device], profile_h.data() + start_y,
-                    sizeof(float) * t_n_y, cudaMemcpyHostToDevice,
-                    streams.at(device));
-    gpuErrchk(cudaPeekAtLastError());
-    cudaMemcpyAsync(profile_idx_B_dev[device], profile_idx_h.data() + start_y,
-                    sizeof(unsigned int) * t_n_y, cudaMemcpyHostToDevice,
-                    streams.at(device));
-    gpuErrchk(cudaPeekAtLastError());
-  } else if (full_join) {
-    cudaMemcpyAsync(profile_B_dev[device], profile_B_h.data() + start_y,
-                    sizeof(float) * t_n_y, cudaMemcpyHostToDevice,
-                    streams.at(device));
-    gpuErrchk(cudaPeekAtLastError());
-    cudaMemcpyAsync(profile_idx_B_dev[device], profile_idx_B_h.data() + start_y,
-                    sizeof(unsigned int) * t_n_y, cudaMemcpyHostToDevice,
-                    streams.at(device));
-    gpuErrchk(cudaPeekAtLastError());
-  }
   // FIXME?: Computing the sliding dot products & statistics for each tile is
   // overkill
   compute_statistics(T_A_dev[device], norms_A[device], df_A[device],
@@ -181,21 +142,13 @@ SCAMPError_t SCAMP_Operation::do_tile(
                      dg_B[device], means_B[device], t_n_y, m,
                      streams.at(device), scratchpad[device]);
   gpuErrchk(cudaPeekAtLastError());
-  launch_merge_mp_idx(profile_A_dev[device], profile_idx_A_dev[device], t_n_x,
-                      profile_A_merged[device], streams.at(device));
-  gpuErrchk(cudaPeekAtLastError());
-  if (self_join || full_join) {
-    launch_merge_mp_idx(profile_B_dev[device], profile_idx_B_dev[device], t_n_y,
-                        profile_B_merged[device], streams.at(device));
-    gpuErrchk(cudaPeekAtLastError());
-  }
-  SCAMP_Tile tile(
-      t, T_A_dev[device], T_B_dev[device], df_A[device], df_B[device],
-      dg_A[device], dg_B[device], norms_A[device], norms_B[device],
-      means_A[device], means_B[device], QT_dev[device],
-      profile_A_merged[device], profile_B_merged[device], start_x, start_y,
-      tile_start_col_position, tile_start_row_position, n_y[device],
-      n_x[device], m, scratch[device], dev_props.at(device), fp_type);
+  SCAMP_Tile tile(t, T_A_dev[device], T_B_dev[device], df_A[device],
+                  df_B[device], dg_A[device], dg_B[device], norms_A[device],
+                  norms_B[device], means_A[device], means_B[device],
+                  QT_dev[device], profile_A_dev[device], profile_B_dev[device],
+                  start_x, start_y, tile_start_col_position,
+                  tile_start_row_position, n_y[device], n_x[device], m,
+                  scratch[device], dev_props.at(device), fp_type, thresh);
   cudaEventRecord(clocks_start[device], streams.at(device));
   gpuErrchk(cudaPeekAtLastError());
   err = tile.execute(streams.at(device));
@@ -267,11 +220,9 @@ void SCAMP_Operation::get_tile_ordering() {
   total_tiles = tile_ordering.size();
 }
 
-bool SCAMP_Operation::pick_and_start_next_tile(
-    int dev, const vector<double> &Ta_h, const vector<double> &Tb_h,
-    const vector<float> &profile_h, const vector<unsigned int> &profile_idx_h,
-    const vector<float> &profile_B_h,
-    const vector<unsigned int> &profile_idx_B_h) {
+bool SCAMP_Operation::pick_and_start_next_tile(int dev,
+                                               const vector<double> &Ta_h,
+                                               const vector<double> &Tb_h) {
   bool done = false;
   int tile_row = tile_ordering.front().first;
   int tile_col = tile_ordering.front().second;
@@ -285,21 +236,17 @@ bool SCAMP_Operation::pick_and_start_next_tile(
   if (self_join) {
     if (tile_row == tile_col) {
       // partial tile on diagonal
-      err = do_tile(SELF_JOIN_UPPER_TRIANGULAR, dev, Ta_h, Tb_h, profile_h,
-                    profile_idx_h, profile_B_h, profile_idx_B_h);
+      err = do_tile(SELF_JOIN_UPPER_TRIANGULAR, dev, Ta_h, Tb_h);
     } else {
       // full tile
-      err = do_tile(SELF_JOIN_FULL_TILE, dev, Ta_h, Tb_h, profile_h,
-                    profile_idx_h, profile_B_h, profile_idx_B_h);
+      err = do_tile(SELF_JOIN_FULL_TILE, dev, Ta_h, Tb_h);
     }
   } else if (full_join) {
     // BiDirectional AB-join
-    err = do_tile(AB_FULL_JOIN_FULL_TILE, dev, Ta_h, Tb_h, profile_h,
-                  profile_idx_h, profile_B_h, profile_idx_B_h);
+    err = do_tile(AB_FULL_JOIN_FULL_TILE, dev, Ta_h, Tb_h);
   } else {
     // Column AB-join
-    err = do_tile(AB_JOIN_FULL_TILE, dev, Ta_h, Tb_h, profile_h, profile_idx_h,
-                  profile_B_h, profile_idx_B_h);
+    err = do_tile(AB_JOIN_FULL_TILE, dev, Ta_h, Tb_h);
   }
   if (err != SCAMP_NO_ERROR) {
     printf("ERROR %d executing tile. \n", err);
@@ -313,11 +260,9 @@ bool SCAMP_Operation::pick_and_start_next_tile(
 
 int SCAMP_Operation::issue_and_merge_tiles_on_devices(
     const vector<double> &Ta_host, const vector<double> &Tb_host,
-    vector<float> &profile_A_full_host,
-    vector<unsigned int> &profile_idx_A_full_host,
-    vector<float> &profile_B_full_host,
-    vector<unsigned int> &profile_idx_B_full_host,
-    vector<vector<uint64_t>> &profileA_h, vector<vector<uint64_t>> &profileB_h,
+    vector<uint32_t> &profile_A_full_host,
+    vector<uint32_t> &profile_B_full_host, vector<vector<uint32_t>> &profileA_h,
+    vector<vector<uint32_t>> &profileB_h,
     int last_device_idx = ISSUED_ALL_DEVICES) {
   bool done = last_device_idx != ISSUED_ALL_DEVICES;
   int last_dev = ISSUED_ALL_DEVICES;
@@ -328,13 +273,13 @@ int SCAMP_Operation::issue_and_merge_tiles_on_devices(
     int device = devices.at(i);
     cudaSetDevice(device);
     gpuErrchk(cudaPeekAtLastError());
-    cudaMemcpyAsync(profileA_h.at(i).data(), profile_A_merged[device],
-                    sizeof(uint64_t) * (n_x[device] - m + 1),
+    cudaMemcpyAsync(profileA_h.at(i).data(), profile_A_dev[device],
+                    sizeof(uint32_t) * (n_x[device] - m + 1),
                     cudaMemcpyDeviceToHost, streams.at(device));
     gpuErrchk(cudaPeekAtLastError());
     if (self_join || full_join) {
-      cudaMemcpyAsync(profileB_h.at(i).data(), profile_B_merged[device],
-                      sizeof(uint64_t) * (n_y[device] - m + 1),
+      cudaMemcpyAsync(profileB_h.at(i).data(), profile_B_dev[device],
+                      sizeof(uint32_t) * (n_y[device] - m + 1),
                       cudaMemcpyDeviceToHost, streams.at(device));
       gpuErrchk(cudaPeekAtLastError());
     }
@@ -345,10 +290,7 @@ int SCAMP_Operation::issue_and_merge_tiles_on_devices(
     pos_x_2[device] = pos_x[device];
     pos_y_2[device] = pos_y[device];
     if (!done) {
-      done = pick_and_start_next_tile(
-          device, Ta_host, Tb_host, profile_A_full_host,
-          profile_idx_A_full_host, profile_B_full_host,
-          profile_idx_B_full_host);
+      done = pick_and_start_next_tile(device, Ta_host, Tb_host);
       if (done) {
         last_dev = i;
       }
@@ -361,19 +303,16 @@ int SCAMP_Operation::issue_and_merge_tiles_on_devices(
     gpuErrchk(cudaPeekAtLastError());
     cudaEventSynchronize(copy_to_host_done[device]);
     gpuErrchk(cudaPeekAtLastError());
-    elementwise_max_with_index(profile_A_full_host, profile_idx_A_full_host,
-                               pos_x_2[device], n_x_2[device] - m + 1,
-                               &profileA_h.at(i));
+    elementwise_sum(profile_A_full_host, pos_x_2[device], n_x_2[device] - m + 1,
+                    &profileA_h.at(i));
     gpuErrchk(cudaPeekAtLastError());
     if (self_join) {
-      elementwise_max_with_index(profile_A_full_host, profile_idx_A_full_host,
-                                 pos_y_2[device], n_y_2[device] - m + 1,
-                                 &profileB_h.at(i));
+      elementwise_sum(profile_A_full_host, pos_y_2[device],
+                      n_y_2[device] - m + 1, &profileB_h.at(i));
       gpuErrchk(cudaPeekAtLastError());
     } else if (full_join) {
-      elementwise_max_with_index(profile_B_full_host, profile_idx_B_full_host,
-                                 pos_y_2[device], n_y_2[device] - m + 1,
-                                 &profileB_h.at(i));
+      elementwise_sum(profile_B_full_host, pos_y_2[device],
+                      n_y_2[device] - m + 1, &profileB_h.at(i));
       gpuErrchk(cudaPeekAtLastError());
     }
     completed_tiles++;
@@ -385,13 +324,11 @@ int SCAMP_Operation::issue_and_merge_tiles_on_devices(
 
 SCAMPError_t SCAMP_Operation::do_join(const vector<double> &Ta_host,
                                       const vector<double> &Tb_host,
-                                      vector<float> &profile,
-                                      vector<unsigned int> &profile_idx,
-                                      vector<float> &profile_B,
-                                      vector<unsigned int> &profile_idx_B) {
-  vector<vector<uint64_t>> profileA_h(devices.size(),
-                                      vector<uint64_t>(tile_n_y)),
-      profileB_h(devices.size(), vector<uint64_t>(tile_n_x));
+                                      vector<uint32_t> &profile,
+                                      vector<uint32_t> &profile_B) {
+  vector<vector<uint32_t>> profileA_h(devices.size(),
+                                      vector<uint32_t>(tile_n_y)),
+      profileB_h(devices.size(), vector<uint32_t>(tile_n_x));
   bool done = false;
   int last_dev = ISSUED_ALL_DEVICES;
   get_tile_ordering();
@@ -400,8 +337,7 @@ SCAMPError_t SCAMP_Operation::do_join(const vector<double> &Ta_host,
     int device = devices.at(i);
     cudaSetDevice(device);
     gpuErrchk(cudaPeekAtLastError());
-    done = pick_and_start_next_tile(device, Ta_host, Tb_host, profile,
-                                    profile_idx, profile_B, profile_idx_B);
+    done = pick_and_start_next_tile(device, Ta_host, Tb_host);
     gpuErrchk(cudaPeekAtLastError());
     if (done) {
       last_dev = i;
@@ -411,23 +347,21 @@ SCAMPError_t SCAMP_Operation::do_join(const vector<double> &Ta_host,
 
   while (last_dev == ISSUED_ALL_DEVICES) {
     last_dev = issue_and_merge_tiles_on_devices(
-        Ta_host, Tb_host, profile, profile_idx, profile_B, profile_idx_B,
-        profileA_h, profileB_h);
+        Ta_host, Tb_host, profile, profile_B, profileA_h, profileB_h);
   }
 
-  issue_and_merge_tiles_on_devices(Ta_host, Tb_host, profile, profile_idx,
-                                   profile_B, profile_idx_B, profileA_h,
-                                   profileB_h, last_dev);
+  issue_and_merge_tiles_on_devices(Ta_host, Tb_host, profile, profile_B,
+                                   profileA_h, profileB_h, last_dev);
 
   return SCAMP_NO_ERROR;
 }
 
 void do_SCAMP(const vector<double> &Ta_h, const vector<double> &Tb_h,
-              vector<float> &profile_h, vector<unsigned int> &profile_idx_h,
-              vector<float> &profile_B_h, vector<unsigned int> &profile_idx_B_h,
+              vector<uint32_t> *profile_h, vector<uint32_t> *profile_B_h,
               const unsigned int m, const size_t max_tile_size,
               const vector<int> &devices, bool self_join, FPtype t,
-              bool full_join, size_t start_row, size_t start_col) {
+              bool full_join, size_t start_row, size_t start_col,
+              float thresh) {
   if (devices.empty()) {
     printf("Error: no gpu provided\n");
     exit(0);
@@ -435,16 +369,14 @@ void do_SCAMP(const vector<double> &Ta_h, const vector<double> &Tb_h,
   // Allocate and initialize memory
   clock_t start, end;
   SCAMP_Operation op(Ta_h.size(), Tb_h.size(), m, max_tile_size, devices,
-                     self_join, t, full_join, start_row, start_col);
+                     self_join, t, full_join, start_row, start_col, thresh);
   op.init();
   gpuErrchk(cudaPeekAtLastError());
   start = clock();
   if (self_join) {
-    op.do_join(Ta_h, Ta_h, profile_h, profile_idx_h, profile_B_h,
-               profile_idx_B_h);
+    op.do_join(Ta_h, Ta_h, *profile_h, *profile_B_h);
   } else {
-    op.do_join(Ta_h, Tb_h, profile_h, profile_idx_h, profile_B_h,
-               profile_idx_B_h);
+    op.do_join(Ta_h, Tb_h, *profile_h, *profile_B_h);
   }
   cudaDeviceSynchronize();
   end = clock();
@@ -454,7 +386,7 @@ void do_SCAMP(const vector<double> &Ta_h, const vector<double> &Tb_h,
   printf(
       "Finished SCAMP to generate partial matrix profile of size %lu in %f "
       "seconds on %lu devices:\n",
-      profile_h.size(), (end - start) / static_cast<double>(CLOCKS_PER_SEC),
+      profile_h->size(), (end - start) / static_cast<double>(CLOCKS_PER_SEC),
       devices.size());
 }
 
