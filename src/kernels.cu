@@ -86,16 +86,15 @@ __device__ inline float max4(const float4 &d, const unsigned int init,
 template <class T, int tile_height, int tile_width, bool full_join,
           bool only_col, int BLOCKSZ>
 __device__ inline void initialize_tile_memory(
-    const uint32_t *__restrict__ profile_A,
-    const uint32_t *__restrict__ profile_B, const double *__restrict__ df_A,
-    const double *__restrict__ df_B, const double *__restrict__ dg_A,
-    const double *__restrict__ dg_B, const double *__restrict__ norms_A,
-    const double *__restrict__ norms_B, uint32_t *__restrict__ local_mp_col,
-    uint32_t *__restrict__ local_mp_row, T *__restrict__ df_col,
-    T *__restrict__ df_row, T *__restrict__ dg_col, T *__restrict__ dg_row,
-    T *__restrict__ norm_col, T *__restrict__ norm_row, const unsigned int n_x,
-    const unsigned int n_y, const unsigned int col_start,
-    const unsigned int row_start) {
+    const double *__restrict__ profile_A, const double *__restrict__ profile_B,
+    const double *__restrict__ df_A, const double *__restrict__ df_B,
+    const double *__restrict__ dg_A, const double *__restrict__ dg_B,
+    const double *__restrict__ norms_A, const double *__restrict__ norms_B,
+    double *__restrict__ local_mp_col, double *__restrict__ local_mp_row,
+    T *__restrict__ df_col, T *__restrict__ df_row, T *__restrict__ dg_col,
+    T *__restrict__ dg_row, T *__restrict__ norm_col, T *__restrict__ norm_row,
+    const unsigned int n_x, const unsigned int n_y,
+    const unsigned int col_start, const unsigned int row_start) {
   int global_position = col_start + threadIdx.x;
   int local_position = threadIdx.x;
   while (local_position < tile_width && global_position < n_x) {
@@ -103,7 +102,7 @@ __device__ inline void initialize_tile_memory(
     df_col[local_position] = df_A[global_position];
     norm_col[local_position] = norms_A[global_position];
     if (full_join || only_col) {
-      local_mp_col[local_position] = 0;
+      local_mp_col[local_position] = 0.0;
     }
     local_position += BLOCKSZ;
     global_position += BLOCKSZ;
@@ -116,7 +115,7 @@ __device__ inline void initialize_tile_memory(
     df_row[local_position] = df_B[global_position];
     norm_row[local_position] = norms_B[global_position];
     if (full_join || !only_col) {
-      local_mp_row[local_position] = 0;
+      local_mp_row[local_position] = 0.0;
     }
     local_position += BLOCKSZ;
     global_position += BLOCKSZ;
@@ -126,15 +125,15 @@ __device__ inline void initialize_tile_memory(
 // This does one row of work for 4 diagonals in a single thread
 template <class T, class ACC, bool mixed, bool full_join, bool only_col>
 __device__ inline void do_unrolled_row4(
-    ACC &cov1, ACC &cov2, ACC &cov3, ACC &cov4, uint8_t &count_col1,
-    uint8_t &count_col2, uint8_t &count_col3, uint8_t &count_col4,
+    ACC &cov1, ACC &cov2, ACC &cov3, ACC &cov4, double &count_col1,
+    double &count_col2, double &count_col3, double &count_col4,
     const T &inormcx, const T &inormcy, const T &inormcz, const T &inormcw,
     const T &inormr, const T &df_colx, const T &df_coly, const T &df_colz,
     const T &df_colw, const T &dg_colx, const T &dg_coly, const T &dg_colz,
     const T &dg_colw, const T &df_row, const T &dg_row, const int &row,
     const int &col, const int &global_row, const int &global_col,
-    uint32_t *__restrict__ mp_row, float thresh) {
-  float4 dist;
+    double *__restrict__ mp_row, double thresh) {
+  double4 dist;
 
   dist.x = cov1 * inormcx * inormr;
   dist.y = cov2 * inormcy * inormr;
@@ -146,41 +145,33 @@ __device__ inline void do_unrolled_row4(
   cov2 = cov2 + df_coly * dg_row + dg_coly * df_row;
   cov3 = cov3 + df_colz * dg_row + dg_colz * df_row;
   cov4 = cov4 + df_colw * dg_row + dg_colw * df_row;
-
-  char count_row = 0;
+  double count_row = 0;
 
   if (dist.x > thresh) {
-    count_col1++;
-    count_row++;
+    count_row += dist.x;
+    count_col1 += dist.x;
   }
   if (dist.y > thresh) {
-    count_col2++;
-    count_row++;
+    count_row += dist.y;
+    count_col2 += dist.y;
   }
   if (dist.z > thresh) {
-    count_col3++;
-    count_row++;
+    count_row += dist.z;
+    count_col3 += dist.z;
   }
   if (dist.w > thresh) {
-    count_col4++;
-    count_row++;
+    count_row += dist.w;
+    count_col4 += dist.w;
   }
-  /*
-    // Update the column best-so-far values
-    if (full_join || only_col) {
-      MPMax2(distcol1, dist.x, idxcol1, global_row);
-      MPMax2(distcol2, dist.y, idxcol2, global_row);
-      MPMax2(distcol3, dist.z, idxcol3, global_row);
-      MPMax2(distcol4, dist.w, idxcol4, global_row);
-    }
-  */
+  // coalesce all row updates to lane 0 of each warp and atomically update
   if (full_join || !only_col) {
-    // unsigned int idx;
-    // We take the maximum of the columns we computed for the row
-    // And use that value to check the matrix profile
-    // float d = max4(dist, global_col, idx);
-    // MPatomicMax_check((uint64_t *)(mp_row + row), d, idx, curr_val);
-    atomicAdd_block(mp_row + row, count_row);
+#pragma unroll
+    for (int i = 16; i >= 1; i /= 2) {
+      count_row += __shfl_down_sync(0xffffffff, count_row, i);
+    }
+    if ((threadIdx.x & 0x1f) == 0) {
+      atomicAdd_block(mp_row + row, count_row);
+    }
   }
 }
 
@@ -194,17 +185,18 @@ __device__ inline void do_iteration_unroll_4(
     int i, int j, int x, int y, ACC &cov1, ACC &cov2, ACC &cov3, ACC &cov4,
     T *__restrict__ df_col, T *__restrict__ df_row, T *__restrict__ dg_col,
     T *__restrict__ dg_row, T *__restrict__ inorm_col,
-    T *__restrict__ inorm_row, uint32_t *__restrict__ local_mp_col,
-    uint32_t *__restrict__ local_mp_row, float thresh) {
-  uchar4 col_count = make_uchar4(0, 0, 0, 0);
-  uchar4 col_count2 = make_uchar4(0, 0, 0, 0);
-
+    T *__restrict__ inorm_row, double *__restrict__ local_mp_col,
+    double *__restrict__ local_mp_row, double thresh) {
+  double4 col_count = make_double4(0, 0, 0, 0);
+  double4 col_count2 = make_double4(0, 0, 0, 0);
+  double overlap_1, overlap_2, overlap_3;
+  int lane = threadIdx.x & 0x1f;
   // Load row values 2 at a time, load column values 4 at a time
   int r = i >> 1;
   int c = j >> 2;
 
   // Preload the shared memory values we will use into registers
-  // We load 4 values per thread into a float4 vector type
+  // We load 4 values per thread into a double4 vector type
   VT4 dfc = reinterpret_cast<VT4 *>(df_col)[c];
   VT4 dgc = reinterpret_cast<VT4 *>(dg_col)[c];
   VT4 inormc = (reinterpret_cast<VT4 *>(inorm_col)[c]);
@@ -235,22 +227,11 @@ __device__ inline void do_iteration_unroll_4(
       dfc.y, dfc.z, dfc.w, dgc.x, dgc.y, dgc.z, dgc.w, dfr.x, dgr.x, i, j, y, x,
       local_mp_row, thresh);
 
-  // Each row's computation allows us to complete a column, the first row
-  // completes column 1
-  if (full_join || only_col) {
-    atomicAdd_block(local_mp_col + j, col_count.x);
-  }
-
   do_unrolled_row4<T, ACC, mixed, full_join, only_col>(
       cov1, cov2, cov3, cov4, col_count.y, col_count.z, col_count.w,
       col_count2.x, inormc.y, inormc.z, inormc.w, inormc2.x, inormr.y, dfc.y,
       dfc.z, dfc.w, dfc2.x, dgc.y, dgc.z, dgc.w, dgc2.x, dfr.y, dgr.y, i + 1,
       j + 1, y + 1, x + 1, local_mp_row, thresh);
-
-  // The second row completes column 2
-  if (full_join || only_col) {
-    atomicAdd_block(local_mp_col + j + 1, col_count.y);
-  }
 
   // Load the values for the next 2 rows
   dgr = reinterpret_cast<VT2 *>(dg_row)[r + 1];
@@ -263,23 +244,34 @@ __device__ inline void do_iteration_unroll_4(
       dfc.w, dfc2.x, dfc2.y, dgc.z, dgc.w, dgc2.x, dgc2.y, dfr.x, dgr.x, i + 2,
       j + 2, y + 2, x + 2, local_mp_row, thresh);
 
-  // The third row completes column 3
-  if (full_join || only_col) {
-    atomicAdd_block(local_mp_col + j + 2, col_count.z);
-  }
-
   do_unrolled_row4<T, ACC, mixed, full_join, only_col>(
       cov1, cov2, cov3, cov4, col_count.w, col_count2.x, col_count2.y,
       col_count2.z, inormc.w, inormc2.x, inormc2.y, inormc2.z, inormr.y, dfc.w,
       dfc2.x, dfc2.y, dfc2.z, dgc.w, dgc2.x, dgc2.y, dgc2.z, dfr.y, dgr.y,
       i + 3, j + 3, y + 3, x + 3, local_mp_row, thresh);
 
-  // After the 4th row, we have completed columns 4, 5, 6, and 7
   if (full_join || only_col) {
+    // Send the overlapping sums to the next thread
+    overlap_1 = __shfl_up_sync(0xffffffff, col_count2.x, 1);
+    overlap_2 = __shfl_up_sync(0xffffffff, col_count2.y, 1);
+    overlap_3 = __shfl_up_sync(0xffffffff, col_count2.z, 1);
+    if (lane > 0) {
+      col_count.x += overlap_1;
+      col_count.y += overlap_2;
+      col_count.z += overlap_3;
+    }
+    // Update the shared memory sums
+    atomicAdd_block(local_mp_col + j, col_count.x);
+    atomicAdd_block(local_mp_col + j + 1, col_count.y);
+    atomicAdd_block(local_mp_col + j + 2, col_count.z);
     atomicAdd_block(local_mp_col + j + 3, col_count.w);
-    atomicAdd_block(local_mp_col + j + 4, col_count2.x);
-    atomicAdd_block(local_mp_col + j + 5, col_count2.y);
-    atomicAdd_block(local_mp_col + j + 6, col_count2.z);
+    // The last thread in the warp has to make additional updates to shared
+    // memory as it had nowhere to send its overlapping sums
+    if (lane == 31) {
+      atomicAdd_block(local_mp_col + j + 4, col_count2.x);
+      atomicAdd_block(local_mp_col + j + 5, col_count2.y);
+      atomicAdd_block(local_mp_col + j + 6, col_count2.z);
+    }
   }
 }
 
@@ -293,10 +285,10 @@ __device__ inline void do_iteration_4diag(
     int n, ACC &cov1, ACC &cov2, ACC &cov3, ACC &cov4, T *__restrict__ df_col,
     T *__restrict__ df_row, T *__restrict__ dg_col, T *__restrict__ dg_row,
     T *__restrict__ inorm_col, T *__restrict__ inorm_row,
-    uint32_t *__restrict__ local_mp_col, uint32_t *__restrict__ local_mp_row,
-    size_t diag, size_t num_diags, float thresh) {
-  char count_rolling = 0;
-  float4 dist;
+    double *__restrict__ local_mp_col, double *__restrict__ local_mp_row,
+    size_t diag, size_t num_diags, double thresh) {
+  double count_rolling = 0;
+  double4 dist;
 
   T inormr = inorm_row[i];
   T dgr = dg_row[i];
@@ -314,32 +306,32 @@ __device__ inline void do_iteration_4diag(
   cov4 = cov4 + df_col[j + 3] * dgr + dg_col[j + 3] * dfr;
 
   if (dist.x > thresh) {
-    count_rolling++;
+    count_rolling += dist.x;
     if (full_join || only_col) {
-      atomicAdd_block(local_mp_col + j, 1);
+      atomicAdd_block(local_mp_col + j, dist.x);
     }
   }
   if (x + 1 < n && diag + 1 < num_diags) {
     if (dist.y > thresh) {
-      count_rolling++;
+      count_rolling += dist.y;
       if (full_join || only_col) {
-        atomicAdd_block(local_mp_col + j + 1, 1);
+        atomicAdd_block(local_mp_col + j + 1, dist.y);
       }
     }
   }
   if (x + 2 < n && diag + 2 < num_diags) {
     if (dist.z > thresh) {
-      count_rolling++;
+      count_rolling += dist.z;
       if (full_join || only_col) {
-        atomicAdd_block(local_mp_col + j + 2, 1);
+        atomicAdd_block(local_mp_col + j + 2, dist.z);
       }
     }
   }
   if (x + 3 < n && diag + 3 < num_diags) {
     if (dist.w > thresh) {
-      count_rolling++;
+      count_rolling += dist.w;
       if (full_join || only_col) {
-        atomicAdd_block(local_mp_col + j + 3, 1);
+        atomicAdd_block(local_mp_col + j + 3, dist.w);
       }
     }
   }
@@ -356,17 +348,17 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
     do_tile(const double *__restrict__ Cov, const double *__restrict__ dfa,
             const double *__restrict__ dfb, const double *__restrict__ dga,
             const double *__restrict__ dgb, const double *__restrict__ normsa,
-            const double *__restrict__ normsb, uint32_t *__restrict__ profile_A,
-            uint32_t *__restrict__ profile_B, const unsigned int m,
+            const double *__restrict__ normsb, double *__restrict__ profile_A,
+            double *__restrict__ profile_B, const unsigned int m,
             const unsigned int n_x, const unsigned int n_y,
             const unsigned int global_start_x,
             const unsigned int global_start_y, const int exclusion_lower,
-            const int exclusion_upper, float thresh) {
+            const int exclusion_upper, double thresh) {
   constexpr int diags_per_thread = 4;
   constexpr int tile_width = tile_height + BLOCKSZ * diags_per_thread;
   extern __shared__ char smem[];
-  uint32_t *local_mp_col;
-  uint32_t *local_mp_row;
+  double *local_mp_col;
+  double *local_mp_row;
   T *df_col, *dg_col, *inorm_col, *df_row, *dg_row, *inorm_row;
 
   df_col = (T *)smem;
@@ -375,7 +367,7 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
   df_row = inorm_col + tile_width;
   dg_row = df_row + tile_height;
   inorm_row = dg_row + tile_height;
-  uint32_t *pos = (uint32_t *)(inorm_row + tile_height);
+  double *pos = (double *)(inorm_row + tile_height);
 
   if (!full_join && only_col) {
     local_mp_col = pos;
@@ -383,7 +375,7 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
     local_mp_row = pos;
   } else {
     local_mp_col = pos;
-    local_mp_row = (uint32_t *)(pos + tile_width);
+    local_mp_row = (double *)(pos + tile_width);
   }
 
   const unsigned int start_diag = (threadIdx.x * diags_per_thread) +
@@ -515,8 +507,8 @@ int get_diags_per_thread(bool fp64, const cudaDeviceProp &dev_prop) {
   return 4;
 }
 
-int get_blocksz(FPtype t, const cudaDeviceProp &dev_prop) {
-  if (t == FP_DOUBLE) {
+int get_blocksz(SCAMPPrecisionType t, const cudaDeviceProp &dev_prop) {
+  if (t == PRECISION_DOUBLE) {
     return BLOCKSZ_DP;
   } else {
     return BLOCKSZ_SP;
@@ -524,8 +516,8 @@ int get_blocksz(FPtype t, const cudaDeviceProp &dev_prop) {
 }
 
 template <class T>
-int get_smem(int tile_height, FPtype t, bool full_join, bool only_column_join,
-             const cudaDeviceProp &dev_prop) {
+int get_smem(int tile_height, SCAMPPrecisionType t, bool full_join,
+             bool only_column_join, const cudaDeviceProp &dev_prop) {
   int smem;
   int diags_per_thread = get_diags_per_thread(t, dev_prop);
   int blocksz = get_blocksz(t, dev_prop);
@@ -545,10 +537,10 @@ SCAMPError_t kernel_ab_join_upper(
     const double *QT, const double *timeseries_A, const double *timeseries_B,
     const double *df_A, const double *df_B, const double *dg_A,
     const double *dg_B, const double *norms_A, const double *norms_B,
-    uint32_t *profile_A, uint32_t *profile_B, size_t window_size,
-    size_t tile_width, size_t tile_height, size_t global_x, size_t global_y,
-    size_t global_start_x, size_t global_start_y, const cudaDeviceProp &props,
-    FPtype t, bool full_join, float thresh, cudaStream_t s) {
+    double *profile_A, double *profile_B, size_t window_size, size_t tile_width,
+    size_t tile_height, size_t global_x, size_t global_y, size_t global_start_x,
+    size_t global_start_y, const cudaDeviceProp &props, SCAMPPrecisionType t,
+    bool full_join, double thresh, cudaStream_t s) {
   int diags_per_thread = get_diags_per_thread(t, props);
   int blocksz = get_blocksz(t, props);
   dim3 grid(1, 1, 1);
@@ -571,7 +563,7 @@ SCAMPError_t kernel_ab_join_upper(
       return SCAMP_NO_ERROR;
     }
     switch (t) {
-      case FP_DOUBLE:
+      case PRECISION_DOUBLE:
         smem = get_smem<double>(TILE_HEIGHT_DP, t, true, true, props);
         do_tile<double, double2, double4, double, false, true, true,
                 BLOCKSPERSM_AB, TILE_HEIGHT_DP, BLOCKSZ_DP>
@@ -580,7 +572,7 @@ SCAMPError_t kernel_ab_join_upper(
                 profile_B, window_size, tile_width, tile_height, global_x,
                 global_y, exclusion, 0, thresh);
         break;
-      case FP_MIXED:
+      case PRECISION_MIXED:
         smem = get_smem<float>(TILE_HEIGHT, t, true, true, props);
         do_tile<float, float2, float4, double, true, true, true, BLOCKSPERSM_AB,
                 TILE_HEIGHT, BLOCKSZ_SP><<<grid, block, smem, s>>>(
@@ -588,7 +580,7 @@ SCAMPError_t kernel_ab_join_upper(
             window_size, tile_width, tile_height, global_x, global_y, exclusion,
             0, thresh);
         break;
-      case FP_SINGLE:
+      case PRECISION_SINGLE:
         smem = get_smem<float>(TILE_HEIGHT, t, true, true, props);
         do_tile<float, float2, float4, float, false, true, true, BLOCKSPERSM_AB,
                 TILE_HEIGHT, BLOCKSZ_SP><<<grid, block, smem, s>>>(
@@ -601,7 +593,7 @@ SCAMPError_t kernel_ab_join_upper(
     }
   } else {
     switch (t) {
-      case FP_DOUBLE:
+      case PRECISION_DOUBLE:
         smem = get_smem<double>(TILE_HEIGHT_DP, t, false, true, props);
         do_tile<double, double2, double4, double, false, false, true,
                 BLOCKSPERSM_AB, TILE_HEIGHT_DP, BLOCKSZ_DP>
@@ -610,7 +602,7 @@ SCAMPError_t kernel_ab_join_upper(
                                        window_size, tile_width, tile_height,
                                        global_x, global_y, 0, 0, thresh);
         break;
-      case FP_MIXED:
+      case PRECISION_MIXED:
         smem = get_smem<float>(TILE_HEIGHT, t, false, true, props);
         do_tile<float, float2, float4, double, true, false, true,
                 BLOCKSPERSM_AB, TILE_HEIGHT, BLOCKSZ_SP>
@@ -619,7 +611,7 @@ SCAMPError_t kernel_ab_join_upper(
                                        window_size, tile_width, tile_height,
                                        global_x, global_y, 0, 0, thresh);
         break;
-      case FP_SINGLE:
+      case PRECISION_SINGLE:
         smem = get_smem<float>(TILE_HEIGHT, t, false, true, props);
         do_tile<float, float2, float4, float, false, false, true,
                 BLOCKSPERSM_AB, TILE_HEIGHT, BLOCKSZ_SP>
@@ -643,10 +635,10 @@ SCAMPError_t kernel_ab_join_lower(
     const double *QT, const double *timeseries_A, const double *timeseries_B,
     const double *df_A, const double *df_B, const double *dg_A,
     const double *dg_B, const double *norms_A, const double *norms_B,
-    uint32_t *profile_A, uint32_t *profile_B, size_t window_size,
-    size_t tile_width, size_t tile_height, size_t global_x, size_t global_y,
-    size_t global_start_x, size_t global_start_y, const cudaDeviceProp &props,
-    FPtype t, bool full_join, float thresh, cudaStream_t s) {
+    double *profile_A, double *profile_B, size_t window_size, size_t tile_width,
+    size_t tile_height, size_t global_x, size_t global_y, size_t global_start_x,
+    size_t global_start_y, const cudaDeviceProp &props, SCAMPPrecisionType t,
+    bool full_join, double thresh, cudaStream_t s) {
   int diags_per_thread = get_diags_per_thread(t, props);
   int blocksz = get_blocksz(t, props);
   dim3 grid(1, 1, 1);
@@ -670,7 +662,7 @@ SCAMPError_t kernel_ab_join_lower(
       return SCAMP_NO_ERROR;
     }
     switch (t) {
-      case FP_DOUBLE:
+      case PRECISION_DOUBLE:
         smem = get_smem<double>(TILE_HEIGHT_DP, t, true, true, props);
         do_tile<double, double2, double4, double, false, true, true,
                 BLOCKSPERSM_AB, TILE_HEIGHT_DP, BLOCKSZ_DP>
@@ -679,7 +671,7 @@ SCAMPError_t kernel_ab_join_lower(
                 profile_A, window_size, tile_height, tile_width, global_y,
                 global_x, 0, exclusion, thresh);
         break;
-      case FP_MIXED:
+      case PRECISION_MIXED:
         smem = get_smem<float>(TILE_HEIGHT, t, true, true, props);
         do_tile<float, float2, float4, double, true, true, true, BLOCKSPERSM_AB,
                 TILE_HEIGHT, BLOCKSZ_SP><<<grid, block, smem, s>>>(
@@ -687,7 +679,7 @@ SCAMPError_t kernel_ab_join_lower(
             window_size, tile_height, tile_width, global_y, global_x, 0,
             exclusion, thresh);
         break;
-      case FP_SINGLE:
+      case PRECISION_SINGLE:
         smem = get_smem<float>(TILE_HEIGHT, t, true, true, props);
         do_tile<float, float2, float4, float, false, true, true, BLOCKSPERSM_AB,
                 TILE_HEIGHT, BLOCKSZ_SP><<<grid, block, smem, s>>>(
@@ -700,7 +692,7 @@ SCAMPError_t kernel_ab_join_lower(
     }
   } else {
     switch (t) {
-      case FP_DOUBLE:
+      case PRECISION_DOUBLE:
         smem = get_smem<double>(TILE_HEIGHT_DP, t, false, false, props);
         do_tile<double, double2, double4, double, false, false, false,
                 BLOCKSPERSM_AB, TILE_HEIGHT_DP, BLOCKSZ_DP>
@@ -709,7 +701,7 @@ SCAMPError_t kernel_ab_join_lower(
                                        window_size, tile_height, tile_width,
                                        global_y, global_x, 0, 0, thresh);
         break;
-      case FP_MIXED:
+      case PRECISION_MIXED:
         smem = get_smem<float>(TILE_HEIGHT, t, false, false, props);
         do_tile<float, float2, float4, double, true, false, false,
                 BLOCKSPERSM_AB, TILE_HEIGHT, BLOCKSZ_SP>
@@ -718,7 +710,7 @@ SCAMPError_t kernel_ab_join_lower(
                                        window_size, tile_height, tile_width,
                                        global_y, global_x, 0, 0, thresh);
         break;
-      case FP_SINGLE:
+      case PRECISION_SINGLE:
         smem = get_smem<float>(TILE_HEIGHT, t, false, false, props);
         do_tile<float, float2, float4, float, false, false, false,
                 BLOCKSPERSM_AB, TILE_HEIGHT, BLOCKSZ_SP>
@@ -741,9 +733,10 @@ SCAMPError_t kernel_self_join_upper(
     const double *QT, const double *timeseries_A, const double *timeseries_B,
     const double *df_A, const double *df_B, const double *dg_A,
     const double *dg_B, const double *norms_A, const double *norms_B,
-    uint32_t *profile_A, uint32_t *profile_B, size_t window_size,
-    size_t tile_width, size_t tile_height, size_t global_x, size_t global_y,
-    const cudaDeviceProp &props, FPtype t, float thresh, cudaStream_t s) {
+    double *profile_A, double *profile_B, size_t window_size, size_t tile_width,
+    size_t tile_height, size_t global_x, size_t global_y,
+    const cudaDeviceProp &props, SCAMPPrecisionType t, double thresh,
+    cudaStream_t s) {
   int exclusion = window_size / 4;
   int diags_per_thread = get_diags_per_thread(t, props);
   int blocksz = get_blocksz(t, props);
@@ -752,18 +745,15 @@ SCAMPError_t kernel_self_join_upper(
   int smem;
   if (global_y >= global_x && global_y <= global_x + exclusion) {
     int num_workers = ceil((tile_width - exclusion) / (float)diags_per_thread);
-    printf("tile_width = %d\n", tile_width);
-    printf("num_workers exc = %d\n", num_workers);
     grid.x = ceil(num_workers / (double)blocksz);
   } else {
     int num_workers = ceil(tile_width / (float)diags_per_thread);
-    printf("num_workers = %d\n", num_workers);
     grid.x = ceil(num_workers / (double)blocksz);
     exclusion = 0;
   }
   if (exclusion < tile_width) {
     switch (t) {
-      case FP_DOUBLE:
+      case PRECISION_DOUBLE:
         smem = get_smem<double>(TILE_HEIGHT_DP, t, true, false, props);
         do_tile<double, double2, double4, double, false, true, false,
                 BLOCKSPERSM_SELF, TILE_HEIGHT_DP, BLOCKSZ_DP>
@@ -772,7 +762,7 @@ SCAMPError_t kernel_self_join_upper(
                 profile_B, window_size, tile_width, tile_height, global_x,
                 global_y, exclusion, 0, thresh);
         break;
-      case FP_MIXED:
+      case PRECISION_MIXED:
         smem = get_smem<float>(TILE_HEIGHT, t, true, false, props);
         do_tile<float, float2, float4, double, true, true, false,
                 BLOCKSPERSM_SELF, TILE_HEIGHT, BLOCKSZ_SP>
@@ -781,7 +771,7 @@ SCAMPError_t kernel_self_join_upper(
                 profile_B, window_size, tile_width, tile_height, global_x,
                 global_y, exclusion, 0, thresh);
         break;
-      case FP_SINGLE:
+      case PRECISION_SINGLE:
         smem = get_smem<float>(TILE_HEIGHT, t, true, false, props);
         do_tile<float, float2, float4, float, false, true, false,
                 BLOCKSPERSM_SELF, TILE_HEIGHT, BLOCKSZ_SP>
@@ -805,9 +795,10 @@ SCAMPError_t kernel_self_join_lower(
     const double *QT, const double *timeseries_A, const double *timeseries_B,
     const double *df_A, const double *df_B, const double *dg_A,
     const double *dg_B, const double *norms_A, const double *norms_B,
-    uint32_t *profile_A, uint32_t *profile_B, size_t window_size,
-    size_t tile_width, size_t tile_height, size_t global_x, size_t global_y,
-    const cudaDeviceProp &props, FPtype t, float thresh, cudaStream_t s) {
+    double *profile_A, double *profile_B, size_t window_size, size_t tile_width,
+    size_t tile_height, size_t global_x, size_t global_y,
+    const cudaDeviceProp &props, SCAMPPrecisionType t, double thresh,
+    cudaStream_t s) {
   int exclusion = window_size / 4;
   int diags_per_thread = get_diags_per_thread(t, props);
   int blocksz = get_blocksz(t, props);
@@ -817,18 +808,15 @@ SCAMPError_t kernel_self_join_lower(
   if (global_y + tile_height >= global_x &&
       global_y + tile_height < global_x + exclusion) {
     int num_workers = ceil((tile_height - exclusion) / (float)diags_per_thread);
-    printf("tile_width = %d\n", tile_width);
-    printf("num_workers exc = %d\n", num_workers);
     grid.x = ceil(num_workers / (double)blocksz);
   } else {
     int num_workers = ceil(tile_height / (float)diags_per_thread);
-    printf("num_workers = %d\n", num_workers);
     grid.x = ceil(num_workers / (double)blocksz);
     exclusion = 0;
   }
   if (exclusion < tile_height) {
     switch (t) {
-      case FP_DOUBLE:
+      case PRECISION_DOUBLE:
         smem = get_smem<double>(TILE_HEIGHT_DP, t, true, false, props);
         do_tile<double, double2, double4, double, false, true, false,
                 BLOCKSPERSM_SELF, TILE_HEIGHT_DP, BLOCKSZ_DP>
@@ -837,7 +825,7 @@ SCAMPError_t kernel_self_join_lower(
                 profile_A, window_size, tile_height, tile_width, global_y,
                 global_x, 0, exclusion, thresh);
         break;
-      case FP_MIXED:
+      case PRECISION_MIXED:
         smem = get_smem<float>(TILE_HEIGHT, t, true, false, props);
         do_tile<float, float2, float4, float, true, true, false,
                 BLOCKSPERSM_SELF, TILE_HEIGHT, BLOCKSZ_SP>
@@ -846,7 +834,7 @@ SCAMPError_t kernel_self_join_lower(
                 profile_A, window_size, tile_height, tile_width, global_y,
                 global_x, 0, exclusion, thresh);
         break;
-      case FP_SINGLE:
+      case PRECISION_SINGLE:
         smem = get_smem<float>(TILE_HEIGHT, t, true, false, props);
         do_tile<float, float2, float4, float, false, true, false,
                 BLOCKSPERSM_SELF, TILE_HEIGHT, BLOCKSZ_SP>

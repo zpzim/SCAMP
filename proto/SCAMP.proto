@@ -1,0 +1,66 @@
+syntax = 'proto3';
+
+package SCAMP;
+
+message RepeatedUInt {
+    repeated uint32 value = 1;
+}
+message RepeatedULong {
+    repeated uint64 value = 1;
+}
+message RepeatedFloat {
+    repeated float value = 1;
+}
+message RepeatedDouble {
+    repeated double value = 1;
+}
+
+message ProfileData {
+    oneof Data {
+        RepeatedUInt uint32_value = 1;
+        RepeatedULong uint64_value = 2;
+        RepeatedFloat float_value = 3;
+        RepeatedDouble double_value = 4;
+    }
+}
+
+enum SCAMPProfileType {
+    PROFILE_TYPE_INVALID = 0;
+    PROFILE_TYPE_1NN_INDEX = 1;
+    PROFILE_TYPE_SUM_THRESH = 2;
+    PROFILE_TYPE_FREQUENCY_THRESH = 3;
+    PROFILE_TYPE_KNN = 4;
+    PROFILE_TYPE_1NN_MULTIDIM = 5;
+}
+
+message Profile {
+    repeated ProfileData data = 1;
+    SCAMPProfileType type = 2;
+}
+
+message SCAMPTileInfo {
+}
+
+enum SCAMPPrecisionType {
+    PRECISION_INVALID = 0;
+    PRECISION_SINGLE = 1;
+    PRECISION_MIXED = 2;
+    PRECISION_DOUBLE = 3;    
+}
+
+
+message SCAMPArgs {
+    repeated double timeseries_a = 1;
+    repeated double timeseries_b = 2;
+    Profile profile_a = 3;
+    Profile profile_b = 4;
+    bool has_b = 5;
+    uint64 window = 6;
+    uint64 max_tile_size = 7;
+    uint64 distributed_start_row = 8;
+    uint64 distributed_start_col = 9;
+    double distance_threshold = 10;
+    SCAMPPrecisionType precision_type = 11;        
+    bool computing_rows = 12;
+    bool computing_columns = 13;
+}

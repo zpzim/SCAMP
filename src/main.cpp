@@ -4,6 +4,7 @@
 #include <limits>
 #include <vector>
 #include "SCAMP.h"
+#include "SCAMP.pb.h"
 #include "common.h"
 
 // Reads input time series from file
@@ -25,8 +26,10 @@ void readFile(const char *filename, vector<DTYPE> &v, const char *format_str) {
 }
 
 int main(int argc, char **argv) {
-  SCAMP::FPtype t = SCAMP::FP_SINGLE;
+  SCAMP::SCAMPPrecisionType t = SCAMP::PRECISION_SINGLE;
   bool full_join = false;
+  bool computing_columns = true;
+  bool computing_rows = true;
   bool self_join = true;
   size_t start_row = 0;
   size_t start_col = 0;
@@ -38,14 +41,16 @@ int main(int argc, char **argv) {
   while ((opt = getopt(argc, argv, "mdf:r:c:s:b:g:")) != -1) {
     switch (opt) {
       case 'd':
-        t = SCAMP::FP_DOUBLE;
+        t = SCAMP::PRECISION_DOUBLE;
         break;
       case 'm':
-        t = SCAMP::FP_MIXED;
+        t = SCAMP::PRECISION_MIXED;
         break;
       case 'f':
         output_B_prefix = optarg;
         full_join = true;
+        computing_rows = true;
+        computing_columns = true;
         break;
       case 'r':
         start_row = atoi(optarg);
@@ -59,6 +64,8 @@ int main(int argc, char **argv) {
       case 'b':
         input_B = optarg;
         self_join = false;
+        computing_columns = true;
+        computing_rows = false;
         break;
       case 'g':
         devices.push_back(atoi(optarg));
@@ -77,6 +84,7 @@ int main(int argc, char **argv) {
   int index = optind;
   int window_size = atoi(argv[index++]);
   float threshold = atof(argv[index++]);
+  printf("%lf\n", static_cast<double>(threshold));
   char *input_A = argv[index++];
 
   readFile<double>(input_A, Ta_h, "%lf");
@@ -93,13 +101,6 @@ int main(int argc, char **argv) {
     n_y = Tb_h.size() - window_size + 1;
   }
 
-  vector<uint32_t> profile(n_x, 0);
-  vector<uint32_t> profile_B;
-
-  if (full_join) {
-    profile_B = vector<uint32_t>(n_y, 0);
-  }
-
   if (devices.empty()) {
     // Use all available devices
     printf("using all devices\n");
@@ -109,18 +110,56 @@ int main(int argc, char **argv) {
       devices.push_back(i);
     }
   }
+  SCAMP::SCAMPArgs args;
+  args.set_window(window_size);
+  args.set_max_tile_size(max_tile_size);
+  args.set_has_b(!self_join);
+  args.set_distributed_start_row(start_row);
+  args.set_distributed_start_col(start_col);
+  args.set_distance_threshold(static_cast<double>(threshold));
+  args.set_computing_columns(computing_columns);
+  args.set_computing_rows(computing_rows);
+  args.mutable_profile_a()->set_type(SCAMP::PROFILE_TYPE_SUM_THRESH);
+  args.mutable_profile_b()->set_type(SCAMP::PROFILE_TYPE_SUM_THRESH);
+
+  args.set_precision_type(t);
+  {
+    google::protobuf::RepeatedField<double> data(Ta_h.begin(), Ta_h.end());
+    args.mutable_timeseries_a()->Swap(&data);
+    data = google::protobuf::RepeatedField<double>(Tb_h.begin(), Tb_h.end());
+    args.mutable_timeseries_b()->Swap(&data);
+  }
+  vector<double> temp(n_x, 0);
+  {
+    google::protobuf::RepeatedField<double> data(temp.begin(), temp.end());
+    args.mutable_profile_a()
+        ->mutable_data()
+        ->Add()
+        ->mutable_double_value()
+        ->mutable_value()
+        ->Swap(&data);
+  }
+  if (full_join) {
+    temp.resize(n_y, 0);
+    google::protobuf::RepeatedField<double> data(temp.begin(), temp.end());
+    args.mutable_profile_b()
+        ->mutable_data()
+        ->Add()
+        ->mutable_double_value()
+        ->mutable_value()
+        ->Swap(&data);
+  }
 
   printf("Starting SCAMP\n");
-  SCAMP::do_SCAMP(Ta_h, Tb_h, &profile, &profile_B, window_size, max_tile_size,
-                  devices, self_join, t, full_join, start_row, start_col,
-                  threshold);
+  SCAMP::do_SCAMP(&args, devices);
 
   printf("Now writing result to files\n");
   FILE *f1 = fopen(argv[index++], "w");
   //  FILE *f2 = fopen(argv[index++], "w");
   FILE *f3, *f4;
-  for (int i = 0; i < profile.size(); ++i) {
-    fprintf(f1, "%u\n", profile[i]);
+  for (int i = 0; i < n_x; ++i) {
+    fprintf(f1, "%lf\n",
+            args.profile_a().data().Get(0).double_value().value().Get(i));
     //    fprintf(f1, "%f\n",
     //            sqrt(std::max(2.0 * window_size * (1.0 - profile[i]), 0.0)));
     //    fprintf(f2, "%u\n", profile_idx[i] + 1);
@@ -130,8 +169,9 @@ int main(int argc, char **argv) {
   if (full_join) {
     f3 = fopen(strcat(output_B_prefix, "_mp"), "w");
     //    f4 = fopen(strcat(output_B_prefix, "i"), "w");
-    for (int i = 0; i < profile_B.size(); ++i) {
-      fprintf(f3, "%u\n", profile_B[i]);
+    for (int i = 0; i < n_y; ++i) {
+      fprintf(f3, "%lf\n",
+              args.profile_b().data().Get(0).double_value().value().Get(i));
       //      fprintf(f3, "%f\n",
       //              sqrt(std::max(2.0 * window_size * (1.0 - profile_B[i]),
       //              0.0)));

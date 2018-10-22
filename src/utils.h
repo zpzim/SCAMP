@@ -1,16 +1,10 @@
 #pragma once
 #include <stdint.h>
 #include <vector>
+#include "SCAMP.pb.h"
 #include "common.h"
 
 namespace SCAMP {
-
-void elementwise_sum(std::vector<uint32_t> &mp_full, int64_t merge_start,
-                     int64_t tile_sz, std::vector<uint32_t> *to_merge);
-void elementwise_max_with_index(std::vector<float> &mp_full,
-                                std::vector<uint32_t> &mpi_full,
-                                int64_t merge_start, int64_t tile_sz,
-                                std::vector<uint64_t> *to_merge);
 
 void compute_statistics(const double *T, double *norms, double *df, double *dg,
                         double *means, size_t n, size_t m, cudaStream_t s,

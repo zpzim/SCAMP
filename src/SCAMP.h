@@ -4,6 +4,7 @@
 #include <memory>
 #include <unordered_map>
 #include <vector>
+#include "SCAMP.pb.h"
 #include "common.h"
 #include "fft_helper.h"
 using std::list;
@@ -13,17 +14,13 @@ using std::vector;
 
 namespace SCAMP {
 
-void do_SCAMP(const vector<double> &Ta_h, const vector<double> &Tb_h,
-              vector<uint32_t> *profile_h, vector<uint32_t> *profile_B_h,
-              const uint32_t m, const size_t max_tile_size,
-              const vector<int> &devices, bool self_join, FPtype t,
-              bool full_join, size_t start_row, size_t start_col, float thresh);
+void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices);
 
 class SCAMP_Operation {
  private:
   unordered_map<int, double *> T_A_dev, T_B_dev, QT_dev, means_A, means_B,
       norms_A, norms_B, df_A, df_B, dg_A, dg_B, scratchpad;
-  unordered_map<int, uint32_t *> profile_A_dev, profile_B_dev;
+  unordered_map<int, double *> profile_a_tile_dev, profile_b_tile_dev;
   unordered_map<int, cudaEvent_t> clocks_start, clocks_end, copy_to_host_done;
   unordered_map<int, cudaStream_t> streams;
   unordered_map<int, std::shared_ptr<fft_precompute_helper>> scratch;
@@ -34,11 +31,11 @@ class SCAMP_Operation {
   size_t tile_n_x;
   size_t tile_n_y;
   size_t m;
-  float thresh;
+  double thresh;
   const bool self_join;
   const bool full_join;
   const size_t MAX_TILE_SIZE;
-  const FPtype fp_type;
+  const SCAMPPrecisionType fp_type;
   vector<int> devices;
   const size_t tile_start_row_position;
   const size_t tile_start_col_position;
@@ -55,25 +52,39 @@ class SCAMP_Operation {
   unordered_map<int, size_t> pos_x_2;
   unordered_map<int, size_t> pos_y_2;
 
-  SCAMPError_t do_tile(SCAMPTileType t, int device, const vector<double> &Ta_h,
-                       const vector<double> &Tb_h);
+  SCAMPError_t do_tile(SCAMPTileType t, int device,
+                       const google::protobuf::RepeatedField<double> &Ta_h,
+                       const google::protobuf::RepeatedField<double> &Tb_h);
 
-  bool pick_and_start_next_tile(int dev, const vector<double> &Ta_h,
-                                const vector<double> &Tb_h);
+  bool pick_and_start_next_tile(
+      int dev, const google::protobuf::RepeatedField<double> &timeseries_a,
+      const google::protobuf::RepeatedField<double> &timeseries_b);
+  int issue_and_merge_tiles_on_devices(
+      const google::protobuf::RepeatedField<double> &timeseries_a,
+      const google::protobuf::RepeatedField<double> &timeseries_b,
+      Profile *profile_a_full, Profile *profile_b_full,
+      vector<Profile> *profile_a_tile, vector<Profile> *profile_b_tile,
+      int last_device_idx);
   int issue_and_merge_tiles_on_devices(const vector<double> &Ta_host,
                                        const vector<double> &Tb_host,
-                                       vector<uint32_t> &profile_A_full_host,
-                                       vector<uint32_t> &profile_B_full_host,
-                                       vector<vector<uint32_t>> &profileA_h,
-                                       vector<vector<uint32_t>> &profileB_h,
+                                       vector<double> &profile_A_full_host,
+                                       vector<double> &profile_B_full_host,
+                                       vector<vector<double>> &profileA_h,
+                                       vector<vector<double>> &profileB_h,
                                        int last_device_idx);
   void get_tile_ordering();
+  void CopyProfileToHost(Profile *destination_profile,
+                         const double *device_tile_profile, uint64_t length,
+                         cudaStream_t s);
+  void MergeTileIntoFullProfile(Profile *tile_profile, uint64_t position,
+                                uint64_t length, Profile *full_profile);
+  Profile InitProfile(SCAMPProfileType t, uint64_t size);
 
  public:
   SCAMP_Operation(size_t Asize, size_t Bsize, size_t window_sz,
                   size_t max_tile_size, const vector<int> &dev, bool selfjoin,
-                  FPtype t, bool do_full_join, size_t start_row,
-                  size_t start_col, float th)
+                  SCAMPPrecisionType t, bool do_full_join, size_t start_row,
+                  size_t start_col, double th)
       : size_A(Asize),
         m(window_sz),
         MAX_TILE_SIZE(max_tile_size),
@@ -112,9 +123,10 @@ class SCAMP_Operation {
     tile_n_x = tile_size - m + 1;
     tile_n_y = tile_n_x;
   }
-  SCAMPError_t do_join(const vector<double> &Ta_host,
-                       const vector<double> &Tb_host, vector<uint32_t> &profile,
-                       vector<uint32_t> &profile_B);
+  SCAMPError_t do_join(
+      const google::protobuf::RepeatedField<double> &timeseries_a,
+      const google::protobuf::RepeatedField<double> &timeseries_b,
+      Profile *profile_a, Profile *profile_b);
   SCAMPError_t init();
   SCAMPError_t destroy();
 };

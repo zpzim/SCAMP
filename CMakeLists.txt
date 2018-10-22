@@ -31,6 +31,8 @@ else()
 endif()
 
 
+add_subdirectory(proto)
+
 
 set(
   PROJECT_SOURCE_FILES
@@ -55,16 +57,16 @@ set(
 #                         ===== Compiler Configuration =====
 add_definitions("--std=c++14 ")
 message(STATUS "CUDA Root Directory is ${CUDA_TOOLKIT_ROOT_DIR}")
-include_directories("${CUDA_TOOLKIT_ROOT_DIR}/include")
+include_directories("${CUDA_TOOLKIT_ROOT_DIR}/include" "proto")
 
 set(CUDA_COMPILATION_FLAGS "-use_fast_math -O3")
-set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_70,code=sm_70")
-set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_61,code=sm_61")
+#set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_70,code=sm_70")
+#set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_61,code=sm_61")
 set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_60,code=sm_60")
-set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_50,code=sm_50")
-set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_37,code=sm_37")
-set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_35,code=sm_35")
-set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_30,code=sm_30")
+#set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_50,code=sm_50")
+#set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_37,code=sm_37")
+#set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_35,code=sm_35")
+#set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_30,code=sm_30")
 
 # optimize in release
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native")
@@ -89,15 +91,15 @@ add_library(fft src/fft_helper.cpp)
 target_link_libraries(fft -lcufft fft_kernels common)
 
 add_library(utils src/utils.cu)
-target_link_libraries(utils common)
+target_link_libraries(utils messages common)
 
 add_library(kernels src/kernels.cu)
-target_link_libraries(kernels common)
+target_link_libraries(kernels messages common)
 
 add_library(tile src/tile.cpp)
-target_link_libraries(tile common kernels fft)
+target_link_libraries(tile messages common kernels fft)
 add_library(scamp src/SCAMP.cpp)
-target_link_libraries(scamp utils tile common fft)
+target_link_libraries(scamp messages utils tile common fft)
 
 
 set_target_properties(kernels PROPERTIES
@@ -150,4 +152,4 @@ if(CLANG_FORMAT_EXE)
 endif()
 
 add_executable(SCAMP src/main.cpp)
-target_link_libraries(SCAMP -lcudart_static common scamp)
+target_link_libraries(SCAMP -lcudart_static messages common scamp)

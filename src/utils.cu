@@ -86,13 +86,6 @@ __global__ void merge_mp_idx(float *mp, uint32_t *mpi, uint32_t n,
     merged[tid] = item.ulong;
   }
 }
-void elementwise_sum(std::vector<uint32_t> &mp_full, int64_t merge_start,
-                     int64_t tile_sz, std::vector<uint32_t> *to_merge) {
-  for (int i = 0; i < tile_sz; ++i) {
-    mp_full[i + merge_start] += to_merge->at(i);
-    to_merge->at(i) = 0;
-  }
-}
 
 void elementwise_max_with_index(std::vector<float> &mp_full,
                                 std::vector<uint32_t> &mpi_full,
@@ -120,12 +113,6 @@ void compute_statistics(const double *T, double *norms, double *df, double *dg,
   thrust::inclusive_scan(thrust::cuda::par.on(s), dev_ptr_T,
                          dev_ptr_T + n + m - 1, dev_ptr_scratch,
                          thrust::plus<double>());
-  // cub::DeviceScan::InclusiveSum(temp, bytes, T, scratch, n + m - 1, s);
-  // Allocate temporary storage
-  // cudaMalloc(&temp, bytes);
-  // cub::DeviceScan::InclusiveSum(temp, bytes, T, scratch, n + m - 1, s);
-  // cudaFree(temp);
-  // prefix_sum(T, n+m-1, scratch, s);
   gpuErrchk(cudaPeekAtLastError());
   // Use prefix sum to compute sliding mean
   sliding_mean<<<grid, block, 0, s>>>(scratch, m, n, means);
