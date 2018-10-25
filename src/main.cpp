@@ -123,6 +123,7 @@ int main(int argc, char **argv) {
   args.mutable_profile_b()->set_type(SCAMP::PROFILE_TYPE_SUM_THRESH);
 
   args.set_precision_type(t);
+  printf("precision = %d\n", args.precision_type());
   {
     google::protobuf::RepeatedField<double> data(Ta_h.begin(), Ta_h.end());
     args.mutable_timeseries_a()->Swap(&data);

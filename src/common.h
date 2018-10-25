@@ -2,6 +2,8 @@
 #include <cuda_runtime.h>
 #include <stdio.h>
 #include <cinttypes>
+#include <unordered_map>
+#include "SCAMP.pb.h"
 namespace SCAMP {
 
 typedef union {
@@ -16,12 +18,15 @@ struct reg_mem {
   double qt[count];
 };
 
-enum FPtype {
-  FP_INVALID = 0,
-  FP_DOUBLE = 1,
-  FP_MIXED = 2,
-  FP_SINGLE = 3,
+struct OptionalArgs {
+  OptionalArgs(double threshold_) : threshold(threshold_) {}
+
+  double threshold;
 };
+
+using DeviceProfile = std::unordered_map<int, void *>;
+
+size_t GetProfileTypeSize(SCAMPProfileType t);
 
 enum SCAMPError_t {
   SCAMP_NO_ERROR,

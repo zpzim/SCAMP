@@ -55,13 +55,13 @@ set(
 
 # ----------------------------------------------------------------------------------------
 #                         ===== Compiler Configuration =====
-add_definitions("--std=c++14 ")
+add_definitions("--std=c++14")
 message(STATUS "CUDA Root Directory is ${CUDA_TOOLKIT_ROOT_DIR}")
 include_directories("${CUDA_TOOLKIT_ROOT_DIR}/include" "proto")
-
-set(CUDA_COMPILATION_FLAGS "-use_fast_math -O3")
-#set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_70,code=sm_70")
-#set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_61,code=sm_61")
+set(CUDA_SEPARABLE_COMPILATION ON)
+set(CUDA_COMPILATION_FLAGS "-lineinfo --expt-relaxed-constexpr -use_fast_math -O3")
+set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_70,code=sm_70")
+set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_61,code=sm_61")
 set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_60,code=sm_60")
 #set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_50,code=sm_50")
 #set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_37,code=sm_37")
@@ -84,7 +84,7 @@ endif()
 #                              ===== Build targets =====
 
 add_library(common src/common.cpp)
-target_link_libraries(common -lcudart_static)
+target_link_libraries(common messages -lcudart_static)
 
 add_library(fft_kernels src/fft_kernels.cu)
 add_library(fft src/fft_helper.cpp)
