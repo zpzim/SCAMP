@@ -25,7 +25,7 @@ void elementwise_sum(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
 
 template <typename T>
 void elementwise_max(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
-                     T *to_merge, int index_offset) {
+                     T *to_merge, uint64_t index_offset) {
   for (int i = 0; i < tile_sz; ++i) {
     mp_entry e1, e2;
     e1.ulong = (*mp_full)[i + merge_start];
@@ -141,7 +141,6 @@ SCAMPError_t SCAMP_Operation::InitInputOnDevice(
     const google::protobuf::RepeatedField<double> &Ta_h,
     const google::protobuf::RepeatedField<double> &Tb_h, int device) {
   int profile_size = GetProfileTypeSize(_profile_type);
-  printf("%d\n", profile_size);
   cudaMemcpyAsync(T_A_dev[device], Ta_h.data() + pos_x[device],
                   sizeof(double) * n_x[device], cudaMemcpyHostToDevice,
                   streams.at(device));
@@ -153,7 +152,6 @@ SCAMPError_t SCAMP_Operation::InitInputOnDevice(
 
   switch (_profile_type) {
     case PROFILE_TYPE_SUM_THRESH:
-      printf("%p\n", profile_a_tile_dev.at(device).at(_profile_type));
       cudaMemsetAsync(profile_a_tile_dev.at(device).at(_profile_type), 0,
                       profile_size * (n_x[device] - m + 1), streams.at(device));
       gpuErrchk(cudaPeekAtLastError());
@@ -162,25 +160,29 @@ SCAMPError_t SCAMP_Operation::InitInputOnDevice(
       gpuErrchk(cudaPeekAtLastError());
       break;
     case PROFILE_TYPE_1NN_INDEX: {
-       std::cout << _profile_a->data().Get(0).uint64_value().value().size() << " elements" << std::endl;
-       const uint64_t* pA_ptr = _profile_a->data().Get(0).uint64_value().value().data();
-       cudaMemcpyAsync(profile_a_tile_dev.at(device).at(_profile_type), pA_ptr + pos_x[device],
-                  sizeof(uint64_t) * (n_x[device] - m + 1), cudaMemcpyHostToDevice,
-                  streams.at(device));
-       gpuErrchk(cudaPeekAtLastError()); 
-       if (self_join) {
-       cudaMemcpyAsync(profile_b_tile_dev.at(device).at(_profile_type), pA_ptr + pos_y[device],
-                  sizeof(uint64_t) * (n_y[device] - m + 1), cudaMemcpyHostToDevice,
-                  streams.at(device));
-       gpuErrchk(cudaPeekAtLastError()); 
+      const uint64_t *pA_ptr =
+          _profile_a->data().Get(0).uint64_value().value().data();
+      cudaMemcpyAsync(profile_a_tile_dev.at(device).at(_profile_type),
+                      pA_ptr + pos_x[device],
+                      sizeof(uint64_t) * (n_x[device] - m + 1),
+                      cudaMemcpyHostToDevice, streams.at(device));
+      gpuErrchk(cudaPeekAtLastError());
+      if (self_join) {
+        cudaMemcpyAsync(profile_b_tile_dev.at(device).at(_profile_type),
+                        pA_ptr + pos_y[device],
+                        sizeof(uint64_t) * (n_y[device] - m + 1),
+                        cudaMemcpyHostToDevice, streams.at(device));
+        gpuErrchk(cudaPeekAtLastError());
 
-       } else if (full_join) {
-        const uint64_t* pB_ptr = _profile_b->data().Get(0).uint64_value().value().data();
-        cudaMemcpyAsync(profile_b_tile_dev.at(device).at(_profile_type), pB_ptr + pos_y[device],
-                  sizeof(uint64_t) * (n_y[device] - m + 1), cudaMemcpyHostToDevice,
-                  streams.at(device));
-        gpuErrchk(cudaPeekAtLastError()); 
-       }
+      } else if (full_join) {
+        const uint64_t *pB_ptr =
+            _profile_b->data().Get(0).uint64_value().value().data();
+        cudaMemcpyAsync(profile_b_tile_dev.at(device).at(_profile_type),
+                        pB_ptr + pos_y[device],
+                        sizeof(uint64_t) * (n_y[device] - m + 1),
+                        cudaMemcpyHostToDevice, streams.at(device));
+        gpuErrchk(cudaPeekAtLastError());
+      }
       break;
     }
     case PROFILE_TYPE_FREQUENCY_THRESH:
@@ -203,7 +205,6 @@ SCAMPError_t SCAMP_Operation::do_tile(
   SCAMPError_t err;
   size_t t_n_x = n_x[device] - m + 1;
   size_t t_n_y = n_y[device] - m + 1;
-  printf("tile type = %d start_pos = [%lu, %lu]...\n", t, start_y, start_x);
   InitInputOnDevice(Ta_h, Tb_h, device);
 
   // FIXME?: Computing the sliding dot products & statistics for each tile is
@@ -216,7 +217,6 @@ SCAMPError_t SCAMP_Operation::do_tile(
                      dg_B[device], means_B[device], t_n_y, m,
                      streams.at(device), scratchpad[device]);
   gpuErrchk(cudaPeekAtLastError());
-  std::cout << _profile_type << std::endl;
   SCAMP_Tile tile(t, T_A_dev[device], T_B_dev[device], df_A[device],
                   df_B[device], dg_A[device], dg_B[device], norms_A[device],
                   norms_B[device], means_A[device], means_B[device],
@@ -308,6 +308,9 @@ bool SCAMP_Operation::pick_and_start_next_tile(
   // Get the size of the tile we will compute
   n_x[dev] = std::min(tile_size, size_A - pos_x[dev]);
   n_y[dev] = std::min(tile_size, size_B - pos_y[dev]);
+  std::cout << "Starting tile with starting row of " << pos_y[dev]
+            << " starting column of " << pos_y[dev] << " with height "
+            << n_y[dev] << " and width " << n_x[dev] << std::endl;
   SCAMPError_t err;
   if (self_join) {
     if (tile_row == tile_col) {
@@ -372,7 +375,8 @@ void SCAMP_Operation::CopyProfileToHost(
 void SCAMP_Operation::MergeTileIntoFullProfile(Profile *tile_profile,
                                                uint64_t position,
                                                uint64_t length,
-                                               Profile *full_profile) {
+                                               Profile *full_profile,
+                                               uint64_t index_start = 0) {
   switch (_profile_type) {
     case PROFILE_TYPE_SUM_THRESH:
       elementwise_sum<google::protobuf::RepeatedField<double>>(
@@ -396,7 +400,8 @@ void SCAMP_Operation::MergeTileIntoFullProfile(Profile *tile_profile,
           tile_profile->mutable_data()
               ->Mutable(0)
               ->mutable_uint64_value()
-              ->mutable_value(), 0 /* NEEDS TO BE CHANGED */);
+              ->mutable_value(),
+          index_start);
       // elementwise_max_with_index();
       return;
     case PROFILE_TYPE_FREQUENCY_THRESH:
@@ -429,15 +434,12 @@ int SCAMP_Operation::issue_and_merge_tiles_on_devices(
     last_device_idx = devices.size() - 1;
   }
   for (int i = 0; i <= last_device_idx; ++i) {
-    std::cout << "device = " << i << std::endl;
     int device = devices.at(i);
     cudaSetDevice(device);
     gpuErrchk(cudaPeekAtLastError());
-    std::cout << "Copying profile a on device " << i << " to host\n";
     CopyProfileToHost(&profile_a_tile->at(i), &profile_a_tile_dev[device],
                       n_x[device] - m + 1, streams[device]);
     if (self_join || full_join) {
-      std::cout << "Copying profile b on device " << i << " to host\n";
       CopyProfileToHost(&profile_b_tile->at(i), &profile_b_tile_dev[device],
                         n_y[device] - m + 1, streams[device]);
     }
@@ -455,29 +457,30 @@ int SCAMP_Operation::issue_and_merge_tiles_on_devices(
     }
   }
 
-  std::cout << "Initia Loop done, executing leftover tiles";
   for (int i = 0; i <= last_device_idx; ++i) {
-    std::cout << "device = " << i << std::endl;
     int device = devices.at(i);
     cudaSetDevice(device);
     gpuErrchk(cudaPeekAtLastError());
 
     cudaEventSynchronize(copy_to_host_done[device]);
     gpuErrchk(cudaPeekAtLastError());
-   MergeTileIntoFullProfile(&profile_a_tile->at(i), pos_x_2[device],
-                               n_x_2[device] - m + 1, _profile_a);
+    MergeTileIntoFullProfile(&profile_a_tile->at(i), pos_x_2[device],
+                             n_x_2[device] - m + 1, _profile_a,
+                             pos_y_2[device]);
     if (self_join) {
       MergeTileIntoFullProfile(&profile_b_tile->at(i), pos_y_2[device],
-                               n_y_2[device] - m + 1, _profile_a);
-    
+                               n_y_2[device] - m + 1, _profile_a,
+                               pos_x_2[device]);
+
     } else if (full_join) {
       MergeTileIntoFullProfile(&profile_b_tile->at(i), pos_y_2[device],
-                               n_y_2[device] - m + 1, _profile_b);
+                               n_y_2[device] - m + 1, _profile_b,
+                               pos_x_2[device]);
     }
     completed_tiles++;
-    printf("%f percent complete\n",
-           (completed_tiles / static_cast<float>(total_tiles)) * 100);
   }
+  std::cout << completed_tiles / static_cast<float>(total_tiles) * 100
+            << " percent complete." << std::endl;
   return last_dev;
 }
 
@@ -518,7 +521,8 @@ SCAMPError_t SCAMP_Operation::do_join(
   bool done = false;
   int last_dev = ISSUED_ALL_DEVICES;
   get_tile_ordering();
-  printf("Performing join with %lu tiles.\n", tile_ordering.size());
+  std::cout << "Performing join with " << tile_ordering.size() << " tiles."
+            << std::endl;
   for (int i = 0; i < devices.size(); ++i) {
     int device = devices.at(i);
     cudaSetDevice(device);
@@ -533,10 +537,10 @@ SCAMPError_t SCAMP_Operation::do_join(
 
   while (last_dev == ISSUED_ALL_DEVICES) {
     last_dev = issue_and_merge_tiles_on_devices(
-        timeseries_a, timeseries_b, &profile_a_tile,
-        &profile_b_tile);
+        timeseries_a, timeseries_b, &profile_a_tile, &profile_b_tile);
   }
-  issue_and_merge_tiles_on_devices(timeseries_a, timeseries_b, &profile_a_tile, &profile_b_tile, last_dev);
+  issue_and_merge_tiles_on_devices(timeseries_a, timeseries_b, &profile_a_tile,
+                                   &profile_b_tile, last_dev);
 
   return SCAMP_NO_ERROR;
 }
@@ -553,8 +557,9 @@ void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices) {
       args->timeseries_a().size(), args->timeseries_b().size(), args->window(),
       args->max_tile_size(), devices, !args->has_b(), args->precision_type(),
       args->computing_columns() && args->computing_rows(),
-      args->distributed_start_row(), args->distributed_start_col(), opt_args, args->profile_type(),
-      args->mutable_profile_a(), args->mutable_profile_b());
+      args->distributed_start_row(), args->distributed_start_col(), opt_args,
+      args->profile_type(), args->mutable_profile_a(),
+      args->mutable_profile_b());
   op.init();
   gpuErrchk(cudaPeekAtLastError());
   start = clock();

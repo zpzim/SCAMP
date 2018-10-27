@@ -61,17 +61,18 @@ class SCAMP_Operation {
   bool pick_and_start_next_tile(
       int dev, const google::protobuf::RepeatedField<double> &timeseries_a,
       const google::protobuf::RepeatedField<double> &timeseries_b);
-  int issue_and_merge_tiles_on_devices(const google::protobuf::RepeatedField<double> &timeseries_a,
-                                       const google::protobuf::RepeatedField<double> &timeseries_b,
-                                       vector<Profile> *profile_a_tile,
-                                       vector<Profile> *profile_b_tile,
-                                       int last_device_idx);
+  int issue_and_merge_tiles_on_devices(
+      const google::protobuf::RepeatedField<double> &timeseries_a,
+      const google::protobuf::RepeatedField<double> &timeseries_b,
+      vector<Profile> *profile_a_tile, vector<Profile> *profile_b_tile,
+      int last_device_idx);
   void get_tile_ordering();
   void CopyProfileToHost(Profile *destination_profile,
                          const DeviceProfile *device_tile_profile,
                          uint64_t length, cudaStream_t s);
   void MergeTileIntoFullProfile(Profile *tile_profile, uint64_t position,
-                                uint64_t length, Profile *full_profile);
+                                uint64_t length, Profile *full_profile,
+                                uint64_t index_start);
   Profile InitProfile(SCAMPProfileType t, uint64_t size);
   SCAMPError_t InitInputOnDevice(
       const google::protobuf::RepeatedField<double> &Ta_h,
@@ -97,7 +98,6 @@ class SCAMP_Operation {
         _profile_type(profile_type),
         _profile_a(pA),
         _profile_b(pB) {
-        
     if (self_join) {
       size_B = size_A;
     } else {
@@ -120,8 +120,6 @@ class SCAMP_Operation {
       cudaGetDeviceProperties(&properties, device);
       dev_props.emplace(device, properties);
     }
-    // n_y = Asize - m + 1;
-    // n_x = Bsize - m + 1;
     tile_n_x = tile_size - m + 1;
     tile_n_y = tile_n_x;
   }

@@ -33,13 +33,13 @@ do
             count=`wc -l $INPUT_FILE | awk '{print $1}'`
             if [ $tile_sz -lt $(($count * 2)) ]; then
                 echo "Running Test: $EXECUTABLE $j -s $tile_sz $fp64 $INPUT_FILE mp mpi"
-                $EXECUTABLE $j -s $tile_sz $fp64 $INPUT_FILE mp mpi > /dev/null
-                X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mpi | grep '^' | wc -l`
+                $EXECUTABLE --window=$j --max_tile_size=$tile_sz $fp64 --input_a_file_name=$INPUT_FILE > /dev/null
+                X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mp_columns_out_index | grep '^' | wc -l`
                 echo "$X matrix profile index differences"
                 if [ $X -gt $(($count / 100)) ] ; then
                     exit 1
                 fi
-                ./difference.py mp $COMPARE_MP out
+                ./difference.py mp_columns_out $COMPARE_MP out
                 result=$?
                 if [ $result -ne 0 ] ; then
                     exit $result
@@ -48,6 +48,7 @@ do
         done
     done
 done
+
 
 
 for i in `seq 0 $NUM_AB`;
@@ -66,13 +67,13 @@ do
                 count=`wc -l $INPUT_FILE_A | awk '{print $1}'`
                 if [ $tile_sz -lt $(($count * 2)) ]; then
                     echo "Running Test: $EXECUTABLE -s $tile_sz -b $INPUT_FILE_B $fp64 $k $INPUT_FILE_A mp mpi"
-                    $EXECUTABLE -s $tile_sz -b $INPUT_FILE_B $fp64 $k $INPUT_FILE_A mp mpi > /dev/null
-                    X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mpi | grep '^' | wc -l`
+                    $EXECUTABLE --max_tile_size=$tile_sz --input_b_file_name=$INPUT_FILE_B $fp64 --window=$k --input_a_file_name=$INPUT_FILE_A > /dev/null
+                    X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mp_columns_out_index | grep '^' | wc -l`
                     echo "$X matrix profile index differences"
                     if [ $X -gt $(($count / 100)) ] ; then
                         exit 1
                     fi
-                    ./difference.py mp $COMPARE_MP out
+                    ./difference.py mp_columns_out $COMPARE_MP out
                     result=$?
                     if [ $result -ne 0 ] ; then
                         exit $result
@@ -90,13 +91,13 @@ do
                 count=`wc -l $INPUT_FILE_A | awk '{print $1}'`
                 if [ $tile_sz -lt $(($count * 2)) ]; then
                     echo "Running Test: $EXECUTABLE -s $tile_sz -b $INPUT_FILE_A $fp64 $k $INPUT_FILE_B mp mpi"
-                    $EXECUTABLE -s $tile_sz -b $INPUT_FILE_A $fp64 $k $INPUT_FILE_B mp mpi > /dev/null
-                    X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mpi | grep '^' | wc -l`
+                    $EXECUTABLE --max_tile_size=$tile_sz --input_b_file_name=$INPUT_FILE_A $fp64 --window=$k --input_a_file_name=$INPUT_FILE_B > /dev/null
+                    X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mp_columns_out_index | grep '^' | wc -l`
                     echo "$X matrix profile index differences"
                     if [ $X -gt $(($count / 100)) ] ; then
                         exit 1
                     fi
-                    ./difference.py mp $COMPARE_MP out
+                    ./difference.py mp_columns_out $COMPARE_MP out
                     result=$?
                     if [ $result -ne 0 ] ; then
                         exit $result
@@ -116,51 +117,51 @@ do
                 count=`wc -l $INPUT_FILE_A | awk '{print $1}'`
                 if [ $tile_sz -lt $(($count * 2)) ]; then
                     echo "Running Test: $EXECUTABLE -s $tile_sz -b $INPUT_FILE_A -f B -r 9000000000 -c 100000 $fp64 $k $INPUT_FILE_B mp mpi"
-                    $EXECUTABLE -s $tile_sz -b $INPUT_FILE_A -f B -r 9000000000 -c 100000 $fp64 $k $INPUT_FILE_B mp mpi > /dev/null
+                    $EXECUTABLE --max_tile_size=$tile_sz --input_b_file_name=$INPUT_FILE_A --keep_rows=true --global_row=9000000000 --global_col=100000 $fp64 --window=$k --input_file_a_name=$INPUT_FILE_B > /dev/null
                     echo "Checking AB result"
-                    X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mpi | grep '^' | wc -l`
+                    X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mp_columns_out_index | grep '^' | wc -l`
                     echo "$X matrix profile index differences"
                     if [ $X -gt $(($count / 100)) ] ; then
                         exit 1
                     fi
-                    ./difference.py mp $COMPARE_MP out
+                    ./difference.py mp_columns_out $COMPARE_MP out
                     result=$?
                     if [ $result -ne 0 ] ; then
                         exit $result
                     fi
                     echo "Checking BA result"
-                    X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPIB B_mpi | grep '^' | wc -l`
+                    X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPIB mp_rows_out_index | grep '^' | wc -l`
                     echo "$X matrix profile index differences"
                     if [ $X -gt $(($count / 100)) ] ; then
                         exit 1
                     fi
-                    ./difference.py B_mp $COMPARE_MPB out
+                    ./difference.py mp_rows_out $COMPARE_MPB out
                     result=$?
                     if [ $result -ne 0 ] ; then
                         exit $result
                     fi
 
                     echo "Running Test: $EXECUTABLE -s $tile_sz -b $INPUT_FILE_B -f B -r 9000000000 -c 100000 $fp64 $k $INPUT_FILE_A mp mpi"
-                    $EXECUTABLE -s $tile_sz -b $INPUT_FILE_B -f B -r 9000000000 -c 100000 $fp64 $k $INPUT_FILE_A mp mpi > /dev/null
+                    $EXECUTABLE --max_tile_size=$tile_sz --input_b_file_name=$INPUT_FILE_B --keep_rows=true --global_row=9000000000 --global_col=100000 $fp64 --window=$k --input_file_a_name=$INPUT_FILE_A > /dev/null
                     echo "Checking AB result"
-                    X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPIB mpi | grep '^' | wc -l`
+                    X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPIB mp_columns_out_index | grep '^' | wc -l`
                     echo "$X matrix profile index differences"
                     if [ $X -gt $(($count / 100)) ] ; then
                         exit 1
                     fi
-                    ./difference.py mp $COMPARE_MPB out
+                    ./difference.py mp_columns_out $COMPARE_MPB out
                     result=$?
                     if [ $result -ne 0 ] ; then
                         exit $result
                     fi
                     
                     echo "Checking BA result"
-                    X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI B_mpi | grep '^' | wc -l`
+                    X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mp_rows_out_index | grep '^' | wc -l`
                     echo "$X matrix profile index differences"
                     if [ $X -gt $(($count / 100)) ] ; then
                         exit 1
                     fi
-                    ./difference.py B_mp $COMPARE_MP out
+                    ./difference.py mp_rows_out $COMPARE_MP out
                     result=$?
                     if [ $result -ne 0 ] ; then
                         exit $result
