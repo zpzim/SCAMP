@@ -1,4 +1,8 @@
 #include <cuda_runtime.h>
+#include <fstream>
+#include <sstream>
+#include <iostream>
+#include <iomanip>
 #include <string.h>
 #include <unistd.h>
 #include <limits>
@@ -6,38 +10,214 @@
 #include "SCAMP.h"
 #include "SCAMP.pb.h"
 #include "common.h"
+#include <gflags/gflags.h>
+
+DEFINE_int32(max_tile_size, 1 << 20, "Maximum tile size SCAMP will use");
+DEFINE_int32(window, -1, "Length of subsequences to search for");
+DEFINE_double(threshold, std::nan("NaN"), "Distance Threshold for frequency and sum calculations");
+DEFINE_string(profile_type, "1NN_INDEX", "Matrix Profile Type to compute, must be one of \"1NN_INDEX, SUM_THRESH\"");
+DEFINE_bool(double_precision, false, "Computation in double precision");
+DEFINE_bool(mixed_precision, false, "Computation in mixed precision");
+DEFINE_bool(single_precision, false, "Computation in single precision");
+DEFINE_bool(ab_join, false, "Informs SCAMP to perform an ab-join");
+DEFINE_bool(keep_rows, false, "Informs SCAMP to compute the \"rowwise mp\" and output in a a separate file specified by the flag --output_b_file_name, only valid for ab-joins");
+DEFINE_int64(global_row, 0, "Informs SCAMP that this join is part of a larger distributed join which starts at this row in the larger distance matrix, this allows us to pick an appropriate exclusion zone for our computation if necessary");
+DEFINE_int64(global_col, 0, "Informs SCAMP that this join is part of a larger distributed join which starts at this column in the larger distance matrix, this allows us to pick an appropriate exclusion zone for our computation if necessary");
+DEFINE_string(input_a_file_name, "", "Primary input file name for a self-join or ab-join");
+DEFINE_string(input_b_file_name, "", "Secondary input file name for an ab-join");
+DEFINE_string(output_a_file_name, "mp_columns_out", "Primary output file name for the matrix profile \"columns\"");
+DEFINE_string(output_a_index_file_name, "mp_columns_out_index", "Primary output file name for the matrix profile \"columns\" index (if ab-join these are indexes into input_b) this flag is only used when generating a matrix profile which contains an index");
+DEFINE_string(output_b_file_name, "mp_rows_out", "Output the matrix profile for the \"rows\" as a separate file with this name");
+DEFINE_string(output_b_index_file_name, "mp_rows_out_index", "Primary output file name for the matrix profile \"columns\" index (if ab-join these are indexes into input_a) this flag is only used when generating a matrix profile which contains an index");
+DEFINE_string(gpus, "", "IDs of GPUs on the system to use, if this flag is not set SCAMP tries to use all available GPUs on the system");
+
 
 // Reads input time series from file
 template <class DTYPE>
-void readFile(const char *filename, vector<DTYPE> &v, const char *format_str) {
-  FILE *f = fopen(filename, "r");
-  if (f == NULL) {
-    printf("Unable to open %s for reading, please make sure it exists\n",
-           filename);
+void readFile(const std::string &filename, std::vector<DTYPE> &v, const char *format_str) {
+  std::ifstream f(filename);
+  if (f.fail()) {
+    std::cout << "Unable to open" << filename << "for reading, please make sure it exists" << std::endl;
     exit(0);
   }
   DTYPE num;
-  while (!feof(f)) {
-    fscanf(f, format_str, &num);
+  while (f >> num) {
+    //fscanf(f, format_str, &num);
     v.push_back(num);
   }
-  v.pop_back();
-  fclose(f);
+  std::cout << v.size();
+}
+
+std::vector<int> ParseIntList(const std::string& s) {
+  std::stringstream ss(s);
+  std::vector<int> result;
+  while( ss.good() )
+  {
+    std::string substr;
+    std::getline( ss, substr, ',' );
+    result.push_back(std::stoi(substr));
+  }
+  return result;
+}
+
+SCAMP::SCAMPPrecisionType GetPrecisionType(bool doublep, bool mixedp, bool singlep) {
+    if (doublep) {
+        return SCAMP::PRECISION_DOUBLE;
+    }
+    if (mixedp) {
+        return SCAMP::PRECISION_MIXED;
+    }
+    if (singlep) {
+        return SCAMP::PRECISION_SINGLE;
+    }
+    return SCAMP::PRECISION_INVALID;
+}
+
+SCAMP::SCAMPProfileType ParseProfileType(const std::string& s) {
+    std::cout << s << std::endl;
+    if (s == "1NN_INDEX") {
+        return SCAMP::PROFILE_TYPE_1NN_INDEX;
+    }
+    if (s == "SUM_THRESH") {
+        return SCAMP::PROFILE_TYPE_SUM_THRESH;
+    }
+    return SCAMP::PROFILE_TYPE_INVALID;
+}
+
+template <typename T>
+T ConvertToEuclidean(T val) {
+  return std::sqrt(std::max(2.0 * FLAGS_window * (1.0 - val), 0.0));
+} 
+
+bool WriteProfileToFile(const std::string &mp, const std::string &mpi, SCAMP::Profile p) {
+    switch(p.type()) {
+    case SCAMP::PROFILE_TYPE_1NN_INDEX: {
+        std::ofstream mp_out(mp);
+        std::ofstream mpi_out(mpi);
+        auto arr = p.data().Get(0).uint64_value().value();
+        for (int i = 0; i < arr.size(); ++i) {
+            SCAMP::mp_entry e;
+            e.ulong = arr.Get(i);
+            mp_out << std::setprecision(10) << ConvertToEuclidean<float>(e.floats[0]) << std::endl;
+            mpi_out << e.ints[1] << std::endl;
+        }
+        break;
+    }
+    case SCAMP::PROFILE_TYPE_SUM_THRESH: {
+        std::ofstream mp_out(mp);
+        auto arr = p.data().Get(0).double_value().value();
+        for (int i = 0; i < arr.size(); ++i) {
+            SCAMP::mp_entry e;
+            e.ulong = arr.Get(i);
+            mp_out << std::setprecision(10) << arr.Get(i) << std::endl;
+        }
+        break;
+    }
+    default:
+        break;
+   }
+   return true;
+}
+
+
+void InitProfileMemory(SCAMP::SCAMPArgs *args) {
+    switch(args->profile_type()) {
+    case SCAMP::PROFILE_TYPE_1NN_INDEX: {
+        SCAMP::mp_entry e;
+        e.floats[0] = std::numeric_limits<float>::lowest();
+        e.ints[1] = -1u;
+        vector<uint64_t> temp(args->timeseries_a().size() - FLAGS_window + 1, e.ulong);
+        {
+            google::protobuf::RepeatedField<uint64_t> data(temp.begin(), temp.end());
+            args->mutable_profile_a()
+            ->mutable_data()
+            ->Add()
+            ->mutable_uint64_value()
+            ->mutable_value()
+            ->Swap(&data);
+        }
+        if (FLAGS_keep_rows) {
+            temp.resize(args->timeseries_b().size() - FLAGS_window + 1, e.ulong);
+            google::protobuf::RepeatedField<uint64_t> data(temp.begin(), temp.end());
+            args->mutable_profile_b()
+            ->mutable_data()
+            ->Add()
+            ->mutable_uint64_value()
+            ->mutable_value()
+            ->Swap(&data);
+        }
+    }
+    case SCAMP::PROFILE_TYPE_SUM_THRESH: {
+        vector<double> temp(args->timeseries_a().size() - FLAGS_window + 1, 0);
+        {
+            google::protobuf::RepeatedField<double> data(temp.begin(), temp.end());
+            args->mutable_profile_a()
+            ->mutable_data()
+            ->Add()
+            ->mutable_double_value()
+            ->mutable_value()
+            ->Swap(&data);
+        }
+        if (FLAGS_keep_rows) {
+            temp.resize(args->timeseries_b().size() - FLAGS_window + 1, 0);
+            google::protobuf::RepeatedField<double> data(temp.begin(), temp.end());
+            args->mutable_profile_b()
+            ->mutable_data()
+            ->Add()
+            ->mutable_double_value()
+            ->mutable_value()
+            ->Swap(&data);
+        }
+        break;
+    }
+    default:
+        break;
+   }
 }
 
 int main(int argc, char **argv) {
-  SCAMP::SCAMPPrecisionType t = SCAMP::PRECISION_SINGLE;
-  bool full_join = false;
-  bool computing_columns = true;
-  bool computing_rows = true;
-  bool self_join = true;
+  bool self_join, computing_rows, computing_cols;
   size_t start_row = 0;
   size_t start_col = 0;
-  int max_tile_size = (1 << 20);
-  int opt;
-  std::vector<int> devices;
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
+  if (!FLAGS_double_precision && !FLAGS_mixed_precision && !FLAGS_single_precision) {
+    FLAGS_double_precision = true;
+  }
+  if ((FLAGS_double_precision ? 1 : 0) + (FLAGS_mixed_precision ? 1 : 0) + (FLAGS_single_precision ? 1 : 0) != 1) {
+    printf("Error: only one precision flag can be enabled at a time\n");
+    return 1;  
+  }
+  if (FLAGS_window < 3) {
+    printf("Error: Subsequence length must be at least 3\n");
+    return 1;
+  }
+  if (FLAGS_max_tile_size < 1024) {
+    printf("Error: max tile size must be at least 1024\n");
+    return 1;
+  }
+  std::vector<int> devices = ParseIntList(FLAGS_gpus);
+  if (FLAGS_input_a_file_name.empty()) {
+    printf("Error: primary input filename must be specified using --input_a_file_name");
+    return 1;
+  }
+  if (FLAGS_ab_join && FLAGS_input_b_file_name.empty()) {
+    printf("Error: secondary input filename must be specified using --input_b_file_name when performing an ab-join");
+    return 1;
+  }
+  if (!FLAGS_ab_join) {
+    self_join = true;
+    computing_rows = true;
+    computing_cols = true; 
+  } else {
+    self_join = false;
+    computing_cols = true; 
+    computing_rows = FLAGS_keep_rows;
+  }
+  SCAMP::SCAMPPrecisionType t = GetPrecisionType(FLAGS_double_precision, FLAGS_mixed_precision, FLAGS_single_precision);
+  SCAMP::SCAMPProfileType profile_type = ParseProfileType(FLAGS_profile_type);
+  
   std::vector<double> Ta_h, Tb_h;
-  char *output_B_prefix, *input_B;
+  /*
   while ((opt = getopt(argc, argv, "mdf:r:c:s:b:g:")) != -1) {
     switch (opt) {
       case 'd':
@@ -80,25 +260,25 @@ int main(int argc, char **argv) {
         "ab-joins");
     exit(EXIT_FAILURE);
   }
+*/
+//  int index = optind;
+//  int window_size = atoi(argv[index++]);
+//  float threshold = atof(argv[index++]);
+//  printf("%lf\n", static_cast<double>(threshold));
+//  char *input_A = argv[index++];
 
-  int index = optind;
-  int window_size = atoi(argv[index++]);
-  float threshold = atof(argv[index++]);
-  printf("%lf\n", static_cast<double>(threshold));
-  char *input_A = argv[index++];
-
-  readFile<double>(input_A, Ta_h, "%lf");
+  readFile<double>(FLAGS_input_a_file_name, Ta_h, "%lf");
 
   if (!self_join) {
-    readFile<double>(input_B, Tb_h, "%lf");
+    readFile<double>(FLAGS_input_b_file_name, Tb_h, "%lf");
   }
 
-  int n_x = Ta_h.size() - window_size + 1;
+  int n_x = Ta_h.size() - FLAGS_window + 1;
   int n_y;
   if (self_join) {
     n_y = n_x;
   } else {
-    n_y = Tb_h.size() - window_size + 1;
+    n_y = Tb_h.size() - FLAGS_window + 1;
   }
 
   if (devices.empty()) {
@@ -111,18 +291,18 @@ int main(int argc, char **argv) {
     }
   }
   SCAMP::SCAMPArgs args;
-  args.set_window(window_size);
-  args.set_max_tile_size(max_tile_size);
+  args.set_window(FLAGS_window);
+  args.set_max_tile_size(FLAGS_max_tile_size);
   args.set_has_b(!self_join);
-  args.set_distributed_start_row(start_row);
-  args.set_distributed_start_col(start_col);
-  args.set_distance_threshold(static_cast<double>(threshold));
-  args.set_computing_columns(computing_columns);
+  args.set_distributed_start_row(FLAGS_global_row);
+  args.set_distributed_start_col(FLAGS_global_col);
+  args.set_distance_threshold(static_cast<double>(FLAGS_threshold));
+  args.set_computing_columns(computing_cols);
   args.set_computing_rows(computing_rows);
-  args.mutable_profile_a()->set_type(SCAMP::PROFILE_TYPE_SUM_THRESH);
-  args.mutable_profile_b()->set_type(SCAMP::PROFILE_TYPE_SUM_THRESH);
-
+  args.mutable_profile_a()->set_type(profile_type);
+  args.mutable_profile_b()->set_type(profile_type);
   args.set_precision_type(t);
+  args.set_profile_type(profile_type);
   printf("precision = %d\n", args.precision_type());
   {
     google::protobuf::RepeatedField<double> data(Ta_h.begin(), Ta_h.end());
@@ -130,58 +310,14 @@ int main(int argc, char **argv) {
     data = google::protobuf::RepeatedField<double>(Tb_h.begin(), Tb_h.end());
     args.mutable_timeseries_b()->Swap(&data);
   }
-  vector<double> temp(n_x, 0);
-  {
-    google::protobuf::RepeatedField<double> data(temp.begin(), temp.end());
-    args.mutable_profile_a()
-        ->mutable_data()
-        ->Add()
-        ->mutable_double_value()
-        ->mutable_value()
-        ->Swap(&data);
-  }
-  if (full_join) {
-    temp.resize(n_y, 0);
-    google::protobuf::RepeatedField<double> data(temp.begin(), temp.end());
-    args.mutable_profile_b()
-        ->mutable_data()
-        ->Add()
-        ->mutable_double_value()
-        ->mutable_value()
-        ->Swap(&data);
-  }
-
+  InitProfileMemory(&args);
   printf("Starting SCAMP\n");
   SCAMP::do_SCAMP(&args, devices);
-
-  printf("Now writing result to files\n");
-  FILE *f1 = fopen(argv[index++], "w");
-  //  FILE *f2 = fopen(argv[index++], "w");
-  FILE *f3, *f4;
-  for (int i = 0; i < n_x; ++i) {
-    fprintf(f1, "%lf\n",
-            args.profile_a().data().Get(0).double_value().value().Get(i));
-    //    fprintf(f1, "%f\n",
-    //            sqrt(std::max(2.0 * window_size * (1.0 - profile[i]), 0.0)));
-    //    fprintf(f2, "%u\n", profile_idx[i] + 1);
-  }
-  fclose(f1);
-  //  fclose(f2);
-  if (full_join) {
-    f3 = fopen(strcat(output_B_prefix, "_mp"), "w");
-    //    f4 = fopen(strcat(output_B_prefix, "i"), "w");
-    for (int i = 0; i < n_y; ++i) {
-      fprintf(f3, "%lf\n",
-              args.profile_b().data().Get(0).double_value().value().Get(i));
-      //      fprintf(f3, "%f\n",
-      //              sqrt(std::max(2.0 * window_size * (1.0 - profile_B[i]),
-      //              0.0)));
-      //      fprintf(f4, "%u\n", profile_idx_B[i] + 1);
-    }
-  }
-  if (full_join) {
-    fclose(f3);
-    //    fclose(f4);
+  
+  printf("Now writing result to files\n"); 
+  WriteProfileToFile(FLAGS_output_a_file_name, FLAGS_output_a_index_file_name, args.profile_a());
+  if (FLAGS_keep_rows) {
+    WriteProfileToFile(FLAGS_output_b_file_name, FLAGS_output_b_index_file_name, args.profile_b());
   }
   gpuErrchk(cudaDeviceSynchronize());
   gpuErrchk(cudaDeviceReset());

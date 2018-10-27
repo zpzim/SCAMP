@@ -6,7 +6,7 @@ cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
 project(SCAMP LANGUAGES CXX CUDA)
 set(VERSION_MAJOR 1)
 set(VERSION_MINOR 1)
-
+find_package(gflags REQUIRED)
 find_program(
   CLANG_TIDY_EXE
   NAMES clang-tidy-6.0 clang-tidy-5.0 clang-tidy
@@ -36,21 +36,24 @@ add_subdirectory(proto)
 
 set(
   PROJECT_SOURCE_FILES
-  src/common.h
-  src/kernels.h
-  src/utils.h
-  src/tile.h
-  src/SCAMP.h
-  src/fft_helper.h
-  src/fft_kernels.h
-  src/kernels.cu
-  src/utils.cu
-  src/tile.cpp
-  src/SCAMP.cpp
-  src/fft_helper.cpp
-  src/fft_kernels.cu
-  src/main.cpp
-  src/common.cpp
+  src/*.h
+  src/*.cpp
+  src/*.cu
+#  src/common.h
+#  src/kernels.h
+#  src/utils.h
+#  src/tile.h
+#  src/SCAMP.h
+#  src/fft_helper.h
+#  src/fft_kernels.h
+#  src/kernels.cu
+#  src/utils.cu
+#  src/tile.cpp
+#  src/SCAMP.cpp
+#  src/fft_helper.cpp
+#  src/fft_kernels.cu
+#  src/main.cpp
+#  src/common.cpp
   )
 
 # ----------------------------------------------------------------------------------------
@@ -152,4 +155,4 @@ if(CLANG_FORMAT_EXE)
 endif()
 
 add_executable(SCAMP src/main.cpp)
-target_link_libraries(SCAMP -lcudart_static messages common scamp)
+target_link_libraries(SCAMP -lcudart_static gflags messages common scamp)

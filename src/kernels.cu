@@ -249,9 +249,33 @@ class InitMemStrategy<DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
   __device__ virtual void exec(SCAMPKernelInputArgs<double> &args,
                                SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE> &smem,
                                PROFILE_DATA_TYPE *__restrict__ profile_a,
-                               PROFILE_DATA_TYPE *__restrict__ profile_B,
+                               PROFILE_DATA_TYPE *__restrict__ profile_b,
                                uint32_t col_start, uint32_t row_start) {
-    assert(true);
+    int global_position = col_start + threadIdx.x;
+    int local_position = threadIdx.x;
+    while (local_position < tile_width && global_position < args.n_x) {
+      smem.dg_col[local_position] = args.dga[global_position];
+      smem.df_col[local_position] = args.dfa[global_position];
+      smem.inorm_col[local_position] = args.normsa[global_position];
+      if (COMPUTE_COLS) {
+        smem.local_mp_col[local_position] = profile_a[global_position];
+      }
+      local_position += BLOCKSZ;
+      global_position += BLOCKSZ;
+    }
+
+    global_position = row_start + threadIdx.x;
+    local_position = threadIdx.x;
+    while (local_position < tile_height && global_position < args.n_y) {
+      smem.dg_row[local_position] = args.dgb[global_position];
+      smem.df_row[local_position] = args.dfb[global_position];
+      smem.inorm_row[local_position] = args.normsb[global_position];
+      if (COMPUTE_ROWS) {
+        smem.local_mp_row[local_position] = profile_b[global_position];
+      }
+      local_position += BLOCKSZ;
+      global_position += BLOCKSZ;
+    }
   }
 };
 
@@ -541,8 +565,66 @@ class DoRowEdgeStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
                               ACCUM_TYPE &cov3, ACCUM_TYPE &cov4, size_t diag,
                               size_t num_diags,
                               SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE> &smem,
-                              OptionalArgs &args) {
-    assert(false);
+                             OptionalArgs &args) {
+  float dist_row;
+  uint32_t idx_row;
+  float distx;
+  float disty;
+  float distz;
+  float distw;
+
+  DATA_TYPE inormr = smem.inorm_row[i];
+  DATA_TYPE dgr = smem.dg_row[i];
+  DATA_TYPE dfr = smem.df_row[i];
+
+  // Compute the next set of distances (row y)
+  distx = cov1 * smem.inorm_col[j] * inormr;
+  disty = cov2 * smem.inorm_col[j + 1] * inormr;
+  distz = cov3 * smem.inorm_col[j + 2] * inormr;
+  distw = cov4 * smem.inorm_col[j + 3] * inormr;
+
+  // Update cov and compute the next distance values (row y)
+  cov1 = cov1 + smem.df_col[j] * dgr + smem.dg_col[j] * dfr;
+  cov2 = cov2 + smem.df_col[j + 1] * dgr + smem.dg_col[j + 1] * dfr;
+  cov3 = cov3 + smem.df_col[j + 2] * dgr + smem.dg_col[j + 2] * dfr;
+  cov4 = cov4 + smem.df_col[j + 3] * dgr + smem.dg_col[j + 3] * dfr;
+
+  if (COMPUTE_COLS) {
+    MPatomicMax((uint64_t *)(smem.local_mp_col + j), distx, y);
+  }
+  dist_row = distx;
+  idx_row = x;;
+  if (x + 1 < n && diag + 1 < num_diags) {
+    if (COMPUTE_ROWS) {
+      MPMax(dist_row, disty, idx_row, x + 1, dist_row, idx_row);
+    }
+    if (COMPUTE_COLS) {
+      MPatomicMax((uint64_t *)(smem.local_mp_col + j + 1), disty,
+                  y);
+    }
+  }
+  if (x + 2 < n && diag + 2 < num_diags) {
+    if (COMPUTE_ROWS) {
+      MPMax(dist_row, distz, idx_row, x + 2, dist_row, idx_row);
+    }
+    if (COMPUTE_COLS) {
+      MPatomicMax((uint64_t *)(smem.local_mp_col + j + 2), distz,
+                  y);
+    }
+  }
+  if (x + 3 < n && diag + 3 < num_diags) {
+    if (COMPUTE_ROWS) {
+      MPMax(dist_row, distw, idx_row, x + 3, dist_row, idx_row);
+    }
+    if (COMPUTE_COLS) {
+      MPatomicMax((uint64_t *)(smem.local_mp_col + j + 3), distw,
+                  y);
+    }
+  }
+  if (COMPUTE_ROWS) {
+    MPatomicMax((uint64_t *)(smem.local_mp_row + i), dist_row, idx_row);
+  }
+
   }
 };
 
@@ -619,8 +701,9 @@ class UpdateColumnsStrategy<DISTANCE_TYPE, PROFILE_DATA_TYPE,
                        DISTANCE_TYPE distc7,
                        PROFILE_DATA_TYPE *__restrict__ local_mp_col,
                        uint64_t col) {
-    assert(false);
-  }  // Unimplemented
+
+      assert(false);
+    }
 };
 
 ///////////////////////////////////////////////////////////////////
@@ -1412,6 +1495,7 @@ SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
     constexpr bool COMPUTE_ROWS = true;
     switch (fp_type) {
       case PRECISION_DOUBLE: {
+        printf("Execute Kernel\n");
         do_tile<double, double2, double4, double, PROFILE_DATA_TYPE, double,
                 COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
                 TILE_HEIGHT_DP, BLOCKSZ_DP>
@@ -1498,12 +1582,13 @@ SCAMPError_t kernel_self_join_upper(
             t, true, blocksz, num_blocks, smem, s);
       case PROFILE_TYPE_1NN_INDEX:
         smem = get_smem<uint64_t>(true, true, blocksz, t);
+        printf("blocksz = %d, SMEM upper = %d\n", blocksz, smem);
         return LaunchDoTile<uint64_t, PROFILE_TYPE_1NN_INDEX, BLOCKSPERSM_SELF>(
             tile_args,
             reinterpret_cast<uint64_t *>(
-                profile_A->at(PROFILE_TYPE_SUM_THRESH)),
+                profile_A->at(PROFILE_TYPE_1NN_INDEX)),
             reinterpret_cast<uint64_t *>(
-                profile_B->at(PROFILE_TYPE_SUM_THRESH)),
+                profile_B->at(PROFILE_TYPE_1NN_INDEX)),
             t, true, blocksz, num_blocks, smem, s);
       default:
         return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;

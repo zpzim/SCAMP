@@ -5,6 +5,11 @@
 
 namespace SCAMP {
 
+template <typename T>
+T ConvertToEuclidean2(T val) {
+  return std::sqrt(std::max(2.0 * 100 * (1.0 - val), 0.0));
+} 
+
 SCAMPError_t SCAMP_Tile::do_self_join_full(cudaStream_t s) {
   SCAMPError_t error;
 
@@ -72,7 +77,19 @@ SCAMPError_t SCAMP_Tile::do_self_join_half(cudaStream_t s) {
   if (error != SCAMP_NO_ERROR) {
     return error;
   }
-
+  printf("tile_height = %lu\n", tile_height - window_size + 1);
+  std::vector<uint64_t> testB(tile_height - window_size + 1);
+  std::vector<uint64_t> testA(tile_width - window_size + 1);
+  cudaStreamSynchronize(s);
+  cudaMemcpy(testA.data(), profile_A->at(PROFILE_TYPE_1NN_INDEX), (tile_width - window_size + 1) * sizeof(uint64_t), cudaMemcpyDeviceToHost); // NOLINT
+  cudaMemcpy(testB.data(), profile_B->at(PROFILE_TYPE_1NN_INDEX), (tile_height - window_size + 1) * sizeof(uint64_t), cudaMemcpyDeviceToHost); // NOLINT
+  cudaDeviceSynchronize();
+  for(int i = 0; i < testA.size(); ++i) {
+    mp_entry e1, e2;
+    e1.ulong = testA[i];
+    e2.ulong = testB[i];
+    printf("%f, %f, %lf\n", e1.floats[0], e2.floats[0], ConvertToEuclidean2(std::max(e1.floats[0], e2.floats[0])));
+  } 
   return SCAMP_NO_ERROR;
 }
 

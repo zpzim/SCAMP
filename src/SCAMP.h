@@ -25,7 +25,8 @@ class SCAMP_Operation {
   unordered_map<int, cudaStream_t> streams;
   unordered_map<int, std::shared_ptr<fft_precompute_helper>> scratch;
   unordered_map<int, cudaDeviceProp> dev_props;
-  SCAMPProfileType profile_type;
+  Profile *_profile_a, *_profile_b;
+  SCAMPProfileType _profile_type;
   size_t size_A;
   size_t size_B;
   size_t tile_size;
@@ -60,18 +61,10 @@ class SCAMP_Operation {
   bool pick_and_start_next_tile(
       int dev, const google::protobuf::RepeatedField<double> &timeseries_a,
       const google::protobuf::RepeatedField<double> &timeseries_b);
-  int issue_and_merge_tiles_on_devices(
-      const google::protobuf::RepeatedField<double> &timeseries_a,
-      const google::protobuf::RepeatedField<double> &timeseries_b,
-      Profile *profile_a_full, Profile *profile_b_full,
-      vector<Profile> *profile_a_tile, vector<Profile> *profile_b_tile,
-      int last_device_idx);
-  int issue_and_merge_tiles_on_devices(const vector<double> &Ta_host,
-                                       const vector<double> &Tb_host,
-                                       vector<double> &profile_A_full_host,
-                                       vector<double> &profile_B_full_host,
-                                       vector<vector<double>> &profileA_h,
-                                       vector<vector<double>> &profileB_h,
+  int issue_and_merge_tiles_on_devices(const google::protobuf::RepeatedField<double> &timeseries_a,
+                                       const google::protobuf::RepeatedField<double> &timeseries_b,
+                                       vector<Profile> *profile_a_tile,
+                                       vector<Profile> *profile_b_tile,
                                        int last_device_idx);
   void get_tile_ordering();
   void CopyProfileToHost(Profile *destination_profile,
@@ -89,7 +82,7 @@ class SCAMP_Operation {
                   size_t max_tile_size, const vector<int> &dev, bool selfjoin,
                   SCAMPPrecisionType t, bool do_full_join, size_t start_row,
                   size_t start_col, OptionalArgs args_,
-                  SCAMPProfileType profile_type_)
+                  SCAMPProfileType profile_type, Profile *pA, Profile *pB)
       : size_A(Asize),
         m(window_sz),
         MAX_TILE_SIZE(max_tile_size),
@@ -101,7 +94,10 @@ class SCAMP_Operation {
         tile_start_row_position(start_row),
         tile_start_col_position(start_col),
         opt_args(args_),
-        profile_type(profile_type_) {
+        _profile_type(profile_type),
+        _profile_a(pA),
+        _profile_b(pB) {
+        
     if (self_join) {
       size_B = size_A;
     } else {
@@ -131,8 +127,7 @@ class SCAMP_Operation {
   }
   SCAMPError_t do_join(
       const google::protobuf::RepeatedField<double> &timeseries_a,
-      const google::protobuf::RepeatedField<double> &timeseries_b,
-      Profile *profile_a, Profile *profile_b);
+      const google::protobuf::RepeatedField<double> &timeseries_b);
   SCAMPError_t init();
   SCAMPError_t destroy();
 };
