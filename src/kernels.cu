@@ -69,10 +69,14 @@ struct SCAMPSmem {
     if (compute_columns) {
       local_mp_col = (PROFILE_DATA_TYPE *)(smem + curr_byte);
       curr_byte += tile_width * profile_size;
+    } else {
+      local_mp_col = nullptr;
     }
     if (compute_rows) {
       local_mp_row = (PROFILE_DATA_TYPE *)(smem + curr_byte);
       curr_byte += tile_height * profile_size;
+    } else {
+      local_mp_row = nullptr;
     }
   }
   DATA_TYPE *__restrict__ df_col;
@@ -1266,197 +1270,6 @@ int get_blocksz(SCAMPPrecisionType t, const cudaDeviceProp &dev_prop) {
   }
 }
 
-SCAMPError_t kernel_ab_join_upper(
-    const double *QT, const double *timeseries_A, const double *timeseries_B,
-    const double *df_A, const double *df_B, const double *dg_A,
-    const double *dg_B, const double *norms_A, const double *norms_B,
-    double *profile_A, double *profile_B, size_t window_size, size_t tile_width,
-    size_t tile_height, size_t global_x, size_t global_y, size_t global_start_x,
-    size_t global_start_y, const cudaDeviceProp &props, SCAMPPrecisionType t,
-    bool full_join, double thresh, cudaStream_t s) {
-  /*
-    int diags_per_thread = get_diags_per_thread(t, props);
-    int blocksz = get_blocksz(t, props);
-    dim3 grid(1, 1, 1);
-    dim3 block(blocksz, 1, 1);
-    int num_workers = ceil(tile_width / (float)diags_per_thread);
-    grid.x = ceil(num_workers / (double)blocksz);
-    int smem;
-    if (full_join) {
-      // We can have an exclusion zone if this ab join is part of a larger
-      // self-join
-      int exclusion = window_size / 4;
-      if (global_y + global_start_y >= global_x + global_start_x &&
-          global_start_y + global_y <= global_start_x + global_x + exclusion) {
-        num_workers = ceil((tile_width - exclusion) / (float)diags_per_thread);
-        grid.x = ceil(num_workers / (double)blocksz);
-      } else {
-        exclusion = 0;
-      }
-      if (tile_width <= exclusion) {
-        return SCAMP_NO_ERROR;
-      }
-      switch (t) {
-        case PRECISION_DOUBLE:
-          smem = get_smem<double>(TILE_HEIGHT_DP, t, true, true, props);
-          do_tile<double, double2, double4, double, false, true, true,
-                  BLOCKSPERSM_AB, TILE_HEIGHT_DP, BLOCKSZ_DP>
-              <<<grid, block, smem, s>>>(
-                  QT, df_A, df_B, dg_A, dg_B, norms_A, norms_B, profile_A,
-                  profile_B, window_size, tile_width, tile_height, global_x,
-                  global_y, exclusion, 0, thresh);
-          break;
-        case PRECISION_MIXED:
-          smem = get_smem<float>(TILE_HEIGHT, t, true, true, props);
-          do_tile<float, float2, float4, double, true, true, true,
-    BLOCKSPERSM_AB, TILE_HEIGHT, BLOCKSZ_SP><<<grid, block, smem, s>>>( QT,
-    df_A, df_B, dg_A, dg_B, norms_A, norms_B, profile_A, profile_B, window_size,
-    tile_width, tile_height, global_x, global_y, exclusion, 0, thresh); break;
-        case PRECISION_SINGLE:
-          smem = get_smem<float>(TILE_HEIGHT, t, true, true, props);
-          do_tile<float, float2, float4, float, false, true, true,
-    BLOCKSPERSM_AB, TILE_HEIGHT, BLOCKSZ_SP><<<grid, block, smem, s>>>( QT,
-    df_A, df_B, dg_A, dg_B, norms_A, norms_B, profile_A, profile_B, window_size,
-    tile_width, tile_height, global_x, global_y, exclusion, 0, thresh); break;
-        default:
-          break;
-      }
-    } else {
-      switch (t) {
-        case PRECISION_DOUBLE:
-          smem = get_smem<double>(TILE_HEIGHT_DP, t, false, true, props);
-          do_tile<double, double2, double4, double, false, false, true,
-                  BLOCKSPERSM_AB, TILE_HEIGHT_DP, BLOCKSZ_DP>
-              <<<grid, block, smem, s>>>(QT, df_A, df_B, dg_A, dg_B, norms_A,
-                                         norms_B, profile_A, profile_B,
-                                         window_size, tile_width, tile_height,
-                                         global_x, global_y, 0, 0, thresh);
-          break;
-        case PRECISION_MIXED:
-          smem = get_smem<float>(TILE_HEIGHT, t, false, true, props);
-          do_tile<float, float2, float4, double, true, false, true,
-                  BLOCKSPERSM_AB, TILE_HEIGHT, BLOCKSZ_SP>
-              <<<grid, block, smem, s>>>(QT, df_A, df_B, dg_A, dg_B, norms_A,
-                                         norms_B, profile_A, profile_B,
-                                         window_size, tile_width, tile_height,
-                                         global_x, global_y, 0, 0, thresh);
-          break;
-        case PRECISION_SINGLE:
-          smem = get_smem<float>(TILE_HEIGHT, t, false, true, props);
-          do_tile<float, float2, float4, float, false, false, true,
-                  BLOCKSPERSM_AB, TILE_HEIGHT, BLOCKSZ_SP>
-              <<<grid, block, smem, s>>>(QT, df_A, df_B, dg_A, dg_B, norms_A,
-                                         norms_B, profile_A, profile_B,
-                                         window_size, tile_width, tile_height,
-                                         global_x, global_y, 0, 0, thresh);
-          break;
-        default:
-          break;
-      }
-    }
-    cudaError_t err = cudaPeekAtLastError();
-    if (err != cudaSuccess) {
-      return SCAMP_CUDA_ERROR;
-    }
-  */
-  return SCAMP_NO_ERROR;
-}
-
-SCAMPError_t kernel_ab_join_lower(
-    const double *QT, const double *timeseries_A, const double *timeseries_B,
-    const double *df_A, const double *df_B, const double *dg_A,
-    const double *dg_B, const double *norms_A, const double *norms_B,
-    double *profile_A, double *profile_B, size_t window_size, size_t tile_width,
-    size_t tile_height, size_t global_x, size_t global_y, size_t global_start_x,
-    size_t global_start_y, const cudaDeviceProp &props, SCAMPPrecisionType t,
-    bool full_join, double thresh, cudaStream_t s) {
-  /*
-    int diags_per_thread = get_diags_per_thread(t, props);
-    int blocksz = get_blocksz(t, props);
-    dim3 grid(1, 1, 1);
-    dim3 block(blocksz, 1, 1);
-    int num_workers = ceil(tile_height / (float)diags_per_thread);
-    grid.x = ceil(num_workers / (double)blocksz);
-    int smem;
-    if (full_join) {
-      // We can have an exclusion zone if this ab join is part of a larger
-      // self-join
-      int exclusion = window_size / 4;
-      if (global_y + global_start_y + tile_height >= global_x + global_start_x
-    && global_y + global_start_y + tile_height <= global_x + global_start_x +
-    exclusion) { num_workers = ceil((tile_height - exclusion) /
-    (float)diags_per_thread); grid.x = ceil(num_workers / (double)blocksz); }
-    else { exclusion = 0;
-      }
-      if (tile_height <= exclusion) {
-        return SCAMP_NO_ERROR;
-      }
-      switch (t) {
-        case PRECISION_DOUBLE:
-          smem = get_smem<double>(TILE_HEIGHT_DP, t, true, true, props);
-          do_tile<double, double2, double4, double, false, true, true,
-                  BLOCKSPERSM_AB, TILE_HEIGHT_DP, BLOCKSZ_DP>
-              <<<grid, block, smem, s>>>(
-                  QT, df_B, df_A, dg_B, dg_A, norms_B, norms_A, profile_B,
-                  profile_A, window_size, tile_height, tile_width, global_y,
-                  global_x, 0, exclusion, thresh);
-          break;
-        case PRECISION_MIXED:
-          smem = get_smem<float>(TILE_HEIGHT, t, true, true, props);
-          do_tile<float, float2, float4, double, true, true, true,
-    BLOCKSPERSM_AB, TILE_HEIGHT, BLOCKSZ_SP><<<grid, block, smem, s>>>( QT,
-    df_B, df_A, dg_B, dg_A, norms_B, norms_A, profile_B, profile_A, window_size,
-    tile_height, tile_width, global_y, global_x, 0, exclusion, thresh); break;
-        case PRECISION_SINGLE:
-          smem = get_smem<float>(TILE_HEIGHT, t, true, true, props);
-          do_tile<float, float2, float4, float, false, true, true,
-    BLOCKSPERSM_AB, TILE_HEIGHT, BLOCKSZ_SP><<<grid, block, smem, s>>>( QT,
-    df_B, df_A, dg_B, dg_A, norms_B, norms_A, profile_B, profile_A, window_size,
-    tile_height, tile_width, global_y, global_x, 0, exclusion, thresh); break;
-        default:
-          return SCAMP_CUDA_ERROR;
-      }
-    } else {
-      switch (t) {
-        case PRECISION_DOUBLE:
-          smem = get_smem<double>(TILE_HEIGHT_DP, t, false, false, props);
-          do_tile<double, double2, double4, double, false, false, false,
-                  BLOCKSPERSM_AB, TILE_HEIGHT_DP, BLOCKSZ_DP>
-              <<<grid, block, smem, s>>>(QT, df_B, df_A, dg_B, dg_A, norms_B,
-                                         norms_A, profile_B, profile_A,
-                                         window_size, tile_height, tile_width,
-                                         global_y, global_x, 0, 0, thresh);
-          break;
-        case PRECISION_MIXED:
-          smem = get_smem<float>(TILE_HEIGHT, t, false, false, props);
-          do_tile<float, float2, float4, double, true, false, false,
-                  BLOCKSPERSM_AB, TILE_HEIGHT, BLOCKSZ_SP>
-              <<<grid, block, smem, s>>>(QT, df_B, df_A, dg_B, dg_A, norms_B,
-                                         norms_A, profile_B, profile_A,
-                                         window_size, tile_height, tile_width,
-                                         global_y, global_x, 0, 0, thresh);
-          break;
-        case PRECISION_SINGLE:
-          smem = get_smem<float>(TILE_HEIGHT, t, false, false, props);
-          do_tile<float, float2, float4, float, false, false, false,
-                  BLOCKSPERSM_AB, TILE_HEIGHT, BLOCKSZ_SP>
-              <<<grid, block, smem, s>>>(QT, df_B, df_A, dg_B, dg_A, norms_B,
-                                         norms_A, profile_B, profile_A,
-                                         window_size, tile_height, tile_width,
-                                         global_y, global_x, 0, 0, thresh);
-          break;
-        default:
-          return SCAMP_CUDA_ERROR;
-      }
-    }
-    cudaError_t err = cudaPeekAtLastError();
-    if (err != cudaSuccess) {
-      return SCAMP_CUDA_ERROR;
-    }
-  */
-  return SCAMP_NO_ERROR;
-}
-
 int get_exclusion(uint64_t window_size, uint64_t start_row,
                   uint64_t start_column) {
   int exclusion = window_size / 4;
@@ -1492,9 +1305,8 @@ int GetTileHeight(SCAMPPrecisionType dtype) {
   return -1;
 }
 
-template <class PROFILE_DATA_TYPE>
 int get_smem(bool computing_rows, bool computing_cols, int blocksz,
-             SCAMPPrecisionType intermediate_data_type) {
+             SCAMPPrecisionType intermediate_data_type, int profile_data_size) {
   constexpr int diags_per_thread = 4;
   constexpr int num_shared_variables = 3;
   int intermediate_data_size = FPTypeSize(intermediate_data_type);
@@ -1503,10 +1315,10 @@ int get_smem(bool computing_rows, bool computing_cols, int blocksz,
   int smem = (tile_width + tile_height) * num_shared_variables *
              intermediate_data_size;
   if (computing_cols) {
-    smem += tile_width * sizeof(PROFILE_DATA_TYPE);
+    smem += tile_width * profile_data_size;
   }
   if (computing_rows) {
-    smem += tile_height * sizeof(PROFILE_DATA_TYPE);
+    smem += tile_height * profile_data_size;
   }
   return smem;
 }
@@ -1517,12 +1329,12 @@ SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
                           PROFILE_DATA_TYPE *profile_A,
                           PROFILE_DATA_TYPE *profile_B,
                           SCAMPPrecisionType fp_type, bool computing_rows,
-                          uint64_t blocksz, uint64_t num_blocks, uint64_t smem,
-                          cudaStream_t s) {
+                          bool computing_cols, uint64_t blocksz,
+                          uint64_t num_blocks, uint64_t smem, cudaStream_t s) {
   dim3 block(blocksz, 1, 1);
   dim3 grid(num_blocks, 1, 1);
-  constexpr bool COMPUTE_COLS = true;
-  if (computing_rows) {
+  if (computing_rows && computing_cols) {
+    constexpr bool COMPUTE_COLS = true;
     constexpr bool COMPUTE_ROWS = true;
     switch (fp_type) {
       case PRECISION_DOUBLE: {
@@ -1551,32 +1363,62 @@ SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
         return SCAMP_CUDA_ERROR;
     }
     return SCAMP_NO_ERROR;
-  }
-  constexpr bool COMPUTE_ROWS = false;
-  switch (fp_type) {
-    case PRECISION_DOUBLE: {
-      do_tile<double, double2, double4, double, PROFILE_DATA_TYPE, double,
-              COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
-              TILE_HEIGHT_DP, BLOCKSZ_DP>
-          <<<grid, block, smem, s>>>(args, profile_A, profile_B);
-      break;
+  } else if (computing_cols) {
+    constexpr bool COMPUTE_COLS = true;
+    constexpr bool COMPUTE_ROWS = false;
+    switch (fp_type) {
+      case PRECISION_DOUBLE: {
+        do_tile<double, double2, double4, double, PROFILE_DATA_TYPE, double,
+                COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
+                TILE_HEIGHT_DP, BLOCKSZ_DP>
+            <<<grid, block, smem, s>>>(args, profile_A, profile_B);
+        break;
+      }
+      case PRECISION_MIXED: {
+        do_tile<float, float2, float4, double, PROFILE_DATA_TYPE, float,
+                COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
+                TILE_HEIGHT_SP, BLOCKSZ_SP>
+            <<<grid, block, smem, s>>>(args, profile_A, profile_B);
+        break;
+      }
+      case PRECISION_SINGLE: {
+        do_tile<float, float2, float4, float, PROFILE_DATA_TYPE, float,
+                COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
+                TILE_HEIGHT_SP, BLOCKSZ_SP>
+            <<<grid, block, smem, s>>>(args, profile_A, profile_B);
+        break;
+      }
+      default:
+        return SCAMP_CUDA_ERROR;
     }
-    case PRECISION_MIXED: {
-      do_tile<float, float2, float4, double, PROFILE_DATA_TYPE, float,
-              COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
-              TILE_HEIGHT_SP, BLOCKSZ_SP>
-          <<<grid, block, smem, s>>>(args, profile_A, profile_B);
-      break;
+  } else if (computing_rows) {
+    constexpr bool COMPUTE_COLS = false;
+    constexpr bool COMPUTE_ROWS = true;
+    switch (fp_type) {
+      case PRECISION_DOUBLE: {
+        do_tile<double, double2, double4, double, PROFILE_DATA_TYPE, double,
+                COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
+                TILE_HEIGHT_DP, BLOCKSZ_DP>
+            <<<grid, block, smem, s>>>(args, profile_A, profile_B);
+        break;
+      }
+      case PRECISION_MIXED: {
+        do_tile<float, float2, float4, double, PROFILE_DATA_TYPE, float,
+                COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
+                TILE_HEIGHT_SP, BLOCKSZ_SP>
+            <<<grid, block, smem, s>>>(args, profile_A, profile_B);
+        break;
+      }
+      case PRECISION_SINGLE: {
+        do_tile<float, float2, float4, float, PROFILE_DATA_TYPE, float,
+                COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
+                TILE_HEIGHT_SP, BLOCKSZ_SP>
+            <<<grid, block, smem, s>>>(args, profile_A, profile_B);
+        break;
+      }
+      default:
+        return SCAMP_CUDA_ERROR;
     }
-    case PRECISION_SINGLE: {
-      do_tile<float, float2, float4, float, PROFILE_DATA_TYPE, float,
-              COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
-              TILE_HEIGHT_SP, BLOCKSZ_SP>
-          <<<grid, block, smem, s>>>(args, profile_A, profile_B);
-      break;
-    }
-    default:
-      return SCAMP_CUDA_ERROR;
   }
   return SCAMP_NO_ERROR;
 }
@@ -1587,35 +1429,34 @@ SCAMPError_t kernel_self_join_upper(
     const double *__restrict__ dg_B, const double *__restrict__ norms_A,
     const double *__restrict__ norms_B, DeviceProfile *profile_A,
     DeviceProfile *profile_B, uint32_t window_size, uint32_t tile_width,
-    uint32_t tile_height, uint64_t global_x, uint64_t global_y,
+    uint32_t tile_height, uint64_t global_col, uint64_t global_row,
     const cudaDeviceProp &props, SCAMPPrecisionType t, const OptionalArgs &args,
     SCAMPProfileType profile_type, cudaStream_t s) {
   constexpr int diags_per_thread = 4;
   uint64_t blocksz = get_blocksz(t, props);
-  int32_t exclusion = get_exclusion(window_size, global_x, global_y);
+  int32_t exclusion = get_exclusion(window_size, global_col, global_row);
   uint64_t num_workers =
       ceil((tile_width - exclusion) / (float)diags_per_thread);
   uint64_t num_blocks = ceil(num_workers / (double)blocksz);
   SCAMPKernelInputArgs<double> tile_args(QT, df_A, df_B, dg_A, dg_B, norms_A,
                                          norms_B, tile_width, tile_height,
-                                         exclusion, (int32_t)0, args);
-  uint64_t smem;
+                                         exclusion, 0, args);
+  uint64_t smem =
+      get_smem(true, true, blocksz, t, GetProfileTypeSize(profile_type));
   if (exclusion < tile_width) {
     switch (profile_type) {
       case PROFILE_TYPE_SUM_THRESH:
-        smem = get_smem<double>(true, true, blocksz, t);
         return LaunchDoTile<double, PROFILE_TYPE_SUM_THRESH, BLOCKSPERSM_SELF>(
             tile_args,
             reinterpret_cast<double *>(profile_A->at(PROFILE_TYPE_SUM_THRESH)),
             reinterpret_cast<double *>(profile_B->at(PROFILE_TYPE_SUM_THRESH)),
-            t, true, blocksz, num_blocks, smem, s);
+            t, true, true, blocksz, num_blocks, smem, s);
       case PROFILE_TYPE_1NN_INDEX:
-        smem = get_smem<uint64_t>(true, true, blocksz, t);
         return LaunchDoTile<uint64_t, PROFILE_TYPE_1NN_INDEX, BLOCKSPERSM_SELF>(
             tile_args,
             reinterpret_cast<uint64_t *>(profile_A->at(PROFILE_TYPE_1NN_INDEX)),
             reinterpret_cast<uint64_t *>(profile_B->at(PROFILE_TYPE_1NN_INDEX)),
-            t, true, blocksz, num_blocks, smem, s);
+            t, true, true, blocksz, num_blocks, smem, s);
       default:
         return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
     }
@@ -1627,36 +1468,138 @@ SCAMPError_t kernel_self_join_lower(
     const double *QT, const double *df_A, const double *df_B,
     const double *dg_A, const double *dg_B, const double *norms_A,
     const double *norms_B, DeviceProfile *profile_A, DeviceProfile *profile_B,
-    size_t window_size, size_t tile_width, size_t tile_height, size_t global_x,
-    size_t global_y, const cudaDeviceProp &props, SCAMPPrecisionType t,
-    const OptionalArgs &args, SCAMPProfileType profile_type, cudaStream_t s) {
+    size_t window_size, size_t tile_width, size_t tile_height,
+    size_t global_col, size_t global_row, const cudaDeviceProp &props,
+    SCAMPPrecisionType t, const OptionalArgs &args,
+    SCAMPProfileType profile_type, cudaStream_t s) {
   constexpr int diags_per_thread = 4;
   uint64_t blocksz = get_blocksz(t, props);
   uint64_t exclusion =
-      get_exclusion(window_size, global_x, global_y + tile_height);
+      get_exclusion(window_size, global_col, global_row + tile_height);
   uint64_t num_workers =
       ceil((tile_height - exclusion) / (float)diags_per_thread);
   uint64_t num_blocks = ceil(num_workers / (double)blocksz);
-  uint64_t smem;
   SCAMPKernelInputArgs<double> tile_args(QT, df_B, df_A, dg_B, dg_A, norms_B,
                                          norms_A, tile_height, tile_width, 0,
                                          exclusion, args);
+  uint64_t smem =
+      get_smem(true, true, blocksz, t, GetProfileTypeSize(profile_type));
   if (exclusion < tile_height) {
     switch (profile_type) {
       case PROFILE_TYPE_SUM_THRESH:
-        smem = get_smem<double>(true, true, blocksz, t);
         return LaunchDoTile<double, PROFILE_TYPE_SUM_THRESH, BLOCKSPERSM_SELF>(
             tile_args,
             reinterpret_cast<double *>(profile_B->at(PROFILE_TYPE_SUM_THRESH)),
             reinterpret_cast<double *>(profile_A->at(PROFILE_TYPE_SUM_THRESH)),
-            t, true, blocksz, num_blocks, smem, s);
+            t, true, true, blocksz, num_blocks, smem, s);
       case PROFILE_TYPE_1NN_INDEX:
-        smem = get_smem<uint64_t>(true, true, blocksz, t);
         return LaunchDoTile<uint64_t, PROFILE_TYPE_1NN_INDEX, BLOCKSPERSM_SELF>(
             tile_args,
             reinterpret_cast<uint64_t *>(profile_B->at(PROFILE_TYPE_1NN_INDEX)),
             reinterpret_cast<uint64_t *>(profile_A->at(PROFILE_TYPE_1NN_INDEX)),
-            t, true, blocksz, num_blocks, smem, s);
+            t, true, true, blocksz, num_blocks, smem, s);
+      default:
+        return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
+    }
+  }
+  return SCAMP_NO_ERROR;
+}
+SCAMPError_t kernel_ab_join_upper(
+    const double *__restrict__ QT, const double *__restrict__ df_A,
+    const double *__restrict__ df_B, const double *__restrict__ dg_A,
+    const double *__restrict__ dg_B, const double *__restrict__ norms_A,
+    const double *__restrict__ norms_B, DeviceProfile *profile_A,
+    DeviceProfile *profile_B, uint32_t window_size, uint32_t tile_width,
+    uint32_t tile_height, uint64_t global_col, uint64_t global_row,
+    int64_t distributed_col, int64_t distributed_row,
+    const cudaDeviceProp &props, SCAMPPrecisionType t, bool computing_rows,
+    const OptionalArgs &args, SCAMPProfileType profile_type, cudaStream_t s) {
+  constexpr int diags_per_thread = 4;
+  uint64_t blocksz = get_blocksz(t, props);
+  int32_t exclusion;
+  std::cout << distributed_col << " distributed " << distributed_row
+            << std::endl;
+  if (distributed_col < 0 || distributed_row < 0) {
+    exclusion = 0;
+  } else {
+    exclusion = get_exclusion(window_size, global_col + distributed_col,
+                              global_row + distributed_row);
+  }
+  uint64_t num_workers =
+      ceil((tile_width - exclusion) / (float)diags_per_thread);
+  uint64_t num_blocks = ceil(num_workers / (double)blocksz);
+  SCAMPKernelInputArgs<double> tile_args(QT, df_A, df_B, dg_A, dg_B, norms_A,
+                                         norms_B, tile_width, tile_height,
+                                         exclusion, 0, args);
+  uint64_t smem = get_smem(computing_rows, true, blocksz, t,
+                           GetProfileTypeSize(profile_type));
+  std::cout << "num_workers " << num_workers << " num_blocks " << num_blocks
+            << " blocksz " << blocksz << " smem (KB)" << smem / 1024
+            << std::endl;
+  std::cout << "Exclusion = " << exclusion << std::endl;
+  if (exclusion < tile_width) {
+    switch (profile_type) {
+      case PROFILE_TYPE_SUM_THRESH:
+        return LaunchDoTile<double, PROFILE_TYPE_SUM_THRESH, BLOCKSPERSM_AB>(
+            tile_args,
+            reinterpret_cast<double *>(profile_A->at(PROFILE_TYPE_SUM_THRESH)),
+            reinterpret_cast<double *>(profile_B->at(PROFILE_TYPE_SUM_THRESH)),
+            t, computing_rows, true, blocksz, num_blocks, smem, s);
+      case PROFILE_TYPE_1NN_INDEX:
+        return LaunchDoTile<uint64_t, PROFILE_TYPE_1NN_INDEX, BLOCKSPERSM_AB>(
+            tile_args,
+            reinterpret_cast<uint64_t *>(profile_A->at(PROFILE_TYPE_1NN_INDEX)),
+            reinterpret_cast<uint64_t *>(profile_B->at(PROFILE_TYPE_1NN_INDEX)),
+            t, computing_rows, true, blocksz, num_blocks, smem, s);
+      default:
+        return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
+    }
+  }
+  return SCAMP_NO_ERROR;
+}
+
+SCAMPError_t kernel_ab_join_lower(
+    const double *__restrict__ QT, const double *__restrict__ df_A,
+    const double *__restrict__ df_B, const double *__restrict__ dg_A,
+    const double *__restrict__ dg_B, const double *__restrict__ norms_A,
+    const double *__restrict__ norms_B, DeviceProfile *profile_A,
+    DeviceProfile *profile_B, uint32_t window_size, uint32_t tile_width,
+    uint32_t tile_height, uint64_t global_col, uint64_t global_row,
+    int64_t distributed_col, int64_t distributed_row,
+    const cudaDeviceProp &props, SCAMPPrecisionType t, bool computing_rows,
+    const OptionalArgs &args, SCAMPProfileType profile_type, cudaStream_t s) {
+  constexpr int diags_per_thread = 4;
+  uint64_t blocksz = get_blocksz(t, props);
+  int32_t exclusion;
+  if (distributed_col < 0 || distributed_row < 0) {
+    exclusion = 0;
+  } else {
+    exclusion = get_exclusion(window_size, global_col + distributed_col,
+                              global_row + distributed_row + tile_height);
+  }
+  std::cout << "Exclusion = " << exclusion << std::endl;
+  uint64_t num_workers =
+      ceil((tile_height - exclusion) / (float)diags_per_thread);
+  uint64_t num_blocks = ceil(num_workers / (double)blocksz);
+  SCAMPKernelInputArgs<double> tile_args(QT, df_B, df_A, dg_B, dg_A, norms_B,
+                                         norms_A, tile_height, tile_width, 0,
+                                         exclusion, args);
+  uint64_t smem = get_smem(computing_rows, true, blocksz, t,
+                           GetProfileTypeSize(profile_type));
+  if (exclusion < tile_height) {
+    switch (profile_type) {
+      case PROFILE_TYPE_SUM_THRESH:
+        return LaunchDoTile<double, PROFILE_TYPE_SUM_THRESH, BLOCKSPERSM_AB>(
+            tile_args,
+            reinterpret_cast<double *>(profile_B->at(PROFILE_TYPE_SUM_THRESH)),
+            reinterpret_cast<double *>(profile_A->at(PROFILE_TYPE_SUM_THRESH)),
+            t, true, computing_rows, blocksz, num_blocks, smem, s);
+      case PROFILE_TYPE_1NN_INDEX:
+        return LaunchDoTile<uint64_t, PROFILE_TYPE_1NN_INDEX, BLOCKSPERSM_AB>(
+            tile_args,
+            reinterpret_cast<uint64_t *>(profile_B->at(PROFILE_TYPE_1NN_INDEX)),
+            reinterpret_cast<uint64_t *>(profile_A->at(PROFILE_TYPE_1NN_INDEX)),
+            t, true, computing_rows, blocksz, num_blocks, smem, s);
       default:
         return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
     }

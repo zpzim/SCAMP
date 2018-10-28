@@ -27,12 +27,12 @@ DEFINE_bool(
     "Informs SCAMP to compute the \"rowwise mp\" and output in a a separate "
     "file specified by the flag --output_b_file_name, only valid for ab-joins");
 DEFINE_int64(
-    global_row, 0,
+    global_row, -1,
     "Informs SCAMP that this join is part of a larger distributed join which "
     "starts at this row in the larger distance matrix, this allows us to pick "
     "an appropriate exclusion zone for our computation if necessary");
 DEFINE_int64(
-    global_col, 0,
+    global_col, -1,
     "Informs SCAMP that this join is part of a larger distributed join which "
     "starts at this column in the larger distance matrix, this allows us to "
     "pick an appropriate exclusion zone for our computation if necessary");
@@ -262,13 +262,13 @@ int main(int argc, char **argv) {
 
   readFile<double>(FLAGS_input_a_file_name, Ta_h, "%lf");
 
-  if (!self_join) {
+  if (FLAGS_ab_join) {
     readFile<double>(FLAGS_input_b_file_name, Tb_h, "%lf");
   }
 
   int n_x = Ta_h.size() - FLAGS_window + 1;
   int n_y;
-  if (self_join) {
+  if (!FLAGS_ab_join) {
     n_y = n_x;
   } else {
     n_y = Tb_h.size() - FLAGS_window + 1;
@@ -296,6 +296,7 @@ int main(int argc, char **argv) {
   args.mutable_profile_b()->set_type(profile_type);
   args.set_precision_type(t);
   args.set_profile_type(profile_type);
+  args.set_keep_rows_separate(FLAGS_keep_rows);
   printf("precision = %d\n", args.precision_type());
   {
     google::protobuf::RepeatedField<double> data(Ta_h.begin(), Ta_h.end());

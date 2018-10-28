@@ -28,8 +28,8 @@ class SCAMP_Tile {
   DeviceProfile *profile_A;
   DeviceProfile *profile_B;
   OptionalArgs opt_args;
-  size_t global_start_A;
-  size_t global_start_B;
+  int64_t global_start_A;
+  int64_t global_start_B;
   size_t tile_start_A;
   size_t tile_start_B;
   size_t tile_height;
@@ -47,8 +47,8 @@ class SCAMP_Tile {
              const double *dgB, const double *normA, const double *normB,
              const double *meansA, const double *meansB, double *QT,
              DeviceProfile *profileA, DeviceProfile *profileB, size_t start_A,
-             size_t start_B, size_t g_start_A, size_t g_start_B, size_t height,
-             size_t width, size_t m,
+             int64_t start_B, int64_t g_start_A, size_t g_start_B,
+             size_t height, size_t width, size_t m,
              std::shared_ptr<fft_precompute_helper> scratch,
              const cudaDeviceProp &prop, SCAMPPrecisionType fp_t,
              SCAMPProfileType profile_type_, OptionalArgs opt_args_)

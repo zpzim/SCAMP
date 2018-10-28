@@ -32,8 +32,9 @@ do
             tile_sz=${TILE_SZ[i]}
             count=`wc -l $INPUT_FILE | awk '{print $1}'`
             if [ $tile_sz -lt $(($count * 2)) ]; then
-                echo "Running Test: $EXECUTABLE $j -s $tile_sz $fp64 $INPUT_FILE mp mpi"
-                $EXECUTABLE --window=$j --max_tile_size=$tile_sz $fp64 --input_a_file_name=$INPUT_FILE > /dev/null
+                cmd="$EXECUTABLE --window=$j --max_tile_size=$tile_sz $fp64 --input_a_file_name=$INPUT_FILE"
+                echo "Running Test: $cmd"
+                $cmd > /dev/null
                 X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mp_columns_out_index | grep '^' | wc -l`
                 echo "$X matrix profile index differences"
                 if [ $X -gt $(($count / 100)) ] ; then
@@ -66,8 +67,9 @@ do
                 tile_sz=${TILE_SZ[$l]}
                 count=`wc -l $INPUT_FILE_A | awk '{print $1}'`
                 if [ $tile_sz -lt $(($count * 2)) ]; then
-                    echo "Running Test: $EXECUTABLE -s $tile_sz -b $INPUT_FILE_B $fp64 $k $INPUT_FILE_A mp mpi"
-                    $EXECUTABLE --max_tile_size=$tile_sz --input_b_file_name=$INPUT_FILE_B $fp64 --window=$k --input_a_file_name=$INPUT_FILE_A > /dev/null
+                    cmd="$EXECUTABLE --ab_join=true --max_tile_size=$tile_sz --input_b_file_name=$INPUT_FILE_B $fp64 --window=$k --input_a_file_name=$INPUT_FILE_A"
+                    echo "Running Test: $cmd"
+                    $cmd > /dev/null
                     X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mp_columns_out_index | grep '^' | wc -l`
                     echo "$X matrix profile index differences"
                     if [ $X -gt $(($count / 100)) ] ; then
@@ -90,8 +92,9 @@ do
                 tile_sz=${TILE_SZ[$l]}
                 count=`wc -l $INPUT_FILE_A | awk '{print $1}'`
                 if [ $tile_sz -lt $(($count * 2)) ]; then
-                    echo "Running Test: $EXECUTABLE -s $tile_sz -b $INPUT_FILE_A $fp64 $k $INPUT_FILE_B mp mpi"
-                    $EXECUTABLE --max_tile_size=$tile_sz --input_b_file_name=$INPUT_FILE_A $fp64 --window=$k --input_a_file_name=$INPUT_FILE_B > /dev/null
+                    cmd="$EXECUTABLE --ab_join=true --max_tile_size=$tile_sz --input_b_file_name=$INPUT_FILE_A $fp64 --window=$k --input_a_file_name=$INPUT_FILE_B"
+                    echo "Running Test: $cmd"
+                    $cmd > /dev/null
                     X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mp_columns_out_index | grep '^' | wc -l`
                     echo "$X matrix profile index differences"
                     if [ $X -gt $(($count / 100)) ] ; then
@@ -116,8 +119,9 @@ do
                 tile_sz=${TILE_SZ[$l]}
                 count=`wc -l $INPUT_FILE_A | awk '{print $1}'`
                 if [ $tile_sz -lt $(($count * 2)) ]; then
-                    echo "Running Test: $EXECUTABLE -s $tile_sz -b $INPUT_FILE_A -f B -r 9000000000 -c 100000 $fp64 $k $INPUT_FILE_B mp mpi"
-                    $EXECUTABLE --max_tile_size=$tile_sz --input_b_file_name=$INPUT_FILE_A --keep_rows=true --global_row=9000000000 --global_col=100000 $fp64 --window=$k --input_file_a_name=$INPUT_FILE_B > /dev/null
+                    cmd="$EXECUTABLE --ab_join=true --max_tile_size=$tile_sz --input_b_file_name=$INPUT_FILE_A --keep_rows=true --global_row=9000000000 --global_col=100000 $fp64 --window=$k --input_a_file_name=$INPUT_FILE_B"
+                    echo "Running Test: $cmd"
+                    $cmd > /dev/null
                     echo "Checking AB result"
                     X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mp_columns_out_index | grep '^' | wc -l`
                     echo "$X matrix profile index differences"
@@ -141,8 +145,9 @@ do
                         exit $result
                     fi
 
-                    echo "Running Test: $EXECUTABLE -s $tile_sz -b $INPUT_FILE_B -f B -r 9000000000 -c 100000 $fp64 $k $INPUT_FILE_A mp mpi"
-                    $EXECUTABLE --max_tile_size=$tile_sz --input_b_file_name=$INPUT_FILE_B --keep_rows=true --global_row=9000000000 --global_col=100000 $fp64 --window=$k --input_file_a_name=$INPUT_FILE_A > /dev/null
+                    cmd="$EXECUTABLE --ab_join=true --max_tile_size=$tile_sz --input_b_file_name=$INPUT_FILE_B --keep_rows=true --global_row=9000000000 --global_col=100000 $fp64 --window=$k --input_a_file_name=$INPUT_FILE_A"
+                    echo "Running Test: $cmd"
+                    $cmd > /dev/null
                     echo "Checking AB result"
                     X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPIB mp_columns_out_index | grep '^' | wc -l`
                     echo "$X matrix profile index differences"
@@ -172,5 +177,5 @@ do
     done
 done
 
-rm mp mpi out B_mp B_mpi
+rm mp_columns_out mp_columns_out_index mp_rows_out mp_rows_out_index
 exit 0

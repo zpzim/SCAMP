@@ -168,13 +168,15 @@ SCAMPError_t SCAMP_Operation::InitInputOnDevice(
                       cudaMemcpyHostToDevice, streams.at(device));
       gpuErrchk(cudaPeekAtLastError());
       if (self_join) {
+        printf("Copying profile B");
         cudaMemcpyAsync(profile_b_tile_dev.at(device).at(_profile_type),
                         pA_ptr + pos_y[device],
                         sizeof(uint64_t) * (n_y[device] - m + 1),
                         cudaMemcpyHostToDevice, streams.at(device));
         gpuErrchk(cudaPeekAtLastError());
 
-      } else if (full_join) {
+      } else if (_computing_rows && _keep_rows_separate) {
+        printf("Copying profile B shouldn't happen here");
         const uint64_t *pB_ptr =
             _profile_b->data().Get(0).uint64_value().value().data();
         cudaMemcpyAsync(profile_b_tile_dev.at(device).at(_profile_type),
@@ -237,7 +239,7 @@ void SCAMP_Operation::get_tile_ordering() {
   tile_ordering.clear();
   size_t num_tile_rows = ceil((size_B - m + 1) / static_cast<double>(tile_n_y));
   size_t num_tile_cols = ceil((size_A - m + 1) / static_cast<double>(tile_n_x));
-
+  std::cout << num_tile_rows << "  cols = " << num_tile_cols << std::endl;
   if (self_join) {
     for (int offset = 0; offset < num_tile_rows - 1; ++offset) {
       for (int diag = 0; diag < num_tile_cols - 1 - offset; ++diag) {
@@ -249,6 +251,7 @@ void SCAMP_Operation::get_tile_ordering() {
       tile_ordering.emplace_back(i, num_tile_cols - 1);
     }
   } else {
+    std::cout << "AB-join tile ordiering" << std::endl;
     // Add upper diagonals one at a time except for edge tiles
     for (int diag = 0; diag < num_tile_cols - 1; ++diag) {
       for (int offset = 0;
@@ -321,7 +324,7 @@ bool SCAMP_Operation::pick_and_start_next_tile(
       // full tile
       err = do_tile(SELF_JOIN_FULL_TILE, dev, timeseries_a, timeseries_b);
     }
-  } else if (full_join) {
+  } else if (_computing_rows) {
     // BiDirectional AB-join
     err = do_tile(AB_FULL_JOIN_FULL_TILE, dev, timeseries_a, timeseries_b);
   } else {
@@ -439,7 +442,7 @@ int SCAMP_Operation::issue_and_merge_tiles_on_devices(
     gpuErrchk(cudaPeekAtLastError());
     CopyProfileToHost(&profile_a_tile->at(i), &profile_a_tile_dev[device],
                       n_x[device] - m + 1, streams[device]);
-    if (self_join || full_join) {
+    if (_computing_rows) {
       CopyProfileToHost(&profile_b_tile->at(i), &profile_b_tile_dev[device],
                         n_y[device] - m + 1, streams[device]);
     }
@@ -468,11 +471,12 @@ int SCAMP_Operation::issue_and_merge_tiles_on_devices(
                              n_x_2[device] - m + 1, _profile_a,
                              pos_y_2[device]);
     if (self_join) {
+      printf("Merging B tile into A");
       MergeTileIntoFullProfile(&profile_b_tile->at(i), pos_y_2[device],
                                n_y_2[device] - m + 1, _profile_a,
                                pos_x_2[device]);
 
-    } else if (full_join) {
+    } else if (_computing_rows && _keep_rows_separate) {
       MergeTileIntoFullProfile(&profile_b_tile->at(i), pos_y_2[device],
                                n_y_2[device] - m + 1, _profile_b,
                                pos_x_2[device]);
@@ -559,11 +563,16 @@ void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices) {
       args->computing_columns() && args->computing_rows(),
       args->distributed_start_row(), args->distributed_start_col(), opt_args,
       args->profile_type(), args->mutable_profile_a(),
-      args->mutable_profile_b());
+      args->mutable_profile_b(), args->keep_rows_separate(),
+      args->computing_rows(), args->computing_columns());
   op.init();
   gpuErrchk(cudaPeekAtLastError());
   start = clock();
-  op.do_join(args->timeseries_a(), args->timeseries_a());
+  if (args->has_b()) {
+    op.do_join(args->timeseries_a(), args->timeseries_b());
+  } else {
+    op.do_join(args->timeseries_a(), args->timeseries_a());
+  }
   cudaDeviceSynchronize();
   end = clock();
   gpuErrchk(cudaPeekAtLastError());

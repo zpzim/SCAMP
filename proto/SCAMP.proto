@@ -57,11 +57,12 @@ message SCAMPArgs {
     bool has_b = 5;
     uint64 window = 6;
     uint64 max_tile_size = 7;
-    uint64 distributed_start_row = 8;
-    uint64 distributed_start_col = 9;
+    int64 distributed_start_row = 8;
+    int64 distributed_start_col = 9;
     double distance_threshold = 10;
     SCAMPPrecisionType precision_type = 11;        
     SCAMPProfileType profile_type = 12;
     bool computing_rows = 13;
     bool computing_columns = 14;
+    bool keep_rows_separate = 15;
 }

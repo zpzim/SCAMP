@@ -35,12 +35,14 @@ class SCAMP_Operation {
   size_t m;
   OptionalArgs opt_args;
   const bool self_join;
-  const bool full_join;
+  const bool _computing_rows;
+  const bool _computing_cols;
+  const bool _keep_rows_separate;
   const size_t MAX_TILE_SIZE;
   const SCAMPPrecisionType fp_type;
   vector<int> devices;
-  const size_t tile_start_row_position;
-  const size_t tile_start_col_position;
+  const int64_t tile_start_row_position;
+  const int64_t tile_start_col_position;
   // Tile state variables
   list<pair<int, int>> tile_ordering;
   int completed_tiles;
@@ -81,9 +83,10 @@ class SCAMP_Operation {
  public:
   SCAMP_Operation(size_t Asize, size_t Bsize, size_t window_sz,
                   size_t max_tile_size, const vector<int> &dev, bool selfjoin,
-                  SCAMPPrecisionType t, bool do_full_join, size_t start_row,
-                  size_t start_col, OptionalArgs args_,
-                  SCAMPProfileType profile_type, Profile *pA, Profile *pB)
+                  SCAMPPrecisionType t, bool do_full_join, int64_t start_row,
+                  int64_t start_col, OptionalArgs args_,
+                  SCAMPProfileType profile_type, Profile *pA, Profile *pB,
+                  bool keep_rows, bool compute_rows, bool compute_cols)
       : size_A(Asize),
         m(window_sz),
         MAX_TILE_SIZE(max_tile_size),
@@ -91,13 +94,15 @@ class SCAMP_Operation {
         self_join(selfjoin),
         completed_tiles(0),
         fp_type(t),
-        full_join(do_full_join),
         tile_start_row_position(start_row),
         tile_start_col_position(start_col),
         opt_args(args_),
         _profile_type(profile_type),
         _profile_a(pA),
-        _profile_b(pB) {
+        _profile_b(pB),
+        _keep_rows_separate(keep_rows),
+        _computing_rows(compute_rows),
+        _computing_cols(compute_cols) {
     if (self_join) {
       size_B = size_A;
     } else {
