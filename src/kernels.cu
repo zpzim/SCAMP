@@ -288,7 +288,7 @@ template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
           SCAMPProfileType PROFILE_TYPE>
 class DoRowOptStrategy : SCAMPStrategy {
  public:
-  __device__ virtual void exec(
+  __device__ void exec(
       ACCUM_TYPE &cov1, ACCUM_TYPE &cov2, ACCUM_TYPE &cov3, ACCUM_TYPE &cov4,
       DISTANCE_TYPE &distc1, DISTANCE_TYPE &distc2, DISTANCE_TYPE &distc3,
       DISTANCE_TYPE &distc4, const DATA_TYPE &inormcx, const DATA_TYPE &inormcy,
@@ -404,7 +404,7 @@ class DoRowOptStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
                        COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE_1NN_INDEX> {
  public:
   __device__ DoRowOptStrategy() {}
-  __device__ virtual inline __attribute__((always_inline)) void exec(
+  __device__ inline __attribute__((always_inline)) void exec(
       SCAMPThreadInfo<ACCUM_TYPE> &info, DISTANCE_TYPE &distc1,
       DISTANCE_TYPE &distc2, DISTANCE_TYPE &distc3, DISTANCE_TYPE &distc4,
       uint32_t &idxc1, uint32_t &idxc2, uint32_t &idxc3, uint32_t &idxc4,
@@ -855,7 +855,7 @@ class DoIterationStrategy<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
     : public SCAMPStrategy {
  public:
   __device__ DoIterationStrategy() {}
-  __device__ inline void exec(SCAMPThreadInfo<ACCUM_TYPE> &info,
+  __device__ void exec(SCAMPThreadInfo<ACCUM_TYPE> &info,
                               SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE> &smem,
                               OptionalArgs &args) {
     DISTANCE_TYPE distc1 = 0;
@@ -938,7 +938,7 @@ class DoIterationStrategy<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
     : public SCAMPStrategy {
  public:
   __device__ DoIterationStrategy() {}
-  __device__ inline void exec(SCAMPThreadInfo<ACCUM_TYPE> &info,
+  __device__ void exec(SCAMPThreadInfo<ACCUM_TYPE> &info,
                               SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE> &smem,
                               OptionalArgs &args) {
     float4 distc = make_float4(CC_MIN, CC_MIN, CC_MIN, CC_MIN);
@@ -946,9 +946,8 @@ class DoIterationStrategy<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
     uint4 idxc, idxc2;
 
     // Load row values 2 at a time, load column values 4 at a time
-    int r = info.local_row >> 1;
+    int r = info.local_row >> 2;
     int c = info.local_col >> 2;
-    int c2 = info.local_col >> 1;
 
     // Preload the shared memory values we will use into registers
     // We load 4 values per thread into a float4 vector type
@@ -962,24 +961,20 @@ class DoIterationStrategy<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
         reinterpret_cast<VEC4_DATA_TYPE *>(smem.dg_col)[c + 1];
     VEC4_DATA_TYPE inormc2 =
         reinterpret_cast<VEC4_DATA_TYPE *>(smem.inorm_col)[c + 1];
-    ulonglong2 mp_col_check1, mp_col_check2;
-    ulonglong2 mp_row_check;
+    ulonglong4 mp_row_check;
 
     // Copy the pieces of the cache we will use into registers with vectorized
     // loads
-    if (COMPUTE_COLS) {
-      mp_col_check1 = reinterpret_cast<ulonglong2 *>(smem.local_mp_col)[c2];
-    }
     if (COMPUTE_ROWS) {
-      mp_row_check = reinterpret_cast<ulonglong2 *>(smem.local_mp_row)[r];
+      mp_row_check = reinterpret_cast<ulonglong4 *>(smem.local_mp_row)[r];
     }
 
     // Due to a lack of registers on volta, we only load these row values 2 at a
     // time
-    VEC2_DATA_TYPE dgr = reinterpret_cast<VEC2_DATA_TYPE *>(smem.dg_row)[r];
-    VEC2_DATA_TYPE dfr = reinterpret_cast<VEC2_DATA_TYPE *>(smem.df_row)[r];
-    VEC2_DATA_TYPE inormr =
-        reinterpret_cast<VEC2_DATA_TYPE *>(smem.inorm_row)[r];
+    VEC4_DATA_TYPE dgr = reinterpret_cast<VEC4_DATA_TYPE *>(smem.dg_row)[r];
+    VEC4_DATA_TYPE dfr = reinterpret_cast<VEC4_DATA_TYPE *>(smem.df_row)[r];
+    VEC4_DATA_TYPE inormr =
+        reinterpret_cast<VEC4_DATA_TYPE *>(smem.inorm_row)[r];
 
     mp_entry e;
     e.ulong = mp_row_check.x;
@@ -989,13 +984,6 @@ class DoIterationStrategy<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
                  inormr.x, dfc.x, dfc.y, dfc.z, dfc.w, dgc.x, dgc.y, dgc.z,
                  dgc.w, dfr.x, dgr.x, e.floats[0], smem, args);
 
-    // Each row's computation allows us to complete a column, the first row
-    // completes column 1
-    if (COMPUTE_COLS) {
-      e.ulong = mp_col_check1.x;
-      MPatomicMax_check((uint64_t *)(smem.local_mp_col + info.local_col - 1),
-                        distc.x, idxc.x, e.floats[0]);
-    }
 
     e.ulong = mp_row_check.y;
     _do_row.exec(info, distc.y, distc.z, distc.w, distc2.x, idxc.y, idxc.z,
@@ -1003,57 +991,43 @@ class DoIterationStrategy<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
                  inormr.y, dfc.y, dfc.z, dfc.w, dfc2.x, dgc.y, dgc.z, dgc.w,
                  dgc2.x, dfr.y, dgr.y, e.floats[0], smem, args);
 
-    // The second row completes column 2
-    if (COMPUTE_COLS) {
-      e.ulong = mp_col_check1.y;
-      MPatomicMax_check((uint64_t *)(smem.local_mp_col + info.local_col - 1),
-                        distc.y, idxc.y, e.floats[0]);
-    }
-
-    // Load the values for the next 2 rows
-    dgr = reinterpret_cast<VEC2_DATA_TYPE *>(smem.dg_row)[r + 1];
-    dfr = reinterpret_cast<VEC2_DATA_TYPE *>(smem.df_row)[r + 1];
-    inormr = reinterpret_cast<VEC2_DATA_TYPE *>(smem.inorm_row)[r + 1];
-
-    if (COMPUTE_ROWS) {
-      mp_row_check = reinterpret_cast<ulonglong2 *>(smem.local_mp_row)[r + 1];
-    }
-
-    e.ulong = mp_row_check.x;
+    e.ulong = mp_row_check.z;
     _do_row.exec(info, distc.z, distc.w, distc2.x, distc2.y, idxc.z, idxc.w,
                  idxc2.x, idxc2.y, inormc.z, inormc.w, inormc2.x, inormc2.y,
-                 inormr.x, dfc.z, dfc.w, dfc2.x, dfc2.y, dgc.z, dgc.w, dgc2.x,
-                 dgc2.y, dfr.x, dgr.x, e.floats[0], smem, args);
+                 inormr.z, dfc.z, dfc.w, dfc2.x, dfc2.y, dgc.z, dgc.w, dgc2.x,
+                 dgc2.y, dfr.z, dgr.z, e.floats[0], smem, args);
 
-    // The third row completes column 3
-    if (COMPUTE_COLS) {
-      mp_col_check2 = reinterpret_cast<ulonglong2 *>(smem.local_mp_col)[c2 + 1];
-      e.ulong = mp_col_check2.x;
-      MPatomicMax_check((uint64_t *)(smem.local_mp_col + info.local_col - 1),
-                        distc.z, idxc.z, e.floats[0]);
-    }
-
-    e.ulong = mp_row_check.y;
+    e.ulong = mp_row_check.w;
     _do_row.exec(info, distc.w, distc2.x, distc2.y, distc2.z, idxc.w, idxc2.x,
                  idxc2.y, idxc2.z, inormc.w, inormc2.x, inormc2.y, inormc2.z,
-                 inormr.y, dfc.w, dfc2.x, dfc2.y, dfc2.z, dgc.w, dgc2.x, dgc2.y,
-                 dgc2.z, dfr.y, dgr.y, e.floats[0], smem, args);
+                 inormr.w, dfc.w, dfc2.x, dfc2.y, dfc2.z, dgc.w, dgc2.x, dgc2.y,
+                 dgc2.z, dfr.w, dgr.w, e.floats[0], smem, args);
 
     // After the 4th row, we have completed columns 4, 5, 6, and 7
     if (COMPUTE_COLS) {
-      e.ulong = mp_col_check2.y;
-      mp_col_check1 = reinterpret_cast<ulonglong2 *>(smem.local_mp_col)[c2 + 2];
-      mp_col_check2 = reinterpret_cast<ulonglong2 *>(smem.local_mp_col)[c2 + 3];
-      MPatomicMax_check((uint64_t *)(smem.local_mp_col + info.local_col - 1),
-                        distc.w, idxc.w, e.floats[0]);
+      ulonglong4 mp_col_check1, mp_col_check2;
+      mp_col_check1 = reinterpret_cast<ulonglong4*>(smem.local_mp_col)[c];
+      mp_col_check2 = reinterpret_cast<ulonglong4*>(smem.local_mp_col)[c + 1];
       e.ulong = mp_col_check1.x;
-      MPatomicMax_check((uint64_t *)(smem.local_mp_col + info.local_col),
-                        distc2.x, idxc2.x, e.floats[0]);
+      MPatomicMax_check(smem.local_mp_col + info.local_col - 4,
+                        distc.x, idxc.x, e.floats[0]);
       e.ulong = mp_col_check1.y;
-      MPatomicMax_check((uint64_t *)(smem.local_mp_col + info.local_col + 1),
-                        distc2.y, idxc2.y, e.floats[0]);
+      MPatomicMax_check(smem.local_mp_col + info.local_col - 3,
+                        distc.y, idxc.y, e.floats[0]);
+      e.ulong = mp_col_check1.z;
+      MPatomicMax_check(smem.local_mp_col + info.local_col - 2,
+                        distc.z, idxc.z, e.floats[0]);
+      e.ulong = mp_col_check1.w;
+      MPatomicMax_check(smem.local_mp_col + info.local_col - 1,
+                        distc.w, idxc.w, e.floats[0]);
       e.ulong = mp_col_check2.x;
-      MPatomicMax_check((uint64_t *)(smem.local_mp_col + info.local_col + 2),
+      MPatomicMax_check(smem.local_mp_col + info.local_col,
+                        distc2.x, idxc2.x, e.floats[0]);
+      e.ulong = mp_col_check2.y;
+      MPatomicMax_check(smem.local_mp_col + info.local_col + 1,
+                        distc2.y, idxc2.y, e.floats[0]);
+      e.ulong = mp_col_check2.z;
+      MPatomicMax_check(smem.local_mp_col + info.local_col + 2,
                         distc2.z, idxc2.z, e.floats[0]);
     }
   }
