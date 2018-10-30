@@ -47,157 +47,159 @@ struct SCAMPKernelInputArgs {
   OptionalArgs opt;
 };
 
-template <typename DATA_TYPE, typename VEC2_DATA_TYPE, typename VEC4_DATA_TYPE, typename PROFILE_DATA_TYPE>
+template <typename DATA_TYPE, typename VEC2_DATA_TYPE, typename VEC4_DATA_TYPE, typename PROFILE_DATA_TYPE, typename VEC2_PROFILE_TYPE, typename VEC4_PROFILE_TYPE>
 struct SCAMPSmem {
   __device__ SCAMPSmem(char* smem, bool compute_rows, bool compute_cols, int tile_width, int tile_height) : inorm_row_offset(0), df_row_offset(tile_height), dg_row_offset(tile_height * 2)
   {
-    _input_data_cols_a = (DATA_TYPE*) smem;
-    _input_data_cols_b = _input_data_cols_a + 3 * (tile_width >> 1);
-    _input_data_rows = _input_data_cols_a  + 3 * tile_width;
+    int total_vals = 0;
+    if (sizeof(DATA_TYPE) == 8) {
+        _input_data_cols_a = (DATA_TYPE*) smem;
+        _input_data_cols_b = _input_data_cols_a + 3 * (tile_width >> 1);
+        _input_data_cols = nullptr;
+        _input_data_rows = _input_data_cols_a  + 3 * tile_width;
+    } else {
+        _input_data_cols_a = nullptr;
+        _input_data_cols_b = nullptr;
+        _input_data_cols = (DATA_TYPE*) smem;
+        _input_data_rows = _input_data_cols + 3 * tile_width;
+    }
+    
     if (compute_cols && compute_rows) {
-        local_mp_col = (PROFILE_DATA_TYPE*)(_input_data_rows +  3 * tile_height);
-        local_mp_row = local_mp_col + tile_width;
+        if (sizeof(PROFILE_DATA_TYPE) == 8) {
+            _mp_col_a = (PROFILE_DATA_TYPE*)(_input_data_rows + 3 * tile_height);
+            _mp_col_b = _mp_col_a + (tile_width >> 1);
+            _mp_col = nullptr;
+            _mp_row = _mp_col_a + tile_width;
+        } else {
+            _mp_col = (PROFILE_DATA_TYPE*)(_input_data_rows + 3 * tile_height);
+            _mp_row = _mp_col + tile_width;
+        }
+   
     } else if (compute_cols) {
-        local_mp_col = (PROFILE_DATA_TYPE*)(_input_data_rows +  3 * tile_height);
-        local_mp_row = nullptr;
+        if (sizeof(PROFILE_DATA_TYPE) == 8) {
+            _mp_col_a = (PROFILE_DATA_TYPE*)(_input_data_rows + 3 * tile_height);
+            _mp_col_b = _mp_col_a + (tile_width >> 1);
+            _mp_col = nullptr;
+        } else {
+            _mp_col = (PROFILE_DATA_TYPE*)(_input_data_rows + 3 * tile_height);
+        }
+        _mp_row = nullptr;
     } else if (compute_rows) {
-        local_mp_col = nullptr; 
-        local_mp_row = (PROFILE_DATA_TYPE*)(_input_data_rows +  3 * tile_height);
+        _mp_col = nullptr; 
+        _mp_col_a = nullptr; 
+        _mp_col_b = nullptr; 
+        _mp_row = (PROFILE_DATA_TYPE*)(_input_data_rows + 3 * tile_height);
     } 
   } 
-  __device__ inline DATA_TYPE get_inorm_col(int full_position) { 
+  __device__ inline VEC4_DATA_TYPE get_col_vec4(int chunk, int offset) {
+        if (sizeof(DATA_TYPE) == 8) {
+          VEC2_DATA_TYPE partial1 = reinterpret_cast<VEC2_DATA_TYPE*>(_input_data_cols_a + (chunk * stride + offset))[0];
+          VEC2_DATA_TYPE partial2 = reinterpret_cast<VEC2_DATA_TYPE*>(_input_data_cols_b + (chunk * stride + offset))[0];
+          return {partial1.x, partial1.y, partial2.x, partial2.y};  
+        } 
+        return reinterpret_cast<VEC4_DATA_TYPE*>(_input_data_cols + (2 * (chunk * stride + offset)))[0];
+  }
+  __device__ inline DATA_TYPE get_col(int full_position, int offset) {
         int chunk = full_position >> 2;
         int pos = full_position & 3;
-        int partition = pos >> 1;
-        int part_pos = pos & 1;
-        if (partition == 0) {
-            return _input_data_cols_a[chunk * stride + inorm_col_offset + part_pos];
+        if (sizeof(DATA_TYPE) == 8) {
+          int partition = pos >> 1;
+          int part_pos = pos & 1;
+          if (partition == 0) {
+            return _input_data_cols_a[chunk * stride + offset + part_pos];
+          }
+          return _input_data_cols_b[chunk * stride + offset + part_pos];
         }
-        return _input_data_cols_b[chunk * stride + inorm_col_offset + part_pos];
+        return _input_data_cols[2* (chunk * stride + offset) + pos];
   }
-  __device__ inline VEC4_DATA_TYPE get_inorm_col_vec4(int chunk) {
-        VEC2_DATA_TYPE partial1 = reinterpret_cast<VEC2_DATA_TYPE*>(_input_data_cols_a + (chunk * stride + inorm_col_offset))[0];
-        VEC2_DATA_TYPE partial2 = reinterpret_cast<VEC2_DATA_TYPE*>(_input_data_cols_b + (chunk * stride + inorm_col_offset))[0];
-        return {partial1.x, partial1.y, partial2.x, partial2.y};
-        //return reinterpret_cast<VEC4_DATA_TYPE*>(_input_data_cols + (chunk * stride + inorm_col_offset))[0];
-  }
-  __device__ inline DATA_TYPE get_df_col(int full_position) {
+  __device__ inline void set_col(int full_position, DATA_TYPE value, int offset) {
         int chunk = full_position >> 2;
         int pos = full_position & 3;
-        int partition = pos >> 1;
-        int part_pos = pos & 1;
-        if (partition == 0) {
-            return _input_data_cols_a[chunk * stride + df_col_offset + part_pos];
+        if (sizeof(DATA_TYPE) == 8) {
+            int partition = pos >> 1;
+            int part_pos = pos & 1;
+            if (partition == 0) {
+                _input_data_cols_a[chunk * stride + offset + part_pos] = value;
+              
+            } else {
+                _input_data_cols_b[chunk * stride + offset + part_pos] = value;
+            }
+            return;
         }
-        return _input_data_cols_b[chunk * stride + df_col_offset + part_pos];
+        _input_data_cols[2 * (chunk * stride + offset) + pos] = value;
   }
-  __device__ inline VEC4_DATA_TYPE get_df_col_vec4(int chunk) {
-        VEC2_DATA_TYPE partial1 = reinterpret_cast<VEC2_DATA_TYPE*>(_input_data_cols_a + (chunk * stride + df_col_offset))[0];
-        VEC2_DATA_TYPE partial2 = reinterpret_cast<VEC2_DATA_TYPE*>(_input_data_cols_b + (chunk * stride + df_col_offset))[0];
-        return {partial1.x, partial1.y, partial2.x, partial2.y};
-        //return reinterpret_cast<VEC4_DATA_TYPE*>(_input_data_cols + (chunk * stride + df_col_offset))[0];
+  __device__ inline DATA_TYPE get_row(int full_position, int offset) {
+        return _input_data_rows[offset + full_position];
   }
-  __device__ inline DATA_TYPE get_dg_col(int full_position) {
+  __device__ inline VEC4_DATA_TYPE get_row_vec4(int chunk, int offset) {
+        return reinterpret_cast<VEC4_DATA_TYPE*>(_input_data_rows + offset)[chunk];
+  }
+  __device__ inline void set_row(int full_position, DATA_TYPE value, int offset) {
+        _input_data_rows[offset + full_position] = value;
+  }
+  __device__ inline void set_mp_col(int full_position, PROFILE_DATA_TYPE value) {
         int chunk = full_position >> 2;
         int pos = full_position & 3;
-        int partition = pos >> 1;
-        int part_pos = pos & 1;
-        if (partition == 0) {
-            return _input_data_cols_a[chunk * stride + dg_col_offset + part_pos];
+        if (sizeof(PROFILE_DATA_TYPE) == 8) {
+            int partition = pos >> 1;
+            int part_pos = pos & 1;
+            if (partition == 0) {
+                _mp_col_a[chunk * 2 +  part_pos] = value;
+              
+            } else {
+                _mp_col_b[chunk * 2 + part_pos] = value;
+            }
+            return;
         }
-        return _input_data_cols_b[chunk * stride + dg_col_offset + part_pos];
+        _mp_col[2 * (chunk * 2) + pos] = value; 
   }
-  __device__ inline VEC4_DATA_TYPE get_dg_col_vec4(int chunk) {
-        VEC2_DATA_TYPE partial1 = reinterpret_cast<VEC2_DATA_TYPE*>(_input_data_cols_a + (chunk * stride + dg_col_offset))[0];
-        VEC2_DATA_TYPE partial2 = reinterpret_cast<VEC2_DATA_TYPE*>(_input_data_cols_b + (chunk * stride + dg_col_offset))[0];
-        return {partial1.x, partial1.y, partial2.x, partial2.y};
-  }
-  __device__ inline DATA_TYPE get_inorm_row(int full_position) {
-        //int chunk = full_position >> 2;
-        //int pos = full_position & 3;
-        //return _input_data_rows[chunk * stride + inorm_row_offset + pos];
-        return _input_data_rows[inorm_row_offset + full_position];
-  }
-  __device__ inline VEC4_DATA_TYPE get_inorm_row_vec4(int chunk) {
-        //return reinterpret_cast<VEC4_DATA_TYPE*>(_input_data_rows + (chunk * stride + inorm_row_offset))[0];
-        return reinterpret_cast<VEC4_DATA_TYPE*>(_input_data_rows + inorm_row_offset)[chunk];
-  }
-  __device__ inline DATA_TYPE get_df_row(int full_position) {
-        //int chunk = full_position >> 2;
-        //int pos = full_position & 3;
-        return _input_data_rows[df_row_offset + full_position];
-        //return _input_data_rows[chunk * stride + df_row_offset + pos];
-  }
-  __device__ inline VEC4_DATA_TYPE get_df_row_vec4(int chunk) {
-        return reinterpret_cast<VEC4_DATA_TYPE*>(_input_data_rows + df_row_offset)[chunk];
-        //return reinterpret_cast<VEC4_DATA_TYPE*>(_input_data_rows + (chunk * stride + df_row_offset))[0];
-  }
-  __device__ inline DATA_TYPE get_dg_row(int full_position) {
-        return _input_data_rows[dg_row_offset + full_position];
-        //int chunk = full_position >> 2;
-        //int pos = full_position & 3;
-        //return _input_data_rows[chunk * stride + dg_row_offset + pos];
-  }
-  __device__ inline VEC4_DATA_TYPE get_dg_row_vec4(int chunk) {
-        return reinterpret_cast<VEC4_DATA_TYPE*>(_input_data_rows + dg_row_offset)[chunk];
-        //return reinterpret_cast<VEC4_DATA_TYPE*>(_input_data_rows + (chunk * stride + dg_row_offset))[0];
-  }
-  __device__ inline void set_inorm_col(int full_position, DATA_TYPE value) {
+  __device__ inline PROFILE_DATA_TYPE get_mp_col(int full_position) {
         int chunk = full_position >> 2;
         int pos = full_position & 3;
-        int partition = pos >> 1;
-        int part_pos = pos & 1;
-        if (partition == 0) {
-            _input_data_cols_a[chunk * stride + inorm_col_offset + part_pos] = value;
-          
-        } else {
-            _input_data_cols_b[chunk * stride + inorm_col_offset + part_pos] = value;
+        if (sizeof(PROFILE_DATA_TYPE) == 8) {
+          int partition = pos >> 1;
+          int part_pos = pos & 1;
+          if (partition == 0) {
+            return _mp_col_a[chunk * 2 + part_pos];
+          }
+          return _mp_col_b[chunk * 2 + part_pos];
         }
+        return _mp_col[2* (chunk * 2) + pos];
   }
-  __device__ inline void set_df_col(int full_position, DATA_TYPE value) {
+  __device__ inline PROFILE_DATA_TYPE* get_mp_col_addr(int full_position) {
         int chunk = full_position >> 2;
         int pos = full_position & 3;
-        int partition = pos >> 1;
-        int part_pos = pos & 1;
-        if (partition == 0) {
-            _input_data_cols_a[chunk * stride + df_col_offset + part_pos] = value;
-          
-        } else {
-            _input_data_cols_b[chunk * stride + df_col_offset + part_pos] = value;
+        if (sizeof(PROFILE_DATA_TYPE) == 8) {
+          int partition = pos >> 1;
+          int part_pos = pos & 1;
+          if (partition == 0) {
+            return _mp_col_a + chunk * 2 + part_pos;
+          }
+          return _mp_col_b + chunk * 2 + part_pos;
         }
+        return _mp_col + 2 * (chunk * 2) + pos;
   }
-  __device__ inline void set_dg_col(int full_position, DATA_TYPE value) {
-        int chunk = full_position >> 2;
-        int pos = full_position & 3;
-        int partition = pos >> 1;
-        int part_pos = pos & 1;
-        if (partition == 0) {
-            _input_data_cols_a[chunk * stride + dg_col_offset + part_pos] = value;
-          
-        } else {
-            _input_data_cols_b[chunk * stride + dg_col_offset + part_pos] = value;
-        }
-}
-  __device__ inline void set_inorm_row(int full_position, DATA_TYPE value) {
-        //int chunk = full_position >> 2;
-        //int pos = full_position & 3;
-        //_input_data_rows[chunk * stride + inorm_row_offset + pos] = value;
-        _input_data_rows[inorm_row_offset + full_position] = value;
-}
-  __device__ inline void set_df_row(int full_position, DATA_TYPE value) { 
-        //int chunk = full_position >> 2;
-        //int pos = full_position & 3;
-        //_input_data_rows[chunk * stride + df_row_offset + pos] = value;
-        _input_data_rows[df_row_offset + full_position] = value;
-}
-  __device__ inline void set_dg_row(int full_position, DATA_TYPE value) {
-        //int chunk = full_position >> 2;
-        //int pos = full_position & 3;
-        //_input_data_rows[chunk * stride + dg_row_offset + pos] = value;
-        _input_data_rows[dg_row_offset + full_position] = value;
-}
+  __device__ inline VEC4_PROFILE_TYPE get_mp_col_vec4(int chunk) {
+        if (sizeof(PROFILE_DATA_TYPE) == 8) {
+          VEC2_PROFILE_TYPE partial1 = reinterpret_cast<VEC2_PROFILE_TYPE*>(_mp_col_a + (chunk * 2))[0];
+          VEC2_PROFILE_TYPE partial2 = reinterpret_cast<VEC2_PROFILE_TYPE*>(_mp_col_b + (chunk * 2))[0];
+          return {partial1.x, partial1.y, partial2.x, partial2.y};  
+        } 
+        return reinterpret_cast<VEC4_PROFILE_TYPE*>(_mp_col + (2 * (chunk * 2)))[0];
+  }
+  __device__ inline PROFILE_DATA_TYPE get_mp_row(int full_position) {
+        return _mp_row[full_position];
+  }
+  __device__ inline VEC4_PROFILE_TYPE get_mp_row_vec4(int chunk) {
+        return reinterpret_cast<VEC4_PROFILE_TYPE*>(_mp_row)[chunk];
+  }
+  __device__ inline void set_mp_row(int full_position, PROFILE_DATA_TYPE value) {
+       _mp_row[full_position] = value;
+  }
+  __device__ inline PROFILE_DATA_TYPE* get_mp_row_addr(int full_position) {
+        return _mp_row + full_position;
+  }
   const int stride = 6;
-  const int row_stride = 4;
   const int inorm_col_offset = 0;
   const int df_col_offset =  2;
   const int dg_col_offset =  4;
@@ -208,8 +210,11 @@ struct SCAMPSmem {
   DATA_TYPE *__restrict__ _input_data_cols_a;
   DATA_TYPE *__restrict__ _input_data_cols_b;
   DATA_TYPE *__restrict__ _input_data_rows;
-  PROFILE_DATA_TYPE *__restrict__ local_mp_col;
-  PROFILE_DATA_TYPE *__restrict__ local_mp_row;
+  DATA_TYPE *__restrict__ _input_data_cols;
+  PROFILE_DATA_TYPE *__restrict__ _mp_col_a;
+  PROFILE_DATA_TYPE *__restrict__ _mp_col_b;
+  PROFILE_DATA_TYPE *__restrict__ _mp_col;
+  PROFILE_DATA_TYPE *__restrict__ _mp_row;
 
 };
 
@@ -343,11 +348,11 @@ class InitMemStrategy<DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
     int global_position = col_start + threadIdx.x;
     int local_position = threadIdx.x;
     while (local_position < tile_width && global_position < args.n_x) {
-      smem.set_dg_col(local_position, args.dga[global_position]);
-      smem.set_df_col(local_position, args.dfa[global_position]);
-      smem.set_inorm_col(local_position, args.normsa[global_position]);
+      smem.set_col(local_position, args.dga[global_position], smem.dg_col_offset);
+      smem.set_col(local_position, args.dfa[global_position], smem.df_col_offset);
+      smem.set_col(local_position, args.normsa[global_position], smem.inorm_col_offset);
       if (COMPUTE_COLS) {
-        smem.local_mp_col[local_position] = 0.0;
+        smem.set_mp_col(local_position, 0.0);
       }
       local_position += BLOCKSZ;
       global_position += BLOCKSZ;
@@ -356,11 +361,11 @@ class InitMemStrategy<DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
     global_position = row_start + threadIdx.x;
     local_position = threadIdx.x;
     while (local_position < tile_height && global_position < args.n_y) {
-      smem.set_dg_row(local_position, args.dgb[global_position]);
-      smem.set_df_row(local_position, args.dfb[global_position]);
-      smem.set_inorm_row(local_position, args.normsb[global_position]);
+      smem.set_row(local_position, args.dgb[global_position], smem.dg_row_offset);
+      smem.set_row(local_position, args.dfb[global_position], smem.df_row_offset);
+      smem.set_row(local_position, args.normsb[global_position], smem.inorm_row_offset);
       if (COMPUTE_ROWS) {
-        smem.local_mp_row[local_position] = 0.0;
+        smem.set_mp_row(local_position, 0.0);
       }
       local_position += BLOCKSZ;
       global_position += BLOCKSZ;
@@ -383,11 +388,11 @@ class InitMemStrategy<DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
     int global_position = col_start + threadIdx.x;
     int local_position = threadIdx.x;
     while (local_position < tile_width && global_position < args.n_x) {
-      smem.set_dg_col(local_position, args.dga[global_position]);
-      smem.set_df_col(local_position, args.dfa[global_position]);
-      smem.set_inorm_col(local_position, args.normsa[global_position]);
+      smem.set_col(local_position, args.dga[global_position], smem.dg_col_offset);
+      smem.set_col(local_position, args.dfa[global_position], smem.df_col_offset);
+      smem.set_col(local_position, args.normsa[global_position], smem.inorm_col_offset);
       if (COMPUTE_COLS) {
-        smem.local_mp_col[local_position] = profile_a[global_position];
+        smem.set_mp_col(local_position, profile_a[global_position]);
       }
       local_position += BLOCKSZ;
       global_position += BLOCKSZ;
@@ -396,11 +401,11 @@ class InitMemStrategy<DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
     global_position = row_start + threadIdx.x;
     local_position = threadIdx.x;
     while (local_position < tile_height && global_position < args.n_y) {
-      smem.set_dg_row(local_position, args.dgb[global_position]);
-      smem.set_df_row(local_position, args.dfb[global_position]);
-      smem.set_inorm_row(local_position, args.normsb[global_position]);
+      smem.set_row(local_position, args.dgb[global_position], smem.dg_row_offset);
+      smem.set_row(local_position, args.dfb[global_position], smem.df_row_offset);
+      smem.set_row(local_position, args.normsb[global_position], smem.inorm_row_offset);
       if (COMPUTE_ROWS) {
-        smem.local_mp_row[local_position] = profile_b[global_position];
+        smem.set_mp_row(local_position, profile_b[global_position]);
       }
       local_position += BLOCKSZ;
       global_position += BLOCKSZ;
@@ -516,7 +521,7 @@ class DoRowOptStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
         count_row += __shfl_down_sync(0xffffffff, count_row, i);
       }
       if ((threadIdx.x & 0x1f) == 0) {
-        atomicAdd_block(smem.local_mp_row + info.local_row, count_row);
+        atomicAdd_block(smem.get_mp_row_addr(info.local_row), count_row);
       }
     }
     info.local_row++;
@@ -568,7 +573,7 @@ class DoRowOptStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
       uint32_t idx;
       DISTANCE_TYPE d =
           max4<DISTANCE_TYPE>(distx, disty, distz, distw, info.global_col, idx);
-      MPatomicMax_check((uint64_t *)(smem.local_mp_row + info.local_row), d,
+      MPatomicMax_check(smem.get_mp_row_addr(info.local_row), d,
                         idx, curr_mp_row_val);
     }
 
@@ -629,27 +634,27 @@ class DoRowEdgeStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
     DISTANCE_TYPE distr = 0;
     DISTANCE_TYPE distx, disty, distz, distw;
     DISTANCE_TYPE thresh = static_cast<DISTANCE_TYPE>(args.threshold);
-    DATA_TYPE inormr = smem.get_inorm_row(i);
-    DATA_TYPE dgr = smem.get_dg_row(i);
-    DATA_TYPE dfr = smem.get_df_row(i);
+    DATA_TYPE inormr = smem.get_row(i, smem.inorm_row_offset);
+    DATA_TYPE dgr = smem.get_row(i, smem.dg_row_offset);
+    DATA_TYPE dfr = smem.get_row(i, smem.df_row_offset);
 
     // Compute the next set of distances (row y)
-    distx = cov1 * smem.get_inorm_col(j) * inormr;
-    disty = cov2 * smem.get_inorm_col(j + 1) * inormr;
-    distz = cov3 * smem.get_inorm_col(j + 2) * inormr;
-    distw = cov4 * smem.get_inorm_col(j + 3) * inormr;
+    distx = cov1 * smem.get_col(j, smem.inorm_col_offset) * inormr;
+    disty = cov2 * smem.get_col(j + 1, smem.inorm_col_offset) * inormr;
+    distz = cov3 * smem.get_col(j + 2, smem.inorm_col_offset) * inormr;
+    distw = cov4 * smem.get_col(j + 3, smem.inorm_col_offset) * inormr;
     // Update cov and compute the next distance values (row y)
-    cov1 = cov1 + smem.get_df_col(j) * dgr + smem.get_dg_col(j) * dfr;
-    cov2 = cov2 + smem.get_df_col(j + 1) * dgr + smem.get_dg_col(j + 1) * dfr;
-    cov3 = cov3 + smem.get_df_col(j + 2) * dgr + smem.get_dg_col(j + 2) * dfr;
-    cov4 = cov4 + smem.get_df_col(j + 3) * dgr + smem.get_dg_col(j + 3) * dfr;
+    cov1 = cov1 + smem.get_col(j, smem.df_col_offset) * dgr + smem.get_col(j, smem.dg_col_offset) * dfr;
+    cov2 = cov2 + smem.get_col(j + 1, smem.df_col_offset) * dgr + smem.get_col(j + 1, smem.dg_col_offset) * dfr;
+    cov3 = cov3 + smem.get_col(j + 2, smem.df_col_offset) * dgr + smem.get_col(j + 2, smem.dg_col_offset) * dfr;
+    cov4 = cov4 + smem.get_col(j + 3, smem.df_col_offset) * dgr + smem.get_col(j + 3, smem.dg_col_offset) * dfr;
 
     if (distx > thresh) {
       if (COMPUTE_ROWS) {
         distr += distx;
       }
       if (COMPUTE_COLS) {
-        atomicAdd_block(smem.local_mp_col + j, distx);
+        atomicAdd_block(smem.get_mp_col_addr(j), distx);
       }
     }
     if (x + 1 < n && diag + 1 < num_diags) {
@@ -658,7 +663,7 @@ class DoRowEdgeStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
           distr += disty;
         }
         if (COMPUTE_COLS) {
-          atomicAdd_block(smem.local_mp_col + j + 1, disty);
+          atomicAdd_block(smem.get_mp_col_addr(j + 1), disty);
         }
       }
     }
@@ -668,7 +673,7 @@ class DoRowEdgeStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
           distr += distz;
         }
         if (COMPUTE_COLS) {
-          atomicAdd_block(smem.local_mp_col + j + 2, distz);
+          atomicAdd_block(smem.get_mp_col_addr(j + 2), distz);
         }
       }
     }
@@ -678,12 +683,12 @@ class DoRowEdgeStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
           distr += distw;
         }
         if (COMPUTE_COLS) {
-          atomicAdd_block(smem.local_mp_col + j + 3, distw);
+          atomicAdd_block(smem.get_mp_col_addr(j + 3), distw);
         }
       }
     }
     if (COMPUTE_ROWS) {
-      atomicAdd_block(smem.local_mp_row + i, distr);
+      atomicAdd_block(smem.get_mp_row_addr(i), distr);
     }
   }
 };
@@ -710,24 +715,24 @@ class DoRowEdgeStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
     float distz;
     float distw;
 
-    DATA_TYPE inormr = smem.get_inorm_row(i);
-    DATA_TYPE dgr = smem.get_dg_row(i);
-    DATA_TYPE dfr = smem.get_df_row(i);
+    DATA_TYPE inormr = smem.get_row(i, smem.inorm_row_offset );
+    DATA_TYPE dgr = smem.get_row(i, smem.dg_row_offset);
+    DATA_TYPE dfr = smem.get_row(i, smem.df_row_offset);
 
     // Compute the next set of distances (row y)
-    distx = cov1 * smem.get_inorm_col(j) * inormr;
-    disty = cov2 * smem.get_inorm_col(j + 1) * inormr;
-    distz = cov3 * smem.get_inorm_col(j + 2) * inormr;
-    distw = cov4 * smem.get_inorm_col(j + 3) * inormr;
+    distx = cov1 * smem.get_col(j, smem.inorm_col_offset) * inormr;
+    disty = cov2 * smem.get_col(j + 1, smem.inorm_col_offset) * inormr;
+    distz = cov3 * smem.get_col(j + 2, smem.inorm_col_offset) * inormr;
+    distw = cov4 * smem.get_col(j + 3, smem.inorm_col_offset) * inormr;
 
     // Update cov and compute the next distance values (row y)
-    cov1 = cov1 + smem.get_df_col(j) * dgr + smem.get_dg_col(j) * dfr;
-    cov2 = cov2 + smem.get_df_col(j + 1) * dgr + smem.get_dg_col(j + 1) * dfr;
-    cov3 = cov3 + smem.get_df_col(j + 2) * dgr + smem.get_dg_col(j + 2) * dfr;
-    cov4 = cov4 + smem.get_df_col(j + 3) * dgr + smem.get_dg_col(j + 3) * dfr;
+    cov1 = cov1 + smem.get_col(j, smem.df_col_offset) * dgr + smem.get_col(j, smem.dg_col_offset) * dfr;
+    cov2 = cov2 + smem.get_col(j + 1, smem.df_col_offset) * dgr + smem.get_col(j + 1, smem.dg_col_offset) * dfr;
+    cov3 = cov3 + smem.get_col(j + 2, smem.df_col_offset) * dgr + smem.get_col(j + 2, smem.dg_col_offset) * dfr;
+    cov4 = cov4 + smem.get_col(j + 3, smem.df_col_offset) * dgr + smem.get_col(j + 3, smem.dg_col_offset) * dfr;
 
     if (COMPUTE_COLS) {
-      MPatomicMax((uint64_t *)(smem.local_mp_col + j), distx, y);
+      MPatomicMax(smem.get_mp_col_addr(j), distx, y);
     }
     dist_row = distx;
     idx_row = x;
@@ -736,7 +741,7 @@ class DoRowEdgeStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
         MPMax(dist_row, disty, idx_row, x + 1, dist_row, idx_row);
       }
       if (COMPUTE_COLS) {
-        MPatomicMax((uint64_t *)(smem.local_mp_col + j + 1), disty, y);
+        MPatomicMax(smem.get_mp_col_addr(j + 1), disty, y);
       }
     }
     if (x + 2 < n && diag + 2 < num_diags) {
@@ -744,7 +749,7 @@ class DoRowEdgeStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
         MPMax(dist_row, distz, idx_row, x + 2, dist_row, idx_row);
       }
       if (COMPUTE_COLS) {
-        MPatomicMax((uint64_t *)(smem.local_mp_col + j + 2), distz, y);
+        MPatomicMax(smem.get_mp_col_addr(j + 2), distz, y);
       }
     }
     if (x + 3 < n && diag + 3 < num_diags) {
@@ -752,11 +757,11 @@ class DoRowEdgeStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
         MPMax(dist_row, distw, idx_row, x + 3, dist_row, idx_row);
       }
       if (COMPUTE_COLS) {
-        MPatomicMax((uint64_t *)(smem.local_mp_col + j + 3), distw, y);
+        MPatomicMax(smem.get_mp_col_addr(j + 3), distw, y);
       }
     }
     if (COMPUTE_ROWS) {
-      MPatomicMax((uint64_t *)(smem.local_mp_row + i), dist_row, idx_row);
+      MPatomicMax(smem.get_mp_row_addr(i), dist_row, idx_row);
     }
   }
 };
@@ -768,7 +773,7 @@ class DoRowEdgeStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
 //
 //////////////////////////////////////////////////////////////////////
 
-template <typename DISTANCE_TYPE, typename PROFILE_DATA_TYPE,
+template <typename DISTANCE_TYPE, typename PROFILE_DATA_TYPE, typename SMEM_TYPE,
           SCAMPProfileType PROFILE_TYPE>
 class UpdateColumnsStrategy : public SCAMPStrategy {
  public:
@@ -776,7 +781,7 @@ class UpdateColumnsStrategy : public SCAMPStrategy {
                        DISTANCE_TYPE distc3, DISTANCE_TYPE distc4,
                        DISTANCE_TYPE distc5, DISTANCE_TYPE distc6,
                        DISTANCE_TYPE distc7,
-                       PROFILE_DATA_TYPE *__restrict__ local_mp_col,
+                       SMEM_TYPE &smem,
                        uint64_t col) {
     assert(false);
   }
@@ -785,15 +790,15 @@ class UpdateColumnsStrategy : public SCAMPStrategy {
   __device__ UpdateColumnsStrategy() {}
 };
 
-template <typename DISTANCE_TYPE, typename PROFILE_DATA_TYPE>
-class UpdateColumnsStrategy<DISTANCE_TYPE, PROFILE_DATA_TYPE,
+template <typename DISTANCE_TYPE, typename PROFILE_DATA_TYPE, typename SMEM_TYPE>
+class UpdateColumnsStrategy<DISTANCE_TYPE, PROFILE_DATA_TYPE, SMEM_TYPE,
                             PROFILE_TYPE_SUM_THRESH> : public SCAMPStrategy {
  public:
   __device__ UpdateColumnsStrategy() {}
   __device__ inline __attribute__((always_inline)) void exec(
       DISTANCE_TYPE distc1, DISTANCE_TYPE distc2, DISTANCE_TYPE distc3,
       DISTANCE_TYPE distc4, DISTANCE_TYPE distc5, DISTANCE_TYPE distc6,
-      DISTANCE_TYPE distc7, PROFILE_DATA_TYPE *__restrict__ local_mp_col,
+      DISTANCE_TYPE distc7, SMEM_TYPE &smem,
       uint64_t col) {
     int lane = threadIdx.x & 0x1f;
     DISTANCE_TYPE overlap_1, overlap_2, overlap_3;
@@ -808,22 +813,22 @@ class UpdateColumnsStrategy<DISTANCE_TYPE, PROFILE_DATA_TYPE,
       distc3 += overlap_3;
     }
     // Update the shared memory sums
-    atomicAdd_block(local_mp_col + col, distc1);
-    atomicAdd_block(local_mp_col + col + 1, distc2);
-    atomicAdd_block(local_mp_col + col + 2, distc3);
-    atomicAdd_block(local_mp_col + col + 3, distc4);
+    atomicAdd_block(smem.get_mp_col_addr(col), distc1);
+    atomicAdd_block(smem.get_mp_col_addr(col + 1), distc2);
+    atomicAdd_block(smem.get_mp_col_addr(col + 2), distc3);
+    atomicAdd_block(smem.get_mp_col_addr(col + 3), distc4);
     // The last thread in the warp has to make additional updates to shared
     // memory as it had nowhere to send its overlapping sums
     if (lane == 31) {
-      atomicAdd_block(local_mp_col + col + 4, distc5);
-      atomicAdd_block(local_mp_col + col + 5, distc6);
-      atomicAdd_block(local_mp_col + col + 6, distc7);
+      atomicAdd_block(smem.get_mp_col_addr(col + 4), distc5);
+      atomicAdd_block(smem.get_mp_col_addr(col + 5), distc6);
+      atomicAdd_block(smem.get_mp_col_addr(col + 6), distc7);
     }
   }
 };
 
-template <typename DISTANCE_TYPE, typename PROFILE_DATA_TYPE>
-class UpdateColumnsStrategy<DISTANCE_TYPE, PROFILE_DATA_TYPE,
+template <typename DISTANCE_TYPE, typename PROFILE_DATA_TYPE, typename SMEM_TYPE>
+class UpdateColumnsStrategy<DISTANCE_TYPE, PROFILE_DATA_TYPE, SMEM_TYPE,
                             PROFILE_TYPE_1NN_INDEX> : public SCAMPStrategy {
  public:
   __device__ UpdateColumnsStrategy() {}
@@ -831,7 +836,7 @@ class UpdateColumnsStrategy<DISTANCE_TYPE, PROFILE_DATA_TYPE,
                        DISTANCE_TYPE distc3, DISTANCE_TYPE distc4,
                        DISTANCE_TYPE distc5, DISTANCE_TYPE distc6,
                        DISTANCE_TYPE distc7,
-                       PROFILE_DATA_TYPE *__restrict__ local_mp_col,
+                       SMEM_TYPE &smem,
                        uint64_t col) {
     assert(false);
   }
@@ -878,7 +883,7 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
       global_position = tile_start_x + threadIdx.x;
       local_position = threadIdx.x;
       while (local_position < TILE_WIDTH && global_position < n_x) {
-        atomicAdd(profile_A + global_position, smem.local_mp_col[local_position]);
+        atomicAdd(profile_A + global_position, smem.get_mp_col(local_position));
         global_position += BLOCKSZ;
         local_position += BLOCKSZ;
       }
@@ -887,7 +892,7 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
       global_position = tile_start_y + threadIdx.x;
       local_position = threadIdx.x;
       while (local_position < TILE_HEIGHT && global_position < n_y) {
-        atomicAdd(profile_B + global_position, smem.local_mp_row[local_position]);
+        atomicAdd(profile_B + global_position, smem.get_mp_row(local_position));
         global_position += BLOCKSZ;
         local_position += BLOCKSZ;
       }
@@ -913,7 +918,7 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
       local_position = threadIdx.x;
       while (local_position < TILE_WIDTH && global_position < n_x) {
         mp_entry e;
-        e.ulong = smem.local_mp_col[local_position];
+        e.ulong = smem.get_mp_col(local_position);
         MPatomicMax(profile_A + global_position, e.floats[0], e.ints[1]);
         global_position += BLOCKSZ;
         local_position += BLOCKSZ;
@@ -924,7 +929,7 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
       local_position = threadIdx.x;
       while (local_position < TILE_HEIGHT && global_position < n_y) {
         mp_entry e;
-        e.ulong = smem.local_mp_row[local_position];
+        e.ulong = smem.get_mp_row(local_position);
         MPatomicMax(profile_B + global_position, e.floats[0], e.ints[1]);
         global_position += BLOCKSZ;
         local_position += BLOCKSZ;
@@ -995,18 +1000,18 @@ class DoIterationStrategy<DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
 
     // Preload the shared memory values we will use into registers
     // We load 4 values per thread into a double4 vector type
-    VEC4_DATA_TYPE dfc = smem.get_df_col_vec4(c);
-    VEC4_DATA_TYPE dgc = smem.get_dg_col_vec4(c);
-    VEC4_DATA_TYPE inormc = smem.get_inorm_col_vec4(c);
-    VEC4_DATA_TYPE dfc2 = smem.get_df_col_vec4(c + 1);
-    VEC4_DATA_TYPE dgc2 = smem.get_dg_col_vec4(c + 1);
-    VEC4_DATA_TYPE inormc2 = smem.get_inorm_col_vec4(c + 1);
+    VEC4_DATA_TYPE dfc = smem.get_col_vec4(c, smem.df_col_offset);
+    VEC4_DATA_TYPE dgc = smem.get_col_vec4(c, smem.dg_col_offset);
+    VEC4_DATA_TYPE inormc = smem.get_col_vec4(c, smem.inorm_col_offset);
+    VEC4_DATA_TYPE dfc2 = smem.get_col_vec4(c + 1, smem.df_col_offset);
+    VEC4_DATA_TYPE dgc2 = smem.get_col_vec4(c + 1, smem.dg_col_offset);
+    VEC4_DATA_TYPE inormc2 = smem.get_col_vec4(c + 1, smem.inorm_col_offset);
 
     // Due to a lack of registers on volta, we only load these row values 2 at a
     // time
-    VEC4_DATA_TYPE dgr = smem.get_dg_row_vec4(r);
-    VEC4_DATA_TYPE dfr = smem.get_df_row_vec4(r);
-    VEC4_DATA_TYPE inormr = smem.get_inorm_row_vec4(r);
+    VEC4_DATA_TYPE dgr = smem.get_row_vec4(r, smem.dg_row_offset);
+    VEC4_DATA_TYPE dfr = smem.get_row_vec4(r, smem.df_row_offset);
+    VEC4_DATA_TYPE inormr = smem.get_row_vec4(r, smem.inorm_row_offset);
 
     // Do rows one at a time:
     _do_row.exec(info, distc1, distc2, distc3, distc4, inormc.x, inormc.y,
@@ -1027,7 +1032,7 @@ class DoIterationStrategy<DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
 
     if (COMPUTE_COLS) {
       _update_cols.exec(distc1, distc2, distc3, distc4, distc5, distc6, distc7,
-                        smem.local_mp_col, info.local_col - DIAGS_PER_THREAD);
+                        smem, info.local_col - DIAGS_PER_THREAD);
     }
     info.global_col += DIAGS_PER_THREAD;
     info.global_row += DIAGS_PER_THREAD;
@@ -1037,7 +1042,7 @@ class DoIterationStrategy<DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
   DoRowOptStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
                    COMPUTE_ROWS, COMPUTE_COLS, SMEM_TYPE, PROFILE_TYPE_SUM_THRESH>
       _do_row;
-  UpdateColumnsStrategy<DISTANCE_TYPE, PROFILE_DATA_TYPE,
+  UpdateColumnsStrategy<DISTANCE_TYPE, PROFILE_DATA_TYPE, SMEM_TYPE,
                         PROFILE_TYPE_SUM_THRESH>
       _update_cols;
 };
@@ -1062,38 +1067,24 @@ class DoIterationStrategy<DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
     int r = info.local_row >> 2;
     int c = info.local_col >> 2;
 
-    VEC4_DATA_TYPE dfc = smem.get_df_col_vec4(c);
-    VEC4_DATA_TYPE dgc = smem.get_dg_col_vec4(c);
-    VEC4_DATA_TYPE inormc = smem.get_inorm_col_vec4(c);
-    VEC4_DATA_TYPE dfc2, dgc2, inormc2;
-    dfc2 = smem.get_df_col_vec4(c + 1);
-    dgc2 = smem.get_dg_col_vec4(c + 1);
-     inormc2 = smem.get_inorm_col_vec4(c + 1);
-/*
-    dfc2.x = __shfl_down_sync(0xffffffff, dfc.x, 1);
-    dfc2.y = __shfl_down_sync(0xffffffff, dfc.y, 1);
-    dfc2.z = __shfl_down_sync(0xffffffff, dfc.z, 1);
-    dfc2.w = __shfl_down_sync(0xffffffff, dfc.w, 1);
-    dgc2.x = __shfl_down_sync(0xffffffff, dgc.x, 1);
-    dgc2.y = __shfl_down_sync(0xffffffff, dgc.y, 1);
-    dgc2.z = __shfl_down_sync(0xffffffff, dgc.z, 1);
-    dgc2.w = __shfl_down_sync(0xffffffff, dgc.w, 1);
-    inormc2.x = __shfl_down_sync(0xffffffff, inormc.x, 1);
-    inormc2.y = __shfl_down_sync(0xffffffff, inormc.y, 1);
-    inormc2.z = __shfl_down_sync(0xffffffff, inormc.z, 1);
-    inormc2.w = __shfl_down_sync(0xffffffff, inormc.w, 1);
-    if (lane == 31) {
-   */
-   //}
+    // Preload the shared memory values we will use into registers
+    // We load 4 values per thread into a double4 vector type
+    VEC4_DATA_TYPE dfc = smem.get_col_vec4(c, smem.df_col_offset);
+    VEC4_DATA_TYPE dgc = smem.get_col_vec4(c, smem.dg_col_offset);
+    VEC4_DATA_TYPE inormc = smem.get_col_vec4(c, smem.inorm_col_offset);
+    VEC4_DATA_TYPE dfc2 = smem.get_col_vec4(c + 1, smem.df_col_offset);
+    VEC4_DATA_TYPE dgc2 = smem.get_col_vec4(c + 1, smem.dg_col_offset);
+    VEC4_DATA_TYPE inormc2 = smem.get_col_vec4(c + 1, smem.inorm_col_offset);
     ulonglong4 mp_row_check;
 
     if (COMPUTE_ROWS) {
-      mp_row_check = reinterpret_cast<ulonglong4 *>(smem.local_mp_row)[r];
+      mp_row_check = smem.get_mp_row_vec4(r);
+      //mp_row_check = reinterpret_cast<ulonglong4 *>(smem.local_mp_row)[r];
     }
 
-    VEC4_DATA_TYPE dgr = smem.get_dg_row_vec4(r);
-    VEC4_DATA_TYPE dfr = smem.get_df_row_vec4(r);
-    VEC4_DATA_TYPE inormr = smem.get_inorm_row_vec4(r);
+    VEC4_DATA_TYPE dgr = smem.get_row_vec4(r, smem.dg_row_offset);
+    VEC4_DATA_TYPE dfr = smem.get_row_vec4(r, smem.df_row_offset);
+    VEC4_DATA_TYPE inormr = smem.get_row_vec4(r, smem.inorm_row_offset);
 
     mp_entry e;
     e.ulong = mp_row_check.x;
@@ -1123,28 +1114,28 @@ class DoIterationStrategy<DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
 
     if (COMPUTE_COLS) {
       ulonglong4 mp_col_check1, mp_col_check2;
-      mp_col_check1 = reinterpret_cast<ulonglong4*>(smem.local_mp_col)[c];
-      mp_col_check2 = reinterpret_cast<ulonglong4*>(smem.local_mp_col)[c + 1];
+      mp_col_check1 = smem.get_mp_col_vec4(c);
+      mp_col_check2 = smem.get_mp_col_vec4(c + 1);
       e.ulong = mp_col_check1.x;
-      MPatomicMax_check(smem.local_mp_col + info.local_col - 4,
+      MPatomicMax_check(smem.get_mp_col_addr(info.local_col - 4),
                         distc.x, idxc.x, e.floats[0]);
       e.ulong = mp_col_check1.y;
-      MPatomicMax_check(smem.local_mp_col + info.local_col - 3,
+      MPatomicMax_check(smem.get_mp_col_addr(info.local_col - 3),
                         distc.y, idxc.y, e.floats[0]);
       e.ulong = mp_col_check1.z;
-      MPatomicMax_check(smem.local_mp_col + info.local_col - 2,
+      MPatomicMax_check(smem.get_mp_col_addr(info.local_col - 2),
                         distc.z, idxc.z, e.floats[0]);
       e.ulong = mp_col_check1.w;
-      MPatomicMax_check(smem.local_mp_col + info.local_col - 1,
+      MPatomicMax_check(smem.get_mp_col_addr(info.local_col - 1),
                         distc.w, idxc.w, e.floats[0]);
       e.ulong = mp_col_check2.x;
-      MPatomicMax_check(smem.local_mp_col + info.local_col,
+      MPatomicMax_check(smem.get_mp_col_addr(info.local_col),
                         distc2.x, idxc2.x, e.floats[0]);
       e.ulong = mp_col_check2.y;
-      MPatomicMax_check(smem.local_mp_col + info.local_col + 1,
+      MPatomicMax_check(smem.get_mp_col_addr(info.local_col + 1),
                         distc2.y, idxc2.y, e.floats[0]);
       e.ulong = mp_col_check2.z;
-      MPatomicMax_check(smem.local_mp_col + info.local_col + 2,
+      MPatomicMax_check(smem.get_mp_col_addr(info.local_col + 2),
                         distc2.z, idxc2.z, e.floats[0]);
     }
   }
@@ -1226,7 +1217,7 @@ class SCAMPTactic {
 // Computes the matrix profile given the sliding dot products for the first
 // query and the precomputed data statisics
 template <typename DATA_TYPE, typename VEC2_DATA_TYPE, typename VEC4_DATA_TYPE,
-          typename ACCUM_TYPE, typename PROFILE_DATA_TYPE,
+          typename ACCUM_TYPE, typename PROFILE_DATA_TYPE, typename VEC2_PROFILE_TYPE, typename VEC4_PROFILE_TYPE,
           typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
           SCAMPProfileType PROFILE_TYPE, int blocks_per_sm, int tile_height,
           int BLOCKSZ>
@@ -1238,7 +1229,7 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
   constexpr int tile_width = tile_height + BLOCKSZ * diags_per_thread;
   SCAMPThreadInfo<ACCUM_TYPE> thread_info;
   extern __shared__ char smem_raw[];
-  SCAMPSmem<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE> smem(smem_raw, COMPUTE_ROWS, COMPUTE_COLS, tile_width, tile_height);
+  SCAMPSmem<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE, VEC2_PROFILE_TYPE, VEC4_PROFILE_TYPE> smem(smem_raw, COMPUTE_ROWS, COMPUTE_COLS, tile_width, tile_height);
   SCAMPTactic<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE,
               ACCUM_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, tile_width,
               tile_height, BLOCKSZ, decltype(smem), PROFILE_TYPE>
@@ -1410,7 +1401,7 @@ int get_smem(bool computing_rows, bool computing_cols, int blocksz,
   return smem;
 }
 
-template <typename PROFILE_DATA_TYPE, SCAMPProfileType PROFILE_TYPE,
+template <typename PROFILE_DATA_TYPE, typename VEC2_PROFILE_TYPE, typename VEC4_PROFILE_TYPE, SCAMPProfileType PROFILE_TYPE,
           int BLOCKSPERSM>
 SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
                           PROFILE_DATA_TYPE *profile_A,
@@ -1426,21 +1417,21 @@ SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
     switch (fp_type) {
       case PRECISION_DOUBLE: {
         cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
-        do_tile<double, double2, double4, double, PROFILE_DATA_TYPE, double,
+        do_tile<double, double2, double4, double, PROFILE_DATA_TYPE, VEC2_PROFILE_TYPE, VEC4_PROFILE_TYPE, double,
                 COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
                 TILE_HEIGHT_DP, BLOCKSZ_DP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
       case PRECISION_MIXED: {
-        do_tile<float, float2, float4, double, PROFILE_DATA_TYPE, float,
+        do_tile<float, float2, float4, double, PROFILE_DATA_TYPE, VEC2_PROFILE_TYPE, VEC4_PROFILE_TYPE, float,
                 COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
                 TILE_HEIGHT_SP, BLOCKSZ_SP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
       case PRECISION_SINGLE: {
-        do_tile<float, float2, float4, float, PROFILE_DATA_TYPE, float,
+        do_tile<float, float2, float4, float, PROFILE_DATA_TYPE, VEC2_PROFILE_TYPE, VEC4_PROFILE_TYPE, float,
                 COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
                 TILE_HEIGHT_SP, BLOCKSZ_SP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
@@ -1456,21 +1447,21 @@ SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
     constexpr bool COMPUTE_ROWS = false;
     switch (fp_type) {
       case PRECISION_DOUBLE: {
-        do_tile<double, double2, double4, double, PROFILE_DATA_TYPE, double,
+        do_tile<double, double2, double4, double, PROFILE_DATA_TYPE, VEC2_PROFILE_TYPE, VEC4_PROFILE_TYPE, double,
                 COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
                 TILE_HEIGHT_DP, BLOCKSZ_DP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
       case PRECISION_MIXED: {
-        do_tile<float, float2, float4, double, PROFILE_DATA_TYPE, float,
+        do_tile<float, float2, float4, double, PROFILE_DATA_TYPE, VEC2_PROFILE_TYPE, VEC4_PROFILE_TYPE, float,
                 COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
                 TILE_HEIGHT_SP, BLOCKSZ_SP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
       case PRECISION_SINGLE: {
-        do_tile<float, float2, float4, float, PROFILE_DATA_TYPE, float,
+        do_tile<float, float2, float4, float, PROFILE_DATA_TYPE, VEC2_PROFILE_TYPE, VEC4_PROFILE_TYPE, float,
                 COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
                 TILE_HEIGHT_SP, BLOCKSZ_SP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
@@ -1484,21 +1475,21 @@ SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
     constexpr bool COMPUTE_ROWS = true;
     switch (fp_type) {
       case PRECISION_DOUBLE: {
-        do_tile<double, double2, double4, double, PROFILE_DATA_TYPE, double,
+        do_tile<double, double2, double4, double, PROFILE_DATA_TYPE, VEC2_PROFILE_TYPE, VEC4_PROFILE_TYPE, double,
                 COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
                 TILE_HEIGHT_DP, BLOCKSZ_DP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
       case PRECISION_MIXED: {
-        do_tile<float, float2, float4, double, PROFILE_DATA_TYPE, float,
+        do_tile<float, float2, float4, double, PROFILE_DATA_TYPE, VEC2_PROFILE_TYPE, VEC4_PROFILE_TYPE, float,
                 COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
                 TILE_HEIGHT_SP, BLOCKSZ_SP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
       case PRECISION_SINGLE: {
-        do_tile<float, float2, float4, float, PROFILE_DATA_TYPE, float,
+        do_tile<float, float2, float4, float, PROFILE_DATA_TYPE, VEC2_PROFILE_TYPE, VEC4_PROFILE_TYPE, float,
                 COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
                 TILE_HEIGHT_SP, BLOCKSZ_SP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
@@ -1534,13 +1525,13 @@ SCAMPError_t kernel_self_join_upper(
   if (exclusion < tile_width) {
     switch (profile_type) {
       case PROFILE_TYPE_SUM_THRESH:
-        return LaunchDoTile<double, PROFILE_TYPE_SUM_THRESH, BLOCKSPERSM_SELF>(
+        return LaunchDoTile<double, double2, double4, PROFILE_TYPE_SUM_THRESH, BLOCKSPERSM_SELF>(
             tile_args,
             reinterpret_cast<double *>(profile_A->at(PROFILE_TYPE_SUM_THRESH)),
             reinterpret_cast<double *>(profile_B->at(PROFILE_TYPE_SUM_THRESH)),
             t, true, true, blocksz, num_blocks, smem, s);
       case PROFILE_TYPE_1NN_INDEX:
-        return LaunchDoTile<uint64_t, PROFILE_TYPE_1NN_INDEX, BLOCKSPERSM_SELF>(
+        return LaunchDoTile<uint64_t, ulonglong2, ulonglong4, PROFILE_TYPE_1NN_INDEX, BLOCKSPERSM_SELF>(
             tile_args,
             reinterpret_cast<uint64_t *>(profile_A->at(PROFILE_TYPE_1NN_INDEX)),
             reinterpret_cast<uint64_t *>(profile_B->at(PROFILE_TYPE_1NN_INDEX)),
@@ -1575,13 +1566,13 @@ SCAMPError_t kernel_self_join_lower(
   if (exclusion < tile_height) {
     switch (profile_type) {
       case PROFILE_TYPE_SUM_THRESH:
-        return LaunchDoTile<double, PROFILE_TYPE_SUM_THRESH, BLOCKSPERSM_SELF>(
+        return LaunchDoTile<double, double2, double4, PROFILE_TYPE_SUM_THRESH, BLOCKSPERSM_SELF>(
             tile_args,
             reinterpret_cast<double *>(profile_B->at(PROFILE_TYPE_SUM_THRESH)),
             reinterpret_cast<double *>(profile_A->at(PROFILE_TYPE_SUM_THRESH)),
             t, true, true, blocksz, num_blocks, smem, s);
       case PROFILE_TYPE_1NN_INDEX:
-        return LaunchDoTile<uint64_t, PROFILE_TYPE_1NN_INDEX, BLOCKSPERSM_SELF>(
+        return LaunchDoTile<uint64_t, ulonglong2, ulonglong4, PROFILE_TYPE_1NN_INDEX, BLOCKSPERSM_SELF>(
             tile_args,
             reinterpret_cast<uint64_t *>(profile_B->at(PROFILE_TYPE_1NN_INDEX)),
             reinterpret_cast<uint64_t *>(profile_A->at(PROFILE_TYPE_1NN_INDEX)),
@@ -1628,13 +1619,13 @@ SCAMPError_t kernel_ab_join_upper(
   if (exclusion < tile_width) {
     switch (profile_type) {
       case PROFILE_TYPE_SUM_THRESH:
-        return LaunchDoTile<double, PROFILE_TYPE_SUM_THRESH, BLOCKSPERSM_AB>(
+        return LaunchDoTile<double, double2, double4, PROFILE_TYPE_SUM_THRESH, BLOCKSPERSM_AB>(
             tile_args,
             reinterpret_cast<double *>(profile_A->at(PROFILE_TYPE_SUM_THRESH)),
             reinterpret_cast<double *>(profile_B->at(PROFILE_TYPE_SUM_THRESH)),
             t, computing_rows, true, blocksz, num_blocks, smem, s);
       case PROFILE_TYPE_1NN_INDEX:
-        return LaunchDoTile<uint64_t, PROFILE_TYPE_1NN_INDEX, BLOCKSPERSM_AB>(
+        return LaunchDoTile<uint64_t, ulonglong2, ulonglong4, PROFILE_TYPE_1NN_INDEX, BLOCKSPERSM_AB>(
             tile_args,
             reinterpret_cast<uint64_t *>(profile_A->at(PROFILE_TYPE_1NN_INDEX)),
             reinterpret_cast<uint64_t *>(profile_B->at(PROFILE_TYPE_1NN_INDEX)),
@@ -1677,13 +1668,13 @@ SCAMPError_t kernel_ab_join_lower(
   if (exclusion < tile_height) {
     switch (profile_type) {
       case PROFILE_TYPE_SUM_THRESH:
-        return LaunchDoTile<double, PROFILE_TYPE_SUM_THRESH, BLOCKSPERSM_AB>(
+        return LaunchDoTile<double, double2, double4, PROFILE_TYPE_SUM_THRESH, BLOCKSPERSM_AB>(
             tile_args,
             reinterpret_cast<double *>(profile_B->at(PROFILE_TYPE_SUM_THRESH)),
             reinterpret_cast<double *>(profile_A->at(PROFILE_TYPE_SUM_THRESH)),
             t, true, computing_rows, blocksz, num_blocks, smem, s);
       case PROFILE_TYPE_1NN_INDEX:
-        return LaunchDoTile<uint64_t, PROFILE_TYPE_1NN_INDEX, BLOCKSPERSM_AB>(
+        return LaunchDoTile<uint64_t, ulonglong2, ulonglong4, PROFILE_TYPE_1NN_INDEX, BLOCKSPERSM_AB>(
             tile_args,
             reinterpret_cast<uint64_t *>(profile_B->at(PROFILE_TYPE_1NN_INDEX)),
             reinterpret_cast<uint64_t *>(profile_A->at(PROFILE_TYPE_1NN_INDEX)),

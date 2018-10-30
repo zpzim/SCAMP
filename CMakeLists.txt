@@ -31,7 +31,6 @@ else()
 endif()
 
 
-add_subdirectory(proto)
 
 
 set(
@@ -86,6 +85,7 @@ endif()
 # ----------------------------------------------------------------------------------------
 #                              ===== Build targets =====
 
+add_subdirectory(proto)
 add_library(common src/common.cpp)
 target_link_libraries(common messages -lcudart_static)
 
