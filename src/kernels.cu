@@ -47,12 +47,13 @@ struct SCAMPKernelInputArgs {
   OptionalArgs opt;
 };
 
-template <typename DATA_TYPE, typename VEC4_DATA_TYPE, typename PROFILE_DATA_TYPE>
+template <typename DATA_TYPE, typename VEC2_DATA_TYPE, typename VEC4_DATA_TYPE, typename PROFILE_DATA_TYPE>
 struct SCAMPSmem {
   __device__ SCAMPSmem(char* smem, bool compute_rows, bool compute_cols, int tile_width, int tile_height) : inorm_row_offset(0), df_row_offset(tile_height), dg_row_offset(tile_height * 2)
   {
-    _input_data_cols = (DATA_TYPE*) smem;
-    _input_data_rows = _input_data_cols  + 3 * tile_width;
+    _input_data_cols_a = (DATA_TYPE*) smem;
+    _input_data_cols_b = _input_data_cols_a + 3 * (tile_width >> 1);
+    _input_data_rows = _input_data_cols_a  + 3 * tile_width;
     if (compute_cols && compute_rows) {
         local_mp_col = (PROFILE_DATA_TYPE*)(_input_data_rows +  3 * tile_height);
         local_mp_row = local_mp_col + tile_width;
@@ -67,26 +68,49 @@ struct SCAMPSmem {
   __device__ inline DATA_TYPE get_inorm_col(int full_position) { 
         int chunk = full_position >> 2;
         int pos = full_position & 3;
-        return _input_data_cols[chunk * stride + inorm_col_offset + pos];
+        int partition = pos >> 1;
+        int part_pos = pos & 1;
+        if (partition == 0) {
+            return _input_data_cols_a[chunk * stride + inorm_col_offset + part_pos];
+        }
+        return _input_data_cols_b[chunk * stride + inorm_col_offset + part_pos];
   }
   __device__ inline VEC4_DATA_TYPE get_inorm_col_vec4(int chunk) {
-        return reinterpret_cast<VEC4_DATA_TYPE*>(_input_data_cols + (chunk * stride + inorm_col_offset))[0];
+        VEC2_DATA_TYPE partial1 = reinterpret_cast<VEC2_DATA_TYPE*>(_input_data_cols_a + (chunk * stride + inorm_col_offset))[0];
+        VEC2_DATA_TYPE partial2 = reinterpret_cast<VEC2_DATA_TYPE*>(_input_data_cols_b + (chunk * stride + inorm_col_offset))[0];
+        return {partial1.x, partial1.y, partial2.x, partial2.y};
+        //return reinterpret_cast<VEC4_DATA_TYPE*>(_input_data_cols + (chunk * stride + inorm_col_offset))[0];
   }
   __device__ inline DATA_TYPE get_df_col(int full_position) {
         int chunk = full_position >> 2;
         int pos = full_position & 3;
-        return _input_data_cols[chunk * stride + df_col_offset + pos];
+        int partition = pos >> 1;
+        int part_pos = pos & 1;
+        if (partition == 0) {
+            return _input_data_cols_a[chunk * stride + df_col_offset + part_pos];
+        }
+        return _input_data_cols_b[chunk * stride + df_col_offset + part_pos];
   }
   __device__ inline VEC4_DATA_TYPE get_df_col_vec4(int chunk) {
-        return reinterpret_cast<VEC4_DATA_TYPE*>(_input_data_cols + (chunk * stride + df_col_offset))[0];
+        VEC2_DATA_TYPE partial1 = reinterpret_cast<VEC2_DATA_TYPE*>(_input_data_cols_a + (chunk * stride + df_col_offset))[0];
+        VEC2_DATA_TYPE partial2 = reinterpret_cast<VEC2_DATA_TYPE*>(_input_data_cols_b + (chunk * stride + df_col_offset))[0];
+        return {partial1.x, partial1.y, partial2.x, partial2.y};
+        //return reinterpret_cast<VEC4_DATA_TYPE*>(_input_data_cols + (chunk * stride + df_col_offset))[0];
   }
   __device__ inline DATA_TYPE get_dg_col(int full_position) {
         int chunk = full_position >> 2;
         int pos = full_position & 3;
-        return _input_data_cols[chunk * stride + dg_col_offset + pos];
+        int partition = pos >> 1;
+        int part_pos = pos & 1;
+        if (partition == 0) {
+            return _input_data_cols_a[chunk * stride + dg_col_offset + part_pos];
+        }
+        return _input_data_cols_b[chunk * stride + dg_col_offset + part_pos];
   }
   __device__ inline VEC4_DATA_TYPE get_dg_col_vec4(int chunk) {
-        return reinterpret_cast<VEC4_DATA_TYPE*>(_input_data_cols + (chunk * stride + dg_col_offset))[0];
+        VEC2_DATA_TYPE partial1 = reinterpret_cast<VEC2_DATA_TYPE*>(_input_data_cols_a + (chunk * stride + dg_col_offset))[0];
+        VEC2_DATA_TYPE partial2 = reinterpret_cast<VEC2_DATA_TYPE*>(_input_data_cols_b + (chunk * stride + dg_col_offset))[0];
+        return {partial1.x, partial1.y, partial2.x, partial2.y};
   }
   __device__ inline DATA_TYPE get_inorm_row(int full_position) {
         //int chunk = full_position >> 2;
@@ -121,18 +145,38 @@ struct SCAMPSmem {
   __device__ inline void set_inorm_col(int full_position, DATA_TYPE value) {
         int chunk = full_position >> 2;
         int pos = full_position & 3;
-        _input_data_cols[chunk * stride + inorm_col_offset + pos] = value;
-
+        int partition = pos >> 1;
+        int part_pos = pos & 1;
+        if (partition == 0) {
+            _input_data_cols_a[chunk * stride + inorm_col_offset + part_pos] = value;
+          
+        } else {
+            _input_data_cols_b[chunk * stride + inorm_col_offset + part_pos] = value;
+        }
   }
   __device__ inline void set_df_col(int full_position, DATA_TYPE value) {
         int chunk = full_position >> 2;
         int pos = full_position & 3;
-        _input_data_cols[chunk * stride + df_col_offset + pos] = value;
-}
+        int partition = pos >> 1;
+        int part_pos = pos & 1;
+        if (partition == 0) {
+            _input_data_cols_a[chunk * stride + df_col_offset + part_pos] = value;
+          
+        } else {
+            _input_data_cols_b[chunk * stride + df_col_offset + part_pos] = value;
+        }
+  }
   __device__ inline void set_dg_col(int full_position, DATA_TYPE value) {
         int chunk = full_position >> 2;
         int pos = full_position & 3;
-        _input_data_cols[chunk * stride + dg_col_offset + pos] = value;
+        int partition = pos >> 1;
+        int part_pos = pos & 1;
+        if (partition == 0) {
+            _input_data_cols_a[chunk * stride + dg_col_offset + part_pos] = value;
+          
+        } else {
+            _input_data_cols_b[chunk * stride + dg_col_offset + part_pos] = value;
+        }
 }
   __device__ inline void set_inorm_row(int full_position, DATA_TYPE value) {
         //int chunk = full_position >> 2;
@@ -152,16 +196,17 @@ struct SCAMPSmem {
         //_input_data_rows[chunk * stride + dg_row_offset + pos] = value;
         _input_data_rows[dg_row_offset + full_position] = value;
 }
-  const int stride = 12;
+  const int stride = 6;
   const int row_stride = 4;
   const int inorm_col_offset = 0;
-  const int df_col_offset =  4;
-  const int dg_col_offset =  8;
+  const int df_col_offset =  2;
+  const int dg_col_offset =  4;
 
   const int inorm_row_offset;
   const int df_row_offset;
   const int dg_row_offset;
-  DATA_TYPE *__restrict__ _input_data_cols;
+  DATA_TYPE *__restrict__ _input_data_cols_a;
+  DATA_TYPE *__restrict__ _input_data_cols_b;
   DATA_TYPE *__restrict__ _input_data_rows;
   PROFILE_DATA_TYPE *__restrict__ local_mp_col;
   PROFILE_DATA_TYPE *__restrict__ local_mp_row;
@@ -266,13 +311,13 @@ class SCAMPStrategy {
 //
 //////////////////////////////////////////////////
 
-template <typename DATA_TYPE, typename VEC4_DATA_TYPE, typename PROFILE_DATA_TYPE, bool COMPUTE_ROWS,
-          bool COMPUTE_COLS, int tile_width, int tile_height, int BLOCKSZ,
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, bool COMPUTE_ROWS,
+          bool COMPUTE_COLS, int tile_width, int tile_height, int BLOCKSZ, typename SMEM_TYPE,
           SCAMPProfileType PROFILE_TYPE>
 class InitMemStrategy : public SCAMPStrategy {
  public:
   __device__ void exec(SCAMPKernelInputArgs<double> &args,
-                       SCAMPSmem<DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE> &smem,
+                       SMEM_TYPE &smem,
                        PROFILE_DATA_TYPE *__restrict__ profile_a,
                        PROFILE_DATA_TYPE *__restrict__ profile_B,
                        uint32_t col_start, uint32_t row_start) {
@@ -283,15 +328,15 @@ class InitMemStrategy : public SCAMPStrategy {
   __device__ InitMemStrategy() {}
 };
 
-template <typename DATA_TYPE, typename VEC4_DATA_TYPE, typename PROFILE_DATA_TYPE, bool COMPUTE_ROWS,
-          bool COMPUTE_COLS, int tile_width, int tile_height, int BLOCKSZ>
-class InitMemStrategy<DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
-                      tile_width, tile_height, BLOCKSZ, PROFILE_TYPE_SUM_THRESH>
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, bool COMPUTE_ROWS,
+          bool COMPUTE_COLS, int tile_width, int tile_height, int BLOCKSZ, typename SMEM_TYPE>
+class InitMemStrategy<DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
+                      tile_width, tile_height, BLOCKSZ, SMEM_TYPE, PROFILE_TYPE_SUM_THRESH>
     : public SCAMPStrategy {
  public:
   __device__ InitMemStrategy() {}
   __device__ void exec(SCAMPKernelInputArgs<double> &args,
-                       SCAMPSmem<DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE> &smem,
+                       SMEM_TYPE &smem,
                        PROFILE_DATA_TYPE *__restrict__ profile_a,
                        PROFILE_DATA_TYPE *__restrict__ profile_B,
                        uint32_t col_start, uint32_t row_start) {
@@ -323,15 +368,15 @@ class InitMemStrategy<DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS
   }
 };
 
-template <typename DATA_TYPE, typename VEC4_DATA_TYPE, typename PROFILE_DATA_TYPE, bool COMPUTE_ROWS,
-          bool COMPUTE_COLS, int tile_width, int tile_height, int BLOCKSZ>
-class InitMemStrategy<DATA_TYPE, VEC4_DATA_TYPE,  PROFILE_DATA_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
-                      tile_width, tile_height, BLOCKSZ, PROFILE_TYPE_1NN_INDEX>
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, bool COMPUTE_ROWS,
+          bool COMPUTE_COLS, int tile_width, int tile_height, int BLOCKSZ, typename SMEM_TYPE>
+class InitMemStrategy<DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
+                      tile_width, tile_height, BLOCKSZ, SMEM_TYPE, PROFILE_TYPE_1NN_INDEX>
     : public SCAMPStrategy {
  public:
   __device__ InitMemStrategy() {}
   __device__ virtual void exec(SCAMPKernelInputArgs<double> &args,
-                               SCAMPSmem<DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE> &smem,
+                               SMEM_TYPE &smem,
                                PROFILE_DATA_TYPE *__restrict__ profile_a,
                                PROFILE_DATA_TYPE *__restrict__ profile_b,
                                uint32_t col_start, uint32_t row_start) {
@@ -363,8 +408,8 @@ class InitMemStrategy<DATA_TYPE, VEC4_DATA_TYPE,  PROFILE_DATA_TYPE, COMPUTE_ROW
   }
 };
 
-template <typename DATA_TYPE, typename VEC4_DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
-          typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
+          typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS, typename SMEM_TYPE,
           SCAMPProfileType PROFILE_TYPE>
 class DoRowOptStrategy : SCAMPStrategy {
  public:
@@ -380,7 +425,7 @@ class DoRowOptStrategy : SCAMPStrategy {
       const DATA_TYPE &dg_colw, const DATA_TYPE &df_row,
       const DATA_TYPE &dg_row, const int &row, const int &col,
       const int &global_row, const int &global_col,
-      PROFILE_DATA_TYPE *__restrict__ mp_row, OptionalArgs &args) {
+      SMEM_TYPE &smem, OptionalArgs &args) {
     assert(false);
   }
 
@@ -397,10 +442,10 @@ class DoRowOptStrategy : SCAMPStrategy {
 //
 //////////////////////////////////////////////////
 
-template <typename DATA_TYPE, typename VEC4_DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
-          typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS>
-class DoRowOptStrategy<DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-                       COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE_SUM_THRESH>
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
+          typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS, typename SMEM_TYPE>
+class DoRowOptStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+                       COMPUTE_ROWS, COMPUTE_COLS, SMEM_TYPE, PROFILE_TYPE_SUM_THRESH>
     : public SCAMPStrategy {
  public:
   __device__ DoRowOptStrategy() {}
@@ -414,7 +459,7 @@ class DoRowOptStrategy<DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE,
       const DATA_TYPE &df_colw, const DATA_TYPE &dg_colx,
       const DATA_TYPE &dg_coly, const DATA_TYPE &dg_colz,
       const DATA_TYPE &dg_colw, const DATA_TYPE &df_row,
-      const DATA_TYPE &dg_row, SCAMPSmem<DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE> &smem,
+      const DATA_TYPE &dg_row, SMEM_TYPE &smem,
 
       OptionalArgs &args) {
     DISTANCE_TYPE distx = info.cov1 * inormcx * inormr;
@@ -479,10 +524,10 @@ class DoRowOptStrategy<DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE,
   }
 };
 
-template <typename DATA_TYPE, typename VEC4_DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
-          typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS>
-class DoRowOptStrategy<DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-                       COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE_1NN_INDEX> {
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
+          typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS, typename SMEM_TYPE>
+class DoRowOptStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+                       COMPUTE_ROWS, COMPUTE_COLS, SMEM_TYPE, PROFILE_TYPE_1NN_INDEX> {
  public:
   __device__ DoRowOptStrategy() {}
   __device__ inline __attribute__((always_inline)) void exec(
@@ -497,7 +542,7 @@ class DoRowOptStrategy<DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE,
       const DATA_TYPE &dg_coly, const DATA_TYPE &dg_colz,
       const DATA_TYPE &dg_colw, const DATA_TYPE &df_row,
       const DATA_TYPE &dg_row, float &curr_mp_row_val,
-      SCAMPSmem<DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE> &smem, OptionalArgs &args) {
+      SMEM_TYPE &smem, OptionalArgs &args) {
     DISTANCE_TYPE distx = static_cast<DATA_TYPE>(info.cov1) * inormcx * inormr;
     DISTANCE_TYPE disty = static_cast<DATA_TYPE>(info.cov2) * inormcy * inormr;
     DISTANCE_TYPE distz = static_cast<DATA_TYPE>(info.cov3) * inormcz * inormr;
@@ -547,8 +592,8 @@ class DoRowOptStrategy<DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE,
 //
 //////////////////////////////////////////////////
 
-template <typename DATA_TYPE, typename VEC4_DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
-          typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
+          typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS, typename SMEM_TYPE,
           SCAMPProfileType PROFILE_TYPE>
 class DoRowEdgeStrategy : SCAMPStrategy {
  public:
@@ -556,7 +601,7 @@ class DoRowEdgeStrategy : SCAMPStrategy {
                               ACCUM_TYPE &cov1, ACCUM_TYPE &cov2,
                               ACCUM_TYPE &cov3, ACCUM_TYPE &cov4, size_t diag,
                               size_t num_diags,
-                              SCAMPSmem<DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE> &smem,
+                              SMEM_TYPE &mem,
                               OptionalArgs &args) {
     assert(false);
   }
@@ -565,13 +610,13 @@ class DoRowEdgeStrategy : SCAMPStrategy {
   __device__ DoRowEdgeStrategy() {}
 };
 
-template <typename DATA_TYPE, typename VEC4_DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
-          typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS>
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
+          typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS, typename SMEM_TYPE>
 // SCAMPProfileType PROFILE_TYPE, std::enable_if<PROFILE_TYPE ==
 // PROFILE_TYPE_SUM_THRESH || PROFILE_TYPE ==
 // PROFILE_TYPE_FREQUENCY_THRESH>::type>
-class DoRowEdgeStrategy<DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-                        COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE_SUM_THRESH>
+class DoRowEdgeStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+                        COMPUTE_ROWS, COMPUTE_COLS, SMEM_TYPE, PROFILE_TYPE_SUM_THRESH>
     : SCAMPStrategy {
  public:
   __device__ DoRowEdgeStrategy() {}
@@ -579,7 +624,7 @@ class DoRowEdgeStrategy<DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE
                               ACCUM_TYPE &cov1, ACCUM_TYPE &cov2,
                               ACCUM_TYPE &cov3, ACCUM_TYPE &cov4, size_t diag,
                               size_t num_diags,
-                              SCAMPSmem<DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE> &smem,
+                              SMEM_TYPE &smem,
                               OptionalArgs &args) {
     DISTANCE_TYPE distr = 0;
     DISTANCE_TYPE distx, disty, distz, distw;
@@ -643,12 +688,12 @@ class DoRowEdgeStrategy<DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE
   }
 };
 
-template <typename DATA_TYPE, typename VEC4_DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
-          typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS>
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
+          typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS, typename SMEM_TYPE>
 // SCAMPProfileType PROFILE_TYPE, std::enable_if<PROFILE_TYPE ==
 // PROFILE_TYPE_1NN_SUM, int>::value >
-class DoRowEdgeStrategy<DATA_TYPE, VEC4_DATA_TYPE,  PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-                        COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE_1NN_INDEX>
+class DoRowEdgeStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+                        COMPUTE_ROWS, COMPUTE_COLS, SMEM_TYPE, PROFILE_TYPE_1NN_INDEX>
     : SCAMPStrategy {
  public:
   __device__ DoRowEdgeStrategy() {}
@@ -656,7 +701,7 @@ class DoRowEdgeStrategy<DATA_TYPE, VEC4_DATA_TYPE,  PROFILE_DATA_TYPE, ACCUM_TYP
                               ACCUM_TYPE &cov1, ACCUM_TYPE &cov2,
                               ACCUM_TYPE &cov3, ACCUM_TYPE &cov4, size_t diag,
                               size_t num_diags,
-                              SCAMPSmem<DATA_TYPE, VEC4_DATA_TYPE,  PROFILE_DATA_TYPE> &smem,
+                              SMEM_TYPE &smem,
                               OptionalArgs &args) {
     float dist_row;
     uint32_t idx_row;
@@ -800,14 +845,13 @@ class UpdateColumnsStrategy<DISTANCE_TYPE, PROFILE_DATA_TYPE,
 
 // Dummy (forces compilation failure when the wrong types are used)
 template <typename PROFILE_DATA_TYPE, bool COMPUTE_COLS, bool COMPUTE_ROWS,
-          int TILE_WIDTH, int TILE_HEIGHT, int BLOCKSZ,
+          int TILE_WIDTH, int TILE_HEIGHT, int BLOCKSZ, typename SMEM_TYPE,
           SCAMPProfileType PROFILE_TYPE>
 class WriteBackStrategy : public SCAMPStrategy {
  public:
   __device__ void exec(uint32_t tile_start_x, uint32_t tile_start_y,
                        uint32_t n_x, uint32_t n_y,
-                       PROFILE_DATA_TYPE *__restrict__ local_mp_col,
-                       PROFILE_DATA_TYPE *__restrict__ local_mp_row,
+                       SMEM_TYPE &smem,
                        PROFILE_DATA_TYPE *__restrict__ profile_A,
                        PROFILE_DATA_TYPE *__restrict__ profile_B) {
     assert(false);
@@ -818,16 +862,15 @@ class WriteBackStrategy : public SCAMPStrategy {
 };
 
 template <typename PROFILE_DATA_TYPE, bool COMPUTE_COLS, bool COMPUTE_ROWS,
-          int TILE_WIDTH, int TILE_HEIGHT, int BLOCKSZ>
+          int TILE_WIDTH, int TILE_HEIGHT, int BLOCKSZ, typename SMEM_TYPE>
 class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
-                        TILE_WIDTH, TILE_HEIGHT, BLOCKSZ,
+                        TILE_WIDTH, TILE_HEIGHT, BLOCKSZ, SMEM_TYPE,
                         PROFILE_TYPE_SUM_THRESH> : public SCAMPStrategy {
  public:
   __device__ WriteBackStrategy() {}
   __device__ void exec(uint32_t tile_start_x, uint32_t tile_start_y,
                        uint32_t n_x, uint32_t n_y,
-                       PROFILE_DATA_TYPE *__restrict__ local_mp_col,
-                       PROFILE_DATA_TYPE *__restrict__ local_mp_row,
+                       SMEM_TYPE &smem,
                        PROFILE_DATA_TYPE *__restrict__ profile_A,
                        PROFILE_DATA_TYPE *__restrict__ profile_B) {
     int global_position, local_position;
@@ -835,7 +878,7 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
       global_position = tile_start_x + threadIdx.x;
       local_position = threadIdx.x;
       while (local_position < TILE_WIDTH && global_position < n_x) {
-        atomicAdd(profile_A + global_position, local_mp_col[local_position]);
+        atomicAdd(profile_A + global_position, smem.local_mp_col[local_position]);
         global_position += BLOCKSZ;
         local_position += BLOCKSZ;
       }
@@ -844,7 +887,7 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
       global_position = tile_start_y + threadIdx.x;
       local_position = threadIdx.x;
       while (local_position < TILE_HEIGHT && global_position < n_y) {
-        atomicAdd(profile_B + global_position, local_mp_row[local_position]);
+        atomicAdd(profile_B + global_position, smem.local_mp_row[local_position]);
         global_position += BLOCKSZ;
         local_position += BLOCKSZ;
       }
@@ -853,16 +896,15 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
 };
 
 template <typename PROFILE_DATA_TYPE, bool COMPUTE_COLS, bool COMPUTE_ROWS,
-          int TILE_WIDTH, int TILE_HEIGHT, int BLOCKSZ>
+          int TILE_WIDTH, int TILE_HEIGHT, int BLOCKSZ, typename SMEM_TYPE>
 class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
-                        TILE_WIDTH, TILE_HEIGHT, BLOCKSZ,
+                        TILE_WIDTH, TILE_HEIGHT, BLOCKSZ, SMEM_TYPE,
                         PROFILE_TYPE_1NN_INDEX> : public SCAMPStrategy {
  public:
   __device__ WriteBackStrategy() {}
   __device__ void exec(uint32_t tile_start_x, uint32_t tile_start_y,
                        uint32_t n_x, uint32_t n_y,
-                       PROFILE_DATA_TYPE *__restrict__ local_mp_col,
-                       PROFILE_DATA_TYPE *__restrict__ local_mp_row,
+                       SMEM_TYPE &smem,
                        PROFILE_DATA_TYPE *__restrict__ profile_A,
                        PROFILE_DATA_TYPE *__restrict__ profile_B) {
     int global_position, local_position;
@@ -871,7 +913,7 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
       local_position = threadIdx.x;
       while (local_position < TILE_WIDTH && global_position < n_x) {
         mp_entry e;
-        e.ulong = local_mp_col[local_position];
+        e.ulong = smem.local_mp_col[local_position];
         MPatomicMax(profile_A + global_position, e.floats[0], e.ints[1]);
         global_position += BLOCKSZ;
         local_position += BLOCKSZ;
@@ -882,7 +924,7 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
       local_position = threadIdx.x;
       while (local_position < TILE_HEIGHT && global_position < n_y) {
         mp_entry e;
-        e.ulong = local_mp_row[local_position];
+        e.ulong = smem.local_mp_row[local_position];
         MPatomicMax(profile_B + global_position, e.floats[0], e.ints[1]);
         global_position += BLOCKSZ;
         local_position += BLOCKSZ;
@@ -911,14 +953,14 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
 // per iteration (x,y), (x+1,y), (x+2,y), and (x+3,y) This function assumes that
 // the edge cases that occur on the edge of the distance matrix are not present.
 // This is the faster path, with less conditional branching.
-template <typename DATA_TYPE, typename VEC2_DATA_TYPE, typename VEC4_DATA_TYPE,
+template <typename DATA_TYPE, typename VEC4_DATA_TYPE,
           typename ACCUM_TYPE, typename PROFILE_DATA_TYPE,
-          typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
+          typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS, typename SMEM_TYPE,
           SCAMPProfileType PROFILE_TYPE>
 class DoIterationStrategy : public SCAMPStrategy {
  public:
   __device__ inline void exec(SCAMPThreadInfo<ACCUM_TYPE> &info,
-                              SCAMPSmem<DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE> &smem,
+                              SMEM_TYPE &smem,
                               OptionalArgs &args) {
     assert(false);
   }
@@ -927,17 +969,17 @@ class DoIterationStrategy : public SCAMPStrategy {
   __device__ DoIterationStrategy() {}
 };
 
-template <typename DATA_TYPE, typename VEC2_DATA_TYPE, typename VEC4_DATA_TYPE,
+template <typename DATA_TYPE, typename VEC4_DATA_TYPE,
           typename ACCUM_TYPE, typename PROFILE_DATA_TYPE,
-          typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS>
-class DoIterationStrategy<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
+          typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS, typename SMEM_TYPE>
+class DoIterationStrategy<DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
                           PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS,
-                          COMPUTE_COLS, PROFILE_TYPE_SUM_THRESH>
+                          COMPUTE_COLS, SMEM_TYPE, PROFILE_TYPE_SUM_THRESH>
     : public SCAMPStrategy {
  public:
   __device__ DoIterationStrategy() {}
   __device__ void exec(SCAMPThreadInfo<ACCUM_TYPE> &info,
-                              SCAMPSmem<DATA_TYPE, VEC4_DATA_TYPE,  PROFILE_DATA_TYPE> &smem,
+                              SMEM_TYPE &smem,
                               OptionalArgs &args) {
     DISTANCE_TYPE distc1 = 0;
     DISTANCE_TYPE distc2 = 0;
@@ -992,25 +1034,25 @@ class DoIterationStrategy<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
   }
 
  private:
-  DoRowOptStrategy<DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-                   COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE_SUM_THRESH>
+  DoRowOptStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+                   COMPUTE_ROWS, COMPUTE_COLS, SMEM_TYPE, PROFILE_TYPE_SUM_THRESH>
       _do_row;
   UpdateColumnsStrategy<DISTANCE_TYPE, PROFILE_DATA_TYPE,
                         PROFILE_TYPE_SUM_THRESH>
       _update_cols;
 };
 
-template <typename DATA_TYPE, typename VEC2_DATA_TYPE, typename VEC4_DATA_TYPE,
+template <typename DATA_TYPE, typename VEC4_DATA_TYPE,
           typename ACCUM_TYPE, typename PROFILE_DATA_TYPE,
-          typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS>
-class DoIterationStrategy<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
+          typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS, typename SMEM_TYPE>
+class DoIterationStrategy<DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
                           PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS,
-                          COMPUTE_COLS, PROFILE_TYPE_1NN_INDEX>
+                          COMPUTE_COLS, SMEM_TYPE, PROFILE_TYPE_1NN_INDEX>
     : public SCAMPStrategy {
  public:
   __device__ DoIterationStrategy() {}
   __device__ void exec(SCAMPThreadInfo<ACCUM_TYPE> &info,
-                              SCAMPSmem<DATA_TYPE, VEC4_DATA_TYPE,  PROFILE_DATA_TYPE> &smem,
+                              SMEM_TYPE &smem,
                               OptionalArgs &args) {
     int lane = threadIdx.x & 0x1f;
     float4 distc = {CC_MIN, CC_MIN, CC_MIN, CC_MIN};
@@ -1108,8 +1150,8 @@ class DoIterationStrategy<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
   }
 
  private:
-  DoRowOptStrategy<DATA_TYPE, VEC4_DATA_TYPE,  PROFILE_DATA_TYPE, ACCUM_TYPE, float,
-                   COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE_1NN_INDEX>
+  DoRowOptStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, float,
+                   COMPUTE_ROWS, COMPUTE_COLS, SMEM_TYPE, PROFILE_TYPE_1NN_INDEX>
       _do_row;
   // UpdateColumnsStrategy<DISTANCE_TYPE, PROFILE_DATA_TYPE,
   // PROFILE_TYPE_1NN_INDEX>
@@ -1132,13 +1174,13 @@ class DoIterationStrategy<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
 template <typename DATA_TYPE, typename VEC2_DATA_TYPE, typename VEC4_DATA_TYPE,
           typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
           typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
-          int TILE_WIDTH, int TILE_HEIGHT, int BLOCKSZ,
+          int TILE_WIDTH, int TILE_HEIGHT, int BLOCKSZ, typename SMEM_TYPE,
           SCAMPProfileType PROFILE_TYPE>
 class SCAMPTactic {
  public:
   __device__ SCAMPTactic() {}
   __device__ void InitMem(SCAMPKernelInputArgs<double> &args,
-                          SCAMPSmem<DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE> &smem,
+                          SMEM_TYPE &smem,
                           PROFILE_DATA_TYPE *__restrict__ profile_a,
                           PROFILE_DATA_TYPE *__restrict__ profile_b,
                           uint32_t col_start, uint32_t row_start) {
@@ -1146,41 +1188,38 @@ class SCAMPTactic {
   }
   __device__ inline __attribute__((always_inline)) void DoIteration(
       SCAMPThreadInfo<ACCUM_TYPE> &info,
-      SCAMPSmem<DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE> &smem, OptionalArgs &args) {
+      SMEM_TYPE &smem, OptionalArgs &args) {
     _do_iteration.exec(info, smem, args);
   }
   __device__ inline void DoEdge(int i, int j, int x, int y, int n,
                                 ACCUM_TYPE &cov1, ACCUM_TYPE &cov2,
                                 ACCUM_TYPE &cov3, ACCUM_TYPE &cov4, size_t diag,
                                 size_t num_diags,
-                                SCAMPSmem<DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE> &smem,
+                                SMEM_TYPE &smem,
                                 OptionalArgs &args) {
     _do_edge.exec(i, j, x, y, n, cov1, cov2, cov3, cov4, diag, num_diags, smem,
                   args);
   }
   __device__ inline void WriteBack(uint32_t tile_start_x, uint32_t tile_start_y,
                                    uint32_t n_x, uint32_t n_y,
-                                   PROFILE_DATA_TYPE *__restrict__ local_mp_col,
-                                   PROFILE_DATA_TYPE *__restrict__ local_mp_row,
+                                   SMEM_TYPE &smem,
                                    PROFILE_DATA_TYPE *__restrict__ profile_A,
                                    PROFILE_DATA_TYPE *__restrict__ profile_B) {
-    _do_writeback.exec(tile_start_x, tile_start_y, n_x, n_y, local_mp_col,
-                       local_mp_row, profile_A, profile_B);
+    _do_writeback.exec(tile_start_x, tile_start_y, n_x, n_y, smem, profile_A, profile_B);
   }
 
  private:
-  InitMemStrategy<DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
-                  TILE_WIDTH, TILE_HEIGHT, BLOCKSZ, PROFILE_TYPE>
+  InitMemStrategy<DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
+                  TILE_WIDTH, TILE_HEIGHT, BLOCKSZ, SMEM_TYPE, PROFILE_TYPE>
       _init_mem;
-  DoIterationStrategy<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
-                      PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS,
-                      COMPUTE_COLS, PROFILE_TYPE>
+  DoIterationStrategy<DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE, PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS,
+                      COMPUTE_COLS, SMEM_TYPE, PROFILE_TYPE>
       _do_iteration;
-  DoRowEdgeStrategy<DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-                    COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE>
+  DoRowEdgeStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+                    COMPUTE_ROWS, COMPUTE_COLS, SMEM_TYPE, PROFILE_TYPE>
       _do_edge;
   WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS, TILE_WIDTH,
-                    TILE_HEIGHT, BLOCKSZ, PROFILE_TYPE>
+                    TILE_HEIGHT, BLOCKSZ, SMEM_TYPE, PROFILE_TYPE>
       _do_writeback;
 };
 
@@ -1197,13 +1236,13 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
             PROFILE_DATA_TYPE *__restrict__ profile_B) {
   constexpr int diags_per_thread = 4;
   constexpr int tile_width = tile_height + BLOCKSZ * diags_per_thread;
-  SCAMPTactic<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE,
-              ACCUM_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, tile_width,
-              tile_height, BLOCKSZ, PROFILE_TYPE>
-      tactic;
   SCAMPThreadInfo<ACCUM_TYPE> thread_info;
   extern __shared__ char smem_raw[];
-  SCAMPSmem<DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE> smem(smem_raw, COMPUTE_ROWS, COMPUTE_COLS, tile_width, tile_height);
+  SCAMPSmem<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE> smem(smem_raw, COMPUTE_ROWS, COMPUTE_COLS, tile_width, tile_height);
+  SCAMPTactic<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, PROFILE_DATA_TYPE,
+              ACCUM_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, tile_width,
+              tile_height, BLOCKSZ, decltype(smem), PROFILE_TYPE>
+      tactic;
 
   const unsigned int start_diag = (threadIdx.x * diags_per_thread) +
                                   blockIdx.x * (blockDim.x * diags_per_thread);
@@ -1293,7 +1332,7 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
     __syncthreads();
 
     tactic.WriteBack(tile_start_col, tile_start_row, args.n_x, args.n_y,
-                     smem.local_mp_col, smem.local_mp_row, profile_A,
+                     smem, profile_A,
                      profile_B);
 
     // Update the tile position
