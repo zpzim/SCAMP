@@ -3,15 +3,15 @@
 
 namespace SCAMP {
 
+#define EXTRA_REGISTERS_PER_THREAD 4
 constexpr int DIAGS_PER_THREAD = 2;
 constexpr int BLOCKSZ_SP = 512;
 constexpr int BLOCKSZ_DP = 256;
-constexpr int BLOCKSPERSM_SELF = 2;
-constexpr int BLOCKSPERSM_AB = 2;
-constexpr int TILE_HEIGHT_SP = 288;
-constexpr int TILE_HEIGHT_DP = 288;
+constexpr int BLOCKSPERSM_SELF = 6;
+constexpr int BLOCKSPERSM_AB = 6;
+constexpr int TILE_HEIGHT_SP = 32 * EXTRA_REGISTERS_PER_THREAD;
+constexpr int TILE_HEIGHT_DP = 32 * EXTRA_REGISTERS_PER_THREAD;
 constexpr float CC_MIN = -FLT_MAX;
-
 template <typename T>
 struct SCAMPKernelInputArgs {
   SCAMPKernelInputArgs(const T *__restrict__ cov_, const T *__restrict__ dfa_,
@@ -46,194 +46,6 @@ struct SCAMPKernelInputArgs {
   int32_t exclusion_upper;
   OptionalArgs opt;
 };
-/*
-template <typename DATA_TYPE, typename VEC2_DATA_TYPE, typename VEC4_DATA_TYPE, typename PROFILE_DATA_TYPE, typename VEC2_PROFILE_TYPE, typename VEC4_PROFILE_TYPE>
-struct SCAMPSmem {
-  __device__ SCAMPSmem(char* smem, bool compute_rows, bool compute_cols, int tile_width, int tile_height) : inorm_row_offset(0), df_row_offset(tile_height), dg_row_offset(tile_height * 2)
-  {
-    int total_vals = 0;
-    //if (sizeof(DATA_TYPE) == 8) {
-        _input_data_cols_a = (DATA_TYPE*) smem;
-        _input_data_cols_b = _input_data_cols_a + 3 * (tile_width >> 1);
-        _input_data_cols = nullptr;
-        _input_data_rows = _input_data_cols_a  + 3 * tile_width;
-    //} else {
-    //    _input_data_cols_a = nullptr;
-    //    _input_data_cols_b = nullptr;
-    //    _input_data_cols = (DATA_TYPE*) smem;
-    //    _input_data_rows = _input_data_cols + 3 * tile_width;
-    //}
-    
-    if (compute_cols && compute_rows) {
-    //    if (sizeof(PROFILE_DATA_TYPE) == 8) {
-            _mp_col_a = (PROFILE_DATA_TYPE*)(_input_data_rows + 3 * tile_height);
-            _mp_col_b = _mp_col_a + (tile_width >> 1);
-            _mp_col = nullptr;
-            _mp_row = _mp_col_a + tile_width;
-    //    } else {
-    //        _mp_col = (PROFILE_DATA_TYPE*)(_input_data_rows + 3 * tile_height);
-    //        _mp_row = _mp_col + tile_width;
-    //    }
-   
-    } else if (compute_cols) {
-    //    if (sizeof(PROFILE_DATA_TYPE) == 8) {
-            _mp_col_a = (PROFILE_DATA_TYPE*)(_input_data_rows + 3 * tile_height);
-            _mp_col_b = _mp_col_a + (tile_width >> 1);
-            _mp_col = nullptr;
-    //    } else {
-    //        _mp_col = (PROFILE_DATA_TYPE*)(_input_data_rows + 3 * tile_height);
-    //    }
-        _mp_row = nullptr;
-    } else if (compute_rows) {
-        _mp_col = nullptr; 
-        _mp_col_a = nullptr; 
-        _mp_col_b = nullptr; 
-        _mp_row = (PROFILE_DATA_TYPE*)(_input_data_rows + 3 * tile_height);
-    } 
-  } 
-  __device__ inline VEC4_DATA_TYPE get_col_vec4(int chunk, int offset) {
-        //if (sizeof(DATA_TYPE) == 8) {
-        int odd = chunk & 1;
-        chunk >>= 1;
-        VEC2_DATA_TYPE partial1, partial2;
-        if (odd) {
-            partial1 = reinterpret_cast<VEC2_DATA_TYPE*>(_input_data_cols_b + (chunk * stride + offset))[0];
-            partial2 = reinterpret_cast<VEC2_DATA_TYPE*>(_input_data_cols_a + ((chunk + 1) * stride + offset))[0];
-        } else {
-            partial1 = reinterpret_cast<VEC2_DATA_TYPE*>(_input_data_cols_a + (chunk * stride + offset))[0];
-            partial2 = reinterpret_cast<VEC2_DATA_TYPE*>(_input_data_cols_b + ((chunk + 1) * stride + offset))[0];
-        }
-        return {partial1.x, partial1.y, partial2.x, partial2.y};  
-        //} 
-        //return reinterpret_cast<VEC4_DATA_TYPE*>(_input_data_cols + (2 * (chunk * stride + offset)))[0];
-  }
-  __device__ inline DATA_TYPE get_col(int full_position, int offset) {
-        int chunk = full_position >> 2;
-        int pos = full_position & 3;
-        if (sizeof(DATA_TYPE) == 8) {
-          int partition = pos >> 1;
-          int part_pos = pos & 1;
-          if (partition == 0) {
-            return _input_data_cols_a[chunk * stride + offset + part_pos];
-          }
-          return _input_data_cols_b[chunk * stride + offset + part_pos];
-        }
-        return _input_data_cols[2* (chunk * stride + offset) + pos];
-  }
-  __device__ inline void set_col(int full_position, DATA_TYPE value, int offset) {
-        int chunk = full_position >> 2;
-        int pos = full_position & 3;
-        if (sizeof(DATA_TYPE) == 8) {
-            int partition = pos >> 1;
-            int part_pos = pos & 1;
-            if (partition == 0) {
-                _input_data_cols_a[chunk * stride + offset + part_pos] = value;
-              
-            } else {
-                _input_data_cols_b[chunk * stride + offset + part_pos] = value;
-            }
-            return;
-        }
-        _input_data_cols[2 * (chunk * stride + offset) + pos] = value;
-  }
-  __device__ inline DATA_TYPE get_row(int full_position, int offset) {
-        return _input_data_rows[offset + full_position];
-  }
-  __device__ inline VEC4_DATA_TYPE get_row_vec4(int chunk, int offset) {
-        return reinterpret_cast<VEC4_DATA_TYPE*>(_input_data_rows + offset)[chunk];
-  }
-  __device__ inline void set_row(int full_position, DATA_TYPE value, int offset) {
-        _input_data_rows[offset + full_position] = value;
-  }
-  __device__ inline void set_mp_col(int full_position, PROFILE_DATA_TYPE value) {
-        int chunk = full_position >> 2;
-        int pos = full_position & 3;
-        //if (sizeof(PROFILE_DATA_TYPE) == 8) {
-            int partition = pos >> 1;
-            int part_pos = pos & 1;
-            if (partition == 0) {
-                _mp_col_a[chunk * 2 +  part_pos] = value;
-              
-            } else {
-                _mp_col_b[chunk * 2 + part_pos] = value;
-            }
-            return;
-        //}
-        //_mp_col[2 * (chunk * 2) + pos] = value; 
-  }
-  __device__ inline PROFILE_DATA_TYPE get_mp_col(int full_position) {
-        int chunk = full_position >> 2;
-        int pos = full_position & 3;
-        //if (sizeof(PROFILE_DATA_TYPE) == 8) {
-          int partition = pos >> 1;
-          int part_pos = pos & 1;
-          if (partition == 0) {
-            return _mp_col_a[chunk * 2 + part_pos];
-          }
-          return _mp_col_b[chunk * 2 + part_pos];
-        //}
-        //return _mp_col[2* (chunk * 2) + pos];
-  }
-  __device__ inline PROFILE_DATA_TYPE* get_mp_col_addr(int full_position) {
-        int chunk = full_position >> 2;
-        int pos = full_position & 3;
-        //if (sizeof(PROFILE_DATA_TYPE) == 8) {
-          int partition = pos >> 1;
-          int part_pos = pos & 1;
-          if (partition == 0) {
-            return _mp_col_a + chunk * 2 + part_pos;
-          }
-          return _mp_col_b + chunk * 2 + part_pos;
-        //}
-        //return _mp_col + 2 * (chunk * 2) + pos;
-  }
-  __device__ inline VEC4_PROFILE_TYPE get_mp_col_vec4(int chunk) {
-        //if (sizeof(PROFILE_DATA_TYPE) == 8) {
-        int odd = chunk & 1;
-        chunk >>= 1;
-        VEC2_PROFILE_TYPE partial1, partial2;
-        if (odd) {
-          partial1 = reinterpret_cast<VEC2_PROFILE_TYPE*>(_mp_col_b + 2 * chunk)[0];
-          partial2 = reinterpret_cast<VEC2_PROFILE_TYPE*>(_mp_col_a + 2 * (chunk+1))[0];
-        } else {
-          partial1 = reinterpret_cast<VEC2_PROFILE_TYPE*>(_mp_col_a + 2 * chunk)[0];
-          partial2 = reinterpret_cast<VEC2_PROFILE_TYPE*>(_mp_col_b + 2 * (chunk+1))[0];
-        } 
-        return {partial1.x, partial1.y, partial2.x, partial2.y};  
-        //} 
-        //return reinterpret_cast<VEC4_PROFILE_TYPE*>(_mp_col + (2 * (chunk * 2)))[0];
-  }
-  __device__ inline PROFILE_DATA_TYPE get_mp_row(int full_position) {
-        return _mp_row[full_position];
-  }
-  __device__ inline VEC4_PROFILE_TYPE get_mp_row_vec4(int chunk) {
-        return reinterpret_cast<VEC4_PROFILE_TYPE*>(_mp_row)[chunk];
-  }
-  __device__ inline void set_mp_row(int full_position, PROFILE_DATA_TYPE value) {
-       _mp_row[full_position] = value;
-  }
-  __device__ inline PROFILE_DATA_TYPE* get_mp_row_addr(int full_position) {
-        return _mp_row + full_position;
-  }
-  const int stride = 6;
-  const int inorm_col_offset = 0;
-  const int df_col_offset =  2;
-  const int dg_col_offset =  4;
-
-  const int inorm_row_offset;
-  const int df_row_offset;
-  const int dg_row_offset;
-  DATA_TYPE *__restrict__ _input_data_cols_a;
-  DATA_TYPE *__restrict__ _input_data_cols_b;
-  DATA_TYPE *__restrict__ _input_data_rows;
-  DATA_TYPE *__restrict__ _input_data_cols;
-  PROFILE_DATA_TYPE *__restrict__ _mp_col_a;
-  PROFILE_DATA_TYPE *__restrict__ _mp_col_b;
-  PROFILE_DATA_TYPE *__restrict__ _mp_col;
-  PROFILE_DATA_TYPE *__restrict__ _mp_row;
-
-};
-*/
 
 
 template <typename DATA_TYPE, typename VEC2_DATA_TYPE, typename VEC4_DATA_TYPE, typename PROFILE_DATA_TYPE, typename VEC2_PROFILE_TYPE, typename VEC4_PROFILE_TYPE>
@@ -242,15 +54,15 @@ struct SCAMPSmem {
   {
     int total_vals = 0;
     if (sizeof(DATA_TYPE) == 8) {
-        _input_data_cols_a = (DATA_TYPE*) smem;
-        _input_data_cols_b = _input_data_cols_a + 3 * (tile_width >> 1);
+        _input_data_cols_a = nullptr;
+        _input_data_cols_b = nullptr;
         _input_data_cols = nullptr;
-        _input_data_rows = _input_data_cols_a  + 3 * tile_width;
+        _input_data_rows = (DATA_TYPE*) smem;
     } else {
         _input_data_cols_a = nullptr;
         _input_data_cols_b = nullptr;
-        _input_data_cols = (DATA_TYPE*) smem;
-        _input_data_rows = _input_data_cols + 3 * tile_width;
+        _input_data_cols = nullptr;
+        _input_data_rows = (DATA_TYPE*) smem;
     }
     
     if (compute_cols && compute_rows) {
@@ -445,6 +257,7 @@ struct SCAMPThreadInfo {
   bool init_opt_args;
   bool final_opt_iter;
   int lane;
+  int warp_id;
   int mask1, mask2;
   float4 distc;
   float distc_extra;
@@ -452,7 +265,9 @@ struct SCAMPThreadInfo {
   uint32_t idxc_extra;
   double4 inormc, dgc, dfc;
   double inormc_extra, dgc_extra, dfc_extra;
-  
+  double inormc_cache[EXTRA_REGISTERS_PER_THREAD];  
+  double dgc_cache[EXTRA_REGISTERS_PER_THREAD];  
+  double dfc_cache[EXTRA_REGISTERS_PER_THREAD];  
 };
 
 // Atomically updates the MP/idxs using a single 64-bit integer. We lose a small
@@ -498,7 +313,7 @@ __device__ inline void MPatomicMax_check(
     loc.ints[1] = idx;
     loctest.ulong = *address;
     while (loctest.floats[0] < val) {
-      loctest.ulong = atomicCAS((unsigned long long int *)address,
+      loctest.ulong = atomicCAS_block((unsigned long long int *)address,
                                 loctest.ulong, loc.ulong);
     }
   }
@@ -583,6 +398,7 @@ class InitMemStrategy<DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
   __device__ InitMemStrategy() {}
   __device__ void exec(SCAMPKernelInputArgs<double> &args,
                        SMEM_TYPE &smem,
+                       SCAMPThreadInfo<double> &info,
                        PROFILE_DATA_TYPE *__restrict__ profile_a,
                        PROFILE_DATA_TYPE *__restrict__ profile_B,
                        uint32_t col_start, uint32_t row_start) {
@@ -623,15 +439,57 @@ class InitMemStrategy<DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
   __device__ InitMemStrategy() {}
   __device__ virtual void exec(SCAMPKernelInputArgs<double> &args,
                                SMEM_TYPE &smem,
+                               SCAMPThreadInfo<double> &info,
                                PROFILE_DATA_TYPE *__restrict__ profile_a,
                                PROFILE_DATA_TYPE *__restrict__ profile_b,
                                uint32_t col_start, uint32_t row_start) {
-    int global_position = col_start + threadIdx.x;
+    int global_position = col_start + threadIdx.x * DIAGS_PER_THREAD;
     int local_position = threadIdx.x;
+    int next_warp_position = col_start + 32*DIAGS_PER_THREAD*(info.warp_id + 1) + info.lane;
+    if (global_position < args.n_x) {
+      info.dgc.x = args.dga[global_position];
+      info.dfc.x = args.dfa[global_position];
+      info.inormc.x = args.normsa[global_position];
+   } 
+   if (global_position + 1 < args.n_x) { 
+      info.dgc.y = args.dga[global_position + 1];
+      info.dfc.y = args.dfa[global_position + 1];
+      info.inormc.y = args.normsa[global_position + 1];
+    }
+    
+
+    if (global_position + 2 < args.n_x) { 
+      info.dgc.z = args.dga[global_position + 2];
+      info.dfc.z = args.dfa[global_position + 2];
+      info.inormc.z = args.normsa[global_position + 2];
+    }
+
+
+    if (global_position + 3 < args.n_x) { 
+      info.dgc.w = args.dga[global_position + 3];
+      info.dfc.w = args.dfa[global_position + 3];
+      info.inormc.w = args.normsa[global_position + 3];
+    }
+
+
+    if (global_position + 4 < args.n_x) { 
+      info.dgc_extra = args.dga[global_position + 4];
+      info.dfc_extra = args.dfa[global_position + 4];
+      info.inormc_extra = args.normsa[global_position + 4];
+    }
+      for (int i = 0; i < EXTRA_REGISTERS_PER_THREAD && next_warp_position < args.n_x; ++i) {
+        info.inormc_cache[i] = args.normsa[next_warp_position];
+        info.dgc_cache[i] = args.dga[next_warp_position];
+        info.dfc_cache[i] = args.dfa[next_warp_position];
+        next_warp_position += 32;
+      }
+//      if (warpId > info.warpId && warpId <= info.warpId + EXTRA_REGISTERS_PER_THREAD)
+//      smem.set_col(local_position, args.dga[global_position], smem.dg_col_offset);
+//      smem.set_col(local_position, args.dfa[global_position], smem.df_col_offset);
+//      smem.set_col(local_position, args.normsa[global_position], smem.inorm_col_offset);
+
+    global_position = col_start + threadIdx.x;
     while (local_position < tile_width && global_position < args.n_x) {
-      smem.set_col(local_position, args.dga[global_position], smem.dg_col_offset);
-      smem.set_col(local_position, args.dfa[global_position], smem.df_col_offset);
-      smem.set_col(local_position, args.normsa[global_position], smem.inorm_col_offset);
       if (COMPUTE_COLS) {
         smem.set_mp_col(local_position, profile_a[global_position]);
       }
@@ -651,7 +509,7 @@ class InitMemStrategy<DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
       local_position += BLOCKSZ;
       global_position += BLOCKSZ;
     }
-  }
+}
 };
 
 template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
@@ -920,7 +778,7 @@ class DoRowEdgeStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
     : SCAMPStrategy {
  public:
   __device__ DoRowEdgeStrategy() {}
-  __device__ inline void exec(int i, int j, int x, int y, int n,
+  __device__ inline void exec(SCAMPThreadInfo<ACCUM_TYPE> &info, int i, int j, int x, int y, int n,
                               ACCUM_TYPE &cov1, ACCUM_TYPE &cov2,
                               ACCUM_TYPE &cov3, ACCUM_TYPE &cov4, size_t diag,
                               size_t num_diags,
@@ -997,7 +855,7 @@ class DoRowEdgeStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
     : SCAMPStrategy {
  public:
   __device__ DoRowEdgeStrategy() {}
-  __device__ inline void exec(int i, int j, int x, int y, int n,
+  __device__ inline void exec(SCAMPThreadInfo<ACCUM_TYPE> &info, int i, int j, int x, int y, int n,
                               ACCUM_TYPE &cov1, ACCUM_TYPE &cov2,
                               ACCUM_TYPE &cov3, ACCUM_TYPE &cov4, size_t diag,
                               size_t num_diags,
@@ -1014,17 +872,114 @@ class DoRowEdgeStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
     DATA_TYPE dgr = smem.get_row(i, smem.dg_row_offset);
     DATA_TYPE dfr = smem.get_row(i, smem.df_row_offset);
 
+    info.inormc.x = info.inormc.y;
+    info.inormc.y = info.inormc.z;
+    info.inormc.z = info.inormc.w;
+    info.inormc.w = info.inormc_extra;
+
+    info.dfc.x = info.dfc.y;
+    info.dfc.y = info.dfc.z;
+    info.dfc.z = info.dfc.w;
+    info.dfc.w = info.dfc_extra;
+    
+    info.dgc.x = info.dgc.y;
+    info.dgc.y = info.dgc.z;
+    info.dgc.z = info.dgc.w;
+    info.dgc.w = info.dgc_extra;
+/*
+    int k = (info.local_row - 1)>> 5;
+    int lane = (info.local_row - 1) & 31;
+    int curr_mask = 0;
+    int other_mask = 0;
+    
+      if (info.lane == 30 || info.lane == 31 || info.lane == lane) {
+        curr_mask = 1 << (31 - info.lane);
+        other_mask = 1 << (31 - lane);  
+      }
+      
+      DATA_TYPE dfcy_val = __shfl_sync(curr_mask | other_mask, info.dfc_cache[k], lane);
+      DATA_TYPE dgcy_val = __shfl_sync(curr_mask | other_mask, info.dgc_cache[k], lane);
+      DATA_TYPE inormcy_val = __shfl_sync(curr_mask | other_mask, info.inormc_cache[k], lane);
+      lane++;
+      if (lane == 32) {
+        lane = 0;
+        k++;
+      }
+      other_mask = 1 << (31 - lane);
+      DATA_TYPE dfcz_val = __shfl_sync(curr_mask | other_mask, info.dfc_cache[k], lane);
+      DATA_TYPE dgcz_val = __shfl_sync(curr_mask | other_mask, info.dgc_cache[k], lane);
+      DATA_TYPE inormcz_val = __shfl_sync(curr_mask | other_mask, info.inormc_cache[k], lane);
+      lane++;
+      if (lane == 32) {
+        lane = 0;
+        k++;
+      }
+      other_mask = 1 << (31 - lane);
+      DATA_TYPE dfcw_val = __shfl_sync(curr_mask | other_mask, info.dfc_cache[k], lane);
+      DATA_TYPE dgcw_val = __shfl_sync(curr_mask | other_mask, info.dgc_cache[k], lane);
+      DATA_TYPE inormcw_val = __shfl_sync(curr_mask | other_mask, info.inormc_cache[k], lane);
+      lane++;
+      if (lane == 32) {
+        lane = 0;
+        k++;
+      }
+      other_mask = 1 << (31 - lane);
+      DATA_TYPE dfcex_val = __shfl_sync(curr_mask | other_mask, info.dfc_cache[k], lane);
+      DATA_TYPE dgcex_val = __shfl_sync(curr_mask | other_mask, info.dgc_cache[k], lane);
+      DATA_TYPE inormcex_val = __shfl_sync(curr_mask | other_mask, info.inormc_cache[k], lane);
+      lane++;
+      if (lane == 32) {
+        lane = 0;
+        k++;
+      }
+
+      if (info.lane == 30) {
+        info.dfc.w = dfcy_val;
+        info.dfc_extra = dfcz_val;
+        info.dgc.w = dgcy_val;
+        info.dgc_extra = dgcz_val;
+        info.inormc.w = inormcy_val;
+        info.inormc_extra = inormcz_val;
+//        info.dfc.w = smem.get_col(info.local_col + 3, smem.df_col_offset);
+//        info.dfc_extra = smem.get_col(info.local_col + 4, smem.df_col_offset);
+//        info.dgc.w = smem.get_col(info.local_col + 3, smem.dg_col_offset);
+//        info.dgc_extra = smem.get_col(info.local_col + 4, smem.dg_col_offset);
+//        info.inormc.w = smem.get_col(info.local_col + 3, smem.inorm_col_offset);
+//        info.inormc_extra = smem.get_col(info.local_col + 4, smem.inorm_col_offset);
+      }
+      __syncwarp(); 
+      if (info.lane == 31) {
+        info.dfc.y = dfcy_val;
+        info.dfc.z = dfcz_val;
+        info.dgc.y = dgcy_val;
+        info.dgc.z = dgcz_val;
+        info.inormc.y = inormcy_val;
+        info.inormc.z = inormcz_val;
+        info.dfc.w = dfcw_val;
+        info.dfc_extra = dfcex_val;
+        info.dgc.w = dgcw_val;
+        info.dgc_extra = dgcex_val;
+        info.inormc.w = inormcw_val;
+        info.inormc_extra = inormcex_val;
+       } 
+*/
+
+
     // Compute the next set of distances (row y)
-    distx = cov1 * smem.get_col(j, smem.inorm_col_offset) * inormr;
-    disty = cov2 * smem.get_col(j + 1, smem.inorm_col_offset) * inormr;
+    //distx = cov1 * smem.get_col(j, smem.inorm_col_offset) * inormr;
+    //disty = cov2 * smem.get_col(j + 1, smem.inorm_col_offset) * inormr;
+    distx = cov1 * info.inormc.x * inormr;
+    disty = cov2 * info.inormc.y * inormr;
 //    distz = cov3 * smem.get_col(j + 2, smem.inorm_col_offset) * inormr;
 //    distw = cov4 * smem.get_col(j + 3, smem.inorm_col_offset) * inormr;
 
     // Update cov and compute the next distance values (row y)
-    cov1 = cov1 + smem.get_col(j, smem.df_col_offset) * dgr + smem.get_col(j, smem.dg_col_offset) * dfr;
-    cov2 = cov2 + smem.get_col(j + 1, smem.df_col_offset) * dgr + smem.get_col(j + 1, smem.dg_col_offset) * dfr;
+    cov1 = cov1 + info.dfc.x * dgr + info.dgc.x * dfr;
+    cov2 = cov2 + info.dfc.y * dgr + info.dgc.y * dfr;
 //    cov3 = cov3 + smem.get_col(j + 2, smem.df_col_offset) * dgr + smem.get_col(j + 2, smem.dg_col_offset) * dfr;
 //    cov4 = cov4 + smem.get_col(j + 3, smem.df_col_offset) * dgr + smem.get_col(j + 3, smem.dg_col_offset) * dfr;
+    
+    
 
     if (COMPUTE_COLS) {
       MPatomicMax(smem.get_mp_col_addr(j), distx, y);
@@ -1371,49 +1326,86 @@ class DoIterationStrategy<DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
                               OptionalArgs &args) {
     
     int r = info.local_row >> 2;
-    int c2 = info.local_col >> 1;
     // Preload the shared memory values we will use into registers
     // We load 4 values per thread into a double4 vector type
+    info.distc = {CC_MIN, CC_MIN, CC_MIN, CC_MIN};
+    info.distc_extra = CC_MIN;
+    info.idxc = {-1u, -1u, -1u, -1u};
+    info.idxc_extra = -1u;
+
     if (info.init_opt_args) {
-      auto dfc1 = smem.get_col_vec2(c2, smem.df_col_offset);
-      auto dfc2 = smem.get_col_vec2(c2 + 1, smem.df_col_offset);
-      auto dgc1 = smem.get_col_vec2(c2, smem.dg_col_offset);
-      auto dgc2 = smem.get_col_vec2(c2 + 1, smem.dg_col_offset);
-      auto inormc1 = smem.get_col_vec2(c2, smem.inorm_col_offset);
-      auto inormc2 = smem.get_col_vec2(c2 + 1, smem.inorm_col_offset);
-      info.dfc = {dfc1.x, dfc1.y, dfc2.x, dfc2.y};
-      info.dgc = {dgc1.x, dgc1.y, dgc2.x, dgc2.y};
-      info.inormc = {inormc1.x, inormc1.y, inormc2.x, inormc2.y};
-      info.distc = {CC_MIN, CC_MIN, CC_MIN, CC_MIN};
-      info.dfc_extra = smem.get_col(info.local_col + 4, smem.df_col_offset);
-      info.dgc_extra = smem.get_col(info.local_col + 4, smem.dg_col_offset);
-      info.inormc_extra = smem.get_col(info.local_col + 4, smem.inorm_col_offset);
-      info.distc_extra = CC_MIN;
-      info.idxc_extra = -1u;
       info.init_opt_args = false;
     } else {
-   
+      //info.UpdateData(); 
       ShuffleData<DATA_TYPE, VEC4_DATA_TYPE>(info.mask1, info.mask2, info.dgc.w, info.dgc_extra, info.dgc);
       ShuffleData<DATA_TYPE, VEC4_DATA_TYPE>(info.mask1, info.mask2, info.dfc.w, info.dfc_extra, info.dfc);
       ShuffleData<DATA_TYPE, VEC4_DATA_TYPE>(info.mask1, info.mask2, info.inormc.w, info.inormc_extra, info.inormc);
-      // TODO(zpzim): There is a method to shuffle the distances along with the rest of that data, taking the max along the way, but I am not sure it is faster.
+      // TODO(zpzim): There is a method to shuffle the distances along with the rest of that data, taking the max along the way, but I am not sure it is faster.     
       //ShuffleData<float, float4>(info.mask1, info.mask2, info.distc.w, info.distc_extra, info.distc);
       //ShuffleData<uint32_t, uint4>(info.mask1, info.mask2, info.idxc.w, info.idxc_extra, info.idxc);
-      info.distc = {CC_MIN, CC_MIN, CC_MIN, CC_MIN};
-      info.distc_extra = CC_MIN;
-      info.idxc = {-1u, -1u, -1u, -1u};
-      info.distc_extra = CC_MIN;
-      if (info.lane >= 30) {
+      int k = (info.local_row - 1)>> 5;
+      int lane = (info.local_row - 1) & 31;
+      int curr_mask = 0;
+      int other_mask = 0;
+    
+      if (info.lane == 30 || info.lane == 31 || info.lane == lane) {
+        curr_mask = 1 << (31 - info.lane);
+        other_mask = 1 << (31 - lane);  
+      }
+      
+      DATA_TYPE dfcy_val = __shfl_sync(curr_mask | other_mask, info.dfc_cache[k], lane);
+      DATA_TYPE dgcy_val = __shfl_sync(curr_mask | other_mask, info.dgc_cache[k], lane);
+      DATA_TYPE inormcy_val = __shfl_sync(curr_mask | other_mask, info.inormc_cache[k], lane);
+      lane++;
+      if (lane == 32) {
+        lane = 0;
+        k++;
+      }
+      other_mask = 1 << (31 - lane);
+      DATA_TYPE dfcz_val = __shfl_sync(curr_mask | other_mask, info.dfc_cache[k], lane);
+      DATA_TYPE dgcz_val = __shfl_sync(curr_mask | other_mask, info.dgc_cache[k], lane);
+      DATA_TYPE inormcz_val = __shfl_sync(curr_mask | other_mask, info.inormc_cache[k], lane);
+      lane++;
+      if (lane == 32) {
+        lane = 0;
+        k++;
+      }
+      other_mask = 1 << (31 - lane);
+      DATA_TYPE dfcw_val = __shfl_sync(curr_mask | other_mask, info.dfc_cache[k], lane);
+      DATA_TYPE dgcw_val = __shfl_sync(curr_mask | other_mask, info.dgc_cache[k], lane);
+      DATA_TYPE inormcw_val = __shfl_sync(curr_mask | other_mask, info.inormc_cache[k], lane);
+      lane++;
+      if (lane == 32) {
+        lane = 0;
+        k++;
+      }
+      other_mask = 1 << (31 - lane);
+      DATA_TYPE dfcex_val = __shfl_sync(curr_mask | other_mask, info.dfc_cache[k], lane);
+      DATA_TYPE dgcex_val = __shfl_sync(curr_mask | other_mask, info.dgc_cache[k], lane);
+      DATA_TYPE inormcex_val = __shfl_sync(curr_mask | other_mask, info.inormc_cache[k], lane);
+      lane++;
+      if (lane == 32) {
+        lane = 0;
+        k++;
+      }
+
+      if (info.lane == 30) {
         info.distc.w = CC_MIN;
         info.distc_extra = CC_MIN;
         info.idxc.w = -1u;
         info.idxc_extra = -1u;
-        info.dfc.w = smem.get_col(info.local_col + 3, smem.df_col_offset);
-        info.dfc_extra = smem.get_col(info.local_col + 4, smem.df_col_offset);
-        info.dgc.w = smem.get_col(info.local_col + 3, smem.dg_col_offset);
-        info.dgc_extra = smem.get_col(info.local_col + 4, smem.dg_col_offset);
-        info.inormc.w = smem.get_col(info.local_col + 3, smem.inorm_col_offset);
-        info.inormc_extra = smem.get_col(info.local_col + 4, smem.inorm_col_offset);
+        info.dfc.w = dfcy_val;
+        info.dfc_extra = dfcz_val;
+        info.dgc.w = dgcy_val;
+        info.dgc_extra = dgcz_val;
+        info.inormc.w = inormcy_val;
+        info.inormc_extra = inormcz_val;
+//        info.dfc.w = smem.get_col(info.local_col + 3, smem.df_col_offset);
+//        info.dfc_extra = smem.get_col(info.local_col + 4, smem.df_col_offset);
+//        info.dgc.w = smem.get_col(info.local_col + 3, smem.dg_col_offset);
+//        info.dgc_extra = smem.get_col(info.local_col + 4, smem.dg_col_offset);
+//        info.inormc.w = smem.get_col(info.local_col + 3, smem.inorm_col_offset);
+//        info.inormc_extra = smem.get_col(info.local_col + 4, smem.inorm_col_offset);
       }
       __syncwarp(); 
       if (info.lane == 31) {
@@ -1421,20 +1413,32 @@ class DoIterationStrategy<DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
         info.distc.z = CC_MIN;
         info.idxc.y = -1u;
         info.idxc.z = -1u;
+        info.dfc.y = dfcy_val;
+        info.dfc.z = dfcz_val;
+        info.dgc.y = dgcy_val;
+        info.dgc.z = dgcz_val;
+        info.inormc.y = inormcy_val;
+        info.inormc.z = inormcz_val;
+        info.dfc.w = dfcw_val;
+        info.dfc_extra = dfcex_val;
+        info.dgc.w = dgcw_val;
+        info.dgc_extra = dgcex_val;
+        info.inormc.w = inormcw_val;
+        info.inormc_extra = inormcex_val;
+        
+/*
         info.dfc.y = smem.get_col(info.local_col + 1, smem.df_col_offset);
         info.dfc.z = smem.get_col(info.local_col + 2, smem.df_col_offset);
         info.dgc.y = smem.get_col(info.local_col + 1, smem.dg_col_offset);
         info.dgc.z = smem.get_col(info.local_col + 2, smem.dg_col_offset);
         info.inormc.y = smem.get_col(info.local_col + 1, smem.inorm_col_offset);
         info.inormc.z = smem.get_col(info.local_col + 2, smem.inorm_col_offset);
+*/
       }
       __syncwarp(); 
       
 
     }
-    //if((threadIdx.x == 32 || threadIdx.x == 31) && blockIdx.x == 0) {
-        //printf("threadIdx = %d, dfcx = %lf, dfcy = %lf, dfcz = %lf, dfcw = %lf, dfc_extra = %lf\n", threadIdx.x, info.dfc.x, info.dfc.y, info.dfc.z, info.dfc.w, info.dfc_extra);
-    //}
 
     
     ulonglong4 mp_row_check;
@@ -1450,53 +1454,36 @@ class DoIterationStrategy<DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
     mp_entry e;
     e.ulong = mp_row_check.x;
     _do_row.exec(info, info.distc.x, info.distc.y, info.idxc.x, info.idxc.y, info.inormc.x, info.inormc.y, inormr.x, info.dfc.x, info.dfc.y, info.dgc.x, info.dgc.y,  dfr.x, dgr.x, e.floats[0], smem, args);
-    
     e.ulong = mp_row_check.y;
     _do_row.exec(info, info.distc.y, info.distc.z, info.idxc.y, info.idxc.z, info.inormc.y, info.inormc.z, inormr.y, info.dfc.y, info.dfc.z, info.dgc.y, info.dgc.z,  dfr.y, dgr.y, e.floats[0], smem, args);
-    
     e.ulong = mp_row_check.z;
     _do_row.exec(info, info.distc.z, info.distc.w, info.idxc.z, info.idxc.w, info.inormc.z,  info.inormc.w,  inormr.z,  info.dfc.z,  info.dfc.w,  info.dgc.z,  info.dgc.w,  dfr.z, dgr.z, e.floats[0], smem, args);
-    
     e.ulong = mp_row_check.w;
     _do_row.exec(info, info.distc.w, info.distc_extra, info.idxc.w, info.idxc_extra, info.inormc.w, info.inormc_extra, inormr.w, info.dfc.w, info.dfc_extra, info.dgc.w, info.dgc_extra,  dfr.w, dgr.w, e.floats[0], smem, args);
+/*
+    if (threadIdx.x == 2 && blockIdx.x == 0) {
+        printf("row = %d, thread = %d, block = %d\n", info.global_row, threadIdx.x, blockIdx.x);
+        printf("row = %d, threadIdx = %d, dx = %lf, dy = %lf, dz = %lf, dw = %lf, dex = %lf\n", info.global_row, threadIdx.x, info.distc.x, info.distc.y, info.distc.z, info.distc.w, info.distc_extra);
+        printf("threadIdx = %d, dgx = %lf, dgy = %lf, dgz = %lf, dgw = %lf, dgex = %lf\n", threadIdx.x, info.dgc.x, info.dgc.y, info.dgc.z, info.dgc.w, info.dgc_extra);
+        printf("threadIdx = %d, inormx = %lf, inormy = %lf, inormz = %lf, inormw = %lf, inormex = %lf\n", threadIdx.x, info.inormc.x, info.inormc.y, info.inormc.z, info.inormc.w, info.inormc_extra);
+        printf("threadIdx = %d, inormr.x = %lf, inormr.y = %lf, inormr.z = %lf, inormr.w = %lf\n", threadIdx.x, inormr.x, inormr.y, inormr.z, inormr.w);
+        printf("threadIdx = %d, dgr.x = %lf, dgr.y = %lf, dgr.z = %lf, dgr.w = %lf\n", threadIdx.x, dgr.x, dgr.y, dgr.z, dgr.w);
+        printf("threadIdx = %d, dfr.x = %lf, dfr.y = %lf, dfr.z = %lf, dfr.w = %lf\n", threadIdx.x, dfr.x, dfr.y, dfr.z, dfr.w);
+        printf("threadIdx = %d, cov1 = %lf, cov2 = %lf\n", threadIdx.x, info.cov1, info.cov2);
+    }
+*/
+
     if (COMPUTE_COLS) {
-      //ulonglong4 check;
-      /*
-      if(even) {
-        check = smem.get_mp_col_vec4(c);
-      }
-      ulonglong4 temp;
-      temp.x = __shfl_up_sync(0xffffffff, check.z, 1);
-      temp.y = __shfl_up_sync(0xffffffff, check.w, 1);
-      temp.z = __shfl_down_sync(0xffffffff, check.x, 1);
-      temp.w = __shfl_down_sync(0xffffffff, check.y, 1);
-      if ((threadIdx.x & 31) == 31) {
-       auto temp2 = smem.get_mp_col_vec2(c2 + 1);
-       temp.z = temp2.x;
-       temp.w = temp2.y;
-      }
-      if (!even) {
-        check = temp;
-      }
-      */
-      //if (info.lane == 0 || info.final_opt_iter ) {
-          //printf("lane = %d\n", info.lane);
-          //ulonglong2 temp1 = smem.get_mp_col_vec2(c2);
-          //ulonglong2 temp2 = smem.get_mp_col_vec2(c2+1);
-          //check = {temp1.x, temp1.y, temp2.x, temp2.y};
-          //e.ulong = check.x;
-          MPatomicMax_block(smem.get_mp_col_addr(info.local_col - 4),
+      MPatomicMax_block(smem.get_mp_col_addr(info.local_col - 4),
                            info.distc.x, info.idxc.x);// e.floats[0]);
-          //e.ulong = check.y;
-          MPatomicMax_block(smem.get_mp_col_addr(info.local_col - 3),
+      MPatomicMax_block(smem.get_mp_col_addr(info.local_col - 3),
                             info.distc.y, info.idxc.y);// e.floats[0]);
-          //e.ulong = check.z;
-          MPatomicMax_block(smem.get_mp_col_addr(info.local_col - 2),
+      MPatomicMax_block(smem.get_mp_col_addr(info.local_col - 2),
                             info.distc.z, info.idxc.z);// e.floats[0]);
-          //e.ulong = check.w;
-          MPatomicMax_block(smem.get_mp_col_addr(info.local_col - 1),
+      
+      MPatomicMax_block(smem.get_mp_col_addr(info.local_col - 1),
                             info.distc.w, info.idxc.w);//e.floats[0]);
-          MPatomicMax_block(smem.get_mp_col_addr(info.local_col), info.distc_extra, info.idxc_extra);
+      MPatomicMax_block(smem.get_mp_col_addr(info.local_col), info.distc_extra, info.idxc_extra);
     }
   }
 
@@ -1532,23 +1519,24 @@ class SCAMPTactic {
   __device__ SCAMPTactic() {}
   __device__ void InitMem(SCAMPKernelInputArgs<double> &args,
                           SMEM_TYPE &smem,
+                          SCAMPThreadInfo<double> &info,
                           PROFILE_DATA_TYPE *__restrict__ profile_a,
                           PROFILE_DATA_TYPE *__restrict__ profile_b,
                           uint32_t col_start, uint32_t row_start) {
-    _init_mem.exec(args, smem, profile_a, profile_b, col_start, row_start);
+    _init_mem.exec(args, smem, info, profile_a, profile_b, col_start, row_start);
   }
   __device__ inline __attribute__((always_inline)) void DoIteration(
       SCAMPThreadInfo<ACCUM_TYPE> &info,
       SMEM_TYPE &smem, OptionalArgs &args) {
     _do_iteration.exec(info, smem, args);
   }
-  __device__ inline void DoEdge(int i, int j, int x, int y, int n,
+  __device__ inline void DoEdge(SCAMPThreadInfo<ACCUM_TYPE>& info, int i, int j, int x, int y, int n,
                                 ACCUM_TYPE &cov1, ACCUM_TYPE &cov2,
                                 ACCUM_TYPE &cov3, ACCUM_TYPE &cov4, size_t diag,
                                 size_t num_diags,
                                 SMEM_TYPE &smem,
                                 OptionalArgs &args) {
-    _do_edge.exec(i, j, x, y, n, cov1, cov2, cov3, cov4, diag, num_diags, smem,
+    _do_edge.exec(info, i, j, x, y, n, cov1, cov2, cov3, cov4, diag, num_diags, smem,
                   args);
   }
   __device__ inline void WriteBack(uint32_t tile_start_x, uint32_t tile_start_y,
@@ -1596,6 +1584,7 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
               tile_height, BLOCKSZ, decltype(smem), PROFILE_TYPE>
       tactic;
   thread_info.lane = threadIdx.x & 31;
+  thread_info.warp_id = threadIdx.x >> 5;
   thread_info.mask1 = 1 << (31 - thread_info.lane);
   thread_info.mask2 = 1 << (31 - thread_info.lane);
   if (thread_info.lane < 31) {
@@ -1653,7 +1642,7 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
   // matrix
   while (tile_start_col < args.n_x && tile_start_row < args.n_y) {
     // Initialize the next tile's shared memory
-    tactic.InitMem(args, smem, profile_A, profile_B, tile_start_col,
+    tactic.InitMem(args, smem, thread_info, profile_A, profile_B, tile_start_col,
                    tile_start_row);
     thread_info.local_col = threadIdx.x * diags_per_thread;
     thread_info.local_row = 0;
@@ -1662,14 +1651,14 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
     //int itcount = 0;
     // There are 2 pathways here, most of the time we take the fast path (top),
     // the last block (edge_tile) will take the slower path (bottom)
+    thread_info.init_opt_args = true;
     if (tile_start_col + tile_width < args.n_x &&
         tile_start_row + tile_height < args.n_y &&
         start_diag + diags_per_thread - 1 < num_diags) {
-      thread_info.init_opt_args = true;
       while (thread_info.local_row < tile_height) {
-        if (thread_info.local_row + 4 >= tile_height) {
-            thread_info.final_opt_iter = true;
-        }
+        //if (thread_info.local_row + 4 >= tile_height) {
+        //    thread_info.final_opt_iter = true;
+        //}
         tactic.DoIteration(thread_info, smem, args.opt);
       }
 
@@ -1677,10 +1666,10 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
       while (thread_info.global_col < args.n_x &&
              thread_info.global_row < args.n_y &&
              thread_info.local_row < tile_height) {
-        tactic.DoEdge(thread_info.local_row, thread_info.local_col,
-                      thread_info.global_col, thread_info.global_row, args.n_x,
-                      thread_info.cov1, thread_info.cov2, thread_info.cov3,
-                      thread_info.cov4, start_diag, num_diags, smem, args.opt);
+     //   tactic.DoEdge(thread_info, thread_info.local_row, thread_info.local_col,
+     //                 thread_info.global_col, thread_info.global_row, args.n_x,
+     //                 thread_info.cov1, thread_info.cov2, thread_info.cov3,
+     //                 thread_info.cov4, start_diag, num_diags, smem, args.opt);
  
         ++thread_info.global_col;
         ++thread_info.global_row;
@@ -1760,8 +1749,9 @@ int get_smem(bool computing_rows, bool computing_cols, int blocksz,
   int intermediate_data_size = FPTypeSize(intermediate_data_type);
   int tile_height = GetTileHeight(intermediate_data_type);
   int tile_width = blocksz * diags_per_thread + tile_height;
-  int smem = (tile_width + tile_height) * num_shared_variables *
+  int smem = (tile_height) * num_shared_variables *
              intermediate_data_size;
+  smem += tile_width * intermediate_data_size;
   std::cout << "shared_elems = " <<  (tile_width + tile_height) * num_shared_variables << std::endl;
   if (computing_cols) {
     smem += tile_width * profile_data_size;
