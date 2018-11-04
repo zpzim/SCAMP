@@ -3,12 +3,26 @@
 
 namespace SCAMP {
 
-#define EXTRA_REGISTERS_PER_THREAD 4
+__device__ inline double& get_var(double4& val, int k) { 
+    switch(k) {
+    case 0:
+     return val.x;
+    case 1:
+     return val.y;
+    case 2:
+     return val.z;
+    case 3:
+     return val.w;
+    }
+
+}
+
+#define EXTRA_REGISTERS_PER_THREAD 1
 constexpr int DIAGS_PER_THREAD = 2;
 constexpr int BLOCKSZ_SP = 512;
 constexpr int BLOCKSZ_DP = 256;
-constexpr int BLOCKSPERSM_SELF = 6;
-constexpr int BLOCKSPERSM_AB = 6;
+constexpr int BLOCKSPERSM_SELF = 2;
+constexpr int BLOCKSPERSM_AB = 2;
 constexpr int TILE_HEIGHT_SP = 32 * EXTRA_REGISTERS_PER_THREAD;
 constexpr int TILE_HEIGHT_DP = 32 * EXTRA_REGISTERS_PER_THREAD;
 constexpr float CC_MIN = -FLT_MAX;
@@ -246,6 +260,7 @@ struct SCAMPSmem {
 
 template <typename ACCUM_TYPE>
 struct SCAMPThreadInfo {
+  //__device__ SCAMPThreadInfo(double4& dfc, double4& dgc, double4& inormc) : dfc_cache(dfc), dgc_cache(dgc), inormc_cache(inormc) {}
   ACCUM_TYPE cov1;
   ACCUM_TYPE cov2;
   ACCUM_TYPE cov3;
@@ -256,18 +271,17 @@ struct SCAMPThreadInfo {
   uint32_t global_col;
   bool init_opt_args;
   bool final_opt_iter;
-  int lane;
   int warp_id;
   int mask1, mask2;
-  float4 distc;
-  float distc_extra;
-  uint4 idxc;
-  uint32_t idxc_extra;
+  //float4 distc;
+  //float distc_extra;
+  //uint4 idxc;
+  //uint32_t idxc_extra;
   double4 inormc, dgc, dfc;
   double inormc_extra, dgc_extra, dfc_extra;
-  double inormc_cache[EXTRA_REGISTERS_PER_THREAD];  
-  double dgc_cache[EXTRA_REGISTERS_PER_THREAD];  
-  double dfc_cache[EXTRA_REGISTERS_PER_THREAD];  
+  double inormc_cache;//[EXTRA_REGISTERS_PER_THREAD];  
+  double dgc_cache;//[EXTRA_REGISTERS_PER_THREAD];  
+  double dfc_cache;//[EXTRA_REGISTERS_PER_THREAD];  
 };
 
 // Atomically updates the MP/idxs using a single 64-bit integer. We lose a small
@@ -445,7 +459,9 @@ class InitMemStrategy<DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
                                uint32_t col_start, uint32_t row_start) {
     int global_position = col_start + threadIdx.x * DIAGS_PER_THREAD;
     int local_position = threadIdx.x;
-    int next_warp_position = col_start + 32*DIAGS_PER_THREAD*(info.warp_id + 1) + info.lane;
+    int warp_id = threadIdx.x >> 5;
+    int lane = threadIdx.x & 31;
+    int next_warp_position = col_start + 32*DIAGS_PER_THREAD*(warp_id + 1) + lane;
     if (global_position < args.n_x) {
       info.dgc.x = args.dga[global_position];
       info.dfc.x = args.dfa[global_position];
@@ -477,12 +493,18 @@ class InitMemStrategy<DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
       info.dfc_extra = args.dfa[global_position + 4];
       info.inormc_extra = args.normsa[global_position + 4];
     }
-      for (int i = 0; i < EXTRA_REGISTERS_PER_THREAD && next_warp_position < args.n_x; ++i) {
-        info.inormc_cache[i] = args.normsa[next_warp_position];
-        info.dgc_cache[i] = args.dga[next_warp_position];
-        info.dfc_cache[i] = args.dfa[next_warp_position];
+/*      for (int i = 0; i < EXTRA_REGISTERS_PER_THREAD && next_warp_position < args.n_x; ++i) {
+        get_var(info.inormc_cache, i) = args.normsa[next_warp_position];
+        get_var(info.dgc_cache, i) = args.dga[next_warp_position];
+        get_var(info.dfc_cache, i) = args.dfa[next_warp_position];
         next_warp_position += 32;
       }
+*/
+    if (next_warp_position < args.n_x) {
+        info.inormc_cache = args.normsa[next_warp_position];
+        info.dgc_cache = args.dga[next_warp_position];
+        info.dfc_cache = args.dfa[next_warp_position];
+    }
 //      if (warpId > info.warpId && warpId <= info.warpId + EXTRA_REGISTERS_PER_THREAD)
 //      smem.set_col(local_position, args.dga[global_position], smem.dg_col_offset);
 //      smem.set_col(local_position, args.dfa[global_position], smem.df_col_offset);
@@ -694,11 +716,11 @@ class DoRowOptStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
   __device__ inline __attribute__((always_inline)) void exec(
       SCAMPThreadInfo<ACCUM_TYPE> &info, DISTANCE_TYPE &distc1,
       DISTANCE_TYPE &distc2,  uint32_t &idxc1, uint32_t &idxc2,
-      const DATA_TYPE &inormcx, const DATA_TYPE &inormcy,
-      const DATA_TYPE &inormr, const DATA_TYPE &df_colx,
-      const DATA_TYPE &df_coly, const DATA_TYPE &dg_colx,
-      const DATA_TYPE &dg_coly, const DATA_TYPE &df_row,
-      const DATA_TYPE &dg_row, float &curr_mp_row_val,
+      const DATA_TYPE inormcx, const DATA_TYPE inormcy,
+      const DATA_TYPE inormr, const DATA_TYPE df_colx,
+      const DATA_TYPE df_coly, const DATA_TYPE dg_colx,
+      const DATA_TYPE dg_coly, const DATA_TYPE df_row,
+      const DATA_TYPE dg_row, const float curr_mp_row_val,
       SMEM_TYPE &smem, OptionalArgs &args) {
     DISTANCE_TYPE distx = static_cast<DATA_TYPE>(info.cov1) * inormcx * inormr;
     DISTANCE_TYPE disty = static_cast<DATA_TYPE>(info.cov2) * inormcy * inormr;
@@ -1312,6 +1334,8 @@ __device__ inline void ShuffleData(int mask1, int mask2, T& send, T& send_recv, 
       send_recv = temp4;
 }
 
+
+
 template <typename DATA_TYPE, typename VEC4_DATA_TYPE,
           typename ACCUM_TYPE, typename PROFILE_DATA_TYPE,
           typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS, typename SMEM_TYPE>
@@ -1326,93 +1350,88 @@ class DoIterationStrategy<DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
                               OptionalArgs &args) {
     
     int r = info.local_row >> 2;
+    int c = info.local_col >> 1;
     // Preload the shared memory values we will use into registers
     // We load 4 values per thread into a double4 vector type
-    info.distc = {CC_MIN, CC_MIN, CC_MIN, CC_MIN};
-    info.distc_extra = CC_MIN;
-    info.idxc = {-1u, -1u, -1u, -1u};
-    info.idxc_extra = -1u;
-
+    float4 distc = {CC_MIN, CC_MIN, CC_MIN, CC_MIN};
+    float distc_extra = CC_MIN;
+    uint4 idxc = {-1u, -1u, -1u, -1u};
+    uint32_t idxc_extra = -1u;
+    char tlane = threadIdx.x & 31;
+    char warp_id = threadIdx.x >> 5;
     if (info.init_opt_args) {
       info.init_opt_args = false;
     } else {
+      int mask1 = 1 << (31 - tlane);
+      int mask2 = 1 << (31 - tlane);
+      if (tlane < 31) {
+        mask1 |= (mask1 >> 1); 
+      }
+      if (tlane < 30) {
+        mask2 |= (mask2 >> 2); 
+      }
+
       //info.UpdateData(); 
-      ShuffleData<DATA_TYPE, VEC4_DATA_TYPE>(info.mask1, info.mask2, info.dgc.w, info.dgc_extra, info.dgc);
-      ShuffleData<DATA_TYPE, VEC4_DATA_TYPE>(info.mask1, info.mask2, info.dfc.w, info.dfc_extra, info.dfc);
-      ShuffleData<DATA_TYPE, VEC4_DATA_TYPE>(info.mask1, info.mask2, info.inormc.w, info.inormc_extra, info.inormc);
+      ShuffleData<DATA_TYPE, VEC4_DATA_TYPE>(mask1, mask2, info.dgc.w, info.dgc_extra, info.dgc);
+      ShuffleData<DATA_TYPE, VEC4_DATA_TYPE>(mask1, mask2, info.dfc.w, info.dfc_extra, info.dfc);
+      ShuffleData<DATA_TYPE, VEC4_DATA_TYPE>(mask1, mask2, info.inormc.w, info.inormc_extra, info.inormc);
       // TODO(zpzim): There is a method to shuffle the distances along with the rest of that data, taking the max along the way, but I am not sure it is faster.     
       //ShuffleData<float, float4>(info.mask1, info.mask2, info.distc.w, info.distc_extra, info.distc);
       //ShuffleData<uint32_t, uint4>(info.mask1, info.mask2, info.idxc.w, info.idxc_extra, info.idxc);
-      int k = (info.local_row - 1)>> 5;
-      int lane = (info.local_row - 1) & 31;
+      char lane = (info.local_row - 1) & 31;
       int curr_mask = 0;
       int other_mask = 0;
     
-      if (info.lane == 30 || info.lane == 31 || info.lane == lane) {
-        curr_mask = 1 << (31 - info.lane);
+      if (tlane == 30 || tlane == 31 || tlane == lane) {
+        curr_mask = 1 << (31 - tlane);
         other_mask = 1 << (31 - lane);  
       }
-      
-      DATA_TYPE dfcy_val = __shfl_sync(curr_mask | other_mask, info.dfc_cache[k], lane);
-      DATA_TYPE dgcy_val = __shfl_sync(curr_mask | other_mask, info.dgc_cache[k], lane);
-      DATA_TYPE inormcy_val = __shfl_sync(curr_mask | other_mask, info.inormc_cache[k], lane);
+      DATA_TYPE dfcy_val = __shfl_sync(curr_mask | other_mask, info.dfc_cache, lane);
+      DATA_TYPE dgcy_val = __shfl_sync(curr_mask | other_mask, info.dgc_cache, lane);
+      DATA_TYPE inormcy_val = __shfl_sync(curr_mask | other_mask, info.inormc_cache, lane);
       lane++;
       if (lane == 32) {
         lane = 0;
-        k++;
       }
       other_mask = 1 << (31 - lane);
-      DATA_TYPE dfcz_val = __shfl_sync(curr_mask | other_mask, info.dfc_cache[k], lane);
-      DATA_TYPE dgcz_val = __shfl_sync(curr_mask | other_mask, info.dgc_cache[k], lane);
-      DATA_TYPE inormcz_val = __shfl_sync(curr_mask | other_mask, info.inormc_cache[k], lane);
+      DATA_TYPE dfcz_val = __shfl_sync(curr_mask | other_mask, info.dfc_cache, lane);
+      DATA_TYPE dgcz_val = __shfl_sync(curr_mask | other_mask, info.dgc_cache, lane);
+      DATA_TYPE inormcz_val = __shfl_sync(curr_mask | other_mask, info.inormc_cache, lane);
       lane++;
       if (lane == 32) {
         lane = 0;
-        k++;
       }
       other_mask = 1 << (31 - lane);
-      DATA_TYPE dfcw_val = __shfl_sync(curr_mask | other_mask, info.dfc_cache[k], lane);
-      DATA_TYPE dgcw_val = __shfl_sync(curr_mask | other_mask, info.dgc_cache[k], lane);
-      DATA_TYPE inormcw_val = __shfl_sync(curr_mask | other_mask, info.inormc_cache[k], lane);
+      DATA_TYPE dfcw_val = __shfl_sync(curr_mask | other_mask, info.dfc_cache, lane);
+      DATA_TYPE dgcw_val = __shfl_sync(curr_mask | other_mask, info.dgc_cache, lane);
+      DATA_TYPE inormcw_val = __shfl_sync(curr_mask | other_mask, info.inormc_cache, lane);
       lane++;
       if (lane == 32) {
         lane = 0;
-        k++;
       }
       other_mask = 1 << (31 - lane);
-      DATA_TYPE dfcex_val = __shfl_sync(curr_mask | other_mask, info.dfc_cache[k], lane);
-      DATA_TYPE dgcex_val = __shfl_sync(curr_mask | other_mask, info.dgc_cache[k], lane);
-      DATA_TYPE inormcex_val = __shfl_sync(curr_mask | other_mask, info.inormc_cache[k], lane);
-      lane++;
-      if (lane == 32) {
-        lane = 0;
-        k++;
-      }
+      DATA_TYPE dfcex_val = __shfl_sync(curr_mask | other_mask, info.dfc_cache, lane);
+      DATA_TYPE dgcex_val = __shfl_sync(curr_mask | other_mask, info.dgc_cache, lane);
+      DATA_TYPE inormcex_val = __shfl_sync(curr_mask | other_mask, info.inormc_cache, lane);
 
-      if (info.lane == 30) {
-        info.distc.w = CC_MIN;
-        info.distc_extra = CC_MIN;
-        info.idxc.w = -1u;
-        info.idxc_extra = -1u;
+      if (tlane == 30) {
+        distc.w = CC_MIN;
+        distc_extra = CC_MIN;
+        idxc.w = -1u;
+        idxc_extra = -1u;
         info.dfc.w = dfcy_val;
         info.dfc_extra = dfcz_val;
         info.dgc.w = dgcy_val;
         info.dgc_extra = dgcz_val;
         info.inormc.w = inormcy_val;
         info.inormc_extra = inormcz_val;
-//        info.dfc.w = smem.get_col(info.local_col + 3, smem.df_col_offset);
-//        info.dfc_extra = smem.get_col(info.local_col + 4, smem.df_col_offset);
-//        info.dgc.w = smem.get_col(info.local_col + 3, smem.dg_col_offset);
-//        info.dgc_extra = smem.get_col(info.local_col + 4, smem.dg_col_offset);
-//        info.inormc.w = smem.get_col(info.local_col + 3, smem.inorm_col_offset);
-//        info.inormc_extra = smem.get_col(info.local_col + 4, smem.inorm_col_offset);
       }
       __syncwarp(); 
-      if (info.lane == 31) {
-        info.distc.y = CC_MIN;
-        info.distc.z = CC_MIN;
-        info.idxc.y = -1u;
-        info.idxc.z = -1u;
+      if (tlane == 31) {
+        distc.y = CC_MIN;
+        distc.z = CC_MIN;
+        idxc.y = -1u;
+        idxc.z = -1u;
         info.dfc.y = dfcy_val;
         info.dfc.z = dfcz_val;
         info.dgc.y = dgcy_val;
@@ -1426,14 +1445,6 @@ class DoIterationStrategy<DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
         info.inormc.w = inormcw_val;
         info.inormc_extra = inormcex_val;
         
-/*
-        info.dfc.y = smem.get_col(info.local_col + 1, smem.df_col_offset);
-        info.dfc.z = smem.get_col(info.local_col + 2, smem.df_col_offset);
-        info.dgc.y = smem.get_col(info.local_col + 1, smem.dg_col_offset);
-        info.dgc.z = smem.get_col(info.local_col + 2, smem.dg_col_offset);
-        info.inormc.y = smem.get_col(info.local_col + 1, smem.inorm_col_offset);
-        info.inormc.z = smem.get_col(info.local_col + 2, smem.inorm_col_offset);
-*/
       }
       __syncwarp(); 
       
@@ -1441,25 +1452,47 @@ class DoIterationStrategy<DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
     }
 
     
-    ulonglong4 mp_row_check;
+    //ulonglong4 mp_row_check;
 
-    if (COMPUTE_ROWS) {
-      mp_row_check = smem.get_mp_row_vec4(r);
+//    if (COMPUTE_ROWS) { 
+      //mp_row_check = smem.get_mp_row_vec4(r);
+//    }
+    //VEC4_DATA_TYPE dgr = smem.get_row_vec4(r, smem.dg_row_offset);
+    //VEC4_DATA_TYPE dfr = smem.get_row_vec4(r, smem.df_row_offset);
+    //VEC4_DATA_TYPE inormr = smem.get_row_vec4(r, smem.inorm_row_offset);
+    DATA_TYPE dgr = smem.get_row(info.local_row, smem.dg_row_offset);
+    DATA_TYPE dfr = smem.get_row(info.local_row, smem.df_row_offset);
+    DATA_TYPE inormr = smem.get_row(info.local_row, smem.inorm_row_offset);
+    //e.ulong = mp_row_check.x;
+    _do_row.exec(info, distc.x, distc.y, idxc.x, idxc.y, info.inormc.x, info.inormc.y, inormr, info.dfc.x, info.dfc.y, info.dgc.x, info.dgc.y,  dfr, dgr, CC_MIN, smem, args);
+
+    dgr = smem.get_row(info.local_row, smem.dg_row_offset);
+    dfr = smem.get_row(info.local_row, smem.df_row_offset);
+    inormr = smem.get_row(info.local_row, smem.inorm_row_offset);
+    //e.ulong = mp_row_check.y;
+    _do_row.exec(info, distc.y, distc.z, idxc.y, idxc.z, info.inormc.y, info.inormc.z, inormr, info.dfc.y, info.dfc.z, info.dgc.y, info.dgc.z,  dfr, dgr, CC_MIN, smem, args);
+    if (COMPUTE_COLS) { 
+      mp_entry e;
+      auto check1 = smem.get_mp_col_vec2(c);
+      e.ulong = check1.x;
+      MPatomicMax_check(smem.get_mp_col_addr(info.local_col - 2),
+                           distc.x, idxc.x, e.floats[0]);
+      e.ulong = check1.y;
+      MPatomicMax_check(smem.get_mp_col_addr(info.local_col - 1),
+                            distc.y, idxc.y, e.floats[0]);
+
+
     }
-
-    VEC4_DATA_TYPE dgr = smem.get_row_vec4(r, smem.dg_row_offset);
-    VEC4_DATA_TYPE dfr = smem.get_row_vec4(r, smem.df_row_offset);
-    VEC4_DATA_TYPE inormr = smem.get_row_vec4(r, smem.inorm_row_offset);
-
-    mp_entry e;
-    e.ulong = mp_row_check.x;
-    _do_row.exec(info, info.distc.x, info.distc.y, info.idxc.x, info.idxc.y, info.inormc.x, info.inormc.y, inormr.x, info.dfc.x, info.dfc.y, info.dgc.x, info.dgc.y,  dfr.x, dgr.x, e.floats[0], smem, args);
-    e.ulong = mp_row_check.y;
-    _do_row.exec(info, info.distc.y, info.distc.z, info.idxc.y, info.idxc.z, info.inormc.y, info.inormc.z, inormr.y, info.dfc.y, info.dfc.z, info.dgc.y, info.dgc.z,  dfr.y, dgr.y, e.floats[0], smem, args);
-    e.ulong = mp_row_check.z;
-    _do_row.exec(info, info.distc.z, info.distc.w, info.idxc.z, info.idxc.w, info.inormc.z,  info.inormc.w,  inormr.z,  info.dfc.z,  info.dfc.w,  info.dgc.z,  info.dgc.w,  dfr.z, dgr.z, e.floats[0], smem, args);
-    e.ulong = mp_row_check.w;
-    _do_row.exec(info, info.distc.w, info.distc_extra, info.idxc.w, info.idxc_extra, info.inormc.w, info.inormc_extra, inormr.w, info.dfc.w, info.dfc_extra, info.dgc.w, info.dgc_extra,  dfr.w, dgr.w, e.floats[0], smem, args);
+    dgr = smem.get_row(info.local_row, smem.dg_row_offset);
+    dfr = smem.get_row(info.local_row, smem.df_row_offset);
+    inormr = smem.get_row(info.local_row, smem.inorm_row_offset);
+    //e.ulong = mp_row_check.z;
+    _do_row.exec(info, distc.z, distc.w, idxc.z, idxc.w, info.inormc.z,  info.inormc.w,  inormr,  info.dfc.z,  info.dfc.w,  info.dgc.z,  info.dgc.w,  dfr, dgr, CC_MIN, smem, args);
+    dgr = smem.get_row(info.local_row, smem.dg_row_offset);
+    dfr = smem.get_row(info.local_row, smem.df_row_offset);
+    inormr = smem.get_row(info.local_row, smem.inorm_row_offset);
+    //e.ulong = mp_row_check.w;
+    _do_row.exec(info, distc.w, distc_extra, idxc.w, idxc_extra, info.inormc.w, info.inormc_extra, inormr, info.dfc.w, info.dfc_extra, info.dgc.w, info.dgc_extra,  dfr, dgr, CC_MIN, smem, args);
 /*
     if (threadIdx.x == 2 && blockIdx.x == 0) {
         printf("row = %d, thread = %d, block = %d\n", info.global_row, threadIdx.x, blockIdx.x);
@@ -1474,16 +1507,36 @@ class DoIterationStrategy<DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
 */
 
     if (COMPUTE_COLS) {
-      MPatomicMax_block(smem.get_mp_col_addr(info.local_col - 4),
-                           info.distc.x, info.idxc.x);// e.floats[0]);
-      MPatomicMax_block(smem.get_mp_col_addr(info.local_col - 3),
-                            info.distc.y, info.idxc.y);// e.floats[0]);
-      MPatomicMax_block(smem.get_mp_col_addr(info.local_col - 2),
-                            info.distc.z, info.idxc.z);// e.floats[0]);
+      mp_entry e;
+      //auto check1 = smem.get_mp_col_vec2(c);
+      auto check2 = smem.get_mp_col_vec2(c + 1);
+      /*
+      e.ulong = check1.x;
+      MPatomicMax_check(smem.get_mp_col_addr(info.local_col - 4),
+                           distc.x, idxc.x, e.floats[0]);
+      e.ulong = check1.y;
+      MPatomicMax_check(smem.get_mp_col_addr(info.local_col - 3),
+                            distc.y, idxc.y, e.floats[0]);
+      */
+      e.ulong = check2.x;
+      MPatomicMax_check(smem.get_mp_col_addr(info.local_col - 2),
+                            distc.z, idxc.z, e.floats[0]);
       
+      e.ulong = check2.y;
+      MPatomicMax_check(smem.get_mp_col_addr(info.local_col - 1),
+                            distc.w, idxc.w,  e.floats[0]);
+      MPatomicMax_block(smem.get_mp_col_addr(info.local_col), distc_extra, idxc_extra);
+/*
+      MPatomicMax_block(smem.get_mp_col_addr(info.local_col - 4),
+                           info.distc.x, info.idxc.x);
+      MPatomicMax_block(smem.get_mp_col_addr(info.local_col - 3),
+                            info.distc.y, info.idxc.y);
+      MPatomicMax_block(smem.get_mp_col_addr(info.local_col - 2),
+                            info.distc.z, info.idxc.z);
       MPatomicMax_block(smem.get_mp_col_addr(info.local_col - 1),
-                            info.distc.w, info.idxc.w);//e.floats[0]);
+                            info.distc.w, info.idxc.w);
       MPatomicMax_block(smem.get_mp_col_addr(info.local_col), info.distc_extra, info.idxc_extra);
+*/
     }
   }
 
@@ -1569,7 +1622,7 @@ template <typename DATA_TYPE, typename VEC2_DATA_TYPE, typename VEC4_DATA_TYPE,
           typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
           SCAMPProfileType PROFILE_TYPE, int blocks_per_sm, int tile_height,
           int BLOCKSZ>
-__global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
+__global__ void //__launch_bounds__(BLOCKSZ, blocks_per_sm)
     do_tile(SCAMPKernelInputArgs<double> args,
             PROFILE_DATA_TYPE *__restrict__ profile_A,
             PROFILE_DATA_TYPE *__restrict__ profile_B) {
@@ -1583,16 +1636,6 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
               ACCUM_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, tile_width,
               tile_height, BLOCKSZ, decltype(smem), PROFILE_TYPE>
       tactic;
-  thread_info.lane = threadIdx.x & 31;
-  thread_info.warp_id = threadIdx.x >> 5;
-  thread_info.mask1 = 1 << (31 - thread_info.lane);
-  thread_info.mask2 = 1 << (31 - thread_info.lane);
-  if (thread_info.lane < 31) {
-    thread_info.mask1 |= (thread_info.mask1 >> 1); 
-  }
-  if (thread_info.lane < 30) {
-    thread_info.mask2 |= (thread_info.mask2 >> 2); 
-  }
   const uint32_t start_diag = (threadIdx.x * diags_per_thread) +
                                   blockIdx.x * (blockDim.x * diags_per_thread);
 
