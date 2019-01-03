@@ -76,7 +76,6 @@ SCAMPError_t SCAMP_Tile::do_self_join_half(cudaStream_t s) {
 }
 
 SCAMPError_t SCAMP_Tile::do_ab_join_full(cudaStream_t s) {
-  std::cout << "Executing AB join tile" << std::endl;
   SCAMPError_t error;
   if (window_size > tile_width) {
     return SCAMP_DIM_INCOMPATIBLE;
