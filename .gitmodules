@@ -1,0 +1,6 @@
+[submodule "protobuf"]
+	path = protobuf
+	url = https://github.com/protocolbuffers/protobuf
+[submodule "gflags"]
+	path = gflags
+	url = https://github.com/gflags/gflags

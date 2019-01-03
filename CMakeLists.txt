@@ -6,7 +6,9 @@ cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
 project(SCAMP LANGUAGES CXX CUDA)
 set(VERSION_MAJOR 1)
 set(VERSION_MINOR 1)
-find_package(gflags REQUIRED)
+
+add_subdirectory(gflags)
+
 find_program(
   CLANG_TIDY_EXE
   NAMES clang-tidy-6.0 clang-tidy-5.0 clang-tidy
@@ -31,6 +33,7 @@ else()
 endif()
 
 
+add_subdirectory(protobuf/cmake)
 add_subdirectory(proto)
 
 
