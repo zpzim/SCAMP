@@ -11,26 +11,37 @@
 #include "SCAMP.pb.h"
 #include "common.h"
 
+DEFINE_bool(output_pearson, false,
+            "If true SCAMP will output pearson correlation instead of "
+            "z-normalized euclidean distance.");
 DEFINE_int32(max_tile_size, 1 << 20, "Maximum tile size SCAMP will use");
 DEFINE_int32(window, -1, "Length of subsequences to search for");
-DEFINE_double(threshold, std::nan("NaN"),
-              "Distance Threshold for frequency and sum calculations");
+DEFINE_double(
+    threshold, std::nan("NaN"),
+    "Distance threshold for frequency and sum calculations, we will only count "
+    "events with a Pearson correlation above this threshold.");
 DEFINE_string(
     profile_type, "1NN_INDEX",
-    "Matrix Profile Type to compute, must be one of \"1NN_INDEX, SUM_THRESH\"");
+    "Matrix Profile Type to compute, must be one of \"1NN_INDEX, SUM_THRESH\", "
+    "1NN_INDEX generates the classic Matrix Profile, SUM_THRESH generates a "
+    "sum of the correlations above threshold set by the --threshold flag.");
 DEFINE_bool(double_precision, false, "Computation in double precision");
 DEFINE_bool(mixed_precision, false, "Computation in mixed precision");
 DEFINE_bool(single_precision, false, "Computation in single precision");
-DEFINE_bool(ab_join, false, "Informs SCAMP to perform an ab-join");
 DEFINE_bool(
     keep_rows, false,
     "Informs SCAMP to compute the \"rowwise mp\" and output in a a separate "
-    "file specified by the flag --output_b_file_name, only valid for ab-joins");
+    "file specified by the flag --output_b_file_name, only valid for ab-joins, "
+    "this is useful when computing a distributed self-join, so as to not "
+    "recompute values in the lower-trianglular portion of the symmetric "
+    "distance matrix.");
+// You can set global_row and global_column to 0 if computing an ab-join where
+// the a and be time series are aligned and need an exclusion zone
 DEFINE_int64(
     global_row, -1,
     "Informs SCAMP that this join is part of a larger distributed join which "
     "starts at this row in the larger distance matrix, this allows us to pick "
-    "an appropriate exclusion zone for our computation if necessary");
+    "an appropriate exclusion zone for our computation if necessary.");
 DEFINE_int64(
     global_col, -1,
     "Informs SCAMP that this join is part of a larger distributed join which "
@@ -129,8 +140,12 @@ bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
       for (int i = 0; i < arr.size(); ++i) {
         SCAMP::mp_entry e;
         e.ulong = arr.Get(i);
-        mp_out << std::setprecision(10)
-               << ConvertToEuclidean<float>(e.floats[0]) << std::endl;
+        if (FLAGS_output_pearson) {
+          mp_out << std::setprecision(10) << e.floats[0] << std::endl;
+        } else {
+          mp_out << std::setprecision(10)
+                 << ConvertToEuclidean<float>(e.floats[0]) << std::endl;
+        }
         mpi_out << e.ints[1] + 1 << std::endl;
       }
       break;
@@ -239,13 +254,7 @@ int main(int argc, char **argv) {
         "--input_a_file_name");
     return 1;
   }
-  if (FLAGS_ab_join && FLAGS_input_b_file_name.empty()) {
-    printf(
-        "Error: secondary input filename must be specified using "
-        "--input_b_file_name when performing an ab-join");
-    return 1;
-  }
-  if (!FLAGS_ab_join) {
+  if (FLAGS_input_b_file_name.empty()) {
     self_join = true;
     computing_rows = true;
     computing_cols = true;
@@ -262,13 +271,13 @@ int main(int argc, char **argv) {
 
   readFile<double>(FLAGS_input_a_file_name, Ta_h, "%lf");
 
-  if (FLAGS_ab_join) {
+  if (!self_join) {
     readFile<double>(FLAGS_input_b_file_name, Tb_h, "%lf");
   }
 
   int n_x = Ta_h.size() - FLAGS_window + 1;
   int n_y;
-  if (!FLAGS_ab_join) {
+  if (self_join) {
     n_y = n_x;
   } else {
     n_y = Tb_h.size() - FLAGS_window + 1;
