@@ -16,6 +16,8 @@ for line1, line2 in zip(fd1,fd2):
     if(abs(diff) > maxdiff):
         maxdiff = abs(diff)
     if abs(diff) > 0.01:
+        print('Failure: matrix profile differs from the ground truth by more than the threshold')  
+        print(diff, count)
         exit(1)
     count += 1
 

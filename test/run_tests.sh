@@ -12,12 +12,13 @@ EXECUTABLE=../SCAMP
 ROOT_DIR_INPUT=SampleInput
 ROOT_DIR_OUTPUT=SampleOutput
 WINDOWSZ=(100)
-TILE_SZ=(2000000 1000000 500000 250000 125000 62500 31250 15625 8000 4000)
+TILE_SZ=(2000000 1000000 500000 250000 125000 62500 31250 15625 8000)
 INPUT_FILES=(randomwalk8K randomwalk16K randomwalk32K randomwalk64K randomwalk1M)
 AB_INPUT_FILES=(randomwalk16K randomwalk32K)
 NUM_TESTS=$((${#INPUT_FILES[@]} - 1))
 NUM_TILE_SZ=$((${#TILE_SZ[@]} - 1))
 NUM_AB=$((${#AB_INPUT_FILES[@]} - 1))
+
 
 for k in `seq 0 $NUM_TESTS`;
 do
@@ -38,6 +39,7 @@ do
                 X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mp_columns_out_index | grep '^' | wc -l`
                 echo "$X matrix profile index differences"
                 if [ $X -gt $(($count / 100)) ] ; then
+                    echo "Failure: Errors in MP index exceed 1% for this test."
                     exit 1
                 fi
                 ./difference.py mp_columns_out $COMPARE_MP out
@@ -51,6 +53,34 @@ do
 done
 
 
+# Test correct exclusion zone using an AB-join
+INPUT_FILE=$ROOT_DIR_INPUT/${INPUT_FILES[$k]}.txt
+for j in $WINDOWSZ;
+do
+    COMPARE_MPI=$ROOT_DIR_OUTPUT/mpi_${INPUT_FILES[$k]}_w$j.txt
+    COMPARE_MP=$ROOT_DIR_OUTPUT/mp_${INPUT_FILES[$k]}_w$j.txt
+    for i in `seq 0 $NUM_TILE_SZ`;
+    do
+        tile_sz=${TILE_SZ[i]}
+        count=`wc -l $INPUT_FILE | awk '{print $1}'`
+        if [ $tile_sz -lt $(($count * 2)) ]; then
+            cmd="$EXECUTABLE --ab_join=true --global_row=0 --global_col=0 --window=$j --max_tile_size=$tile_sz $fp64 --input_a_file_name=$INPUT_FILE --input_b_file_name=$INPUT_FILE"
+            echo "Running Test: $cmd"
+            $cmd > /dev/null
+            X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mp_columns_out_index | grep '^' | wc -l`
+            echo "$X matrix profile index differences"
+            if [ $X -gt $(($count / 100)) ] ; then
+                echo "Failure: Errors in MP index exceed 1% for this test."
+                exit 1
+            fi
+            ./difference.py mp_columns_out $COMPARE_MP out
+            result=$?
+            if [ $result -ne 0 ] ; then
+                exit $result
+            fi
+        fi
+    done
+done
 
 for i in `seq 0 $NUM_AB`;
 do
@@ -73,6 +103,7 @@ do
                     X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mp_columns_out_index | grep '^' | wc -l`
                     echo "$X matrix profile index differences"
                     if [ $X -gt $(($count / 100)) ] ; then
+                        echo "Failure: Errors in MP index exceed 1% for this test."
                         exit 1
                     fi
                     ./difference.py mp_columns_out $COMPARE_MP out
@@ -98,6 +129,7 @@ do
                     X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mp_columns_out_index | grep '^' | wc -l`
                     echo "$X matrix profile index differences"
                     if [ $X -gt $(($count / 100)) ] ; then
+                        echo "Failure: Errors in MP index exceed 1% for this test."
                         exit 1
                     fi
                     ./difference.py mp_columns_out $COMPARE_MP out
@@ -126,6 +158,7 @@ do
                     X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mp_columns_out_index | grep '^' | wc -l`
                     echo "$X matrix profile index differences"
                     if [ $X -gt $(($count / 100)) ] ; then
+                        echo "Failure: Errors in MP index exceed 1% for this test."
                         exit 1
                     fi
                     ./difference.py mp_columns_out $COMPARE_MP out
@@ -137,6 +170,7 @@ do
                     X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPIB mp_rows_out_index | grep '^' | wc -l`
                     echo "$X matrix profile index differences"
                     if [ $X -gt $(($count / 100)) ] ; then
+                        echo "Failure: Errors in MP index exceed 1% for this test."
                         exit 1
                     fi
                     ./difference.py mp_rows_out $COMPARE_MPB out
@@ -152,6 +186,7 @@ do
                     X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPIB mp_columns_out_index | grep '^' | wc -l`
                     echo "$X matrix profile index differences"
                     if [ $X -gt $(($count / 100)) ] ; then
+                        echo "Failure: Errors in MP index exceed 1% for this test."
                         exit 1
                     fi
                     ./difference.py mp_columns_out $COMPARE_MPB out
@@ -164,6 +199,7 @@ do
                     X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mp_rows_out_index | grep '^' | wc -l`
                     echo "$X matrix profile index differences"
                     if [ $X -gt $(($count / 100)) ] ; then
+                        echo "Failure: Errors in MP index exceed 1% for this test."
                         exit 1
                     fi
                     ./difference.py mp_rows_out $COMPARE_MP out
