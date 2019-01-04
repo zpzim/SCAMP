@@ -32,10 +32,7 @@ else()
   set(DO_CLANG_FORMAT "${CLANG_FORMAT}" "-i -style=file")
 endif()
 
-
-add_subdirectory(protobuf/cmake)
 add_subdirectory(proto)
-
 
 set(
   PROJECT_SOURCE_FILES

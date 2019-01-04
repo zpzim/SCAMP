@@ -7,6 +7,8 @@ This is a much improved framework over [GPU-STOMP](https://github.com/zpzim/STOM
  * fp32 version should be compatible with GeForce cards
  * AB joins (you can produce the matrix profile from 2 different time series)
  * Distributable (we use AWS but other cloud platforms can work) with verified scalability to billions of datapoints
+ * Sum and Frequency Joins: rather than compute the nearest neighbor directly, we can compute the sum or frequency of correlations above a threshold (this better describes the frequency of an event, something not obvious from the matrix profile alone)
+ * Extensible to adding optimized versions of custom join operations.
  * Some optimizations for architectures other than Volta
 
 Note: for self-joins on small inputs (~2M or less) the features in this repository are probably overkill. You can use [GPU-STOMP](https://github.com/zpzim/STOMPSelfJoin) with little performance difference.
@@ -16,10 +18,11 @@ This base project requires:
  * At least version 9.0 of the CUDA toolkit available [here](https://developer.nvidia.com/cuda-toolkit).
  * At least version 6.0 of clang (for clang-tidy and clang-format)
  * Currently builds under linux using gcc/clang and nvcc with cmake (3.8+ for cuda support), this version is not yet widely available in package managers (i.e. apt) so you will probably need to install it manually from [here](https://cmake.org/download/)
+ * Google protobufs (v3) must be installed as SCAMP uses this input to communicate internally, please follow the instructions [here](https://github.com/protocolbuffers/protobuf/blob/master/src/README.md) to install them.
  * An NVIDIA GPU with CUDA support is also required. You can find a list of CUDA compatible GPUs [here](https://developer.nvidia.com/cuda-gpus)
  * Currently Supports Kepler-Volta, but Turing and beyond will likely work as well, just add the -gencode flag for your specific architecture in CMakeLists.txt
  * Should compile under windows, but untested. You will probably have to handle the parsing of command line arguments differently in windows.
- * We highly recommend using a Volta GPU (we get about a 3x improvement over Pascal)
+ * Highly recommend using a Volta GPU (we get about a 2-3x improvement over Pascal)
 # Usage
 ~~~~
 git clone https://github.com/zpzim/SCAMP
@@ -46,9 +49,7 @@ cmake -D CUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda
 * There are more arguments that allow you even greater control over what SCAMP can do. Use --helpfull for a list of possible arguments and their descriptions.
 * cmake provides support for clang-tidy (when you build) and clang-format (using build target clang-format) to use these please make sure clang-tidy and clang-format are installed on your system
 
-
-
-# AWS operation
+# AWS operation (This functionality is planned to be heavily refactored into a more user-friendly configuration)
 * This framework can be used with [AWS Batch](https://aws.amazon.com/batch) to distribute the computation to a cluster of p2 or p3 instances
 * Information forthcoming, but the scripts we used to scale out the algorithm are included in the aws/ directory
 
