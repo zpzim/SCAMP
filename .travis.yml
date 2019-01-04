@@ -38,9 +38,10 @@ jobs:
       - sudo apt-get -y update
       - sudo apt-get install -y cuda
       - sudo ln -s /usr/local/cuda-10.0 /usr/local/cuda
+      - git submodule update --init
       - cmake -D CUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda -D CMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc -D CMAKE_CXX_COMPILER=clang++ .
     script: 
-      - make
+      - make -j4
 
 notifications:
     email:
