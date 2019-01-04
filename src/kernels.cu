@@ -288,19 +288,21 @@ template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
           SCAMPProfileType PROFILE_TYPE>
 class DoRowOptStrategy : SCAMPStrategy {
  public:
-  __device__ void exec(
-      ACCUM_TYPE &cov1, ACCUM_TYPE &cov2, ACCUM_TYPE &cov3, ACCUM_TYPE &cov4,
-      DISTANCE_TYPE &distc1, DISTANCE_TYPE &distc2, DISTANCE_TYPE &distc3,
-      DISTANCE_TYPE &distc4, const DATA_TYPE &inormcx, const DATA_TYPE &inormcy,
-      const DATA_TYPE &inormcz, const DATA_TYPE &inormcw,
-      const DATA_TYPE &inormr, const DATA_TYPE &df_colx,
-      const DATA_TYPE &df_coly, const DATA_TYPE &df_colz,
-      const DATA_TYPE &df_colw, const DATA_TYPE &dg_colx,
-      const DATA_TYPE &dg_coly, const DATA_TYPE &dg_colz,
-      const DATA_TYPE &dg_colw, const DATA_TYPE &df_row,
-      const DATA_TYPE &dg_row, const int &row, const int &col,
-      const int &global_row, const int &global_col,
-      PROFILE_DATA_TYPE *__restrict__ mp_row, OptionalArgs &args) {
+  __device__ void exec(ACCUM_TYPE &cov1, ACCUM_TYPE &cov2, ACCUM_TYPE &cov3,
+                       ACCUM_TYPE &cov4, DISTANCE_TYPE &distc1,
+                       DISTANCE_TYPE &distc2, DISTANCE_TYPE &distc3,
+                       DISTANCE_TYPE &distc4, const DATA_TYPE &inormcx,
+                       const DATA_TYPE &inormcy, const DATA_TYPE &inormcz,
+                       const DATA_TYPE &inormcw, const DATA_TYPE &inormr,
+                       const DATA_TYPE &df_colx, const DATA_TYPE &df_coly,
+                       const DATA_TYPE &df_colz, const DATA_TYPE &df_colw,
+                       const DATA_TYPE &dg_colx, const DATA_TYPE &dg_coly,
+                       const DATA_TYPE &dg_colz, const DATA_TYPE &dg_colw,
+                       const DATA_TYPE &df_row, const DATA_TYPE &dg_row,
+                       const int &row, const int &col, const int &global_row,
+                       const int &global_col,
+                       PROFILE_DATA_TYPE *__restrict__ mp_row,
+                       OptionalArgs &args) {
     assert(false);
   }
 
@@ -856,8 +858,8 @@ class DoIterationStrategy<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
  public:
   __device__ DoIterationStrategy() {}
   __device__ void exec(SCAMPThreadInfo<ACCUM_TYPE> &info,
-                              SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE> &smem,
-                              OptionalArgs &args) {
+                       SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE> &smem,
+                       OptionalArgs &args) {
     DISTANCE_TYPE distc1 = 0;
     DISTANCE_TYPE distc2 = 0;
     DISTANCE_TYPE distc3 = 0;
@@ -939,8 +941,8 @@ class DoIterationStrategy<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
  public:
   __device__ DoIterationStrategy() {}
   __device__ void exec(SCAMPThreadInfo<ACCUM_TYPE> &info,
-                              SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE> &smem,
-                              OptionalArgs &args) {
+                       SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE> &smem,
+                       OptionalArgs &args) {
     float4 distc = make_float4(CC_MIN, CC_MIN, CC_MIN, CC_MIN);
     float4 distc2 = make_float4(CC_MIN, CC_MIN, CC_MIN, CC_MIN);
     uint4 idxc, idxc2;
@@ -984,7 +986,6 @@ class DoIterationStrategy<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
                  inormr.x, dfc.x, dfc.y, dfc.z, dfc.w, dgc.x, dgc.y, dgc.z,
                  dgc.w, dfr.x, dgr.x, e.floats[0], smem, args);
 
-
     e.ulong = mp_row_check.y;
     _do_row.exec(info, distc.y, distc.z, distc.w, distc2.x, idxc.y, idxc.z,
                  idxc.w, idxc2.x, inormc.y, inormc.z, inormc.w, inormc2.x,
@@ -1006,29 +1007,29 @@ class DoIterationStrategy<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
     // After the 4th row, we have completed columns 4, 5, 6, and 7
     if (COMPUTE_COLS) {
       ulonglong4 mp_col_check1, mp_col_check2;
-      mp_col_check1 = reinterpret_cast<ulonglong4*>(smem.local_mp_col)[c];
-      mp_col_check2 = reinterpret_cast<ulonglong4*>(smem.local_mp_col)[c + 1];
+      mp_col_check1 = reinterpret_cast<ulonglong4 *>(smem.local_mp_col)[c];
+      mp_col_check2 = reinterpret_cast<ulonglong4 *>(smem.local_mp_col)[c + 1];
       e.ulong = mp_col_check1.x;
-      MPatomicMax_check(smem.local_mp_col + info.local_col - 4,
-                        distc.x, idxc.x, e.floats[0]);
+      MPatomicMax_check(smem.local_mp_col + info.local_col - 4, distc.x, idxc.x,
+                        e.floats[0]);
       e.ulong = mp_col_check1.y;
-      MPatomicMax_check(smem.local_mp_col + info.local_col - 3,
-                        distc.y, idxc.y, e.floats[0]);
+      MPatomicMax_check(smem.local_mp_col + info.local_col - 3, distc.y, idxc.y,
+                        e.floats[0]);
       e.ulong = mp_col_check1.z;
-      MPatomicMax_check(smem.local_mp_col + info.local_col - 2,
-                        distc.z, idxc.z, e.floats[0]);
+      MPatomicMax_check(smem.local_mp_col + info.local_col - 2, distc.z, idxc.z,
+                        e.floats[0]);
       e.ulong = mp_col_check1.w;
-      MPatomicMax_check(smem.local_mp_col + info.local_col - 1,
-                        distc.w, idxc.w, e.floats[0]);
+      MPatomicMax_check(smem.local_mp_col + info.local_col - 1, distc.w, idxc.w,
+                        e.floats[0]);
       e.ulong = mp_col_check2.x;
-      MPatomicMax_check(smem.local_mp_col + info.local_col,
-                        distc2.x, idxc2.x, e.floats[0]);
+      MPatomicMax_check(smem.local_mp_col + info.local_col, distc2.x, idxc2.x,
+                        e.floats[0]);
       e.ulong = mp_col_check2.y;
-      MPatomicMax_check(smem.local_mp_col + info.local_col + 1,
-                        distc2.y, idxc2.y, e.floats[0]);
+      MPatomicMax_check(smem.local_mp_col + info.local_col + 1, distc2.y,
+                        idxc2.y, e.floats[0]);
       e.ulong = mp_col_check2.z;
-      MPatomicMax_check(smem.local_mp_col + info.local_col + 2,
-                        distc2.z, idxc2.z, e.floats[0]);
+      MPatomicMax_check(smem.local_mp_col + info.local_col + 2, distc2.z,
+                        idxc2.z, e.floats[0]);
     }
   }
 
@@ -1247,10 +1248,10 @@ int get_blocksz(SCAMPPrecisionType t, const cudaDeviceProp &dev_prop) {
 int get_exclusion(uint64_t window_size, uint64_t start_row,
                   uint64_t start_column) {
   int exclusion = window_size / 4;
-  if (!(start_column >= start_row && start_column <= start_row + exclusion)) {
-    return 0;
+  if (start_column >= start_row && start_column <= start_row + exclusion) {
+    return exclusion;
   }
-  return window_size / 4;
+  return 0;
 }
 
 constexpr int FPTypeSize(SCAMPPrecisionType dtype) {
@@ -1490,28 +1491,32 @@ SCAMPError_t kernel_ab_join_upper(
     const OptionalArgs &args, SCAMPProfileType profile_type, cudaStream_t s) {
   constexpr int diags_per_thread = 4;
   uint64_t blocksz = get_blocksz(t, props);
-  int32_t exclusion;
-  std::cout << distributed_col << " distributed " << distributed_row
-            << std::endl;
+  int32_t exclusion_lower;
+  int32_t exclusion_upper;
   if (distributed_col < 0 || distributed_row < 0) {
-    exclusion = 0;
+    exclusion_lower = 0;
+    exclusion_upper = 0;
   } else {
-    exclusion = get_exclusion(window_size, global_col + distributed_col,
-                              global_row + distributed_row);
+    exclusion_lower = get_exclusion(window_size, global_row + distributed_row,
+                                    global_col + distributed_col);
+    if (global_row > global_col) {
+      exclusion_upper =
+          get_exclusion(window_size, global_row + distributed_row,
+                        global_col + distributed_col + tile_width);
+    } else {
+      exclusion_upper = 0;
+    }
   }
   uint64_t num_workers =
-      ceil((tile_width - exclusion) / (float)diags_per_thread);
+      ceil((tile_width - (exclusion_lower + exclusion_upper)) /
+           (float)diags_per_thread);
   uint64_t num_blocks = ceil(num_workers / (double)blocksz);
-  SCAMPKernelInputArgs<double> tile_args(QT, df_A, df_B, dg_A, dg_B, norms_A,
-                                         norms_B, tile_width, tile_height,
-                                         exclusion, 0, args);
+  SCAMPKernelInputArgs<double> tile_args(
+      QT, df_A, df_B, dg_A, dg_B, norms_A, norms_B, tile_width, tile_height,
+      exclusion_lower, exclusion_upper, args);
   uint64_t smem = get_smem(computing_rows, true, blocksz, t,
                            GetProfileTypeSize(profile_type));
-  std::cout << "num_workers " << num_workers << " num_blocks " << num_blocks
-            << " blocksz " << blocksz << " smem (KB)" << smem / 1024
-            << std::endl;
-  std::cout << "Exclusion = " << exclusion << std::endl;
-  if (exclusion < tile_width) {
+  if ((exclusion_lower + exclusion_upper) < tile_width) {
     switch (profile_type) {
       case PROFILE_TYPE_SUM_THRESH:
         return LaunchDoTile<double, PROFILE_TYPE_SUM_THRESH, BLOCKSPERSM_AB>(
@@ -1544,23 +1549,31 @@ SCAMPError_t kernel_ab_join_lower(
     const OptionalArgs &args, SCAMPProfileType profile_type, cudaStream_t s) {
   constexpr int diags_per_thread = 4;
   uint64_t blocksz = get_blocksz(t, props);
-  int32_t exclusion;
+  int32_t exclusion_lower, exclusion_upper;
   if (distributed_col < 0 || distributed_row < 0) {
-    exclusion = 0;
+    exclusion_lower = 0;
+    exclusion_upper = 0;
   } else {
-    exclusion = get_exclusion(window_size, global_col + distributed_col,
-                              global_row + distributed_row + tile_height);
+    exclusion_lower = get_exclusion(window_size, global_col + distributed_col,
+                                    global_row + distributed_row);
+    if (global_row >= global_col) {
+      exclusion_upper = 0;
+    } else {
+      exclusion_upper =
+          get_exclusion(window_size, global_col + distributed_col,
+                        global_row + distributed_row + tile_height);
+    }
   }
-  std::cout << "Exclusion = " << exclusion << std::endl;
   uint64_t num_workers =
-      ceil((tile_height - exclusion) / (float)diags_per_thread);
+      ceil((tile_height - (exclusion_lower + exclusion_upper)) /
+           (float)diags_per_thread);
   uint64_t num_blocks = ceil(num_workers / (double)blocksz);
-  SCAMPKernelInputArgs<double> tile_args(QT, df_B, df_A, dg_B, dg_A, norms_B,
-                                         norms_A, tile_height, tile_width, 0,
-                                         exclusion, args);
+  SCAMPKernelInputArgs<double> tile_args(
+      QT, df_B, df_A, dg_B, dg_A, norms_B, norms_A, tile_height, tile_width,
+      exclusion_lower, exclusion_upper, args);
   uint64_t smem = get_smem(computing_rows, true, blocksz, t,
                            GetProfileTypeSize(profile_type));
-  if (exclusion < tile_height) {
+  if (exclusion_lower + exclusion_upper < tile_height) {
     switch (profile_type) {
       case PROFILE_TYPE_SUM_THRESH:
         return LaunchDoTile<double, PROFILE_TYPE_SUM_THRESH, BLOCKSPERSM_AB>(
