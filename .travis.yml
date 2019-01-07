@@ -3,7 +3,35 @@ language: cpp
 
 jobs:
   include:
-  
+  - stage: "Builds"
+    name: "Ubuntu Build"
+    os: linux
+    dist: xenial
+    addons:
+        apt:
+            packages:
+                clang-6.0
+                clang-format-6.0
+                clang-tidy-6.0
+    compiler: clang++-6.0
+    before_install:
+      - sudo apt-get install autoconf automake libtool curl make g++ unzip
+    install:
+      - wget https://github.com/protocolbuffers/protobuf/releases/download/v3.6.1/protobuf-cpp-3.6.1.zip
+      - unzip protobuf-cpp-3.6.1.zip
+      - pushd protobuf-3.6.1 && ./configure --prefix=/usr CC=gcc CXX=g++ && make && sudo make install && popd 
+      - CUDA_REPO_PKG=cuda-repo-ubuntu1604_10.0.130-1_amd64.deb
+      - wget http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1604/x86_64/$CUDA_REPO_PKG
+      - sudo dpkg -i $CUDA_REPO_PKG
+      - sudo apt-key adv --fetch-keys http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1604/x86_64/7fa2af80.pub
+      - rm $CUDA_REPO_PKG
+      - sudo apt-get -y update
+      - sudo apt-get install -y cuda
+      - git submodule update --init --recursive
+    script: 
+      - cmake -D CUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda -D CMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc -D CMAKE_CXX_COMPILER=clang++ .
+      - make -j4
+
   - stage: "Check Style"
     name: "Check clang-format"
     os: linux
@@ -18,40 +46,6 @@ jobs:
     script:
       - bash check_format.sh clang-format-6.0
 
-  - stage: "Builds"
-    name: "Linux Build"
-    os: linux
-    dist: xenial
-    addons:
-        apt:
-            packages:
-                clang-6.0
-                clang-format-6.0
-                clang-tidy-6.0
-    compiler: clang++-6.0
-    install:
-      - sudo apt-get install autoconf automake libtool curl make g++ unzip
-      - wget https://github.com/protocolbuffers/protobuf/releases/download/v3.6.1/protobuf-cpp-3.6.1.zip
-      - unzip protobuf-cpp-3.6.1.zip
-      - cd protobuf-3.6.1
-      - ./configure
-      - make -j4
-      - make check
-      - sudo make install
-      - sudo ldconfig
-      - cd ..
-      - CUDA_REPO_PKG=cuda-repo-ubuntu1604_10.0.130-1_amd64.deb
-      - wget http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1604/x86_64/$CUDA_REPO_PKG
-      - sudo dpkg -i $CUDA_REPO_PKG
-      - sudo apt-key adv --fetch-keys http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1604/x86_64/7fa2af80.pub
-      - rm $CUDA_REPO_PKG
-      - sudo apt-get -y update
-      - sudo apt-get install -y cuda
-      - sudo ln -s /usr/local/cuda-10.0 /usr/local/cuda
-      - git submodule update --init --recursive
-      - cmake -D CUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda -D CMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc -D CMAKE_CXX_COMPILER=clang++ .
-    script: 
-      - make -j4
 
 notifications:
     email:
