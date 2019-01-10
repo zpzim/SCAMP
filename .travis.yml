@@ -4,6 +4,26 @@ language: cpp
 jobs:
   include:
   - stage: "Builds"
+    name: "CentOS Build"
+    env:
+      matrix:
+      - OS_TYPE=centos OS_VERSION=6
+      - OS_TYPE=centos OS_VERSION=7
+    services:
+      - docker
+  
+    before_install:
+      - sudo apt-get update
+      - echo 'DOCKER_OPTS="-H tcp://127.0.0.1:2375 -H unix:///var/run/docker.sock -s devicemapper"' | sudo tee /etc/default/docker > /dev/null
+      - sudo service docker restart
+      - sleep 5
+      - sudo docker pull centos:centos${OS_VERSION}
+      - git submodule update --init --recursive
+    script:
+      - travis/setup_centos_tests.sh ${OS_VERSION}
+
+
+  - stage: "Builds"
     name: "Ubuntu Build"
     os: linux
     dist: xenial
@@ -32,6 +52,7 @@ jobs:
       - cmake -D CUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda -D CMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc -D CMAKE_CXX_COMPILER=clang++ .
       - make -j4
 
+   
   - stage: "Check Style"
     name: "Check clang-format"
     os: linux
