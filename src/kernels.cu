@@ -1254,6 +1254,32 @@ int get_exclusion(uint64_t window_size, uint64_t start_row,
   return 0;
 }
 
+std::pair<int, int> get_exclusion_for_ab_join(uint64_t window_size,
+                                              uint64_t start_row,
+                                              uint64_t start_column,
+                                              bool upper_tile, int tile_dim) {
+  int exclusion_lower = 0;
+  int exclusion_upper = 0;
+  if (upper_tile) {
+    exclusion_lower = get_exclusion(window_size, start_row, start_column);
+    if (start_row > start_column) {
+      exclusion_upper =
+          get_exclusion(window_size, start_row, start_column + tile_dim);
+    } else {
+      exclusion_upper = 0;
+    }
+    return std::make_pair(exclusion_lower, exclusion_upper);
+  }
+  exclusion_lower = get_exclusion(window_size, start_column, start_row);
+  if (start_row >= start_column) {
+    exclusion_upper = 0;
+  } else {
+    exclusion_upper =
+        get_exclusion(window_size, start_column, start_row + tile_dim);
+  }
+  return std::make_pair(exclusion_lower, exclusion_upper);
+}
+
 constexpr int FPTypeSize(SCAMPPrecisionType dtype) {
   switch (dtype) {
     case PRECISION_DOUBLE:
@@ -1486,37 +1512,32 @@ SCAMPError_t kernel_ab_join_upper(
     const double *__restrict__ norms_B, DeviceProfile *profile_A,
     DeviceProfile *profile_B, uint32_t window_size, uint32_t tile_width,
     uint32_t tile_height, uint64_t global_col, uint64_t global_row,
-    int64_t distributed_col, int64_t distributed_row,
+    int64_t distributed_col, int64_t distributed_row, bool aligned_ab_join,
     const cudaDeviceProp &props, SCAMPPrecisionType t, bool computing_rows,
     const OptionalArgs &args, SCAMPProfileType profile_type, cudaStream_t s) {
   constexpr int diags_per_thread = 4;
   uint64_t blocksz = get_blocksz(t, props);
-  int32_t exclusion_lower;
-  int32_t exclusion_upper;
-  if (distributed_col < 0 || distributed_row < 0) {
-    exclusion_lower = 0;
-    exclusion_upper = 0;
-  } else {
-    exclusion_lower = get_exclusion(window_size, global_row + distributed_row,
-                                    global_col + distributed_col);
-    if (global_row > global_col) {
-      exclusion_upper =
-          get_exclusion(window_size, global_row + distributed_row,
-                        global_col + distributed_col + tile_width);
-    } else {
-      exclusion_upper = 0;
+  std::pair<int, int> exclusion_pair(0, 0);
+  if (aligned_ab_join) {
+    int start_col = global_col;
+    int start_row = global_row;
+    if (distributed_col >= 0 && distributed_row >= 0) {
+      start_col += distributed_col;
+      start_row += distributed_row;
     }
+    exclusion_pair = get_exclusion_for_ab_join(window_size, start_row,
+                                               start_col, true, tile_width);
   }
   uint64_t num_workers =
-      ceil((tile_width - (exclusion_lower + exclusion_upper)) /
+      ceil((tile_width - (exclusion_pair.first + exclusion_pair.second)) /
            (float)diags_per_thread);
   uint64_t num_blocks = ceil(num_workers / (double)blocksz);
   SCAMPKernelInputArgs<double> tile_args(
       QT, df_A, df_B, dg_A, dg_B, norms_A, norms_B, tile_width, tile_height,
-      exclusion_lower, exclusion_upper, args);
+      exclusion_pair.first, exclusion_pair.second, args);
   uint64_t smem = get_smem(computing_rows, true, blocksz, t,
                            GetProfileTypeSize(profile_type));
-  if ((exclusion_lower + exclusion_upper) < tile_width) {
+  if ((exclusion_pair.first + exclusion_pair.second) < tile_width) {
     switch (profile_type) {
       case PROFILE_TYPE_SUM_THRESH:
         return LaunchDoTile<double, PROFILE_TYPE_SUM_THRESH, BLOCKSPERSM_AB>(
@@ -1544,36 +1565,32 @@ SCAMPError_t kernel_ab_join_lower(
     const double *__restrict__ norms_B, DeviceProfile *profile_A,
     DeviceProfile *profile_B, uint32_t window_size, uint32_t tile_width,
     uint32_t tile_height, uint64_t global_col, uint64_t global_row,
-    int64_t distributed_col, int64_t distributed_row,
+    int64_t distributed_col, int64_t distributed_row, bool aligned_ab_join,
     const cudaDeviceProp &props, SCAMPPrecisionType t, bool computing_rows,
     const OptionalArgs &args, SCAMPProfileType profile_type, cudaStream_t s) {
   constexpr int diags_per_thread = 4;
   uint64_t blocksz = get_blocksz(t, props);
-  int32_t exclusion_lower, exclusion_upper;
-  if (distributed_col < 0 || distributed_row < 0) {
-    exclusion_lower = 0;
-    exclusion_upper = 0;
-  } else {
-    exclusion_lower = get_exclusion(window_size, global_col + distributed_col,
-                                    global_row + distributed_row);
-    if (global_row >= global_col) {
-      exclusion_upper = 0;
-    } else {
-      exclusion_upper =
-          get_exclusion(window_size, global_col + distributed_col,
-                        global_row + distributed_row + tile_height);
+  std::pair<int, int> exclusion_pair;
+  if (aligned_ab_join) {
+    int start_col = global_col;
+    int start_row = global_row;
+    if (distributed_col >= 0 && distributed_row >= 0) {
+      start_col += distributed_col;
+      start_row += distributed_row;
     }
+    exclusion_pair = get_exclusion_for_ab_join(window_size, start_row,
+                                               start_col, false, tile_height);
   }
   uint64_t num_workers =
-      ceil((tile_height - (exclusion_lower + exclusion_upper)) /
+      ceil((tile_height - (exclusion_pair.first + exclusion_pair.second)) /
            (float)diags_per_thread);
   uint64_t num_blocks = ceil(num_workers / (double)blocksz);
   SCAMPKernelInputArgs<double> tile_args(
       QT, df_B, df_A, dg_B, dg_A, norms_B, norms_A, tile_height, tile_width,
-      exclusion_lower, exclusion_upper, args);
+      exclusion_pair.first, exclusion_pair.second, args);
   uint64_t smem = get_smem(computing_rows, true, blocksz, t,
                            GetProfileTypeSize(profile_type));
-  if (exclusion_lower + exclusion_upper < tile_height) {
+  if (exclusion_pair.first + exclusion_pair.second < tile_height) {
     switch (profile_type) {
       case PROFILE_TYPE_SUM_THRESH:
         return LaunchDoTile<double, PROFILE_TYPE_SUM_THRESH, BLOCKSPERSM_AB>(

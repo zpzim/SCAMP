@@ -64,7 +64,7 @@ do
         tile_sz=${TILE_SZ[i]}
         count=`wc -l $INPUT_FILE | awk '{print $1}'`
         if [ $tile_sz -lt $(($count * 2)) ]; then
-            cmd="$EXECUTABLE --ab_join=true --global_row=0 --global_col=0 --window=$j --max_tile_size=$tile_sz $fp64 --input_a_file_name=$INPUT_FILE --input_b_file_name=$INPUT_FILE"
+            cmd="$EXECUTABLE --aligned --window=$j --max_tile_size=$tile_sz $fp64 --input_a_file_name=$INPUT_FILE --input_b_file_name=$INPUT_FILE"
             echo "Running Test: $cmd"
             $cmd > /dev/null
             X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mp_columns_out_index | grep '^' | wc -l`
@@ -97,7 +97,7 @@ do
                 tile_sz=${TILE_SZ[$l]}
                 count=`wc -l $INPUT_FILE_A | awk '{print $1}'`
                 if [ $tile_sz -lt $(($count * 2)) ]; then
-                    cmd="$EXECUTABLE --ab_join=true --max_tile_size=$tile_sz --input_b_file_name=$INPUT_FILE_B $fp64 --window=$k --input_a_file_name=$INPUT_FILE_A"
+                    cmd="$EXECUTABLE --max_tile_size=$tile_sz --input_b_file_name=$INPUT_FILE_B $fp64 --window=$k --input_a_file_name=$INPUT_FILE_A"
                     echo "Running Test: $cmd"
                     $cmd > /dev/null
                     X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mp_columns_out_index | grep '^' | wc -l`
@@ -123,7 +123,7 @@ do
                 tile_sz=${TILE_SZ[$l]}
                 count=`wc -l $INPUT_FILE_A | awk '{print $1}'`
                 if [ $tile_sz -lt $(($count * 2)) ]; then
-                    cmd="$EXECUTABLE --ab_join=true --max_tile_size=$tile_sz --input_b_file_name=$INPUT_FILE_A $fp64 --window=$k --input_a_file_name=$INPUT_FILE_B"
+                    cmd="$EXECUTABLE --max_tile_size=$tile_sz --input_b_file_name=$INPUT_FILE_A $fp64 --window=$k --input_a_file_name=$INPUT_FILE_B"
                     echo "Running Test: $cmd"
                     $cmd > /dev/null
                     X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mp_columns_out_index | grep '^' | wc -l`
@@ -151,7 +151,7 @@ do
                 tile_sz=${TILE_SZ[$l]}
                 count=`wc -l $INPUT_FILE_A | awk '{print $1}'`
                 if [ $tile_sz -lt $(($count * 2)) ]; then
-                    cmd="$EXECUTABLE --ab_join=true --max_tile_size=$tile_sz --input_b_file_name=$INPUT_FILE_A --keep_rows=true --global_row=9000000000 --global_col=100000 $fp64 --window=$k --input_a_file_name=$INPUT_FILE_B"
+                    cmd="$EXECUTABLE --max_tile_size=$tile_sz --input_b_file_name=$INPUT_FILE_A --keep_rows=true --global_row=9000000000 --global_col=100000 $fp64 --window=$k --input_a_file_name=$INPUT_FILE_B"
                     echo "Running Test: $cmd"
                     $cmd > /dev/null
                     echo "Checking AB result"
@@ -179,7 +179,7 @@ do
                         exit $result
                     fi
 
-                    cmd="$EXECUTABLE --ab_join=true --max_tile_size=$tile_sz --input_b_file_name=$INPUT_FILE_B --keep_rows=true --global_row=9000000000 --global_col=100000 $fp64 --window=$k --input_a_file_name=$INPUT_FILE_A"
+                    cmd="$EXECUTABLE --max_tile_size=$tile_sz --input_b_file_name=$INPUT_FILE_B --keep_rows=true --global_row=9000000000 --global_col=100000 $fp64 --window=$k --input_a_file_name=$INPUT_FILE_A"
                     echo "Running Test: $cmd"
                     $cmd > /dev/null
                     echo "Checking AB result"
@@ -212,6 +212,6 @@ do
         done
     done
 done
-
+echo "All Tests Passed!"
 rm mp_columns_out mp_columns_out_index mp_rows_out mp_rows_out_index
 exit 0

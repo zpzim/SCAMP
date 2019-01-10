@@ -31,7 +31,7 @@ SCAMPError_t kernel_ab_join_upper(
     const double *__restrict__ norms_B, DeviceProfile *profile_A,
     DeviceProfile *profile_B, uint32_t window_size, uint32_t tile_width,
     uint32_t tile_height, uint64_t global_col, uint64_t global_row,
-    int64_t distributed_col, int64_t distributed_row,
+    int64_t distributed_col, int64_t distributed_row, bool aligned_ab_join,
     const cudaDeviceProp &props, SCAMPPrecisionType t, bool computing_rows,
     const OptionalArgs &args, SCAMPProfileType profile_type, cudaStream_t s);
 
@@ -42,7 +42,7 @@ SCAMPError_t kernel_ab_join_lower(
     const double *__restrict__ norms_B, DeviceProfile *profile_A,
     DeviceProfile *profile_B, uint32_t window_size, uint32_t tile_width,
     uint32_t tile_height, uint64_t global_col, uint64_t global_row,
-    int64_t distributed_col, int64_t distributed_row,
+    int64_t distributed_col, int64_t distributed_row, bool aligned_ab_join,
     const cudaDeviceProp &props, SCAMPPrecisionType t, bool computing_rows,
     const OptionalArgs &args, SCAMPProfileType profile_type, cudaStream_t s);
 

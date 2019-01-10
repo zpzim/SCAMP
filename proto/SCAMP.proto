@@ -65,4 +65,5 @@ message SCAMPArgs {
     bool computing_rows = 13;
     bool computing_columns = 14;
     bool keep_rows_separate = 15;
+    bool is_aligned = 16;
 }

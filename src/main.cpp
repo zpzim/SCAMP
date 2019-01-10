@@ -35,8 +35,10 @@ DEFINE_bool(
     "this is useful when computing a distributed self-join, so as to not "
     "recompute values in the lower-trianglular portion of the symmetric "
     "distance matrix.");
-// You can set global_row and global_column to 0 if computing an ab-join where
-// the a and be time series are aligned and need an exclusion zone
+DEFINE_bool(aligned, false,
+            "For ab-joins which are partially self-joins. And for distributed "
+            "self-joins. Indicates that A and B may start with the same "
+            "sequence and must consider an exclusion zone");
 DEFINE_int64(
     global_row, -1,
     "Informs SCAMP that this join is part of a larger distributed join which "
@@ -240,11 +242,19 @@ int main(int argc, char **argv) {
     return 1;
   }
   if (FLAGS_window < 3) {
-    printf("Error: Subsequence length must be at least 3\n");
+    printf(
+        "Error: Subsequence length must be at least 3, please use "
+        "--window=<window_size> to specify your subsequence length.\n");
     return 1;
   }
   if (FLAGS_max_tile_size < 1024) {
     printf("Error: max tile size must be at least 1024\n");
+    return 1;
+  }
+  if (FLAGS_max_tile_size / 2 < FLAGS_window) {
+    printf(
+        "Error: Tile length and width must be at least 2x larger than the "
+        "window size. Please set a larger --max_tile_size=<max_tile_size>\n");
     return 1;
   }
   std::vector<int> devices = ParseIntList(FLAGS_gpus);
@@ -306,6 +316,7 @@ int main(int argc, char **argv) {
   args.set_precision_type(t);
   args.set_profile_type(profile_type);
   args.set_keep_rows_separate(FLAGS_keep_rows);
+  args.set_is_aligned(FLAGS_aligned);
   printf("precision = %d\n", args.precision_type());
   {
     google::protobuf::RepeatedField<double> data(Ta_h.begin(), Ta_h.end());

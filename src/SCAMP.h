@@ -37,6 +37,7 @@ class SCAMP_Operation {
   const bool self_join;
   const bool _computing_rows;
   const bool _computing_cols;
+  const bool _is_aligned;
   const bool _keep_rows_separate;
   const size_t MAX_TILE_SIZE;
   const SCAMPPrecisionType fp_type;
@@ -86,7 +87,8 @@ class SCAMP_Operation {
                   SCAMPPrecisionType t, bool do_full_join, int64_t start_row,
                   int64_t start_col, OptionalArgs args_,
                   SCAMPProfileType profile_type, Profile *pA, Profile *pB,
-                  bool keep_rows, bool compute_rows, bool compute_cols)
+                  bool keep_rows, bool compute_rows, bool compute_cols,
+                  bool is_aligned)
       : size_A(Asize),
         m(window_sz),
         MAX_TILE_SIZE(max_tile_size),
@@ -102,7 +104,8 @@ class SCAMP_Operation {
         _profile_b(pB),
         _keep_rows_separate(keep_rows),
         _computing_rows(compute_rows),
-        _computing_cols(compute_cols) {
+        _computing_cols(compute_cols),
+        _is_aligned(is_aligned) {
     if (self_join) {
       size_B = size_A;
     } else {

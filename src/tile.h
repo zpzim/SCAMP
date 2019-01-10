@@ -34,6 +34,7 @@ class SCAMP_Tile {
   size_t tile_start_B;
   size_t tile_height;
   size_t tile_width;
+  bool aligned_ab_join;
   const size_t window_size;
   bool full_join;
   double thresh;
@@ -47,7 +48,7 @@ class SCAMP_Tile {
              const double *dgB, const double *normA, const double *normB,
              const double *meansA, const double *meansB, double *QT,
              DeviceProfile *profileA, DeviceProfile *profileB, size_t start_A,
-             int64_t start_B, int64_t g_start_A, size_t g_start_B,
+             int64_t start_B, int64_t g_start_A, size_t g_start_B, bool aligned,
              size_t height, size_t width, size_t m,
              std::shared_ptr<fft_precompute_helper> scratch,
              const cudaDeviceProp &prop, SCAMPPrecisionType fp_t,
@@ -77,6 +78,7 @@ class SCAMP_Tile {
         props(prop),
         fp_type(fp_t),
         full_join(false),
+        aligned_ab_join(aligned),
         profile_type(profile_type_),
         opt_args(opt_args_) {}
   SCAMPError_t do_self_join_full(cudaStream_t s);

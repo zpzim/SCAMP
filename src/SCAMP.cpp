@@ -222,9 +222,9 @@ SCAMPError_t SCAMP_Operation::do_tile(
                   norms_B[device], means_A[device], means_B[device],
                   QT_dev[device], &profile_a_tile_dev[device],
                   &profile_b_tile_dev[device], start_x, start_y,
-                  tile_start_col_position, tile_start_row_position, n_y[device],
-                  n_x[device], m, scratch[device], dev_props.at(device),
-                  fp_type, _profile_type, opt_args);
+                  tile_start_col_position, tile_start_row_position, _is_aligned,
+                  n_y[device], n_x[device], m, scratch[device],
+                  dev_props.at(device), fp_type, _profile_type, opt_args);
   cudaEventRecord(clocks_start[device], streams.at(device));
   gpuErrchk(cudaPeekAtLastError());
   err = tile.execute(streams.at(device));
@@ -560,7 +560,7 @@ void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices) {
       args->distributed_start_row(), args->distributed_start_col(), opt_args,
       args->profile_type(), args->mutable_profile_a(),
       args->mutable_profile_b(), args->keep_rows_separate(),
-      args->computing_rows(), args->computing_columns());
+      args->computing_rows(), args->computing_columns(), args->is_aligned());
   op.init();
   gpuErrchk(cudaPeekAtLastError());
   start = clock();
