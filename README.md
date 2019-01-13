@@ -17,15 +17,28 @@ Note: for self-joins on small inputs (~2M or less) the features in this reposito
 This base project requires:
  * At least version 9.0 of the CUDA toolkit available [here](https://developer.nvidia.com/cuda-toolkit).
  * At least version 6.0 of clang (for clang-tidy and clang-format)
- * Currently builds under linux using gcc/clang and nvcc with cmake (3.8+ for cuda support), this version is not yet widely available in package managers (i.e. apt) so you will probably need to install it manually from [here](https://cmake.org/download/)
- * Google protobufs (v3) must be installed as SCAMP uses this input to communicate internally, please follow the instructions [here](https://github.com/protocolbuffers/protobuf/blob/master/src/README.md) to install them.
+ * Currently builds under Ubuntu/Fedora Linux using gcc/clang and nvcc with cmake (3.8+ for cuda support), this version is not yet available directly from all package managers (i.e. apt) so you will probably need to install it manually from [here](https://cmake.org/download/)
+ * Google protobufs (v2) must be installed as SCAMP uses this input to communicate internally, protobuf v2.6.x minimum is required, some package managers do not provide this version yet and you will need to install from source [here](https://github.com/protocolbuffers/protobuf/blob/master/src/README.md) 
  * An NVIDIA GPU with CUDA support is also required. You can find a list of CUDA compatible GPUs [here](https://developer.nvidia.com/cuda-gpus)
- * Currently Supports Kepler-Volta, but Turing and beyond will likely work as well, just add the -gencode flag for your specific architecture in CMakeLists.txt
- * Should compile under windows, but untested. You will probably have to handle the parsing of command line arguments differently in windows.
+ * Currently Supports Kepler-Volta, but Turing and beyond will likely work as well, just add the -gencode flag for your specific architecture in CMakeLists.txt 
  * Highly recommend using a Volta GPU (we get about a 2-3x improvement over Pascal)
+~~~~
+Ubuntu Required Packages:
+   sudo apt-get install protobuf-compiler libprotobuf-dev 
+   # cmake 3.8 is not available via apt install it manually from the link above
+   # Install cuda via the link above
+Fedora:
+   sudo dnf install protobuf-devel cmake3 gcc
+   # Install cuda via the link above
+CentOS:
+  yum install cmake3
+  # Install protobufs manually from source using the link above 
+  # Install cuda via the link above
+~~~~
 # Usage
 ~~~~
 git clone https://github.com/zpzim/SCAMP
+git submodule update --init --recursive
 cd SCAMP
 cmake -D CUDA_TOOLKIT_ROOT_DIR=/path/to/cuda/install \
       -D CMAKE_CUDA_COMPILER=/path/to/nvcc \
@@ -35,7 +48,7 @@ make -j4
 ~~~~
 This will generate two files: mp_columns_out and mp_columns_out_index, which contain the matrix profile and matrix profile index values respectively. 
 ~~~~
-# Example parameters for cmake for a typical linux system with cuda and clang installed
+# Example parameters for cmake for a typical Ubuntu system with cuda and clang installed
 cmake -D CUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda
       -D CMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc
       -D CMAKE_CXX_COMPILER=clang++ .
@@ -57,6 +70,7 @@ cmake -D CUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda
 * Cleanup codebase, improve integration testing
 * Add an optimized CPU code path to this framework, we have optimized code [here](https://github.com/kavj/matrixProfile)
 * Add documentation for and improve the general usability of the distributed portion of the framework, ease of use and portability would be great
+* Add testing infrastructure and additional test cases.
 
 
 
