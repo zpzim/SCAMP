@@ -28,7 +28,7 @@ Ubuntu Required Packages:
    # cmake 3.8 is not available via apt install it manually from the link above
    # Install cuda via the link above
 Fedora:
-   sudo dnf install protobuf-devel cmake3 gcc
+   sudo dnf install protobuf-devel cmake3 gcc-c++
    # Install cuda via the link above
 CentOS:
   yum install cmake3
@@ -38,8 +38,8 @@ CentOS:
 # Usage
 ~~~~
 git clone https://github.com/zpzim/SCAMP
-git submodule update --init --recursive
 cd SCAMP
+git submodule update --init --recursive
 cmake -D CUDA_TOOLKIT_ROOT_DIR=/path/to/cuda/install \
       -D CMAKE_CUDA_COMPILER=/path/to/nvcc \
       -D CMAKE_CXX_COMPILER=/path/to/clang/or/gcc .
