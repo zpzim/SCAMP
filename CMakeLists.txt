@@ -58,18 +58,20 @@ set(
 
 # ----------------------------------------------------------------------------------------
 #                         ===== Compiler Configuration =====
-add_definitions("--std=c++14")
+set(CXX_STD, "-std=c++11")
 message(STATUS "CUDA Root Directory is ${CUDA_TOOLKIT_ROOT_DIR}")
 include_directories("${CUDA_TOOLKIT_ROOT_DIR}/include" "proto")
 set(CUDA_SEPARABLE_COMPILATION ON)
-set(CUDA_COMPILATION_FLAGS "-lineinfo --expt-relaxed-constexpr -use_fast_math -O3")
+set(CUDA_COMPILATION_FLAGS "--std=c++14 -lineinfo --expt-relaxed-constexpr -use_fast_math -O3")
 set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_60,code=sm_70")
 set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_61,code=sm_61")
 set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_60,code=sm_60")
-#set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_50,code=sm_50")
-#set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_37,code=sm_37")
-#set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_35,code=sm_35")
-#set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_30,code=sm_30")
+set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_50,code=sm_50")
+set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_37,code=sm_37")
+set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_35,code=sm_35")
+set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_30,code=sm_30")
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_STD}")
 
 # optimize in release
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native")

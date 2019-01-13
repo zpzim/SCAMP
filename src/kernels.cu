@@ -101,6 +101,52 @@ struct SCAMPThreadInfo {
   uint32_t global_col;
 };
 
+enum SCAMPAtomicType { ATOMIC_BLOCK, ATOMIC_GLOBAL, ATOMIC_SYSTEM };
+
+#if __CUDA_ARCH__ < 600
+__device__ double atomicAdd(double* address, double val)
+{
+  unsigned long long int* address_as_ull = (unsigned long long int*)address;
+  unsigned long long int old = *address_as_ull, assumed;
+  do {
+    assumed = old;
+    old = atomicCAS(address_as_ull, assumed,
+                     __double_as_longlong(val +
+                     __longlong_as_double(assumed)));
+    } while (assumed != old);
+    return __longlong_as_double(old);
+}
+#endif
+
+__device__ inline unsigned long long do_atomicCAS(unsigned long long* address, unsigned long long v1, unsigned long long v2) {
+#if __CUDA_ARCH__ < 600
+  return atomicCAS(address, v1, v2);
+#else
+  return atomicCAS_block(address, v1, v2);
+#endif
+}
+
+template <typename T, SCAMPAtomicType type>
+__device__ inline uint32_t do_atomicAdd(T* address, T amount) {
+#if __CUDA_ARCH__ < 600
+  return atomicAdd(address, amount);
+#else
+  switch (type) {
+  case ATOMIC_BLOCK:
+    return atomicAdd_block(address, amount);
+  case ATOMIC_GLOBAL:
+    return atomicAdd(address,amount);
+  case ATOMIC_SYSTEM: 
+    return atomicAdd_system(address,amount);
+  }
+  // Should never happen
+  return 0;
+#endif
+}
+
+
+
+
 // Atomically updates the MP/idxs using a single 64-bit integer. We lose a small
 // amount of precision in the output, if we do not do this we are unable
 // to atomically update both the matrix profile and the indexes without using a
@@ -128,7 +174,7 @@ __device__ inline void MPatomicMax_check(
     loc.ints[1] = idx;
     loctest.ulong = *address;
     while (loctest.floats[0] < val) {
-      loctest.ulong = atomicCAS((unsigned long long int *)address,
+      loctest.ulong = do_atomicCAS((unsigned long long int *)address,
                                 loctest.ulong, loc.ulong);
     }
   }
@@ -392,7 +438,7 @@ class DoRowOptStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
         count_row += __shfl_down_sync(0xffffffff, count_row, i);
       }
       if ((threadIdx.x & 0x1f) == 0) {
-        atomicAdd_block(smem.local_mp_row + info.local_row, count_row);
+        do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_BLOCK>(smem.local_mp_row + info.local_row, count_row);
       }
     }
     info.local_row++;
@@ -525,7 +571,7 @@ class DoRowEdgeStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
         distr += distx;
       }
       if (COMPUTE_COLS) {
-        atomicAdd_block(smem.local_mp_col + j, distx);
+        do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_BLOCK>(smem.local_mp_col + j, distx);
       }
     }
     if (x + 1 < n && diag + 1 < num_diags) {
@@ -534,7 +580,7 @@ class DoRowEdgeStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
           distr += disty;
         }
         if (COMPUTE_COLS) {
-          atomicAdd_block(smem.local_mp_col + j + 1, disty);
+          do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_BLOCK>(smem.local_mp_col + j + 1, disty);
         }
       }
     }
@@ -544,7 +590,7 @@ class DoRowEdgeStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
           distr += distz;
         }
         if (COMPUTE_COLS) {
-          atomicAdd_block(smem.local_mp_col + j + 2, distz);
+          do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_BLOCK>(smem.local_mp_col + j + 2, distz);
         }
       }
     }
@@ -554,12 +600,12 @@ class DoRowEdgeStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
           distr += distw;
         }
         if (COMPUTE_COLS) {
-          atomicAdd_block(smem.local_mp_col + j + 3, distw);
+          do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_BLOCK>(smem.local_mp_col + j + 3, distw);
         }
       }
     }
     if (COMPUTE_ROWS) {
-      atomicAdd_block(smem.local_mp_row + i, distr);
+      do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_BLOCK>(smem.local_mp_row + i, distr);
     }
   }
 };
@@ -684,16 +730,16 @@ class UpdateColumnsStrategy<DISTANCE_TYPE, PROFILE_DATA_TYPE,
       distc3 += overlap_3;
     }
     // Update the shared memory sums
-    atomicAdd_block(local_mp_col + col, distc1);
-    atomicAdd_block(local_mp_col + col + 1, distc2);
-    atomicAdd_block(local_mp_col + col + 2, distc3);
-    atomicAdd_block(local_mp_col + col + 3, distc4);
+    do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_BLOCK>(local_mp_col + col, distc1);
+    do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_BLOCK>(local_mp_col + col + 1, distc2);
+    do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_BLOCK>(local_mp_col + col + 2, distc3);
+    do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_BLOCK>(local_mp_col + col + 3, distc4);
     // The last thread in the warp has to make additional updates to shared
     // memory as it had nowhere to send its overlapping sums
     if (lane == 31) {
-      atomicAdd_block(local_mp_col + col + 4, distc5);
-      atomicAdd_block(local_mp_col + col + 5, distc6);
-      atomicAdd_block(local_mp_col + col + 6, distc7);
+      do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_BLOCK>(local_mp_col + col + 4, distc5);
+      do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_BLOCK>(local_mp_col + col + 5, distc6);
+      do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_BLOCK>(local_mp_col + col + 6, distc7);
     }
   }
 };
@@ -756,7 +802,7 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
       global_position = tile_start_x + threadIdx.x;
       local_position = threadIdx.x;
       while (local_position < TILE_WIDTH && global_position < n_x) {
-        atomicAdd(profile_A + global_position, local_mp_col[local_position]);
+        do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_GLOBAL>(profile_A + global_position, local_mp_col[local_position]);
         global_position += BLOCKSZ;
         local_position += BLOCKSZ;
       }
@@ -765,7 +811,7 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
       global_position = tile_start_y + threadIdx.x;
       local_position = threadIdx.x;
       while (local_position < TILE_HEIGHT && global_position < n_y) {
-        atomicAdd(profile_B + global_position, local_mp_row[local_position]);
+        do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_GLOBAL>(profile_B + global_position, local_mp_row[local_position]);
         global_position += BLOCKSZ;
         local_position += BLOCKSZ;
       }
