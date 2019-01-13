@@ -1,5 +1,6 @@
-
 #include <cinttypes>
+#include <iostream>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <unordered_map>
@@ -19,7 +20,7 @@ template <typename T>
 void elementwise_sum(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
                      T *to_merge) {
   for (int i = 0; i < tile_sz; ++i) {
-    (*mp_full)[i + merge_start] += (*to_merge)[i];
+    mp_full[i + merge_start] += to_merge[i];
   }
 }
 
@@ -28,11 +29,11 @@ void elementwise_max(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
                      T *to_merge, uint64_t index_offset) {
   for (int i = 0; i < tile_sz; ++i) {
     mp_entry e1, e2;
-    e1.ulong = (*mp_full)[i + merge_start];
-    e2.ulong = (*to_merge)[i];
+    e1.ulong = mp_full[i + merge_start];
+    e2.ulong = to_merge[i];
     if (e1.floats[0] < e2.floats[0]) {
       e2.ints[1] += index_offset;
-      (*mp_full)[i + merge_start] = e2.ulong;
+      mp_full[i + merge_start] = e2.ulong;
     }
   }
 }
@@ -189,8 +190,6 @@ SCAMPError_t SCAMP_Operation::InitInputOnDevice(
     case PROFILE_TYPE_KNN:
     case PROFILE_TYPE_1NN_MULTIDIM:
     case PROFILE_TYPE_INVALID:
-    case SCAMPProfileType_INT_MIN_SENTINEL_DO_NOT_USE_:
-    case SCAMPProfileType_INT_MAX_SENTINEL_DO_NOT_USE_:
       break;
   }
   return SCAMP_NO_ERROR;
@@ -379,42 +378,45 @@ void SCAMP_Operation::MergeTileIntoFullProfile(Profile *tile_profile,
                                                uint64_t index_start = 0) {
   switch (_profile_type) {
     case PROFILE_TYPE_SUM_THRESH:
-      elementwise_sum<google::protobuf::RepeatedField<double>>(
-          full_profile->mutable_data()
-              ->Mutable(0)
-              ->mutable_double_value()
-              ->mutable_value(),
-          position, length,
-          tile_profile->mutable_data()
-              ->Mutable(0)
-              ->mutable_double_value()
-              ->mutable_value());
+      elementwise_sum<double>(full_profile->mutable_data()
+                                  ->Mutable(0)
+                                  ->mutable_double_value()
+                                  ->mutable_value()
+                                  ->mutable_data(),
+                              position, length,
+                              tile_profile->mutable_data()
+                                  ->Mutable(0)
+                                  ->mutable_double_value()
+                                  ->mutable_value()
+                                  ->mutable_data());
       return;
     case PROFILE_TYPE_1NN_INDEX:
-      elementwise_max<google::protobuf::RepeatedField<uint64_t>>(
-          full_profile->mutable_data()
-              ->Mutable(0)
-              ->mutable_uint64_value()
-              ->mutable_value(),
-          position, length,
-          tile_profile->mutable_data()
-              ->Mutable(0)
-              ->mutable_uint64_value()
-              ->mutable_value(),
-          index_start);
+      elementwise_max<uint64_t>(full_profile->mutable_data()
+                                    ->Mutable(0)
+                                    ->mutable_uint64_value()
+                                    ->mutable_value()
+                                    ->mutable_data(),
+                                position, length,
+                                tile_profile->mutable_data()
+                                    ->Mutable(0)
+                                    ->mutable_uint64_value()
+                                    ->mutable_value()
+                                    ->mutable_data(),
+                                index_start);
       // elementwise_max_with_index();
       return;
     case PROFILE_TYPE_FREQUENCY_THRESH:
-      elementwise_sum<google::protobuf::RepeatedField<uint64_t>>(
-          full_profile->mutable_data()
-              ->Mutable(0)
-              ->mutable_uint64_value()
-              ->mutable_value(),
-          position, length,
-          tile_profile->mutable_data()
-              ->Mutable(0)
-              ->mutable_uint64_value()
-              ->mutable_value());
+      elementwise_sum<uint64_t>(full_profile->mutable_data()
+                                    ->Mutable(0)
+                                    ->mutable_uint64_value()
+                                    ->mutable_value()
+                                    ->mutable_data(),
+                                position, length,
+                                tile_profile->mutable_data()
+                                    ->Mutable(0)
+                                    ->mutable_uint64_value()
+                                    ->mutable_value()
+                                    ->mutable_data());
       return;
     case PROFILE_TYPE_KNN:
     case PROFILE_TYPE_1NN_MULTIDIM:

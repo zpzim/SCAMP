@@ -35,11 +35,8 @@ jobs:
                 clang-tidy-6.0
     compiler: clang++-6.0
     before_install:
-      - sudo apt-get install autoconf automake libtool curl make g++ unzip
+      - sudo apt-get install make g++ libprotobuf-dev protobuf-compiler
     install:
-      - wget https://github.com/protocolbuffers/protobuf/releases/download/v3.6.1/protobuf-cpp-3.6.1.zip
-      - unzip protobuf-cpp-3.6.1.zip
-      - pushd protobuf-3.6.1 && ./configure --prefix=/usr CC=gcc CXX=g++ && make && sudo make install && popd 
       - CUDA_REPO_PKG=cuda-repo-ubuntu1604_10.0.130-1_amd64.deb
       - wget http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1604/x86_64/$CUDA_REPO_PKG
       - sudo dpkg -i $CUDA_REPO_PKG

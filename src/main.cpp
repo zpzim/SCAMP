@@ -1,5 +1,6 @@
 #include <cuda_runtime.h>
 #include <gflags/gflags.h>
+#include <cmath>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
