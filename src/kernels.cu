@@ -118,13 +118,23 @@ __device__ double atomicAdd(double *address, double val) {
 }
 #endif
 
+template <SCAMPAtomicType type>
 __device__ inline unsigned long long do_atomicCAS(unsigned long long *address,
                                                   unsigned long long v1,
                                                   unsigned long long v2) {
 #if __CUDA_ARCH__ < 600
   return atomicCAS(address, v1, v2);
 #else
-  return atomicCAS_block(address, v1, v2);
+  switch (type) {
+    case ATOMIC_BLOCK:
+      return atomicCAS_block(address, v1, v2);
+    case ATOMIC_GLOBAL:
+      return atomicCAS(address, v1, v2);
+    case ATOMIC_SYSTEM:
+      return atomicCAS_system(address, v1, v2);
+  }
+  // Should never happen
+  return 0;
 #endif
 }
 
@@ -150,6 +160,7 @@ __device__ inline uint32_t do_atomicAdd(T *address, T amount) {
 // amount of precision in the output, if we do not do this we are unable
 // to atomically update both the matrix profile and the indexes without using a
 // critical section and dedicated locks.
+template <SCAMPAtomicType type>
 __device__ inline void MPatomicMax(volatile uint64_t *address, float val,
                                    unsigned int idx) {
   mp_entry loc, loctest;
@@ -158,7 +169,7 @@ __device__ inline void MPatomicMax(volatile uint64_t *address, float val,
   loctest.ulong = *address;
   while (loctest.floats[0] < val) {
     loctest.ulong =
-        atomicCAS((unsigned long long int *)address, loctest.ulong, loc.ulong);
+        do_atomicCAS<type>((unsigned long long int *)address, loctest.ulong, loc.ulong);
   }
 }
 
@@ -173,7 +184,7 @@ __device__ inline void MPatomicMax_check(
     loc.ints[1] = idx;
     loctest.ulong = *address;
     while (loctest.floats[0] < val) {
-      loctest.ulong = do_atomicCAS((unsigned long long int *)address,
+      loctest.ulong = do_atomicCAS<ATOMIC_BLOCK>((unsigned long long int *)address,
                                    loctest.ulong, loc.ulong);
     }
   }
@@ -654,7 +665,7 @@ class DoRowEdgeStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
     cov4 = cov4 + smem.df_col[j + 3] * dgr + smem.dg_col[j + 3] * dfr;
 
     if (COMPUTE_COLS) {
-      MPatomicMax((uint64_t *)(smem.local_mp_col + j), distx, y);
+      MPatomicMax<ATOMIC_BLOCK>((uint64_t *)(smem.local_mp_col + j), distx, y);
     }
     dist_row = distx;
     idx_row = x;
@@ -663,7 +674,7 @@ class DoRowEdgeStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
         MPMax(dist_row, disty, idx_row, x + 1, dist_row, idx_row);
       }
       if (COMPUTE_COLS) {
-        MPatomicMax((uint64_t *)(smem.local_mp_col + j + 1), disty, y);
+        MPatomicMax<ATOMIC_BLOCK>((uint64_t *)(smem.local_mp_col + j + 1), disty, y);
       }
     }
     if (x + 2 < n && diag + 2 < num_diags) {
@@ -671,7 +682,7 @@ class DoRowEdgeStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
         MPMax(dist_row, distz, idx_row, x + 2, dist_row, idx_row);
       }
       if (COMPUTE_COLS) {
-        MPatomicMax((uint64_t *)(smem.local_mp_col + j + 2), distz, y);
+        MPatomicMax<ATOMIC_BLOCK>((uint64_t *)(smem.local_mp_col + j + 2), distz, y);
       }
     }
     if (x + 3 < n && diag + 3 < num_diags) {
@@ -679,11 +690,11 @@ class DoRowEdgeStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
         MPMax(dist_row, distw, idx_row, x + 3, dist_row, idx_row);
       }
       if (COMPUTE_COLS) {
-        MPatomicMax((uint64_t *)(smem.local_mp_col + j + 3), distw, y);
+        MPatomicMax<ATOMIC_BLOCK>((uint64_t *)(smem.local_mp_col + j + 3), distw, y);
       }
     }
     if (COMPUTE_ROWS) {
-      MPatomicMax((uint64_t *)(smem.local_mp_row + i), dist_row, idx_row);
+      MPatomicMax<ATOMIC_BLOCK>((uint64_t *)(smem.local_mp_row + i), dist_row, idx_row);
     }
   }
 };
@@ -852,7 +863,7 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
       while (local_position < TILE_WIDTH && global_position < n_x) {
         mp_entry e;
         e.ulong = local_mp_col[local_position];
-        MPatomicMax(profile_A + global_position, e.floats[0], e.ints[1]);
+        MPatomicMax<ATOMIC_GLOBAL>(profile_A + global_position, e.floats[0], e.ints[1]);
         global_position += BLOCKSZ;
         local_position += BLOCKSZ;
       }
@@ -863,7 +874,7 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
       while (local_position < TILE_HEIGHT && global_position < n_y) {
         mp_entry e;
         e.ulong = local_mp_row[local_position];
-        MPatomicMax(profile_B + global_position, e.floats[0], e.ints[1]);
+        MPatomicMax<ATOMIC_GLOBAL>(profile_B + global_position, e.floats[0], e.ints[1]);
         global_position += BLOCKSZ;
         local_position += BLOCKSZ;
       }
@@ -879,7 +890,7 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
 // do_iteration_unroll_4 computes a 4x4 block of the distance matrix by calling
 // do_unrolled_row4 four separate times.
 // We are computing a tile that looks like this:
-// C:1 2 3 4 5 6 7
+// C: 1 2 3 4 5 6 7
 // R1 X X X X
 // R2   X X X X
 // R3     X X X X
@@ -944,7 +955,7 @@ class DoIterationStrategy<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
     VEC4_DATA_TYPE inormc2 =
         reinterpret_cast<VEC4_DATA_TYPE *>(smem.inorm_col)[c + 1];
 
-    // Due to a lack of registers on volta, we only load these row values 2 at a
+    // Due to a lack of registers, we only load these row values 2 at a
     // time
     VEC2_DATA_TYPE dgr = reinterpret_cast<VEC2_DATA_TYPE *>(smem.dg_row)[r];
     VEC2_DATA_TYPE dfr = reinterpret_cast<VEC2_DATA_TYPE *>(smem.df_row)[r];
@@ -1096,9 +1107,6 @@ class DoIterationStrategy<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
   DoRowOptStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, float,
                    COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE_1NN_INDEX>
       _do_row;
-  // UpdateColumnsStrategy<DISTANCE_TYPE, PROFILE_DATA_TYPE,
-  // PROFILE_TYPE_1NN_INDEX>
-  //    _update_cols;
 };
 
 ///////////////////////////////////////
@@ -1256,8 +1264,6 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
       while (thread_info.local_row < tile_height) {
         tactic.DoIteration(thread_info, smem, args.opt);
       }
-      //      thread_info.global_row += tile_height;
-      //      thread_info.global_col += tile_height;
 
     } else if (start_diag < num_diags) {
       while (thread_info.global_col < args.n_x &&
