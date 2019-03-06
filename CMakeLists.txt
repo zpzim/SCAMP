@@ -39,21 +39,6 @@ set(
   src/*.h
   src/*.cpp
   src/*.cu
-#  src/common.h
-#  src/kernels.h
-#  src/utils.h
-#  src/tile.h
-#  src/SCAMP.h
-#  src/fft_helper.h
-#  src/fft_kernels.h
-#  src/kernels.cu
-#  src/utils.cu
-#  src/tile.cpp
-#  src/SCAMP.cpp
-#  src/fft_helper.cpp
-#  src/fft_kernels.cu
-#  src/main.cpp
-#  src/common.cpp
   )
 
 # ----------------------------------------------------------------------------------------

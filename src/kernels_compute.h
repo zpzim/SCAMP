@@ -40,10 +40,12 @@ class DoIterationStrategy : public SCAMPStrategy {
 
 template <typename DATA_TYPE, typename VEC2_DATA_TYPE, typename VEC4_DATA_TYPE,
           typename ACCUM_TYPE, typename PROFILE_DATA_TYPE,
-          typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS, SCAMPProfileType PROFILE_TYPE>
-class DoIterationStrategy<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
-                          PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS,
-                          COMPUTE_COLS, PROFILE_TYPE, std::enable_if_t<PROFILE_TYPE==PROFILE_TYPE_SUM_THRESH>>
+          typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
+          SCAMPProfileType PROFILE_TYPE>
+class DoIterationStrategy<
+    DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE, PROFILE_DATA_TYPE,
+    DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE,
+    std::enable_if_t<PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH>>
     : public SCAMPStrategy {
  public:
   __device__ DoIterationStrategy() {}
@@ -122,10 +124,12 @@ class DoIterationStrategy<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
 
 template <typename DATA_TYPE, typename VEC2_DATA_TYPE, typename VEC4_DATA_TYPE,
           typename ACCUM_TYPE, typename PROFILE_DATA_TYPE,
-          typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS, SCAMPProfileType PROFILE_TYPE>
-class DoIterationStrategy<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
-                          PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS,
-                          COMPUTE_COLS, PROFILE_TYPE, std::enable_if_t<PROFILE_TYPE==PROFILE_TYPE_1NN_INDEX>>
+          typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
+          SCAMPProfileType PROFILE_TYPE>
+class DoIterationStrategy<
+    DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE, PROFILE_DATA_TYPE,
+    DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE,
+    std::enable_if_t<PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX>>
     : public SCAMPStrategy {
  public:
   __device__ DoIterationStrategy() {}
