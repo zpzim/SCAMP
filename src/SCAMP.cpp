@@ -143,6 +143,41 @@ SCAMPError_t SCAMP_Operation::destroy() {
   return SCAMP_NO_ERROR;
 }
 
+void SCAMP_Operation::copy_statistics_for_tile(int device) {
+  size_t bytes_a =
+      (_current_tile_width[device] - _mp_window + 1) * sizeof(double);
+  size_t bytes_b =
+      (_current_tile_height[device] - _mp_window + 1) * sizeof(double);
+  cudaMemcpyAsync(_norms_A[device],
+                  _normsa_h.data() + _current_tile_col[device], bytes_a,
+                  cudaMemcpyHostToDevice, _streams.at(device));
+  gpuErrchk(cudaPeekAtLastError());
+  cudaMemcpyAsync(_norms_B[device],
+                  _normsb_h.data() + _current_tile_row[device], bytes_b,
+                  cudaMemcpyHostToDevice, _streams.at(device));
+  gpuErrchk(cudaPeekAtLastError());
+  cudaMemcpyAsync(_df_A[device], _dfa_h.data() + _current_tile_col[device],
+                  bytes_a, cudaMemcpyHostToDevice, _streams.at(device));
+  gpuErrchk(cudaPeekAtLastError());
+  cudaMemcpyAsync(_df_B[device], _dfb_h.data() + _current_tile_row[device],
+                  bytes_b, cudaMemcpyHostToDevice, _streams.at(device));
+  gpuErrchk(cudaPeekAtLastError());
+  cudaMemcpyAsync(_dg_A[device], _dga_h.data() + _current_tile_col[device],
+                  bytes_a, cudaMemcpyHostToDevice, _streams.at(device));
+  gpuErrchk(cudaPeekAtLastError());
+  cudaMemcpyAsync(_dg_B[device], _dgb_h.data() + _current_tile_row[device],
+                  bytes_b, cudaMemcpyHostToDevice, _streams.at(device));
+  gpuErrchk(cudaPeekAtLastError());
+  cudaMemcpyAsync(_means_A[device],
+                  _meansa_h.data() + _current_tile_col[device], bytes_a,
+                  cudaMemcpyHostToDevice, _streams.at(device));
+  gpuErrchk(cudaPeekAtLastError());
+  cudaMemcpyAsync(_means_B[device],
+                  _meansb_h.data() + _current_tile_row[device], bytes_b,
+                  cudaMemcpyHostToDevice, _streams.at(device));
+  gpuErrchk(cudaPeekAtLastError());
+}
+
 SCAMPError_t SCAMP_Operation::InitInputOnDevice(
     const google::protobuf::RepeatedField<double> &Ta_h,
     const google::protobuf::RepeatedField<double> &Tb_h, int device) {
@@ -157,6 +192,8 @@ SCAMPError_t SCAMP_Operation::InitInputOnDevice(
                   sizeof(double) * _current_tile_height[device],
                   cudaMemcpyHostToDevice, _streams.at(device));
   gpuErrchk(cudaPeekAtLastError());
+
+  copy_statistics_for_tile(device);
 
   // TODO(zpzim): make CPU/GPU agnostic
   switch (_profile_type) {
@@ -217,20 +254,8 @@ SCAMPError_t SCAMP_Operation::do_tile(
   size_t start_x = _current_tile_col[device];
   size_t start_y = _current_tile_row[device];
   SCAMPError_t err;
-  size_t t_n_x = _current_tile_width[device] - _mp_window + 1;
-  size_t t_n_y = _current_tile_height[device] - _mp_window + 1;
   InitInputOnDevice(Ta_h, Tb_h, device);
 
-  // FIXME: Computing the sliding dot products & statistics for each tile is
-  // overkill, we should precompute for the whole SCAMP_Operation
-  compute_statistics(_T_A_dev[device], _norms_A[device], _df_A[device],
-                     _dg_A[device], _means_A[device], t_n_x, _mp_window,
-                     _streams.at(device), _scratchpad[device]);
-  gpuErrchk(cudaPeekAtLastError());
-  compute_statistics(_T_B_dev[device], _norms_B[device], _df_B[device],
-                     _dg_B[device], _means_B[device], t_n_y, _mp_window,
-                     _streams.at(device), _scratchpad[device]);
-  gpuErrchk(cudaPeekAtLastError());
   SCAMP_Tile tile(t, _T_A_dev[device], _T_B_dev[device], _df_A[device],
                   _df_B[device], _dg_A[device], _dg_B[device], _norms_A[device],
                   _norms_B[device], _means_A[device], _means_B[device],
@@ -551,6 +576,12 @@ SCAMPError_t SCAMP_Operation::do_join(
                                  InitProfile(_profile_type, _max_tile_height));
   vector<Profile> profile_b_tile(_devices.size(),
                                  InitProfile(_profile_type, _max_tile_width));
+  gpuErrchk(cudaPeekAtLastError());
+  compute_statistics(timeseries_a, &_normsa_h, &_dfa_h, &_dga_h, &_meansa_h,
+                     _mp_window);
+  gpuErrchk(cudaPeekAtLastError());
+  compute_statistics(timeseries_b, &_normsb_h, &_dfb_h, &_dgb_h, &_meansb_h,
+                     _mp_window);
 
   bool done = false;
   int last_dev = ISSUED_ALL_DEVICES;

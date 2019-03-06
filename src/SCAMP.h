@@ -20,6 +20,8 @@ class SCAMP_Operation {
  private:
   unordered_map<int, double *> _T_A_dev, _T_B_dev, _QT_dev, _means_A, _means_B,
       _norms_A, _norms_B, _df_A, _df_B, _dg_A, _dg_B, _scratchpad;
+  std::vector<double> _normsa_h, _dfa_h, _dga_h, _normsb_h, _dfb_h, _dgb_h,
+      _meansa_h, _meansb_h;
   // TODO(zpzim): only use these for GPU computation, make a general
   // "DeviceProfile" for CPUs and GPUs
   unordered_map<int, DeviceProfile> _profile_a_tile_dev, _profile_b_tile_dev;
@@ -123,6 +125,8 @@ class SCAMP_Operation {
   SCAMPError_t InitInputOnDevice(
       const google::protobuf::RepeatedField<double> &Ta_h,
       const google::protobuf::RepeatedField<double> &Tb_h, int device);
+
+  void copy_statistics_for_tile(int device);
 
  public:
   SCAMP_Operation(size_t Asize, size_t Bsize, size_t window_sz,

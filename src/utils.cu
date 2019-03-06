@@ -101,32 +101,90 @@ void elementwise_max_with_index(std::vector<float> &mp_full,
   }
 }
 
-void compute_statistics(const double *T, double *norms, double *df, double *dg,
-                        double *means, size_t n, size_t m, cudaStream_t s,
-                        double *scratch) {
-  dim3 grid(ceil(n / (double)512), 1, 1);
-  dim3 block(512, 1, 1);
-  thrust::device_ptr<const double> dev_ptr_T =
-      thrust::device_pointer_cast<const double>(T);
-  thrust::device_ptr<double> dev_ptr_scratch =
-      thrust::device_pointer_cast<double>(scratch);
-  thrust::inclusive_scan(thrust::cuda::par.on(s), dev_ptr_T,
-                         dev_ptr_T + n + m - 1, dev_ptr_scratch,
-                         thrust::plus<double>());
-  gpuErrchk(cudaPeekAtLastError());
-  // Use prefix sum to compute sliding mean
-  sliding_mean<<<grid, block, 0, s>>>(scratch, m, n, means);
-  gpuErrchk(cudaPeekAtLastError());
+void compute_statistics(const google::protobuf::RepeatedField<double> &T,
+                        std::vector<double> *norms, std::vector<double> *df,
+                        std::vector<double> *dg, std::vector<double> *means,
+                        size_t m) {
+  // TODO: add cpu codepath
+  constexpr bool cuda_enabled = true;
+  size_t n = T.size() - m + 1;
+  if (cuda_enabled) {
+    dim3 grid(ceil(n / (double)512), 1, 1);
+    dim3 block(512, 1, 1);
+    double *norms_dev, *T_dev, *means_dev, *df_dev, *dg_dev, *scratch;
+    gpuErrchk(cudaPeekAtLastError());
+    cudaMalloc(&norms_dev, sizeof(double) * n);
+    gpuErrchk(cudaPeekAtLastError());
+    cudaMalloc(&means_dev, sizeof(double) * n);
+    gpuErrchk(cudaPeekAtLastError());
+    cudaMalloc(&df_dev, sizeof(double) * n);
+    gpuErrchk(cudaPeekAtLastError());
+    cudaMalloc(&dg_dev, sizeof(double) * n);
+    gpuErrchk(cudaPeekAtLastError());
+    cudaMalloc(&T_dev, sizeof(double) * T.size());
+    gpuErrchk(cudaPeekAtLastError());
+    cudaMalloc(&scratch, sizeof(double) * T.size());
+    gpuErrchk(cudaPeekAtLastError());
+    cudaMemcpy(T_dev, T.data(), sizeof(double) * T.size(),
+               cudaMemcpyHostToDevice);
+    gpuErrchk(cudaPeekAtLastError());
 
-  // Compute differential values
-  sliding_dfdg<<<grid, block, 0, s>>>(T, means, df, dg, m, n);
-  gpuErrchk(cudaPeekAtLastError());
+    thrust::device_ptr<const double> dev_ptr_T =
+        thrust::device_pointer_cast<const double>(T_dev);
+    gpuErrchk(cudaPeekAtLastError());
+    thrust::device_ptr<double> dev_ptr_scratch =
+        thrust::device_pointer_cast<double>(scratch);
+    gpuErrchk(cudaPeekAtLastError());
+    thrust::inclusive_scan(dev_ptr_T, dev_ptr_T + T.size(), dev_ptr_scratch,
+                           thrust::plus<double>());
+    gpuErrchk(cudaPeekAtLastError());
 
-  // This will be kind of slow on the GPU, may cause latency between tiles
-  int workers = n / m + 1;
-  fastinvnorm<<<dim3(ceil(workers / (double)512), 1, 1), dim3(512, 1, 1), 0,
-                s>>>(norms, means, T, m, n);
-  gpuErrchk(cudaPeekAtLastError());
+    // Use prefix sum to compute sliding mean
+    sliding_mean<<<grid, block, 0>>>(scratch, m, n, means_dev);
+    gpuErrchk(cudaPeekAtLastError());
+
+    // Compute differential values
+    sliding_dfdg<<<grid, block, 0>>>(T_dev, means_dev, df_dev, dg_dev, m, n);
+    gpuErrchk(cudaPeekAtLastError());
+
+    // This will be kind of slow on the GPU
+    int workers = n / m + 1;
+    fastinvnorm<<<dim3(ceil(workers / (double)512), 1, 1), dim3(512, 1, 1),
+                  0>>>(norms_dev, means_dev, T_dev, m, n);
+    gpuErrchk(cudaPeekAtLastError());
+
+    // Copy results back to host
+    norms->resize(n);
+    df->resize(n);
+    dg->resize(n);
+    means->resize(n);
+    cudaMemcpy(norms->data(), norms_dev, sizeof(double) * n,
+               cudaMemcpyDeviceToHost);
+    gpuErrchk(cudaPeekAtLastError());
+    cudaMemcpy(df->data(), df_dev, sizeof(double) * n, cudaMemcpyDeviceToHost);
+    gpuErrchk(cudaPeekAtLastError());
+    cudaMemcpy(dg->data(), dg_dev, sizeof(double) * n, cudaMemcpyDeviceToHost);
+    gpuErrchk(cudaPeekAtLastError());
+    cudaMemcpy(means->data(), means_dev, sizeof(double) * n,
+               cudaMemcpyDeviceToHost);
+
+    // Free memory
+    cudaFree(norms_dev);
+    gpuErrchk(cudaPeekAtLastError());
+    cudaFree(means_dev);
+    gpuErrchk(cudaPeekAtLastError());
+    cudaFree(df_dev);
+    gpuErrchk(cudaPeekAtLastError());
+    cudaFree(dg_dev);
+    gpuErrchk(cudaPeekAtLastError());
+    cudaFree(scratch);
+    gpuErrchk(cudaPeekAtLastError());
+    cudaFree(T_dev);
+    gpuErrchk(cudaPeekAtLastError());
+
+  } else {
+    // TODO(zpzim): Do same on CPU
+  }
 }
 
 void launch_merge_mp_idx(float *mp, uint32_t *mpi, uint32_t n, uint64_t *merged,
