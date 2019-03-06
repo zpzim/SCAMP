@@ -154,7 +154,7 @@ class SCAMP_Operation {
     } else {
       _full_ts_len_B = Bsize;
     }
-    _max_tile_ts_size = Asize / (_devices.size());
+    _max_tile_ts_size = std::max(Asize, Bsize) / (_devices.size());
     if (_max_tile_ts_size > MAX_TILE_SIZE) {
       _max_tile_ts_size = MAX_TILE_SIZE;
     }
