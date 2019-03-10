@@ -1,7 +1,10 @@
 #pragma once
 #include <cuda.h>
+#include <condition_variable>
 #include <list>
 #include <memory>
+#include <mutex>
+#include <queue>
 #include <unordered_map>
 #include <vector>
 #include "SCAMP.pb.h"
@@ -11,6 +14,57 @@ using std::list;
 using std::pair;
 using std::unordered_map;
 using std::vector;
+
+class ThreadSafeQueue
+{
+ public:
+  
+  size_t size() {
+    std::unique_lock<std::mutex> mlock(mutex_);
+    return queue_.size();
+  }
+
+  bool empty() {
+    std::unique_lock<std::mutex> mlock(mutex_);
+    return queue_.empty();
+
+  }
+ 
+  std::pair<int,int> pop()
+  {
+    std::unique_lock<std::mutex> mlock(mutex_);
+    auto item = std::pair<int,int>(-1,-1);
+    if (!queue_.empty())
+    {
+      item = queue_.front();
+      queue_.pop();
+    }
+    return item;
+  }
+ 
+ 
+  void push(const std::pair<int,int>& item)
+  {
+    std::unique_lock<std::mutex> mlock(mutex_);
+    queue_.push(item);
+    mlock.unlock();
+    cond_.notify_one();
+  }
+ 
+  void push(std::pair<int,int>&& item)
+  {
+    std::unique_lock<std::mutex> mlock(mutex_);
+    queue_.push(std::move(item));
+    mlock.unlock();
+    cond_.notify_one();
+  }
+ 
+ private:
+  std::queue<std::pair<int,int>> queue_;
+  std::mutex mutex_;
+  std::condition_variable cond_;
+};    
+
 
 namespace SCAMP {
 
@@ -35,8 +89,12 @@ class SCAMP_Operation {
   // TODO(zpzim): device properties should allow CPUs to be listed as devices as
   // well.
   unordered_map<int, cudaDeviceProp> _dev_props;
+
   // Result vectors
   Profile *_profile_a, *_profile_b;
+  
+  // Locks for result vectors
+  std::mutex _profile_a_lock, _profile_b_lock;  
   // Type of profile to compute
   SCAMPProfileType _profile_type;
   // Total size of A timeseries
@@ -82,7 +140,7 @@ class SCAMP_Operation {
 
   // Tile state variables
   // The order to compute the tiles in, set by get_tile_ordering()
-  list<pair<int, int>> _tile_ordering;
+  ThreadSafeQueue _work_queue;
   // The number of completed tiles
   int _completed_tiles;
   // The total number of tiles
@@ -102,6 +160,9 @@ class SCAMP_Operation {
   unordered_map<int, size_t> _previous_tile_col;
   unordered_map<int, size_t> _previous_tile_row;
 
+  std::vector<Profile> _profile_a_tile;
+  std::vector<Profile> _profile_b_tile; 
+
   SCAMPError_t do_tile(SCAMPTileType t, int device,
                        const google::protobuf::RepeatedField<double> &Ta_h,
                        const google::protobuf::RepeatedField<double> &Tb_h);
@@ -114,19 +175,22 @@ class SCAMP_Operation {
       const google::protobuf::RepeatedField<double> &timeseries_b,
       vector<Profile> *profile_a_tile, vector<Profile> *profile_b_tile,
       int last_device_idx);
-  void get_tile_ordering();
+  void get_tiles();
+  void MergeResult(int tid);
   void CopyProfileToHost(Profile *destination_profile,
                          const DeviceProfile *device_tile_profile,
                          uint64_t length, cudaStream_t s);
   void MergeTileIntoFullProfile(Profile *tile_profile, uint64_t position,
                                 uint64_t length, Profile *full_profile,
-                                uint64_t index_start);
+                                uint64_t index_start, std::mutex& lock);
   Profile InitProfile(SCAMPProfileType t, uint64_t size);
   SCAMPError_t InitInputOnDevice(
       const google::protobuf::RepeatedField<double> &Ta_h,
       const google::protobuf::RepeatedField<double> &Tb_h, int device);
 
   void copy_statistics_for_tile(int device);
+  void do_work(int tid, const google::protobuf::RepeatedField<double> &timeseries_a,
+    const google::protobuf::RepeatedField<double> &timeseries_b);
 
  public:
   SCAMP_Operation(size_t Asize, size_t Bsize, size_t window_sz,
