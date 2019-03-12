@@ -24,9 +24,32 @@ struct OptionalArgs {
   double threshold;
 };
 
+struct PrecomputedInfo {
+private:
+  std::vector<double> _norms;
+  std::vector<double> _df;
+  std::vector<double> _dg;
+  std::vector<double> _means;
+public:
+  const std::vector<double>& dg() const { return _dg; }
+  const std::vector<double>& df() const { return _df; }
+  const std::vector<double>& norms() const { return _norms; }
+  const std::vector<double>& means() const { return _means; }
+  std::vector<double>& mutable_dg() { return _dg; }
+  std::vector<double>& mutable_df() { return _df; }
+  std::vector<double>& mutable_norms()  { return _norms; }
+  std::vector<double>& mutable_means()  { return _means; }
+  
+};
+
 using DeviceProfile = std::unordered_map<int, void *>;
 
 size_t GetProfileTypeSize(SCAMPProfileType t);
+
+enum SCAMPArchitecture {
+  CPU_WORKER,
+  CUDA_GPU_WORKER,
+};
 
 enum SCAMPError_t {
   SCAMP_NO_ERROR,

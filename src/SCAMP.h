@@ -8,12 +8,15 @@
 #include <unordered_map>
 #include <vector>
 #include "SCAMP.pb.h"
+#include "SCAMPWorker.h"
 #include "common.h"
 #include "fft_helper.h"
 using std::list;
 using std::pair;
 using std::unordered_map;
 using std::vector;
+
+
 
 class ThreadSafeQueue
 {
@@ -72,31 +75,17 @@ void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices);
 
 class SCAMP_Operation {
  private:
-  unordered_map<int, double *> _T_A_dev, _T_B_dev, _QT_dev, _means_A, _means_B,
-      _norms_A, _norms_B, _df_A, _df_B, _dg_A, _dg_B, _scratchpad;
-  std::vector<double> _normsa_h, _dfa_h, _dga_h, _normsb_h, _dfb_h, _dgb_h,
-      _meansa_h, _meansb_h;
-  // TODO(zpzim): only use these for GPU computation, make a general
-  // "DeviceProfile" for CPUs and GPUs
-  unordered_map<int, DeviceProfile> _profile_a_tile_dev, _profile_b_tile_dev;
-  // TODO(zpzim): do not rely on cudaEvents for timing and synchronization
-  unordered_map<int, cudaEvent_t> _clocks_start, _clocks_end,
-      _copy_to_host_done;
-  // TODO(zpzim): SCAMP_Operation should not be required to use cuda streams,
-  // this is preventing us from adding a CPU codepath to SCAMP
-  unordered_map<int, cudaStream_t> _streams;
-  unordered_map<int, std::shared_ptr<fft_precompute_helper>> _scratch;
-  // TODO(zpzim): device properties should allow CPUs to be listed as devices as
-  // well.
-  unordered_map<int, cudaDeviceProp> _dev_props;
+  PrecomputedInfo _precompA, _precompB;
 
   // Result vectors
   Profile *_profile_a, *_profile_b;
   
   // Locks for result vectors
   std::mutex _profile_a_lock, _profile_b_lock;  
+
   // Type of profile to compute
   SCAMPProfileType _profile_type;
+
   // Total size of A timeseries
   size_t _full_ts_len_A;
   // Total size of B timesereis
@@ -107,10 +96,13 @@ class SCAMP_Operation {
   size_t _max_tile_width;
   // Max height of the distance matrix associated with the tile
   size_t _max_tile_height;
+
   // Subsequence window length for MP
   size_t _mp_window;
+
   // Optional kernel arguments
   OptionalArgs _opt_args;
+
   // Whether or not we are computing a self join (symmetric distance matrix)
   const bool _self_join;
   // Whether or not to compute MP along the rows.
@@ -122,16 +114,19 @@ class SCAMP_Operation {
   // Determines if we should keep the row/column matrix profiles separate or to
   // merge them.
   const bool _keep_rows_separate;
+
   // Absolute maximum length of a time series to use in a tile
   // TODO(zpzim): Make this the maximum length of the profile in a tile rather
   // than the time series.
   const size_t MAX_TILE_SIZE;
+
   // Precision type of computation
   const SCAMPPrecisionType _fp_type;
+
   // CUDA device ids to use for computation
   // TODO(zpzim): Convert this to a general device type (For CPU and GPU
   // computation)
-  vector<int> _devices;
+  vector<Worker> _workers;
 
   // For distributed joins, the start position of this join in relation to other
   // distributed tiles.
@@ -139,57 +134,21 @@ class SCAMP_Operation {
   const int64_t _tile_start_col_position;
 
   // Tile state variables
-  // The order to compute the tiles in, set by get_tile_ordering()
+  // The order to compute the tiles in, set by get_tiles()
   ThreadSafeQueue _work_queue;
+
   // The number of completed tiles
   int _completed_tiles;
+
   // The total number of tiles
   size_t _total_tiles;
 
-  // Current and previous tile dimensions for each device
-  // TODO(zpzim): refactor this into a tile struct and prepopulate dimensions of
-  // every tile Don't rely on current and previous tile sizes, this will make it
-  // easier to remove the tight coupling of cuda streams with SCAMP_Operation
-  // methods.
-  unordered_map<int, size_t> _current_tile_width;
-  unordered_map<int, size_t> _current_tile_height;
-  unordered_map<int, size_t> _previous_tile_width;
-  unordered_map<int, size_t> _previous_tile_height;
-  unordered_map<int, size_t> _current_tile_col;
-  unordered_map<int, size_t> _current_tile_row;
-  unordered_map<int, size_t> _previous_tile_col;
-  unordered_map<int, size_t> _previous_tile_row;
-
-  std::vector<Profile> _profile_a_tile;
-  std::vector<Profile> _profile_b_tile; 
-
-  SCAMPError_t do_tile(SCAMPTileType t, int device,
+  SCAMPError_t do_tile(SCAMPTileType t, Worker *worker,
                        const google::protobuf::RepeatedField<double> &Ta_h,
                        const google::protobuf::RepeatedField<double> &Tb_h);
 
-  bool pick_and_start_next_tile(
-      int dev, const google::protobuf::RepeatedField<double> &timeseries_a,
-      const google::protobuf::RepeatedField<double> &timeseries_b);
-  int issue_and_merge_tiles_on_devices(
-      const google::protobuf::RepeatedField<double> &timeseries_a,
-      const google::protobuf::RepeatedField<double> &timeseries_b,
-      vector<Profile> *profile_a_tile, vector<Profile> *profile_b_tile,
-      int last_device_idx);
   void get_tiles();
-  void MergeResult(int tid);
-  void CopyProfileToHost(Profile *destination_profile,
-                         const DeviceProfile *device_tile_profile,
-                         uint64_t length, cudaStream_t s);
-  void MergeTileIntoFullProfile(Profile *tile_profile, uint64_t position,
-                                uint64_t length, Profile *full_profile,
-                                uint64_t index_start, std::mutex& lock);
-  Profile InitProfile(SCAMPProfileType t, uint64_t size);
-  SCAMPError_t InitInputOnDevice(
-      const google::protobuf::RepeatedField<double> &Ta_h,
-      const google::protobuf::RepeatedField<double> &Tb_h, int device);
-
-  void copy_statistics_for_tile(int device);
-  void do_work(int tid, const google::protobuf::RepeatedField<double> &timeseries_a,
+  void do_work(Worker *worker, const google::protobuf::RepeatedField<double> &timeseries_a,
     const google::protobuf::RepeatedField<double> &timeseries_b);
 
  public:
@@ -203,7 +162,6 @@ class SCAMP_Operation {
       : _full_ts_len_A(Asize),
         _mp_window(window_sz),
         MAX_TILE_SIZE(max_tile_size),
-        _devices(dev),
         _self_join(selfjoin),
         _completed_tiles(0),
         _fp_type(t),
@@ -222,26 +180,15 @@ class SCAMP_Operation {
     } else {
       _full_ts_len_B = Bsize;
     }
-    _max_tile_ts_size = std::max(Asize, Bsize) / (_devices.size());
+    _max_tile_ts_size = std::max(Asize, Bsize) / (dev.size());
     if (_max_tile_ts_size > MAX_TILE_SIZE) {
       _max_tile_ts_size = MAX_TILE_SIZE;
     }
-    for (auto device : _devices) {
-      _current_tile_width.emplace(device, 0);
-      _current_tile_height.emplace(device, 0);
-      _previous_tile_width.emplace(device, 0);
-      _previous_tile_height.emplace(device, 0);
-      _current_tile_col.emplace(device, 0);
-      _current_tile_row.emplace(device, 0);
-      _previous_tile_col.emplace(device, 0);
-      _previous_tile_row.emplace(device, 0);
-      // TODO(zpzim): remove dependency on cuda
-      cudaDeviceProp properties;
-      cudaGetDeviceProperties(&properties, device);
-      _dev_props.emplace(device, properties);
-    }
     _max_tile_width = _max_tile_ts_size - _mp_window + 1;
     _max_tile_height = _max_tile_width;
+    for (auto device : dev) {
+       _workers.emplace_back(_max_tile_width, _max_tile_height, _max_tile_ts_size, _mp_window, _profile_type, device, CUDA_GPU_WORKER, device);
+    }
   }
   SCAMPError_t do_join(
       const google::protobuf::RepeatedField<double> &timeseries_a,

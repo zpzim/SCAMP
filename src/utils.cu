@@ -101,10 +101,7 @@ void elementwise_max_with_index(std::vector<float> &mp_full,
   }
 }
 
-void compute_statistics(const google::protobuf::RepeatedField<double> &T,
-                        std::vector<double> *norms, std::vector<double> *df,
-                        std::vector<double> *dg, std::vector<double> *means,
-                        size_t m) {
+void compute_statistics(const google::protobuf::RepeatedField<double> &T, PrecomputedInfo *info, size_t m) {
   // TODO: add cpu codepath
   constexpr bool cuda_enabled = true;
   size_t n = T.size() - m + 1;
@@ -154,18 +151,18 @@ void compute_statistics(const google::protobuf::RepeatedField<double> &T,
     gpuErrchk(cudaPeekAtLastError());
 
     // Copy results back to host
-    norms->resize(n);
-    df->resize(n);
-    dg->resize(n);
-    means->resize(n);
-    cudaMemcpy(norms->data(), norms_dev, sizeof(double) * n,
+    info->mutable_norms().resize(n);
+    info->mutable_df().resize(n);
+    info->mutable_dg().resize(n);
+    info->mutable_means().resize(n);
+    cudaMemcpy(info->mutable_norms().data(), norms_dev, sizeof(double) * n,
                cudaMemcpyDeviceToHost);
     gpuErrchk(cudaPeekAtLastError());
-    cudaMemcpy(df->data(), df_dev, sizeof(double) * n, cudaMemcpyDeviceToHost);
+    cudaMemcpy(info->mutable_df().data(), df_dev, sizeof(double) * n, cudaMemcpyDeviceToHost);
     gpuErrchk(cudaPeekAtLastError());
-    cudaMemcpy(dg->data(), dg_dev, sizeof(double) * n, cudaMemcpyDeviceToHost);
+    cudaMemcpy(info->mutable_dg().data(), dg_dev, sizeof(double) * n, cudaMemcpyDeviceToHost);
     gpuErrchk(cudaPeekAtLastError());
-    cudaMemcpy(means->data(), means_dev, sizeof(double) * n,
+    cudaMemcpy(info->mutable_means().data(), means_dev, sizeof(double) * n,
                cudaMemcpyDeviceToHost);
 
     // Free memory
