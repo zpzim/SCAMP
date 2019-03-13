@@ -23,19 +23,26 @@ void elementwise_max(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
     }
   }
 }
-
-void Worker::Init() {
-  switch(_arch) {
+void Worker::FirstTimeInit() {
+    switch(_arch) {
     case CUDA_GPU_WORKER:
-#if _HAS_CUDA_
-      cudaSetDevice(_cuda_id);
-#else
-      assert("ERROR: CUDA used in binary not built with CUDA");
-#endif
+      init_cuda();
       break;
     case CPU_WORKER:
+      init_cpu();
       break;
-  }
+   } 
+
+}
+void Worker::Destroy() {
+  switch(_arch) {
+      case CUDA_GPU_WORKER:
+        free_cuda();
+        break;
+      case CPU_WORKER:
+        free_cpu();
+        break;
+      }
 }
 
 void Worker::Sync() {
@@ -60,18 +67,13 @@ void Worker::InitTimeseries(
   switch(_arch) {
     case CUDA_GPU_WORKER:
 #if _HAS_CUDA_
-      gpuErrchk(cudaPeekAtLastError());
-      printf("width = %lu\n", _current_tile_width);
-      printf("height = %lu\n", _current_tile_height);
       cudaMemcpyAsync(_T_A_dev, Ta_h.data() + _current_tile_col,
                   sizeof(double) * _current_tile_width,
                   cudaMemcpyHostToDevice, _stream);
-      printf("hello\n");
       gpuErrchk(cudaPeekAtLastError());
       cudaMemcpyAsync(_T_B_dev, Tb_h.data() + _current_tile_row,
                   sizeof(double) * _current_tile_height,
                   cudaMemcpyHostToDevice, _stream);
-      printf("hello2\n");
       gpuErrchk(cudaPeekAtLastError());
 #else
       assert("ERROR: CUDA used in binary not built with CUDA");

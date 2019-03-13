@@ -30,15 +30,10 @@ SCAMPError_t SCAMP_Operation::do_tile(
     const google::protobuf::RepeatedField<double> &Ta_h,
     const google::protobuf::RepeatedField<double> &Tb_h) {
   SCAMPError_t err;
-  printf("Init Timeseries\n");
   worker->InitTimeseries(Ta_h, Tb_h);
-  printf("Init Profile\n");
   worker->InitProfile(_profile_a, _profile_b, _self_join, _computing_rows, _keep_rows_separate);
-  printf("Init Stats\n");
   worker->InitStats(_precompA, _precompB);
-  printf("Construct Tile\n");
   SCAMP_Tile tile(t, worker, _tile_start_col_position, _tile_start_row_position, _is_aligned, _fp_type, _opt_args);
-  printf("Execute Tile\n");
   err = tile.execute();
   return err;
 }
@@ -111,12 +106,13 @@ void SCAMP_Operation::do_work(
     Worker *worker, const google::protobuf::RepeatedField<double> &timeseries_a,
     const google::protobuf::RepeatedField<double> &timeseries_b) {
   
-  worker->Init();
+   
+  worker->FirstTimeInit();
   while (!_work_queue.empty()) {
     std::pair<int,int> tile = _work_queue.pop();
     if (tile.first == -1 && tile.second == -1) {
         // Another thread grabbed our tile and now the queue is empty
-        return;
+        break;
     }
     // Get the position of the tile we will compute
     worker->set_tile_row(tile.first * _max_tile_height);
@@ -152,9 +148,9 @@ void SCAMP_Operation::do_work(
     worker->MergeProfile(_self_join, _computing_rows, _keep_rows_separate, _profile_a, _profile_a_lock, _profile_b, _profile_b_lock);
     // FIXME: Protect with LOCK
     _completed_tiles++;
-    
   
   }
+  worker->Destroy();
 }
 
 SCAMPError_t SCAMP_Operation::do_join(

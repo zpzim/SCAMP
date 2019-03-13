@@ -187,7 +187,7 @@ class SCAMP_Operation {
     _max_tile_width = _max_tile_ts_size - _mp_window + 1;
     _max_tile_height = _max_tile_width;
     for (auto device : dev) {
-       _workers.emplace_back(_max_tile_width, _max_tile_height, _max_tile_ts_size, _mp_window, _profile_type, device, CUDA_GPU_WORKER, device);
+        _workers.emplace_back(_max_tile_width, _max_tile_height, _max_tile_ts_size, _mp_window, _profile_type, device, CUDA_GPU_WORKER, device);
     }
   }
   SCAMPError_t do_join(

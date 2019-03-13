@@ -26,36 +26,20 @@ class Worker {
                                                Profile *full_profile,
                                                uint64_t index_start, std::mutex &lock);
   public:
-    Worker(int max_tile_width, int max_tile_height, int tile_ts_length, int mp_window, SCAMPProfileType profile_type, int id, SCAMPArchitecture arch, int cuda_id = -1) :
+    Worker(int max_tile_width, int max_tile_height, int tile_ts_length, int mp_window, SCAMPProfileType profile_type, int id, SCAMPArchitecture arch, int cuda_id) :
            _max_tile_width(max_tile_width), _max_tile_height(max_tile_height),
            _max_tile_ts_size(tile_ts_length), _arch(arch), _cuda_id(cuda_id), 
            _mp_window(mp_window), _profile_type(profile_type),
-           _current_tile_width(0), _current_tile_height(0), _current_tile_row(0), _current_tile_col(0) {
+           _current_tile_width(0), _current_tile_height(0), _current_tile_row(0), _current_tile_col(0), _id(id) {
 
       _profile_a_tile_dev[_profile_type] = nullptr;
       _profile_b_tile_dev[_profile_type] = nullptr;
       _profile_a_tile = AllocProfile(_profile_type, _max_tile_height);
       _profile_b_tile = AllocProfile(_profile_type, _max_tile_width);
+    }
 
-      switch(_arch) {
-      case CUDA_GPU_WORKER:
-        init_cuda();
-        break;
-      case CPU_WORKER:
-        init_cpu();
-        break;
-     } 
-    }
-    ~Worker() {
-      switch(_arch) {
-      case CUDA_GPU_WORKER:
-        free_cuda();
-        break;
-      case CPU_WORKER:
-        free_cpu();
-        break;
-      }
-    }
+
+    int get_cuda_id() { return _cuda_id; }
     size_t get_tile_width() { return _current_tile_width; }
     size_t get_tile_height() { return _current_tile_height; }
     size_t get_tile_row() { return _current_tile_row; }
@@ -65,7 +49,8 @@ class Worker {
     void set_tile_height(size_t height) { _current_tile_height = height; }
     void set_tile_width(size_t width) { _current_tile_width = width; }
     void MergeProfile(bool self_join, bool fetch_rows, bool keep_rows, Profile *profile_a, std::mutex &a_lock,  Profile *profile_b, std::mutex &b_lock);
-    void Init();
+    void FirstTimeInit();
+    void Destroy();
     void Sync();
     void InitStats(const PrecomputedInfo& a, const PrecomputedInfo& b);
     SCAMPError_t InitProfile(Profile *profile_a, Profile *profile_b, bool self_join, bool computing_rows, bool keep_rows);
