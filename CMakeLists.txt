@@ -97,12 +97,12 @@ add_library(kernels src/kernels.cu)
 target_link_libraries(kernels messages common)
 
 add_library(worker src/SCAMPWorker.cpp)
-target_link_libraries(worker messages common fft)
+target_link_libraries(worker messages common kernels fft)
 
-add_library(tile src/tile.cpp)
-target_link_libraries(tile worker messages common kernels fft)
+#add_library(tile src/tile.cpp)
+#target_link_libraries(tile worker messages common kernels fft)
 add_library(scamp src/SCAMP.cpp)
-target_link_libraries(scamp worker messages utils tile common fft)
+target_link_libraries(scamp worker messages utils common fft)
 
 
 set_target_properties(kernels PROPERTIES
@@ -126,11 +126,11 @@ if(CLANG_TIDY_EXE)
     CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
   )
   set_target_properties(
-    tile PROPERTIES
+    fft PROPERTIES
     CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
   )
   set_target_properties(
-    fft PROPERTIES
+    worker PROPERTIES
     CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
   )
 endif()

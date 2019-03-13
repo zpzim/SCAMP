@@ -101,7 +101,8 @@ void elementwise_max_with_index(std::vector<float> &mp_full,
   }
 }
 
-void compute_statistics(const google::protobuf::RepeatedField<double> &T, PrecomputedInfo *info, size_t m) {
+void compute_statistics(const google::protobuf::RepeatedField<double> &T,
+                        PrecomputedInfo *info, size_t m) {
   // TODO: add cpu codepath
   constexpr bool cuda_enabled = true;
   size_t n = T.size() - m + 1;
@@ -158,9 +159,11 @@ void compute_statistics(const google::protobuf::RepeatedField<double> &T, Precom
     cudaMemcpy(info->mutable_norms().data(), norms_dev, sizeof(double) * n,
                cudaMemcpyDeviceToHost);
     gpuErrchk(cudaPeekAtLastError());
-    cudaMemcpy(info->mutable_df().data(), df_dev, sizeof(double) * n, cudaMemcpyDeviceToHost);
+    cudaMemcpy(info->mutable_df().data(), df_dev, sizeof(double) * n,
+               cudaMemcpyDeviceToHost);
     gpuErrchk(cudaPeekAtLastError());
-    cudaMemcpy(info->mutable_dg().data(), dg_dev, sizeof(double) * n, cudaMemcpyDeviceToHost);
+    cudaMemcpy(info->mutable_dg().data(), dg_dev, sizeof(double) * n,
+               cudaMemcpyDeviceToHost);
     gpuErrchk(cudaPeekAtLastError());
     cudaMemcpy(info->mutable_means().data(), means_dev, sizeof(double) * n,
                cudaMemcpyDeviceToHost);
