@@ -1,9 +1,11 @@
 #pragma once
 
+#ifdef _HAS_CUDA_
 #include <cufft.h>
+#endif
+
 #include <stdlib.h>
 #include "common.h"
-
 #ifdef _CUFFT_H_
 // cuFFT API errors
 static const char *_cudaGetErrorEnum(cufftResult error) {
@@ -44,7 +46,6 @@ static const char *_cudaGetErrorEnum(cufftResult error) {
       return "CUFFT_INCOMPLETE_PARAMETER_LIST";
   }
 }
-#endif
 
 #define CHECK_CUFFT_ERRORS(call)                           \
   {                                                        \
@@ -55,26 +56,27 @@ static const char *_cudaGetErrorEnum(cufftResult error) {
       exit(1);                                             \
     }                                                      \
   }
+#endif
 
 namespace SCAMP {
 
 class fft_precompute_helper {
  private:
+  const size_t size;
+  const size_t window_size;
+  const bool double_precision;
+#ifdef _HAS_CUDA_
   double *Q_reverse_pad;
   cuDoubleComplex *Qc, *Tc;
   cufftHandle fft_plan, ifft_plan;
-  const size_t size;
-  const size_t window_size;
-  const size_t cufft_data_size;
-  const bool double_precision;
+  size_t cufft_data_size;
   const int fft_work_size = 512;
-
+#endif
  public:
   fft_precompute_helper(size_t sz, size_t window_sz, bool dp)
-      : size(sz),
-        window_size(window_sz),
-        cufft_data_size(sz / 2 + 1),
-        double_precision(dp) {
+      : size(sz), window_size(window_sz), double_precision(dp) {
+#ifdef _HAS_CUDA_
+    cufft_data_size = sz / 2 + 1;
     if (double_precision) {
       CHECK_CUFFT_ERRORS(cufftPlan1d(&fft_plan, size, CUFFT_D2Z, 1));
       CHECK_CUFFT_ERRORS(cufftPlan1d(&ifft_plan, size, CUFFT_Z2D, 1));
@@ -88,7 +90,9 @@ class fft_precompute_helper {
     gpuErrchk(cudaPeekAtLastError());
     cudaMalloc(&Qc, sizeof(cuDoubleComplex) * cufft_data_size);
     gpuErrchk(cudaPeekAtLastError());
+#endif
   }
+#ifdef _HAS_CUDA_
   ~fft_precompute_helper() {
     cudaFree(Q_reverse_pad);
     gpuErrchk(cudaPeekAtLastError());
@@ -101,6 +105,8 @@ class fft_precompute_helper {
   }
   SCAMPError_t compute_QT(double *QT, const double *T, const double *Q,
                           const double *qmeans, cudaStream_t s);
+#endif
+  SCAMPError_t compute_QT_CPU(double *QT, const double *T, const double *Q);
 };
 
 }  // namespace SCAMP

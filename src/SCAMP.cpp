@@ -179,7 +179,8 @@ SCAMPError_t SCAMP_Operation::do_join(
 }
 
 // TODO(zpzim): Make CPU/GPU agnostic
-void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices) {
+void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
+              int num_threads) {
   if (devices.empty()) {
     printf("Error: no gpu provided\n");
     exit(0);
@@ -196,7 +197,8 @@ void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices) {
       args->distributed_start_row(), args->distributed_start_col(), _opt_args,
       args->profile_type(), args->mutable_profile_a(),
       args->mutable_profile_b(), args->keep_rows_separate(),
-      args->computing_rows(), args->computing_columns(), args->is_aligned());
+      args->computing_rows(), args->computing_columns(), args->is_aligned(),
+      num_threads);
   // Init memory
   op.init();
   start = clock();

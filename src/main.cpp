@@ -12,6 +12,7 @@
 #include "SCAMP.pb.h"
 #include "common.h"
 
+DEFINE_int32(num_cpu_workers, 0, "Number of CPU workers to use");
 DEFINE_bool(output_pearson, false,
             "If true SCAMP will output pearson correlation instead of "
             "z-normalized euclidean distance.");
@@ -327,7 +328,7 @@ int main(int argc, char **argv) {
   }
   InitProfileMemory(&args);
   printf("Starting SCAMP\n");
-  SCAMP::do_SCAMP(&args, devices);
+  SCAMP::do_SCAMP(&args, devices, FLAGS_num_cpu_workers);
 
   printf("Now writing result to files\n");
   WriteProfileToFile(FLAGS_output_a_file_name, FLAGS_output_a_index_file_name,

@@ -1,5 +1,7 @@
 #include "SCAMPWorker.h"
+#ifdef _HAS_CUDA_
 #include "kernels.h"
+#endif
 
 namespace SCAMP {
 
@@ -449,29 +451,37 @@ SCAMPError_t Worker::execute(SCAMPTileType t) {
 }
 
 SCAMPError_t Worker::do_self_join_full() {
-  SCAMPError_t error;
+  SCAMPError_t error = SCAMP_NO_ERROR;
 
   error = do_self_join_half();
   if (error != SCAMP_NO_ERROR) {
     return error;
   }
 
-  error = _scratch->compute_QT(_QT_dev, _T_B_dev, _T_A_dev, _means_A, _stream);
-  if (error != SCAMP_NO_ERROR) {
-    return error;
-  }
-
   switch (_arch) {
     case CUDA_GPU_WORKER:
-      error = kernel_self_join_lower(
+#ifdef _HAS_CUDA_
+      error =
+          _scratch->compute_QT(_QT_dev, _T_B_dev, _T_A_dev, _means_A, _stream);
+      if (error != SCAMP_NO_ERROR) {
+        return error;
+      }
+      error = gpu_kernel_self_join_lower(
           _QT_dev, _df_A, _df_B, _dg_A, _dg_B, _norms_A, _norms_B,
           &_profile_a_tile_dev, &_profile_b_tile_dev, _info->mp_window,
           _current_tile_width - _info->mp_window + 1,
           _current_tile_height - _info->mp_window + 1, _current_tile_col,
           _current_tile_row, _dev_props, _info->fp_type, _info->opt_args,
           _info->profile_type, _stream);
+#else
+      assert("ERROR: CUDA used in binary not built with CUDA");
+#endif
       break;
     case CPU_WORKER:
+      error = _scratch->compute_QT_CPU(_QT_dev, _T_B_dev, _T_A_dev);
+      if (error != SCAMP_NO_ERROR) {
+        return error;
+      }
       error = SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
       break;
   }
@@ -479,7 +489,7 @@ SCAMPError_t Worker::do_self_join_full() {
 }
 
 SCAMPError_t Worker::do_self_join_half() {
-  SCAMPError_t error;
+  SCAMPError_t error = SCAMP_NO_ERROR;
 
   if (_info->mp_window > _current_tile_width) {
     return SCAMP_DIM_INCOMPATIBLE;
@@ -488,22 +498,30 @@ SCAMPError_t Worker::do_self_join_half() {
     return SCAMP_DIM_INCOMPATIBLE;
   }
 
-  error = _scratch->compute_QT(_QT_dev, _T_A_dev, _T_B_dev, _means_B, _stream);
-  if (error != SCAMP_NO_ERROR) {
-    return error;
-  }
-
   switch (_arch) {
     case CUDA_GPU_WORKER:
-      error = kernel_self_join_upper(
+#ifdef _HAS_CUDA_
+      error =
+          _scratch->compute_QT(_QT_dev, _T_A_dev, _T_B_dev, _means_B, _stream);
+      if (error != SCAMP_NO_ERROR) {
+        return error;
+      }
+      error = gpu_kernel_self_join_upper(
           _QT_dev, _df_A, _df_B, _dg_A, _dg_B, _norms_A, _norms_B,
           &_profile_a_tile_dev, &_profile_b_tile_dev, _info->mp_window,
           _current_tile_width - _info->mp_window + 1,
           _current_tile_height - _info->mp_window + 1, _current_tile_col,
           _current_tile_row, _dev_props, _info->fp_type, _info->opt_args,
           _info->profile_type, _stream);
+#else
+      assert("ERROR: CUDA used in binary not built with CUDA");
+#endif
       break;
     case CPU_WORKER:
+      error = _scratch->compute_QT_CPU(_QT_dev, _T_A_dev, _T_B_dev);
+      if (error != SCAMP_NO_ERROR) {
+        return error;
+      }
       error = SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
       break;
   }
@@ -514,7 +532,7 @@ SCAMPError_t Worker::do_self_join_half() {
 }
 
 SCAMPError_t Worker::do_ab_join_full() {
-  SCAMPError_t error;
+  SCAMPError_t error = SCAMP_NO_ERROR;
 
   if (_info->mp_window > _current_tile_width) {
     return SCAMP_DIM_INCOMPATIBLE;
@@ -523,14 +541,15 @@ SCAMPError_t Worker::do_ab_join_full() {
     return SCAMP_DIM_INCOMPATIBLE;
   }
 
-  error = _scratch->compute_QT(_QT_dev, _T_A_dev, _T_B_dev, _means_B, _stream);
-  if (error != SCAMP_NO_ERROR) {
-    return error;
-  }
-
   switch (_arch) {
     case CUDA_GPU_WORKER:
-      error = kernel_ab_join_upper(
+#ifdef _HAS_CUDA_
+      error =
+          _scratch->compute_QT(_QT_dev, _T_A_dev, _T_B_dev, _means_B, _stream);
+      if (error != SCAMP_NO_ERROR) {
+        return error;
+      }
+      error = gpu_kernel_ab_join_upper(
           _QT_dev, _df_A, _df_B, _dg_A, _dg_B, _norms_A, _norms_B,
           &_profile_a_tile_dev, &_profile_b_tile_dev, _info->mp_window,
           _current_tile_width - _info->mp_window + 1,
@@ -539,27 +558,31 @@ SCAMPError_t Worker::do_ab_join_full() {
           _info->global_start_row_position, _info->is_aligned, _dev_props,
           _info->fp_type, _info->computing_rows, _info->opt_args,
           _info->profile_type, _stream);
+#else
+      assert("ERROR: CUDA used in binary not built with CUDA");
+#endif
       break;
     case CPU_WORKER:
-      error = SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
+      error = _scratch->compute_QT_CPU(_QT_dev, _T_A_dev, _T_B_dev);
+      if (error != SCAMP_NO_ERROR) {
+        return error;
+      }
+      return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
       break;
   }
-  if (error != SCAMP_NO_ERROR) {
-    return error;
-  }
-
-  if (error != SCAMP_NO_ERROR) {
-    return error;
-  }
-
-  error = _scratch->compute_QT(_QT_dev, _T_B_dev, _T_A_dev, _means_A, _stream);
   if (error != SCAMP_NO_ERROR) {
     return error;
   }
 
   switch (_arch) {
     case CUDA_GPU_WORKER:
-      error = kernel_ab_join_lower(
+#ifdef _HAS_CUDA_
+      error =
+          _scratch->compute_QT(_QT_dev, _T_B_dev, _T_A_dev, _means_A, _stream);
+      if (error != SCAMP_NO_ERROR) {
+        return error;
+      }
+      error = gpu_kernel_ab_join_lower(
           _QT_dev, _df_A, _df_B, _dg_A, _dg_B, _norms_A, _norms_B,
           &_profile_a_tile_dev, &_profile_b_tile_dev, _info->mp_window,
           _current_tile_width - _info->mp_window + 1,
@@ -568,8 +591,15 @@ SCAMPError_t Worker::do_ab_join_full() {
           _info->global_start_row_position, _info->is_aligned, _dev_props,
           _info->fp_type, _info->computing_rows, _info->opt_args,
           _info->profile_type, _stream);
+#else
+      assert("ERROR: CUDA used in binary not built with CUDA");
+#endif
       break;
     case CPU_WORKER:
+      error = _scratch->compute_QT_CPU(_QT_dev, _T_B_dev, _T_A_dev);
+      if (error != SCAMP_NO_ERROR) {
+        return error;
+      }
       error = SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
       break;
   }

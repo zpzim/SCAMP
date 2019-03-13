@@ -1,11 +1,21 @@
+#ifdef _HAS_CUDA
 #include <cuda_runtime.h>
 #include <cufft.h>
+#endif
 
 #include "fft_helper.h"
+#ifdef _HAS_CUDA_
 #include "fft_kernels.h"
+#endif
 
 namespace SCAMP {
 
+SCAMPError_t fft_precompute_helper::compute_QT_CPU(double *QT, const double *T,
+                                                   const double *Q) {  // NOLINT
+  return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
+}
+
+#ifdef _HAS_CUDA_
 SCAMPError_t fft_precompute_helper::compute_QT(double *QT, const double *T,
                                                const double *Q,
                                                const double *qmeans,
@@ -51,8 +61,7 @@ SCAMPError_t fft_precompute_helper::compute_QT(double *QT, const double *T,
   if (error != cudaSuccess) {
     return SCAMP_CUDA_ERROR;
   }
-
   return SCAMP_NO_ERROR;
 }
-
+#endif
 }  // namespace SCAMP

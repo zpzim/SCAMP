@@ -60,7 +60,8 @@ class ThreadSafeQueue {
 
 namespace SCAMP {
 
-void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices);
+void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
+              int num_threads);
 
 class SCAMP_Operation {
  private:
@@ -108,7 +109,7 @@ class SCAMP_Operation {
                   int64_t start_col, OptionalArgs args_,
                   SCAMPProfileType profile_type, Profile *pA, Profile *pB,
                   bool keep_rows, bool compute_rows, bool compute_cols,
-                  bool is_aligned)
+                  bool is_aligned, int num_threads)
       : _info(Asize, Bsize, window_sz, max_tile_size, selfjoin, t, start_row,
               start_col, args_, profile_type, keep_rows, compute_rows,
               compute_cols, is_aligned, dev.size()),
@@ -117,6 +118,9 @@ class SCAMP_Operation {
         _profile_b(pB) {
     for (auto device : dev) {
       _workers.emplace_back(&_info, device, CUDA_GPU_WORKER, device);
+    }
+    for (int i = dev.size(); i < dev.size() + num_threads; ++i) {
+      _workers.emplace_back(&_info, i, CPU_WORKER, -1);
     }
   }
   SCAMPError_t do_join(

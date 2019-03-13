@@ -4,6 +4,7 @@ cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
 # ----------------------------------------------------------------------------------------
 #                              ===== Project Setup =====
 project(SCAMP LANGUAGES CXX CUDA)
+#project(SCAMP LANGUAGES CXX)
 set(VERSION_MAJOR 1)
 set(VERSION_MINOR 1)
 
@@ -18,7 +19,7 @@ if(NOT CLANG_TIDY_EXE)
   message(STATUS "clang-tidy not found.")
 else()
   message(STATUS "clang-tidy found: ${CLANG_TIDY_EXE}")
-  set(DO_CLANG_TIDY "${CLANG_TIDY_EXE}" "-checks=*,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-fuchsia-default-arguments,-hicpp-vararg,-cppcoreguidelines-pro-type-vararg" "-warnings-as-errors=*")
+  set(DO_CLANG_TIDY "${CLANG_TIDY_EXE}" "-checks=*,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-fuchsia-default-arguments,-hicpp-vararg,-cppcoreguidelines-pro-type-vararg")
 endif()
 find_program(
   CLANG_FORMAT_EXE
@@ -85,32 +86,49 @@ else()
   target_link_libraries(common messages)
 endif()
 
-
-add_library(fft_kernels src/fft_kernels.cu)
 add_library(fft src/fft_helper.cpp)
-target_link_libraries(fft -lcufft fft_kernels common)
 
-add_library(utils src/utils.cu)
-target_link_libraries(utils messages common)
+if (CUDA_TOOLKIT_ROOT_DIR)
+  add_library(fft_kernels src/fft_kernels.cu)
+  target_link_libraries(fft -lcufft fft_kernels common)
+else()
+  target_link_libraries(fft common)
+endif()
 
-add_library(kernels src/kernels.cu)
-target_link_libraries(kernels messages common)
+
+if (CUDA_TOOLKIT_ROOT_DIR)
+  add_library(gpu_utils src/utils.cu)
+  target_link_libraries(gpu_utils messages common)
+  add_library(gpu_kernels src/kernels.cu)
+  target_link_libraries(gpu_kernels messages common)
+endif()
+
+add_library(cpu_kernels src/cpu_kernels.cpp)
+target_link_libraries(cpu_kernels messages common)
 
 add_library(worker src/SCAMPWorker.cpp)
-target_link_libraries(worker messages common kernels fft)
 
-#add_library(tile src/tile.cpp)
-#target_link_libraries(tile worker messages common kernels fft)
+
+if (CUDA_TOOLKIT_ROOT_DIR)
+  target_link_libraries(worker messages common gpu_kernels cpu_kernels fft)
+else()
+  target_link_libraries(worker messages common cpu_kernels fft)
+endif()
+
 add_library(scamp src/SCAMP.cpp)
-target_link_libraries(scamp worker messages utils common fft)
 
+if (CUDA_TOOLKIT_ROOT_DIR)
+  target_link_libraries(scamp worker messages gpu_utils common fft)
+else()
+  target_link_libraries(scamp worker messages cpu_utils common fft)
+endif() 
 
-set_target_properties(kernels PROPERTIES
+set_target_properties(gpu_kernels PROPERTIES
     CXX_STANDARD 14
     CXX_STANDARD_REQUIRED ON
     COMPILE_FLAGS "${CUDA_COMPILATION_FLAGS} ${CUDA_GENCODE_FLAGS}"
 )
-set_target_properties(utils PROPERTIES
+set_target_properties(gpu_utils PROPERTIES
     CXX_STANDARD 14
     CXX_STANDARD_REQUIRED ON
     COMPILE_FLAGS "${CUDA_COMPILATION_FLAGS} ${CUDA_GENCODE_FLAGS}"
@@ -155,4 +173,8 @@ if(CLANG_FORMAT_EXE)
 endif()
 
 add_executable(SCAMP src/main.cpp)
-target_link_libraries(SCAMP -lcudart_static gflags messages common scamp)
+if (CUDA_TOOLKIT_ROOT_DIR)
+  target_link_libraries(SCAMP -lcudart_static gflags messages common scamp)
+else()
+  target_link_libraries(SCAMP gflags messages common scamp)
+endif() 

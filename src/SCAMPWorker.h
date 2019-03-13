@@ -78,7 +78,11 @@ class Worker {
     _profile_a_tile = AllocProfile(_info->profile_type, _info->max_tile_height);
     _profile_b_tile = AllocProfile(_info->profile_type, _info->max_tile_width);
   }
+#ifdef _HAS_CUDA_
+  cudaStream_t get_stream() { return _stream; }
+#endif
 
+  SCAMPArchitecture get_arch() { return _arch; }
   int get_cuda_id() { return _cuda_id; }
   size_t get_tile_width() { return _current_tile_width; }
   size_t get_tile_height() { return _current_tile_height; }
