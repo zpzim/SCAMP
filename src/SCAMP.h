@@ -1,5 +1,4 @@
 #pragma once
-#include <cuda.h>
 #include <condition_variable>
 #include <list>
 #include <memory>
@@ -112,7 +111,7 @@ class SCAMP_Operation {
                   bool is_aligned, int num_threads)
       : _info(Asize, Bsize, window_sz, max_tile_size, selfjoin, t, start_row,
               start_col, args_, profile_type, keep_rows, compute_rows,
-              compute_cols, is_aligned, dev.size()),
+              compute_cols, is_aligned, dev.size() + num_threads),
         _completed_tiles(0),
         _profile_a(pA),
         _profile_b(pB) {

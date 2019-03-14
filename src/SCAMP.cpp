@@ -1,4 +1,5 @@
 #include <cinttypes>
+#include <cmath>
 #include <future>
 #include <iostream>
 #include <limits>
@@ -10,7 +11,11 @@
 #include "SCAMP.h"
 #include "SCAMPWorker.h"
 #include "common.h"
-#include "utils.h"
+#ifdef _HAS_CUDA_
+#include "gpu_stats.h"
+#else
+#include "cpu_stats.h"
+#endif
 using std::vector;
 
 namespace SCAMP {
@@ -154,8 +159,13 @@ SCAMPError_t SCAMP_Operation::do_join(
   printf("Num workers = %d\n", num_workers);
 
   // Compute statistics
-  compute_statistics(timeseries_a, &_precompA, _info.mp_window);
-  compute_statistics(timeseries_b, &_precompB, _info.mp_window);
+#ifdef _HAS_CUDA_
+  compute_statistics_gpu(timeseries_a, &_precompA, _info.mp_window);
+  compute_statistics_gpu(timeseries_b, &_precompB, _info.mp_window);
+#else
+  compute_statistics_cpu(timeseries_a, &_precompA, _info.mp_window);
+  compute_statistics_cpu(timeseries_b, &_precompB, _info.mp_window);
+#endif
 
   // Populate Work Queue with tiles
   get_tiles();
@@ -178,11 +188,10 @@ SCAMPError_t SCAMP_Operation::do_join(
   return SCAMP_NO_ERROR;
 }
 
-// TODO(zpzim): Make CPU/GPU agnostic
 void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
               int num_threads) {
-  if (devices.empty()) {
-    printf("Error: no gpu provided\n");
+  if (devices.empty() && num_threads == 0) {
+    printf("Error: no compute_resources provided\n");
     exit(0);
   }
   // Allocate and initialize memory

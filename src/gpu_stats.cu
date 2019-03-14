@@ -1,6 +1,6 @@
 #include <thrust/device_ptr.h>
 #include <thrust/scan.h>
-#include "utils.h"
+#include "gpu_stats.h"
 namespace SCAMP {
 
 // This kernel computes a sliding mean with specified window size and a
@@ -76,33 +76,8 @@ __global__ void cross_correlation_to_ed(float *profile, unsigned int n,
   }
 }
 
-__global__ void merge_mp_idx(float *mp, uint32_t *mpi, uint32_t n,
-                             uint64_t *merged) {
-  int tid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (tid < n) {
-    mp_entry item;
-    item.floats[0] = (float)mp[tid];
-    item.ints[1] = mpi[tid];
-    merged[tid] = item.ulong;
-  }
-}
-
-void elementwise_max_with_index(std::vector<float> &mp_full,
-                                std::vector<uint32_t> &mpi_full,
-                                int64_t merge_start, int64_t tile_sz,
-                                std::vector<uint64_t> *to_merge) {
-  for (int i = 0; i < tile_sz; ++i) {
-    mp_entry curr;
-    curr.ulong = to_merge->at(i);
-    if (mp_full[i + merge_start] < curr.floats[0]) {
-      mp_full[i + merge_start] = curr.floats[0];
-      mpi_full[i + merge_start] = curr.ints[1];
-    }
-  }
-}
-
-void compute_statistics(const google::protobuf::RepeatedField<double> &T,
-                        PrecomputedInfo *info, size_t m) {
+void compute_statistics_gpu(const google::protobuf::RepeatedField<double> &T,
+                            PrecomputedInfo *info, size_t m) {
   // TODO: add cpu codepath
   constexpr bool cuda_enabled = true;
   size_t n = T.size() - m + 1;
@@ -185,12 +160,6 @@ void compute_statistics(const google::protobuf::RepeatedField<double> &T,
   } else {
     // TODO(zpzim): Do same on CPU
   }
-}
-
-void launch_merge_mp_idx(float *mp, uint32_t *mpi, uint32_t n, uint64_t *merged,
-                         cudaStream_t s) {
-  merge_mp_idx<<<dim3(std::ceil(n / 1024.0), 1, 1), dim3(1024, 1, 1), 0, s>>>(
-      mp, mpi, n, merged);
 }
 
 }  // namespace SCAMP

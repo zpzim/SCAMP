@@ -15,6 +15,7 @@ size_t SCAMP::GetProfileTypeSize(SCAMPProfileType t) {
   }
 }
 
+#ifdef _HAS_CUDA_
 void gpuAssert(cudaError_t code, const char *file, int line, bool abort) {
   if (code != cudaSuccess) {
     fprintf(stderr, "GPUassert: %s %s %d\n", cudaGetErrorString(code), file,
@@ -24,3 +25,4 @@ void gpuAssert(cudaError_t code, const char *file, int line, bool abort) {
     }
   }
 }
+#endif

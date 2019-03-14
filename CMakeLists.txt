@@ -3,8 +3,7 @@ cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
 
 # ----------------------------------------------------------------------------------------
 #                              ===== Project Setup =====
-project(SCAMP LANGUAGES CXX CUDA)
-#project(SCAMP LANGUAGES CXX)
+project(SCAMP LANGUAGES CXX)
 set(VERSION_MAJOR 1)
 set(VERSION_MINOR 1)
 
@@ -97,10 +96,13 @@ endif()
 
 
 if (CUDA_TOOLKIT_ROOT_DIR)
-  add_library(gpu_utils src/utils.cu)
-  target_link_libraries(gpu_utils messages common)
+  add_library(gpu_stats src/gpu_stats.cu)
+  target_link_libraries(gpu_stats messages common)
   add_library(gpu_kernels src/kernels.cu)
   target_link_libraries(gpu_kernels messages common)
+else()
+  add_library(cpu_stats src/cpu_stats.cpp)
+  target_link_libraries(cpu_stats messages common)
 endif()
 
 add_library(cpu_kernels src/cpu_kernels.cpp)
@@ -118,21 +120,23 @@ endif()
 add_library(scamp src/SCAMP.cpp)
 
 if (CUDA_TOOLKIT_ROOT_DIR)
-  target_link_libraries(scamp worker messages gpu_utils common fft)
+  target_link_libraries(scamp -lpthread worker messages gpu_stats common fft)
 else()
-  target_link_libraries(scamp worker messages cpu_utils common fft)
+  target_link_libraries(scamp -lpthread worker messages cpu_stats common fft)
 endif() 
 
+if (CUDA_TOOLKIT_ROOT_DIR)
 set_target_properties(gpu_kernels PROPERTIES
     CXX_STANDARD 14
     CXX_STANDARD_REQUIRED ON
     COMPILE_FLAGS "${CUDA_COMPILATION_FLAGS} ${CUDA_GENCODE_FLAGS}"
 )
-set_target_properties(gpu_utils PROPERTIES
+set_target_properties(gpu_stats PROPERTIES
     CXX_STANDARD 14
     CXX_STANDARD_REQUIRED ON
     COMPILE_FLAGS "${CUDA_COMPILATION_FLAGS} ${CUDA_GENCODE_FLAGS}"
 )
+endif()
 
 if(CLANG_TIDY_EXE)
   set_target_properties(

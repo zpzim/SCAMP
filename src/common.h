@@ -1,5 +1,9 @@
 #pragma once
+
+#ifdef _HAS_CUDA_
 #include <cuda_runtime.h>
+#endif
+
 #include <stdio.h>
 #include <cinttypes>
 #include <unordered_map>
@@ -139,6 +143,8 @@ enum SCAMPTileType {
 
 }  // namespace SCAMP
 
+#ifdef _HAS_CUDA_
 void gpuAssert(cudaError_t code, const char* file, int line, bool abort = true);
 #define gpuErrchk(ans) \
   { gpuAssert((ans), __FILE__, __LINE__); }
+#endif

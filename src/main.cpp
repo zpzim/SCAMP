@@ -1,4 +1,6 @@
+#ifdef _HAS_CUDA_
 #include <cuda_runtime.h>
+#endif
 #include <gflags/gflags.h>
 #include <cmath>
 #include <fstream>
@@ -295,6 +297,7 @@ int main(int argc, char **argv) {
     n_y = Tb_h.size() - FLAGS_window + 1;
   }
 
+#ifdef _HAS_CUDA_
   if (devices.empty()) {
     // Use all available devices
     printf("using all devices\n");
@@ -304,6 +307,12 @@ int main(int argc, char **argv) {
       devices.push_back(i);
     }
   }
+#else
+  // We cannot use gpus if we don't have CUDA
+  assert(devices.empty() &&
+         "This binary was not built with CUDA, --gpus cannot be used with this "
+         "binary.");
+#endif
   SCAMP::SCAMPArgs args;
   args.set_window(FLAGS_window);
   args.set_max_tile_size(FLAGS_max_tile_size);
@@ -337,8 +346,10 @@ int main(int argc, char **argv) {
     WriteProfileToFile(FLAGS_output_b_file_name, FLAGS_output_b_index_file_name,
                        args.profile_b());
   }
+#ifdef _HAS_CUDA_
   gpuErrchk(cudaDeviceSynchronize());
   gpuErrchk(cudaDeviceReset());
+#endif
   printf("Done\n");
   return 0;
 }
