@@ -40,10 +40,52 @@ jobs:
       - sudo apt-get -y update
       - sudo apt-get install -y cuda
       - git submodule update --init --recursive
+      - sudo ln -s /usr/local/cuda-10.0/ /usr/local/cuda
     script: 
-      - cmake -D CUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda -D CMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc -D CMAKE_CXX_COMPILER=clang++ .
+      - set -e
+      # Build with clang
+      - cmake -D CMAKE_CXX_COMPILER=clang++ .
       - make -j4
+      - make clean
+      # Build with gcc
+      - cmake -D CMAKE_CXX_COMPILER=g++ .
+      - make -j4
+      - make clean
+      # Build with Default compiler
+      - cmake .
+      - make -j4
+      - make clean 
 
+  - stage: "Build Checks"
+    name: "Ubuntu Build no CUDA"
+    os: linux
+    dist: xenial
+    addons:
+        apt:
+            packages:
+                clang-6.0
+                clang-format-6.0
+                clang-tidy-6.0
+    compiler: clang++-6.0
+    before_install:
+      - sudo apt-get install make g++ libprotobuf-dev protobuf-compiler
+    install:  
+      - git submodule update --init --recursive
+    script: 
+      - set -e
+      # Build with clang
+      - cmake -D CMAKE_CXX_COMPILER=clang++ .
+      - make -j4
+      - make clean
+      # Build with gcc
+      - cmake -D CMAKE_CXX_COMPILER=g++ .
+      - make -j4
+      - make clean
+      # Build with Default compiler
+      - cmake .
+      - make -j4
+      - make clean 
+    
    
   - stage: "Build Checks"
     name: "Style Check"

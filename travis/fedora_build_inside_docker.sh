@@ -10,7 +10,8 @@ wget http://developer.download.nvidia.com/compute/cuda/repos/fedora${1}/x86_64/$
 rpm -i $CUDA_REPO_PKG
 dnf clean all
 dnf -y install cuda
+ln -s /usr/local/cuda-10.0/ /usr/local/cuda
 cd SCAMP
-cmake3 -D CUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda -D CMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc -D CMAKE_CXX_COMPILER=gcc .
+cmake3 -D CMAKE_CXX_COMPILER=g++ .
 make -j4
 exit 0

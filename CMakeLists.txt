@@ -13,7 +13,6 @@ if(CMAKE_CUDA_COMPILER)
   enable_language(CUDA)
 endif()
 
-
 # Use clang tidy if available
 find_program(
   CLANG_TIDY_EXE
@@ -40,9 +39,6 @@ else()
   set(DO_CLANG_FORMAT "${CLANG_FORMAT}" "-i -style=file")
 endif()
 
-add_subdirectory(gflags)
-
-add_subdirectory(proto)
 
 set(
   PROJECT_SOURCE_FILES
@@ -54,16 +50,15 @@ set(
 # ----------------------------------------------------------------------------------------
 #                         ===== Compiler Configuration =====
 
-set(CXX_STD, "-std=c++11")
-include_directories("proto")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_STD}")
+add_definitions("-std=c++14")
 
 # CUDA_CONFIG
-if (CUDA_TOOLKIT_ROOT_DIR)
-  message(STATUS "CUDA Root Directory is ${CUDA_TOOLKIT_ROOT_DIR}")
-  include_directories("${CUDA_TOOLKIT_ROOT_DIR}/include")
+if (CMAKE_CUDA_COMPILER)
+  add_definitions("-D_HAS_CUDA_")
+  find_library(CUDART_LIBRARY cudart ${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES})
+  include_directories(${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   set(CUDA_SEPARABLE_COMPILATION ON)
-  set(CUDA_COMPILATION_FLAGS "-D_HAS_CUDA_ --std=c++14 -lineinfo --expt-relaxed-constexpr -use_fast_math -O3")
+  set(CUDA_COMPILATION_FLAGS "-lineinfo --expt-relaxed-constexpr -use_fast_math -O3")
   set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_60,code=sm_70")
   set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_61,code=sm_61")
   set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_60,code=sm_60")
@@ -71,9 +66,9 @@ if (CUDA_TOOLKIT_ROOT_DIR)
   set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_37,code=sm_37")
   set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_35,code=sm_35")
   set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_30,code=sm_30")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_HAS_CUDA_")
 endif()
-  
+
+ 
 # optimize in release
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native")
 
@@ -89,9 +84,12 @@ endif()
 # ----------------------------------------------------------------------------------------
 #                              ===== Build targets =====
 
+add_subdirectory(gflags)
+add_subdirectory(proto)
+include_directories("proto")
 add_library(common src/common.cpp)
 
-if (CUDA_TOOLKIT_ROOT_DIR) 
+if (CMAKE_CUDA_COMPILER) 
   target_link_libraries(common messages -lcudart_static)
 else()
   target_link_libraries(common messages)
@@ -99,7 +97,7 @@ endif()
 
 add_library(fft src/fft_helper.cpp)
 
-if (CUDA_TOOLKIT_ROOT_DIR)
+if (CMAKE_CUDA_COMPILER)
   add_library(fft_kernels src/fft_kernels.cu)
   target_link_libraries(fft -lcufft fft_kernels common)
 else()
@@ -107,7 +105,7 @@ else()
 endif()
 
 
-if (CUDA_TOOLKIT_ROOT_DIR)
+if (CMAKE_CUDA_COMPILER)
   add_library(gpu_stats src/gpu_stats.cu)
   target_link_libraries(gpu_stats messages common)
   add_library(gpu_kernels src/kernels.cu)
@@ -123,7 +121,7 @@ target_link_libraries(cpu_kernels messages common)
 add_library(worker src/SCAMPWorker.cpp)
 
 
-if (CUDA_TOOLKIT_ROOT_DIR)
+if (CMAKE_CUDA_COMPILER)
   target_link_libraries(worker messages common gpu_kernels cpu_kernels fft)
 else()
   target_link_libraries(worker messages common cpu_kernels fft)
@@ -131,13 +129,13 @@ endif()
 
 add_library(scamp src/SCAMP.cpp)
 
-if (CUDA_TOOLKIT_ROOT_DIR)
+if (CMAKE_CUDA_COMPILER)
   target_link_libraries(scamp -lpthread worker messages gpu_stats common fft)
 else()
   target_link_libraries(scamp -lpthread worker messages cpu_stats common fft)
 endif() 
 
-if (CUDA_TOOLKIT_ROOT_DIR)
+if (CMAKE_CUDA_COMPILER)
 set_target_properties(gpu_kernels PROPERTIES
     CXX_STANDARD 14
     CXX_STANDARD_REQUIRED ON
@@ -189,7 +187,7 @@ if(CLANG_FORMAT_EXE)
 endif()
 
 add_executable(SCAMP src/main.cpp)
-if (CUDA_TOOLKIT_ROOT_DIR)
+if (CMAKE_CUDA_COMPILER)
   target_link_libraries(SCAMP -lcudart_static gflags messages common scamp)
 else()
   target_link_libraries(SCAMP gflags messages common scamp)

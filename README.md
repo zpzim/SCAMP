@@ -16,8 +16,8 @@ Note: for self-joins on small inputs (~2M or less) the features in this reposito
 # Environment
 This base project requires:
  * At least version 9.0 of the CUDA toolkit available [here](https://developer.nvidia.com/cuda-toolkit).
- * At least version 6.0 of clang (for clang-tidy and clang-format)
- * Currently builds under Ubuntu/Fedora Linux using gcc/clang and nvcc with cmake (3.8+ for cuda support), this version is not yet available directly from all package managers (i.e. apt) so you will probably need to install it manually from [here](https://cmake.org/download/)
+ * Currently builds under Ubuntu/Fedora Linux using gcc/clang and nvcc with cmake (3.8+ for cuda support), this version is not available directly from all package managers so you may need to install it manually from [here](https://cmake.org/download/)
+ * Optional: At least version 6.0 of clang (for clang-tidy and clang-format)
  * Google protobufs (v2) must be installed as SCAMP uses this input to communicate internally, protobuf v2.6.x minimum is required, some package managers do not provide this version yet and you will need to install from source [here](https://github.com/protocolbuffers/protobuf/blob/master/src/README.md) 
  * An NVIDIA GPU with CUDA support is also required. You can find a list of CUDA compatible GPUs [here](https://developer.nvidia.com/cuda-gpus)
  * Currently Supports Kepler-Volta, but Turing and beyond will likely work as well, just add the -gencode flag for your specific architecture in CMakeLists.txt 
@@ -25,7 +25,8 @@ This base project requires:
 ~~~~
 Ubuntu Required Packages:
    sudo apt-get install protobuf-compiler libprotobuf-dev 
-   # cmake 3.8 is not available via apt install it manually from the link above
+   # Depending on Ubuntu version cmake 3.8 may not be available and you will need to install manually
+   sudo apt-get install cmake
    # Install cuda via the link above
 Fedora:
    sudo dnf install protobuf-devel cmake3 gcc-c++
@@ -40,18 +41,17 @@ CentOS:
 git clone https://github.com/zpzim/SCAMP
 cd SCAMP
 git submodule update --init --recursive
-cmake -D CUDA_TOOLKIT_ROOT_DIR=/path/to/cuda/install \
-      -D CMAKE_CUDA_COMPILER=/path/to/nvcc \
-      -D CMAKE_CXX_COMPILER=/path/to/clang/or/gcc .
+#If you have problems with cmake, you may need to specify the correct cuda-toolkit or c++ compiler as shown below
+cmake .
 make -j4
 ./SCAMP --window=window_size --input_a_file_name=input_A_file_path
 ~~~~
 This will generate two files: mp_columns_out and mp_columns_out_index, which contain the matrix profile and matrix profile index values respectively. 
 ~~~~
-# Example parameters for cmake for a typical Ubuntu system with cuda and clang installed
-cmake -D CUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda
-      -D CMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc
-      -D CMAKE_CXX_COMPILER=clang++ .
+# If you need to specify a specific compiler or cuda toolkit if you have multiple installed, you can use the following defines
+# By default cmake will look for cuda at the /usr/local/cuda symlink on linux
+cmake -D CMAKE_CUDA_COMPILER=/path/to/nvcc \
+      -D CMAKE_CXX_COMPILER=/path/to/clang/or/gcc .
 ~~~~
 * Selected Optional Arguments:
     * "--input_b_file_name=/path/to/file": allows a second input file which acts as the second time series for an AB join. An AB join compares every subsequence in input A with every subsequence in input B, the length of the matrix profile produced by this operation is always determined by input A, but the matrix profile index's values will reference subsequences in input B. Providing this parameter implies that SCAMP will compute an AB join.
