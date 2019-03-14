@@ -1,14 +1,20 @@
 # cmake file to build the project and tests
 cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
-
+include(CheckLanguage)
 # ----------------------------------------------------------------------------------------
 #                              ===== Project Setup =====
 project(SCAMP LANGUAGES CXX)
 set(VERSION_MAJOR 1)
 set(VERSION_MINOR 1)
 
-add_subdirectory(gflags)
+# Use cuda if available
+check_language(CUDA)
+if(CMAKE_CUDA_COMPILER)
+  enable_language(CUDA)
+endif()
 
+
+# Use clang tidy if available
 find_program(
   CLANG_TIDY_EXE
   NAMES clang-tidy-6.0 clang-tidy-5.0 clang-tidy
@@ -20,6 +26,8 @@ else()
   message(STATUS "clang-tidy found: ${CLANG_TIDY_EXE}")
   set(DO_CLANG_TIDY "${CLANG_TIDY_EXE}" "-checks=*,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-fuchsia-default-arguments,-hicpp-vararg,-cppcoreguidelines-pro-type-vararg")
 endif()
+
+# Use clang format if available
 find_program(
   CLANG_FORMAT_EXE
   NAMES clang-format-6.0 clang-format-5.0 clang-format
@@ -32,6 +40,8 @@ else()
   set(DO_CLANG_FORMAT "${CLANG_FORMAT}" "-i -style=file")
 endif()
 
+add_subdirectory(gflags)
+
 add_subdirectory(proto)
 
 set(
@@ -43,6 +53,7 @@ set(
 
 # ----------------------------------------------------------------------------------------
 #                         ===== Compiler Configuration =====
+
 set(CXX_STD, "-std=c++11")
 include_directories("proto")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_STD}")
@@ -52,7 +63,7 @@ if (CUDA_TOOLKIT_ROOT_DIR)
   message(STATUS "CUDA Root Directory is ${CUDA_TOOLKIT_ROOT_DIR}")
   include_directories("${CUDA_TOOLKIT_ROOT_DIR}/include")
   set(CUDA_SEPARABLE_COMPILATION ON)
-  set(CUDA_COMPILATION_FLAGS "--std=c++14 -lineinfo --expt-relaxed-constexpr -use_fast_math -O3")
+  set(CUDA_COMPILATION_FLAGS "-D_HAS_CUDA_ --std=c++14 -lineinfo --expt-relaxed-constexpr -use_fast_math -O3")
   set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_60,code=sm_70")
   set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_61,code=sm_61")
   set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_60,code=sm_60")
@@ -79,6 +90,7 @@ endif()
 #                              ===== Build targets =====
 
 add_library(common src/common.cpp)
+
 if (CUDA_TOOLKIT_ROOT_DIR) 
   target_link_libraries(common messages -lcudart_static)
 else()
