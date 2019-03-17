@@ -9,8 +9,8 @@
 #include <vector>
 
 #include "SCAMP.h"
-#include "SCAMPWorker.h"
 #include "common.h"
+#include "tile.h"
 #ifdef _HAS_CUDA_
 #include "gpu_stats.h"
 #else
@@ -25,14 +25,14 @@ SCAMPError_t SCAMP_Operation::init() { return SCAMP_NO_ERROR; }
 SCAMPError_t SCAMP_Operation::destroy() { return SCAMP_NO_ERROR; }
 
 SCAMPError_t SCAMP_Operation::do_tile(
-    SCAMPTileType t, Worker *worker,
+    SCAMPTileType t, Tile *tile,
     const google::protobuf::RepeatedField<double> &Ta_h,
     const google::protobuf::RepeatedField<double> &Tb_h) {
   SCAMPError_t err;
-  worker->InitTimeseries(Ta_h, Tb_h);
-  worker->InitProfile(_profile_a, _profile_b);
-  worker->InitStats(_precompA, _precompB);
-  err = worker->execute(t);
+  tile->InitTimeseries(Ta_h, Tb_h);
+  tile->InitProfile(_profile_a, _profile_b);
+  tile->InitStats(_precompA, _precompB);
+  err = tile->execute(t);
   return err;
 }
 
@@ -101,61 +101,59 @@ void SCAMP_Operation::get_tiles() {
 }
 
 void SCAMP_Operation::do_work(
-    Worker *worker, const google::protobuf::RepeatedField<double> &timeseries_a,
-    const google::protobuf::RepeatedField<double> &timeseries_b) {
-  worker->FirstTimeInit();
+    const google::protobuf::RepeatedField<double> &timeseries_a,
+    const google::protobuf::RepeatedField<double> &timeseries_b,
+    const OpInfo *info, const SCAMPArchitecture arch, const int device_id) {
+  Tile tile(info, arch, device_id);
   while (!_work_queue.empty()) {
-    std::pair<int, int> tile = _work_queue.pop();
-    if (tile.first == -1 && tile.second == -1) {
+    std::pair<int, int> t = _work_queue.pop();
+    if (t.first == -1 && t.second == -1) {
       // Another thread grabbed our tile and now the queue is empty
       break;
     }
     // Get the position of the tile we will compute
-    worker->set_tile_row(tile.first * _info.max_tile_height);
-    worker->set_tile_col(tile.second * _info.max_tile_width);
+    tile.set_tile_row(t.first * _info.max_tile_height);
+    tile.set_tile_col(t.second * _info.max_tile_width);
     // Get the size of the tile we will compute
-    worker->set_tile_width(std::min(
-        _info.max_tile_ts_size, _info.full_ts_len_A - worker->get_tile_col()));
-    worker->set_tile_height(std::min(
-        _info.max_tile_ts_size, _info.full_ts_len_B - worker->get_tile_row()));
-    std::cout << "Starting tile with starting row of " << worker->get_tile_row()
-              << " starting column of " << worker->get_tile_col()
-              << " with height " << worker->get_tile_height() << " and width "
-              << worker->get_tile_width() << std::endl;
+    tile.set_tile_width(std::min(_info.max_tile_ts_size,
+                                 _info.full_ts_len_A - tile.get_tile_col()));
+    tile.set_tile_height(std::min(_info.max_tile_ts_size,
+                                  _info.full_ts_len_B - tile.get_tile_row()));
+    std::cout << "Starting tile with starting row of " << tile.get_tile_row()
+              << " starting column of " << tile.get_tile_col()
+              << " with height " << tile.get_tile_height() << " and width "
+              << tile.get_tile_width() << std::endl;
     SCAMPError_t err;
     if (_info.self_join) {
-      if (tile.first == tile.second) {
+      if (t.first == t.second) {
         // partial tile on diagonal
-        err = do_tile(SELF_JOIN_UPPER_TRIANGULAR, worker, timeseries_a,
+        err = do_tile(SELF_JOIN_UPPER_TRIANGULAR, &tile, timeseries_a,
                       timeseries_b);
       } else {
         // full tile
-        err = do_tile(SELF_JOIN_FULL_TILE, worker, timeseries_a, timeseries_b);
+        err = do_tile(SELF_JOIN_FULL_TILE, &tile, timeseries_a, timeseries_b);
       }
     } else if (_info.computing_rows) {
       // BiDirectional AB-join
-      err = do_tile(AB_FULL_JOIN_FULL_TILE, worker, timeseries_a, timeseries_b);
+      err = do_tile(AB_FULL_JOIN_FULL_TILE, &tile, timeseries_a, timeseries_b);
     } else {
       // Column AB-join
-      err = do_tile(AB_JOIN_FULL_TILE, worker, timeseries_a, timeseries_b);
+      err = do_tile(AB_JOIN_FULL_TILE, &tile, timeseries_a, timeseries_b);
     }
     if (err != SCAMP_NO_ERROR) {
       printf("ERROR %d executing tile. \n", err);
     }
     // Merge join result
-    worker->MergeProfile(_profile_a, _profile_a_lock, _profile_b,
-                         _profile_b_lock);
-    // FIXME: Protect with LOCK
+    tile.MergeProfile(_profile_a, _profile_a_lock, _profile_b, _profile_b_lock);
     std::unique_lock<std::mutex> lock(_counter_lock);
     _completed_tiles++;
   }
-  worker->Destroy();
 }
 
 SCAMPError_t SCAMP_Operation::do_join(
     const google::protobuf::RepeatedField<double> &timeseries_a,
     const google::protobuf::RepeatedField<double> &timeseries_b) {
-  const int num_workers = _workers.size();
+  const int num_workers = _cpu_workers + _devices.size();
   printf("Num workers = %d\n", num_workers);
 
   // Compute statistics
@@ -175,9 +173,14 @@ SCAMPError_t SCAMP_Operation::do_join(
   std::vector<std::future<void>> futures(num_workers);
 
   // Start workers
-  for (int i = 0; i < num_workers; ++i) {
+  for (int i = 0; i < _devices.size(); ++i) {
     futures[i] = std::async(std::launch::async, &SCAMP_Operation::do_work, this,
-                            &_workers[i], timeseries_a, timeseries_b);
+                            timeseries_a, timeseries_b, &_info, CUDA_GPU_WORKER,
+                            _devices.at(i));
+  }
+  for (int i = _devices.size(); i < num_workers; ++i) {
+    futures[i] = std::async(std::launch::async, &SCAMP_Operation::do_work, this,
+                            timeseries_a, timeseries_b, &_info, CPU_WORKER, -1);
   }
 
   // wait for workers to be done

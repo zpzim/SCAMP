@@ -105,6 +105,13 @@ struct PrecomputedInfo {
   std::vector<double> _means;
 
  public:
+  void move(std::vector<double>& means, std::vector<double>& norms,
+            std::vector<double>& df, std::vector<double>& dg) {
+    _norms = std::move(norms);
+    _means = std::move(means);
+    _df = std::move(df);
+    _dg = std::move(dg);
+  }
   const std::vector<double>& dg() const { return _dg; }
   const std::vector<double>& df() const { return _df; }
   const std::vector<double>& norms() const { return _norms; }

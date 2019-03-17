@@ -7,9 +7,9 @@
 #include <unordered_map>
 #include <vector>
 #include "SCAMP.pb.h"
-#include "SCAMPWorker.h"
 #include "common.h"
 #include "fft_helper.h"
+#include "tile.h"
 using std::list;
 using std::pair;
 using std::unordered_map;
@@ -76,9 +76,6 @@ class SCAMP_Operation {
   // Operation specific variables like maximum tile size (see common.h)
   const OpInfo _info;
 
-  // Workers to use for computation
-  vector<Worker> _workers;
-
   // Tile state variables
   // The order to compute the tiles in, set by get_tiles()
   ThreadSafeQueue _work_queue;
@@ -92,14 +89,21 @@ class SCAMP_Operation {
   // The total number of tiles
   size_t _total_tiles;
 
-  SCAMPError_t do_tile(SCAMPTileType t, Worker *worker,
+  // Cuda devices to compute with
+  std::vector<int> _devices;
+
+  // CPU threads to compute with
+  int _cpu_workers;
+
+  SCAMPError_t do_tile(SCAMPTileType t, Tile *tile,
                        const google::protobuf::RepeatedField<double> &Ta_h,
                        const google::protobuf::RepeatedField<double> &Tb_h);
 
   void get_tiles();
-  void do_work(Worker *worker,
-               const google::protobuf::RepeatedField<double> &timeseries_a,
-               const google::protobuf::RepeatedField<double> &timeseries_b);
+  void do_work(const google::protobuf::RepeatedField<double> &timeseries_a,
+               const google::protobuf::RepeatedField<double> &timeseries_b,
+               const OpInfo *info, const SCAMPArchitecture arch,
+               const int device_id);
 
  public:
   SCAMP_Operation(size_t Asize, size_t Bsize, size_t window_sz,
@@ -114,14 +118,9 @@ class SCAMP_Operation {
               compute_cols, is_aligned, dev.size() + num_threads),
         _completed_tiles(0),
         _profile_a(pA),
-        _profile_b(pB) {
-    for (auto device : dev) {
-      _workers.emplace_back(&_info, device, CUDA_GPU_WORKER, device);
-    }
-    for (int i = dev.size(); i < dev.size() + num_threads; ++i) {
-      _workers.emplace_back(&_info, i, CPU_WORKER, -1);
-    }
-  }
+        _profile_b(pB),
+        _devices(dev),
+        _cpu_workers(num_threads) {}
   SCAMPError_t do_join(
       const google::protobuf::RepeatedField<double> &timeseries_a,
       const google::protobuf::RepeatedField<double> &timeseries_b);

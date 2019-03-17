@@ -65,6 +65,8 @@ class fft_precompute_helper {
   const size_t size;
   const size_t window_size;
   const bool double_precision;
+  const SCAMPArchitecture _arch;
+// CUFFT specific variables
 #ifdef _HAS_CUDA_
   double *Q_reverse_pad;
   cuDoubleComplex *Qc, *Tc;
@@ -73,27 +75,35 @@ class fft_precompute_helper {
   const int fft_work_size = 512;
 #endif
  public:
-  fft_precompute_helper(size_t sz, size_t window_sz, bool dp)
-      : size(sz), window_size(window_sz), double_precision(dp) {
+  fft_precompute_helper(size_t sz, size_t window_sz, bool dp,
+                        SCAMPArchitecture arch)
+      : size(sz), window_size(window_sz), double_precision(dp), _arch(arch) {
+    if (arch == CUDA_GPU_WORKER) {
 #ifdef _HAS_CUDA_
-    cufft_data_size = sz / 2 + 1;
-    if (double_precision) {
-      CHECK_CUFFT_ERRORS(cufftPlan1d(&fft_plan, size, CUFFT_D2Z, 1));
-      CHECK_CUFFT_ERRORS(cufftPlan1d(&ifft_plan, size, CUFFT_Z2D, 1));
-    } else {
-      CHECK_CUFFT_ERRORS(cufftPlan1d(&fft_plan, size, CUFFT_R2C, 1));
-      CHECK_CUFFT_ERRORS(cufftPlan1d(&ifft_plan, size, CUFFT_C2R, 1));
-    }
-    cudaMalloc(&Q_reverse_pad, sizeof(double) * size);
-    gpuErrchk(cudaPeekAtLastError());
-    cudaMalloc(&Tc, sizeof(cuDoubleComplex) * cufft_data_size);
-    gpuErrchk(cudaPeekAtLastError());
-    cudaMalloc(&Qc, sizeof(cuDoubleComplex) * cufft_data_size);
-    gpuErrchk(cudaPeekAtLastError());
+      cufft_data_size = sz / 2 + 1;
+      if (double_precision) {
+        CHECK_CUFFT_ERRORS(cufftPlan1d(&fft_plan, size, CUFFT_D2Z, 1));
+        CHECK_CUFFT_ERRORS(cufftPlan1d(&ifft_plan, size, CUFFT_Z2D, 1));
+      } else {
+        CHECK_CUFFT_ERRORS(cufftPlan1d(&fft_plan, size, CUFFT_R2C, 1));
+        CHECK_CUFFT_ERRORS(cufftPlan1d(&ifft_plan, size, CUFFT_C2R, 1));
+      }
+      cudaMalloc(&Q_reverse_pad, sizeof(double) * size);
+      gpuErrchk(cudaPeekAtLastError());
+      cudaMalloc(&Tc, sizeof(cuDoubleComplex) * cufft_data_size);
+      gpuErrchk(cudaPeekAtLastError());
+      cudaMalloc(&Qc, sizeof(cuDoubleComplex) * cufft_data_size);
+      gpuErrchk(cudaPeekAtLastError());
+#else
+      assert("Attempted to use GPU resources in a binary not built with cuda");
 #endif
+    }
   }
 #ifdef _HAS_CUDA_
   ~fft_precompute_helper() {
+    if (_arch == CPU_WORKER) {
+      return;
+    }
     cudaFree(Q_reverse_pad);
     gpuErrchk(cudaPeekAtLastError());
     cudaFree(Tc);

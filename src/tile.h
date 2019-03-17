@@ -9,13 +9,10 @@
 
 namespace SCAMP {
 
-class Worker {
+class Tile {
  private:
   // Architecture
   SCAMPArchitecture _arch;
-
-  // Worker id
-  int _id;
 
   // GPU id (if applicable)
   int _cuda_id;
@@ -55,6 +52,8 @@ class Worker {
   void free_cuda();
   void init_cpu();
   void free_cpu();
+  void FirstTimeInit();
+  void Destroy();
   Profile AllocProfile(SCAMPProfileType t, uint64_t size);
   void CopyProfileToHost(Profile *destination_profile,
                          const DeviceProfile *device_tile_profile,
@@ -64,20 +63,8 @@ class Worker {
                                 uint64_t index_start, std::mutex &lock);
 
  public:
-  Worker(const OpInfo *info, int id, SCAMPArchitecture arch, int cuda_id)
-      : _info(info),
-        _arch(arch),
-        _cuda_id(cuda_id),
-        _current_tile_width(0),
-        _current_tile_height(0),
-        _current_tile_row(0),
-        _current_tile_col(0),
-        _id(id) {
-    _profile_a_tile_dev[_info->profile_type] = nullptr;
-    _profile_b_tile_dev[_info->profile_type] = nullptr;
-    _profile_a_tile = AllocProfile(_info->profile_type, _info->max_tile_height);
-    _profile_b_tile = AllocProfile(_info->profile_type, _info->max_tile_width);
-  }
+  Tile(const OpInfo *info, SCAMPArchitecture arch, int cuda_id);
+  ~Tile();
 #ifdef _HAS_CUDA_
   cudaStream_t get_stream() { return _stream; }
 #endif
@@ -94,8 +81,6 @@ class Worker {
   void set_tile_width(size_t width) { _current_tile_width = width; }
   void MergeProfile(Profile *profile_a, std::mutex &a_lock, Profile *profile_b,
                     std::mutex &b_lock);
-  void FirstTimeInit();
-  void Destroy();
   void Sync();
 
   // Initializes the precomputed statistics required by the current tile

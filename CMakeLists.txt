@@ -118,21 +118,21 @@ endif()
 add_library(cpu_kernels src/cpu_kernels.cpp)
 target_link_libraries(cpu_kernels messages common)
 
-add_library(worker src/SCAMPWorker.cpp)
+add_library(tile src/tile.cpp)
 
 
 if (CMAKE_CUDA_COMPILER)
-  target_link_libraries(worker messages common gpu_kernels cpu_kernels fft)
+  target_link_libraries(tile messages common gpu_kernels cpu_kernels fft)
 else()
-  target_link_libraries(worker messages common cpu_kernels fft)
+  target_link_libraries(tile messages common cpu_kernels fft)
 endif()
 
 add_library(scamp src/SCAMP.cpp)
 
 if (CMAKE_CUDA_COMPILER)
-  target_link_libraries(scamp -lpthread worker messages gpu_stats common fft)
+  target_link_libraries(scamp -lpthread tile messages gpu_stats common fft)
 else()
-  target_link_libraries(scamp -lpthread worker messages cpu_stats common fft)
+  target_link_libraries(scamp -lpthread tile messages cpu_stats common fft)
 endif() 
 
 if (CMAKE_CUDA_COMPILER)
@@ -162,7 +162,7 @@ if(CLANG_TIDY_EXE)
     CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
   )
   set_target_properties(
-    worker PROPERTIES
+    tile PROPERTIES
     CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
   )
 endif()

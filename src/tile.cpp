@@ -1,7 +1,8 @@
-#include "SCAMPWorker.h"
+#include "tile.h"
 #ifdef _HAS_CUDA_
 #include "kernels.h"
 #endif
+#include "cpu_kernels.h"
 
 namespace SCAMP {
 
@@ -26,7 +27,19 @@ void elementwise_max(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
     }
   }
 }
-void Worker::FirstTimeInit() {
+
+Tile::Tile(const OpInfo *info, SCAMPArchitecture arch, int cuda_id)
+    : _info(info),
+      _arch(arch),
+      _cuda_id(cuda_id),
+      _current_tile_width(0),
+      _current_tile_height(0),
+      _current_tile_row(0),
+      _current_tile_col(0) {
+  _profile_a_tile_dev[_info->profile_type] = nullptr;
+  _profile_b_tile_dev[_info->profile_type] = nullptr;
+  _profile_a_tile = AllocProfile(_info->profile_type, _info->max_tile_height);
+  _profile_b_tile = AllocProfile(_info->profile_type, _info->max_tile_width);
   switch (_arch) {
     case CUDA_GPU_WORKER:
       init_cuda();
@@ -36,7 +49,8 @@ void Worker::FirstTimeInit() {
       break;
   }
 }
-void Worker::Destroy() {
+
+Tile::~Tile() {
   switch (_arch) {
     case CUDA_GPU_WORKER:
       free_cuda();
@@ -47,7 +61,7 @@ void Worker::Destroy() {
   }
 }
 
-void Worker::Sync() {
+void Tile::Sync() {
   switch (_arch) {
     case CUDA_GPU_WORKER:
 #if _HAS_CUDA_
@@ -61,9 +75,8 @@ void Worker::Sync() {
   }
 }
 
-void Worker::InitTimeseries(
-    const google::protobuf::RepeatedField<double> &Ta_h,
-    const google::protobuf::RepeatedField<double> &Tb_h) {
+void Tile::InitTimeseries(const google::protobuf::RepeatedField<double> &Ta_h,
+                          const google::protobuf::RepeatedField<double> &Tb_h) {
   switch (_arch) {
     case CUDA_GPU_WORKER:
 #if _HAS_CUDA_
@@ -80,14 +93,17 @@ void Worker::InitTimeseries(
 #endif
       break;
     case CPU_WORKER:
-      // FIXME: stub
-      //_T_A_dev = Ta_h.data() + _current_tile_col;
-      //_T_B_dev = Tb_h.data() + _current_tile_row;
+      // TODO(zpzim): we don't actually have to copy memory here, we
+      // can just set a reference.
+      memcpy(_T_A_dev, Ta_h.data() + _current_tile_col,
+             sizeof(double) * _current_tile_width);
+      memcpy(_T_B_dev, Tb_h.data() + _current_tile_row,
+             sizeof(double) * _current_tile_height);
       break;
   }
 }
 
-Profile Worker::AllocProfile(SCAMPProfileType t, uint64_t size) {
+Profile Tile::AllocProfile(SCAMPProfileType t, uint64_t size) {
   Profile p;
   p.set_type(t);
   switch (t) {
@@ -113,7 +129,7 @@ Profile Worker::AllocProfile(SCAMPProfileType t, uint64_t size) {
   }
 }
 
-SCAMPError_t Worker::InitProfile(Profile *profile_a, Profile *profile_b) {
+SCAMPError_t Tile::InitProfile(Profile *profile_a, Profile *profile_b) {
   int profile_size = GetProfileTypeSize(_info->profile_type);
   int width = _current_tile_width - _info->mp_window + 1;
   int height = _current_tile_height - _info->mp_window + 1;
@@ -164,9 +180,26 @@ SCAMPError_t Worker::InitProfile(Profile *profile_a, Profile *profile_b) {
 #endif
       break;
     }
+    // TODO(zpzim): Implement CPU codepath
     case CPU_WORKER:
       switch (_info->profile_type) {
-        case PROFILE_TYPE_1NN_INDEX:
+        case PROFILE_TYPE_1NN_INDEX: {
+          const uint64_t *pA_ptr =
+              profile_a->data().Get(0).uint64_value().value().data();
+          memcpy(_profile_a_tile_dev.at(type), pA_ptr + _current_tile_col,
+                 sizeof(uint64_t) * width);
+          if (_info->self_join) {
+            memcpy(_profile_b_tile_dev.at(type), pA_ptr + _current_tile_row,
+                   sizeof(uint64_t) * height);
+          } else if (_info->computing_rows && _info->keep_rows_separate) {
+            const uint64_t *pB_ptr =
+                profile_b->data().Get(0).uint64_value().value().data();
+            memcpy(_profile_b_tile_dev.at(type), pB_ptr + _current_tile_row,
+                   sizeof(uint64_t) * height);
+          }
+          break;
+        }
+
         case PROFILE_TYPE_SUM_THRESH:
         case PROFILE_TYPE_FREQUENCY_THRESH:
         case PROFILE_TYPE_KNN:
@@ -179,7 +212,7 @@ SCAMPError_t Worker::InitProfile(Profile *profile_a, Profile *profile_b) {
   return SCAMP_NO_ERROR;
 }
 
-void Worker::InitStats(const PrecomputedInfo &a, const PrecomputedInfo &b) {
+void Tile::InitStats(const PrecomputedInfo &a, const PrecomputedInfo &b) {
   size_t bytes_a =
       (_current_tile_width - _info->mp_window + 1) * sizeof(double);
   size_t bytes_b =
@@ -216,24 +249,23 @@ void Worker::InitStats(const PrecomputedInfo &a, const PrecomputedInfo &b) {
 #endif
       break;
     case CPU_WORKER:
-      /*
-      FIXME: stub
-      _norms_A = a.norms().data() + _current_tile_col;
-      _df_A = a.df().data() + _current_tile_col;
-      _dg_A = a.dg().data() + _current_tile_col;
-      _means_A = a.means().data() + _current_tile_col;
-      _norms_B = b.norms().data() + _current_tile_row;
-      _df_B = b.df().data() + _current_tile_row;
-      _dg_B = b.dg().data() + _current_tile_row;
-      _means_B = b.means().data() + _current_tile_row;
-      */
+      // TODO(zpzim): we don't actually have to copy memory here, we
+      // can just set a reference.
+      memcpy(_norms_A, a.norms().data() + _current_tile_col, bytes_a);
+      memcpy(_df_A, a.df().data() + _current_tile_col, bytes_a);
+      memcpy(_dg_A, a.dg().data() + _current_tile_col, bytes_a);
+      memcpy(_means_A, a.means().data() + _current_tile_col, bytes_a);
+      memcpy(_norms_B, b.norms().data() + _current_tile_row, bytes_b);
+      memcpy(_df_B, b.df().data() + _current_tile_row, bytes_b);
+      memcpy(_dg_B, b.dg().data() + _current_tile_row, bytes_b);
+      memcpy(_means_B, b.means().data() + _current_tile_row, bytes_b);
       break;
   }
 }
 
-void Worker::MergeTileIntoFullProfile(Profile *tile_profile, uint64_t position,
-                                      uint64_t length, Profile *full_profile,
-                                      uint64_t index_start, std::mutex &lock) {
+void Tile::MergeTileIntoFullProfile(Profile *tile_profile, uint64_t position,
+                                    uint64_t length, Profile *full_profile,
+                                    uint64_t index_start, std::mutex &lock) {
   std::unique_lock<std::mutex> mlock(lock);
   switch (_info->profile_type) {
     case PROFILE_TYPE_SUM_THRESH:
@@ -283,8 +315,8 @@ void Worker::MergeTileIntoFullProfile(Profile *tile_profile, uint64_t position,
   }
 }
 
-void Worker::MergeProfile(Profile *profile_a, std::mutex &a_lock,
-                          Profile *profile_b, std::mutex &b_lock) {
+void Tile::MergeProfile(Profile *profile_a, std::mutex &a_lock,
+                        Profile *profile_b, std::mutex &b_lock) {
   // Set up a copy operation back to the host
   CopyProfileToHost(&_profile_a_tile, &_profile_a_tile_dev,
                     _current_tile_width - _info->mp_window + 1);
@@ -311,9 +343,9 @@ void Worker::MergeProfile(Profile *profile_a, std::mutex &a_lock,
   }
 }
 // TODO(zpzim): make CPU/GPU agnostic
-void Worker::CopyProfileToHost(Profile *destination_profile,
-                               const DeviceProfile *device_tile_profile,
-                               uint64_t length) {
+void Tile::CopyProfileToHost(Profile *destination_profile,
+                             const DeviceProfile *device_tile_profile,
+                             uint64_t length) {
   switch (_arch) {
     case CUDA_GPU_WORKER: {
 #ifdef _HAS_CUDA_
@@ -357,7 +389,7 @@ void Worker::CopyProfileToHost(Profile *destination_profile,
   }
 }
 
-void Worker::init_cuda() {
+inline void Tile::init_cuda() {
 #ifdef _HAS_CUDA_
   cudaSetDevice(_cuda_id);
   cudaGetDeviceProperties(&_dev_props, _cuda_id);
@@ -392,14 +424,14 @@ void Worker::init_cuda() {
   cudaMalloc(&_dg_B, sizeof(double) * _info->max_tile_height);
   gpuErrchk(cudaPeekAtLastError());
   cudaMalloc(&_scratchpad, sizeof(double) * _info->max_tile_ts_size);
-  _scratch = std::make_shared<fft_precompute_helper>(_info->max_tile_ts_size,
-                                                     _info->mp_window, true);
+  _scratch = std::make_shared<fft_precompute_helper>(
+      _info->max_tile_ts_size, _info->mp_window, true, CUDA_GPU_WORKER);
 #else
   assert("ERROR: CUDA used in binary not built with CUDA");
 #endif
 }
 
-void Worker::free_cuda() {
+inline void Tile::free_cuda() {
 #ifdef _HAS_CUDA_
   cudaSetDevice(_cuda_id);
   cudaFree(_T_A_dev);
@@ -423,12 +455,57 @@ void Worker::free_cuda() {
 }
 
 // TODO(zpzim): Finish STUB
-void Worker::init_cpu() {}
+inline void Tile::init_cpu() {
+  size_t profile_size = GetProfileTypeSize(_info->profile_type);
+  _T_A_dev =
+      static_cast<double *>(malloc(sizeof(double) * _info->max_tile_ts_size));
+  _T_B_dev =
+      static_cast<double *>(malloc(sizeof(double) * _info->max_tile_ts_size));
+  _profile_a_tile_dev.at(_info->profile_type) =
+      static_cast<double *>(malloc(profile_size * _info->max_tile_width));
+  _profile_b_tile_dev.at(_info->profile_type) =
+      static_cast<double *>(malloc(profile_size * _info->max_tile_height));
+  _QT_dev =
+      static_cast<double *>(malloc(sizeof(double) * _info->max_tile_width));
+  _means_A =
+      static_cast<double *>(malloc(sizeof(double) * _info->max_tile_width));
+  _means_B =
+      static_cast<double *>(malloc(sizeof(double) * _info->max_tile_height));
+  _norms_A =
+      static_cast<double *>(malloc(sizeof(double) * _info->max_tile_width));
+  _norms_B =
+      static_cast<double *>(malloc(sizeof(double) * _info->max_tile_height));
+  _df_A = static_cast<double *>(malloc(sizeof(double) * _info->max_tile_width));
+  _df_B =
+      static_cast<double *>(malloc(sizeof(double) * _info->max_tile_height));
+  _dg_A = static_cast<double *>(malloc(sizeof(double) * _info->max_tile_width));
+  _dg_B =
+      static_cast<double *>(malloc(sizeof(double) * _info->max_tile_height));
+  _scratchpad =
+      static_cast<double *>(malloc(sizeof(double) * _info->max_tile_ts_size));
+  _scratch = std::make_shared<fft_precompute_helper>(
+      _info->max_tile_ts_size, _info->mp_window, true, CPU_WORKER);
+}
 
 // TODO(zpzim): Finish STUB
-void Worker::free_cpu() {}
+inline void Tile::free_cpu() {
+  free(_T_A_dev);
+  free(_T_B_dev);
+  free(_QT_dev);
+  free(_means_A);
+  free(_means_B);
+  free(_norms_A);
+  free(_norms_B);
+  free(_df_A);
+  free(_df_B);
+  free(_dg_A);
+  free(_dg_B);
+  free(_profile_a_tile_dev.at(_info->profile_type));
+  free(_profile_b_tile_dev.at(_info->profile_type));
+  free(_scratchpad);
+}
 
-SCAMPError_t Worker::execute(SCAMPTileType t) {
+SCAMPError_t Tile::execute(SCAMPTileType t) {
   SCAMPError_t error;
   switch (t) {
     case SELF_JOIN_FULL_TILE:
@@ -450,7 +527,7 @@ SCAMPError_t Worker::execute(SCAMPTileType t) {
   return error;
 }
 
-SCAMPError_t Worker::do_self_join_full() {
+SCAMPError_t Tile::do_self_join_full() {
   SCAMPError_t error = SCAMP_NO_ERROR;
 
   error = do_self_join_half();
@@ -488,7 +565,7 @@ SCAMPError_t Worker::do_self_join_full() {
   return error;
 }
 
-SCAMPError_t Worker::do_self_join_half() {
+SCAMPError_t Tile::do_self_join_half() {
   SCAMPError_t error = SCAMP_NO_ERROR;
 
   if (_info->mp_window > _current_tile_width) {
@@ -522,7 +599,7 @@ SCAMPError_t Worker::do_self_join_half() {
       if (error != SCAMP_NO_ERROR) {
         return error;
       }
-      error = SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
+      error = cpu_kernel_self_join_upper(this);
       break;
   }
   if (error != SCAMP_NO_ERROR) {
@@ -531,7 +608,7 @@ SCAMPError_t Worker::do_self_join_half() {
   return SCAMP_NO_ERROR;
 }
 
-SCAMPError_t Worker::do_ab_join_full() {
+SCAMPError_t Tile::do_ab_join_full() {
   SCAMPError_t error = SCAMP_NO_ERROR;
 
   if (_info->mp_window > _current_tile_width) {
@@ -567,7 +644,7 @@ SCAMPError_t Worker::do_ab_join_full() {
       if (error != SCAMP_NO_ERROR) {
         return error;
       }
-      return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
+      error = cpu_kernel_ab_join_upper(this);
       break;
   }
   if (error != SCAMP_NO_ERROR) {
@@ -600,7 +677,7 @@ SCAMPError_t Worker::do_ab_join_full() {
       if (error != SCAMP_NO_ERROR) {
         return error;
       }
-      error = SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
+      error = cpu_kernel_ab_join_lower(this);
       break;
   }
   return error;
