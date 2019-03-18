@@ -6,6 +6,8 @@
 
 #include <stdio.h>
 #include <cinttypes>
+#include <cstdlib>
+#include <iostream>
 #include <unordered_map>
 #include "SCAMP.pb.h"
 
@@ -156,3 +158,12 @@ void gpuAssert(cudaError_t code, const char* file, int line, bool abort = true);
 #define gpuErrchk(ans) \
   { gpuAssert((ans), __FILE__, __LINE__); }
 #endif
+
+#define ASSERT(condition, message)                                       \
+  do {                                                                   \
+    if (!(condition)) {                                                  \
+      std::cerr << "Assertion `" #condition "` failed in " << __FILE__   \
+                << " line " << __LINE__ << ": " << message << std::endl; \
+      std::terminate();                                                  \
+    }                                                                    \
+  } while (false)

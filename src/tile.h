@@ -1,5 +1,6 @@
 #pragma once
 #include <condition_variable>
+#include <functional>
 #include <mutex>
 #include <queue>
 #include <thread>
@@ -54,6 +55,9 @@ class Tile {
   void init_cpu();
   void free_cuda();
   void free_cpu();
+  void Memset(void *destination, char value, size_t bytes);
+  void Memcopy(void *destination, const void *source, size_t bytes,
+               bool from_tile);
   Profile AllocProfile(SCAMPProfileType t, uint64_t size);
   void CopyProfileToHost(Profile *destination_profile,
                          const DeviceProfile *device_tile_profile,

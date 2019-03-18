@@ -7,10 +7,20 @@ project(SCAMP LANGUAGES CXX)
 set(VERSION_MAJOR 1)
 set(VERSION_MINOR 1)
 
-# Use cuda if available
-check_language(CUDA)
-if(CMAKE_CUDA_COMPILER)
-  enable_language(CUDA)
+if(FORCE_NO_CUDA)
+  unset(CMAKE_CUDA_COMPILER)
+else()
+  # Use cuda if available
+  check_language(CUDA)
+  if(CMAKE_CUDA_COMPILER)
+    enable_language(CUDA)
+  endif()
+endif()
+
+if(NOT CMAKE_CUDA_COMPILER)
+  message(STATUS "No CUDA compiler found, building SCAMP without CUDA.")
+else()
+  message(STATUS "CUDA compiler found: ${CMAKE_CUDA_COMPILER}")
 endif()
 
 # Use clang tidy if available

@@ -42,7 +42,7 @@ T *alloc_mem(size_t count, SCAMPArchitecture arch, int deviceid) {
       gpuErrchk(cudaPeekAtLastError());
       return ptr;
 #else
-      assert("Using CUDA in binary not built with it");
+      ASSERT(false, "Using CUDA in binary not built with it");
       return nullptr;
 #endif
     }
@@ -60,11 +60,56 @@ void free_mem(T *ptr, SCAMPArchitecture arch, int deviceid) {
       cudaSetDevice(deviceid);
       cudaFree(ptr);
 #else
-      assert("Using CUDA in binary not built with it");
+      ASSERT(false, "Using CUDA in binary not built with it");
 #endif
       break;
     case CPU_WORKER:
       delete[] ptr;  // NOLINT
+      break;
+  }
+}
+
+void Tile::Memset(void *destination, char value, size_t bytes) {
+  switch (_arch) {
+    case CUDA_GPU_WORKER:
+#ifdef _HAS_CUDA_
+      cudaSetDevice(_cuda_id);
+      gpuErrchk(cudaPeekAtLastError());
+      cudaMemsetAsync(destination, value, bytes, _stream);
+      gpuErrchk(cudaPeekAtLastError());
+#else
+      ASSERT(false, "Using CUDA in binary not built with it");
+#endif
+      break;
+    case CPU_WORKER:
+      memset(destination, value, bytes);
+      break;
+  }
+}
+
+void Tile::Memcopy(void *destination, const void *source, size_t bytes,
+                   bool from_tile) {
+  switch (_arch) {
+    case CUDA_GPU_WORKER:
+#ifdef _HAS_CUDA_
+      cudaSetDevice(_cuda_id);
+      gpuErrchk(cudaPeekAtLastError());
+      if (from_tile) {
+        cudaMemcpyAsync(destination, source, bytes, cudaMemcpyDeviceToHost,
+                        _stream);
+      } else {
+        cudaMemcpyAsync(destination, source, bytes, cudaMemcpyHostToDevice,
+                        _stream);
+      }
+      gpuErrchk(cudaPeekAtLastError());
+#else
+      ASSERT(false, "Using CUDA in binary not built with it");
+#endif
+      break;
+    case CPU_WORKER:
+      // TODO(zpzim): Most of the time we don't actually have to copy
+      // memory here, we can just set a reference.
+      memcpy(destination, source, bytes);
       break;
   }
 }
@@ -122,7 +167,7 @@ Tile::Tile(const OpInfo *info, SCAMPArchitecture arch, int cuda_id)
       cudaGetDeviceProperties(&_dev_props, _cuda_id);
       cudaStreamCreate(&_stream);
 #else
-      assert("ERROR: CUDA used in binary not built with CUDA");
+      ASSERT(false, "ERROR: CUDA used in binary not built with CUDA");
 #endif
       break;
     case CPU_WORKER:
@@ -138,7 +183,7 @@ Tile::~Tile() {
       cudaSetDevice(_cuda_id);
       cudaStreamDestroy(_stream);
 #else
-      assert("ERROR: CUDA used in binary not built with CUDA");
+      ASSERT(false, "ERROR: CUDA used in binary not built with CUDA");
 #endif
       break;
     case CPU_WORKER:
@@ -157,7 +202,7 @@ void Tile::Sync() {
 #if _HAS_CUDA_
       cudaStreamSynchronize(_stream);
 #else
-      assert("ERROR: CUDA used in binary not built with CUDA");
+      ASSERT(false, "ERROR: CUDA used in binary not built with CUDA");
 #endif
       break;
     case CPU_WORKER:
@@ -167,30 +212,10 @@ void Tile::Sync() {
 
 void Tile::InitTimeseries(const google::protobuf::RepeatedField<double> &Ta_h,
                           const google::protobuf::RepeatedField<double> &Tb_h) {
-  switch (_arch) {
-    case CUDA_GPU_WORKER:
-#if _HAS_CUDA_
-      cudaMemcpyAsync(_T_A_dev.get(), Ta_h.data() + _current_tile_col,
-                      sizeof(double) * _current_tile_width,
-                      cudaMemcpyHostToDevice, _stream);
-      gpuErrchk(cudaPeekAtLastError());
-      cudaMemcpyAsync(_T_B_dev.get(), Tb_h.data() + _current_tile_row,
-                      sizeof(double) * _current_tile_height,
-                      cudaMemcpyHostToDevice, _stream);
-      gpuErrchk(cudaPeekAtLastError());
-#else
-      assert("ERROR: CUDA used in binary not built with CUDA");
-#endif
-      break;
-    case CPU_WORKER:
-      // TODO(zpzim): we don't actually have to copy memory here, we
-      // can just set a reference.
-      memcpy(_T_A_dev.get(), Ta_h.data() + _current_tile_col,
-             sizeof(double) * _current_tile_width);
-      memcpy(_T_B_dev.get(), Tb_h.data() + _current_tile_row,
-             sizeof(double) * _current_tile_height);
-      break;
-  }
+  Memcopy(_T_A_dev.get(), Ta_h.data() + _current_tile_col,
+          sizeof(double) * _current_tile_width, false);
+  Memcopy(_T_B_dev.get(), Tb_h.data() + _current_tile_row,
+          sizeof(double) * _current_tile_height, false);
 }
 
 Profile Tile::AllocProfile(SCAMPProfileType t, uint64_t size) {
@@ -224,80 +249,32 @@ SCAMPError_t Tile::InitProfile(Profile *profile_a, Profile *profile_b) {
   int width = _current_tile_width - _info->mp_window + 1;
   int height = _current_tile_height - _info->mp_window + 1;
   SCAMPProfileType type = _info->profile_type;
-  switch (_arch) {
-    case CUDA_GPU_WORKER: {
-#if _HAS_CUDA_
-      switch (type) {
-        case PROFILE_TYPE_SUM_THRESH:
-          cudaMemsetAsync(_profile_a_tile_dev.at(type), 0, profile_size * width,
-                          _stream);
-          gpuErrchk(cudaPeekAtLastError());
-          cudaMemsetAsync(_profile_b_tile_dev.at(type), 0,
-                          profile_size * height, _stream);
-          gpuErrchk(cudaPeekAtLastError());
-          break;
-        case PROFILE_TYPE_1NN_INDEX: {
-          const uint64_t *pA_ptr =
-              profile_a->data().Get(0).uint64_value().value().data();
-          cudaMemcpyAsync(_profile_a_tile_dev.at(type),
-                          pA_ptr + _current_tile_col, sizeof(uint64_t) * width,
-                          cudaMemcpyHostToDevice, _stream);
-          gpuErrchk(cudaPeekAtLastError());
-          if (_info->self_join) {
-            cudaMemcpyAsync(
-                _profile_b_tile_dev.at(type), pA_ptr + _current_tile_row,
-                sizeof(uint64_t) * height, cudaMemcpyHostToDevice, _stream);
-            gpuErrchk(cudaPeekAtLastError());
-
-          } else if (_info->computing_rows && _info->keep_rows_separate) {
-            const uint64_t *pB_ptr =
-                profile_b->data().Get(0).uint64_value().value().data();
-            cudaMemcpyAsync(
-                _profile_b_tile_dev.at(type), pB_ptr + _current_tile_row,
-                sizeof(uint64_t) * height, cudaMemcpyHostToDevice, _stream);
-            gpuErrchk(cudaPeekAtLastError());
-          }
-          break;
-        }
-        case PROFILE_TYPE_FREQUENCY_THRESH:
-        case PROFILE_TYPE_KNN:
-        case PROFILE_TYPE_1NN_MULTIDIM:
-        case PROFILE_TYPE_INVALID:
-          return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
+  switch (type) {
+    case PROFILE_TYPE_SUM_THRESH:
+      Memset(_profile_a_tile_dev.at(type), 0, profile_size * width);
+      Memset(_profile_b_tile_dev.at(type), 0, profile_size * height);
+      break;
+    case PROFILE_TYPE_1NN_INDEX: {
+      const uint64_t *pA_ptr =
+          profile_a->data().Get(0).uint64_value().value().data();
+      Memcopy(_profile_a_tile_dev.at(type), pA_ptr + _current_tile_col,
+              sizeof(uint64_t) * width, false);
+      if (_info->self_join) {
+        Memcopy(_profile_b_tile_dev.at(type), pA_ptr + _current_tile_row,
+                sizeof(uint64_t) * height, false);
+      } else if (_info->computing_rows && _info->keep_rows_separate) {
+        const uint64_t *pB_ptr =
+            profile_b->data().Get(0).uint64_value().value().data();
+        Memcopy(_profile_b_tile_dev.at(type), pB_ptr + _current_tile_row,
+                sizeof(uint64_t) * height, false);
       }
-#else
-      assert("ERROR: CUDA used in binary not built with CUDA");
-#endif
       break;
     }
-    // TODO(zpzim): Implement CPU codepath
-    case CPU_WORKER:
-      switch (_info->profile_type) {
-        case PROFILE_TYPE_1NN_INDEX: {
-          const uint64_t *pA_ptr =
-              profile_a->data().Get(0).uint64_value().value().data();
-          memcpy(_profile_a_tile_dev.at(type), pA_ptr + _current_tile_col,
-                 sizeof(uint64_t) * width);
-          if (_info->self_join) {
-            memcpy(_profile_b_tile_dev.at(type), pA_ptr + _current_tile_row,
-                   sizeof(uint64_t) * height);
-          } else if (_info->computing_rows && _info->keep_rows_separate) {
-            const uint64_t *pB_ptr =
-                profile_b->data().Get(0).uint64_value().value().data();
-            memcpy(_profile_b_tile_dev.at(type), pB_ptr + _current_tile_row,
-                   sizeof(uint64_t) * height);
-          }
-          break;
-        }
-
-        case PROFILE_TYPE_SUM_THRESH:
-        case PROFILE_TYPE_FREQUENCY_THRESH:
-        case PROFILE_TYPE_KNN:
-        case PROFILE_TYPE_1NN_MULTIDIM:
-        case PROFILE_TYPE_INVALID:
-          return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
-      }
-      break;
+    case PROFILE_TYPE_FREQUENCY_THRESH:
+    case PROFILE_TYPE_KNN:
+    case PROFILE_TYPE_1NN_MULTIDIM:
+    case PROFILE_TYPE_INVALID:
+      return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
   }
   return SCAMP_NO_ERROR;
 }
@@ -307,50 +284,14 @@ void Tile::InitStats(const PrecomputedInfo &a, const PrecomputedInfo &b) {
       (_current_tile_width - _info->mp_window + 1) * sizeof(double);
   size_t bytes_b =
       (_current_tile_height - _info->mp_window + 1) * sizeof(double);
-  switch (_arch) {
-    case CUDA_GPU_WORKER:
-#ifdef _HAS_CUDA_
-      cudaMemcpyAsync(_norms_A.get(), a.norms().data() + _current_tile_col,
-                      bytes_a, cudaMemcpyHostToDevice, _stream);
-      gpuErrchk(cudaPeekAtLastError());
-      cudaMemcpyAsync(_df_A.get(), a.df().data() + _current_tile_col, bytes_a,
-                      cudaMemcpyHostToDevice, _stream);
-      gpuErrchk(cudaPeekAtLastError());
-      cudaMemcpyAsync(_dg_A.get(), a.dg().data() + _current_tile_col, bytes_a,
-                      cudaMemcpyHostToDevice, _stream);
-      gpuErrchk(cudaPeekAtLastError());
-      cudaMemcpyAsync(_means_A.get(), a.means().data() + _current_tile_col,
-                      bytes_a, cudaMemcpyHostToDevice, _stream);
-      gpuErrchk(cudaPeekAtLastError());
-      cudaMemcpyAsync(_norms_B.get(), b.norms().data() + _current_tile_row,
-                      bytes_b, cudaMemcpyHostToDevice, _stream);
-      gpuErrchk(cudaPeekAtLastError());
-      cudaMemcpyAsync(_df_B.get(), b.df().data() + _current_tile_row, bytes_b,
-                      cudaMemcpyHostToDevice, _stream);
-      gpuErrchk(cudaPeekAtLastError());
-      cudaMemcpyAsync(_dg_B.get(), b.dg().data() + _current_tile_row, bytes_b,
-                      cudaMemcpyHostToDevice, _stream);
-      gpuErrchk(cudaPeekAtLastError());
-      cudaMemcpyAsync(_means_B.get(), b.means().data() + _current_tile_row,
-                      bytes_b, cudaMemcpyHostToDevice, _stream);
-      gpuErrchk(cudaPeekAtLastError());
-#else
-      assert("ERROR: CUDA used in binary not built with CUDA");
-#endif
-      break;
-    case CPU_WORKER:
-      // TODO(zpzim): we don't actually have to copy memory here, we
-      // can just set a reference.
-      memcpy(_norms_A.get(), a.norms().data() + _current_tile_col, bytes_a);
-      memcpy(_df_A.get(), a.df().data() + _current_tile_col, bytes_a);
-      memcpy(_dg_A.get(), a.dg().data() + _current_tile_col, bytes_a);
-      memcpy(_means_A.get(), a.means().data() + _current_tile_col, bytes_a);
-      memcpy(_norms_B.get(), b.norms().data() + _current_tile_row, bytes_b);
-      memcpy(_df_B.get(), b.df().data() + _current_tile_row, bytes_b);
-      memcpy(_dg_B.get(), b.dg().data() + _current_tile_row, bytes_b);
-      memcpy(_means_B.get(), b.means().data() + _current_tile_row, bytes_b);
-      break;
-  }
+  Memcopy(_norms_A.get(), a.norms().data() + _current_tile_col, bytes_a, false);
+  Memcopy(_df_A.get(), a.df().data() + _current_tile_col, bytes_a, false);
+  Memcopy(_dg_A.get(), a.dg().data() + _current_tile_col, bytes_a, false);
+  Memcopy(_means_A.get(), a.means().data() + _current_tile_col, bytes_a, false);
+  Memcopy(_norms_B.get(), b.norms().data() + _current_tile_row, bytes_b, false);
+  Memcopy(_df_B.get(), b.df().data() + _current_tile_row, bytes_b, false);
+  Memcopy(_dg_B.get(), b.dg().data() + _current_tile_row, bytes_b, false);
+  Memcopy(_means_B.get(), b.means().data() + _current_tile_row, bytes_b, false);
 }
 
 void Tile::MergeTileIntoFullProfile(Profile *tile_profile, uint64_t position,
@@ -401,6 +342,7 @@ void Tile::MergeTileIntoFullProfile(Profile *tile_profile, uint64_t position,
     case PROFILE_TYPE_KNN:
     case PROFILE_TYPE_1NN_MULTIDIM:
     default:
+      ASSERT(false, "FUNCTIONALITY UNIMPLEMENTED");
       return;
   }
 }
@@ -432,49 +374,34 @@ void Tile::MergeProfile(Profile *profile_a, std::mutex &a_lock,
                              profile_b, _current_tile_col, b_lock);
   }
 }
-// TODO(zpzim): make CPU/GPU agnostic
+
 void Tile::CopyProfileToHost(Profile *destination_profile,
                              const DeviceProfile *device_tile_profile,
                              uint64_t length) {
-  switch (_arch) {
-    case CUDA_GPU_WORKER: {
-#ifdef _HAS_CUDA_
-      switch (_info->profile_type) {
-        case PROFILE_TYPE_SUM_THRESH:
-          cudaMemcpyAsync(destination_profile->mutable_data()
-                              ->Mutable(0)
-                              ->mutable_double_value()
-                              ->mutable_value()
-                              ->mutable_data(),
-                          device_tile_profile->at(PROFILE_TYPE_SUM_THRESH),
-                          length * sizeof(double), cudaMemcpyDeviceToHost,
-                          _stream);
-          gpuErrchk(cudaPeekAtLastError());
-          break;
-        case PROFILE_TYPE_1NN_INDEX:
-          cudaMemcpyAsync(destination_profile->mutable_data()
-                              ->Mutable(0)
-                              ->mutable_uint64_value()
-                              ->mutable_value()
-                              ->mutable_data(),
-                          device_tile_profile->at(PROFILE_TYPE_1NN_INDEX),
-                          length * sizeof(uint64_t), cudaMemcpyDeviceToHost,
-                          _stream);
-          gpuErrchk(cudaPeekAtLastError());
-          break;
-        case PROFILE_TYPE_FREQUENCY_THRESH:
-        case PROFILE_TYPE_KNN:
-        case PROFILE_TYPE_1NN_MULTIDIM:
-        default:
-          break;
-      }
-#else
-      assert("ERROR: CUDA used in binary not built with CUDA");
-#endif
+  switch (_info->profile_type) {
+    case PROFILE_TYPE_SUM_THRESH:
+      Memcopy(destination_profile->mutable_data()
+                  ->Mutable(0)
+                  ->mutable_double_value()
+                  ->mutable_value()
+                  ->mutable_data(),
+              device_tile_profile->at(PROFILE_TYPE_SUM_THRESH),
+              length * sizeof(double), true);
       break;
-    }
-    case CPU_WORKER:
-      // TODO(zpzim): implement stub
+    case PROFILE_TYPE_1NN_INDEX:
+      Memcopy(destination_profile->mutable_data()
+                  ->Mutable(0)
+                  ->mutable_uint64_value()
+                  ->mutable_value()
+                  ->mutable_data(),
+              device_tile_profile->at(PROFILE_TYPE_1NN_INDEX),
+              length * sizeof(uint64_t), true);
+      break;
+    case PROFILE_TYPE_FREQUENCY_THRESH:
+    case PROFILE_TYPE_KNN:
+    case PROFILE_TYPE_1NN_MULTIDIM:
+    default:
+      ASSERT(false, "FUNCTIONALITY UNIMPLEMENTED");
       break;
   }
 }
@@ -526,7 +453,7 @@ SCAMPError_t Tile::do_self_join_full() {
           _current_tile_row, _dev_props, _info->fp_type, _info->opt_args,
           _info->profile_type, _stream);
 #else
-      assert("ERROR: CUDA used in binary not built with CUDA");
+      ASSERT(false, "ERROR: CUDA used in binary not built with CUDA");
 #endif
       break;
     case CPU_WORKER:
@@ -568,7 +495,7 @@ SCAMPError_t Tile::do_self_join_half() {
           _current_tile_row, _dev_props, _info->fp_type, _info->opt_args,
           _info->profile_type, _stream);
 #else
-      assert("ERROR: CUDA used in binary not built with CUDA");
+      ASSERT(false, "ERROR: CUDA used in binary not built with CUDA");
 #endif
       break;
     case CPU_WORKER:
@@ -615,7 +542,7 @@ SCAMPError_t Tile::do_ab_join_full() {
           _info->fp_type, _info->computing_rows, _info->opt_args,
           _info->profile_type, _stream);
 #else
-      assert("ERROR: CUDA used in binary not built with CUDA");
+      ASSERT(false, "ERROR: CUDA used in binary not built with CUDA");
 #endif
       break;
     case CPU_WORKER:
@@ -650,7 +577,7 @@ SCAMPError_t Tile::do_ab_join_full() {
           _info->fp_type, _info->computing_rows, _info->opt_args,
           _info->profile_type, _stream);
 #else
-      assert("ERROR: CUDA used in binary not built with CUDA");
+      ASSERT(false, "ERROR: CUDA used in binary not built with CUDA");
 #endif
       break;
     case CPU_WORKER:
