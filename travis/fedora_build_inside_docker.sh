@@ -11,7 +11,8 @@ rpm -i $CUDA_REPO_PKG
 dnf clean all
 dnf -y install cuda
 ln -s /usr/local/cuda-10.0/ /usr/local/cuda
+export PATH=$PATH:/usr/local/cuda/bin
 cd SCAMP
-cmake3 -D CMAKE_CXX_COMPILER=g++ .
+cmake3 -D FORCE_CUDA=1 -D CMAKE_CXX_COMPILER=g++ .
 make -j4
 exit 0

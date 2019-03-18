@@ -6,8 +6,12 @@
 
 #include <stdio.h>
 #include <cinttypes>
+#include <condition_variable>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
+#include <mutex>
+#include <queue>
 #include <unordered_map>
 #include "SCAMP.pb.h"
 
@@ -123,6 +127,49 @@ struct PrecomputedInfo {
   std::vector<double>& mutable_df() { return _df; }
   std::vector<double>& mutable_norms() { return _norms; }
   std::vector<double>& mutable_means() { return _means; }
+};
+
+// Thread safe queue to hold tiles to be executed
+class ThreadSafeQueue {
+ public:
+  size_t size() {
+    std::unique_lock<std::mutex> mlock(mutex_);
+    return queue_.size();
+  }
+
+  bool empty() {
+    std::unique_lock<std::mutex> mlock(mutex_);
+    return queue_.empty();
+  }
+
+  std::pair<int, int> pop() {
+    std::unique_lock<std::mutex> mlock(mutex_);
+    auto item = std::pair<int, int>(-1, -1);
+    if (!queue_.empty()) {
+      item = queue_.front();
+      queue_.pop();
+    }
+    return item;
+  }
+
+  void push(const std::pair<int, int>& item) {
+    std::unique_lock<std::mutex> mlock(mutex_);
+    queue_.push(item);
+    mlock.unlock();
+    cond_.notify_one();
+  }
+
+  void push(std::pair<int, int>&& item) {
+    std::unique_lock<std::mutex> mlock(mutex_);
+    queue_.push(std::move(item));
+    mlock.unlock();
+    cond_.notify_one();
+  }
+
+ private:
+  std::queue<std::pair<int, int>> queue_;
+  std::mutex mutex_;
+  std::condition_variable cond_;
 };
 
 using DeviceProfile = std::unordered_map<int, void*>;

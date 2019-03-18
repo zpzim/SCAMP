@@ -20,22 +20,9 @@ using std::vector;
 
 namespace SCAMP {
 
-SCAMPError_t SCAMP_Operation::init() { return SCAMP_NO_ERROR; }
-
-SCAMPError_t SCAMP_Operation::destroy() { return SCAMP_NO_ERROR; }
-
-SCAMPError_t SCAMP_Operation::do_tile(
-    SCAMPTileType t, Tile *tile,
-    const google::protobuf::RepeatedField<double> &Ta_h,
-    const google::protobuf::RepeatedField<double> &Tb_h) {
-  SCAMPError_t err;
-  tile->InitTimeseries(Ta_h, Tb_h);
-  tile->InitProfile(_profile_a, _profile_b);
-  tile->InitStats(_precompA, _precompB);
-  err = tile->execute(t);
-  return err;
-}
-
+// This method computes all the work that must be done to perform the
+// reqiested operation and sets the work order by populating the work
+// queue.
 void SCAMP_Operation::get_tiles() {
   size_t num_tile_rows = ceil((_info.full_ts_len_B - _info.mp_window + 1) /
                               static_cast<double>(_info.max_tile_height));
@@ -100,10 +87,16 @@ void SCAMP_Operation::get_tiles() {
   _total_tiles = _work_queue.size();
 }
 
+// This function is the point of entry for all worker threads
+// Workers will initialize a memoty space to work with (Tile)
+// and compute the partial matrix profile corresponding with
+// the tile. Afterwards, the worker will merge its partial
+// solution with the global matrix profile
 void SCAMP_Operation::do_work(
     const google::protobuf::RepeatedField<double> &timeseries_a,
     const google::protobuf::RepeatedField<double> &timeseries_b,
     const OpInfo *info, const SCAMPArchitecture arch, const int device_id) {
+  // Init working memory and op/tile specific variables
   Tile tile(info, arch, device_id);
   while (!_work_queue.empty()) {
     std::pair<int, int> t = _work_queue.pop();
@@ -123,40 +116,48 @@ void SCAMP_Operation::do_work(
               << " starting column of " << tile.get_tile_col()
               << " with height " << tile.get_tile_height() << " and width "
               << tile.get_tile_width() << std::endl;
+    // Copy the portion of the time series and stats
+    //  we will be using from the global arrays.
+    tile.InitTimeseries(timeseries_a, timeseries_b);
+    tile.InitStats(_precompA, _precompB);
+    // Copy the portion of the best-so-far profile
+    // we will be using.
+    tile.InitProfile(_profile_a, _profile_b);
     SCAMPError_t err;
     if (_info.self_join) {
       if (t.first == t.second) {
-        // partial tile on diagonal
-        err = do_tile(SELF_JOIN_UPPER_TRIANGULAR, &tile, timeseries_a,
-                      timeseries_b);
+        // Partial tile on diagonal
+        err = tile.execute(SELF_JOIN_UPPER_TRIANGULAR);
       } else {
-        // full tile
-        err = do_tile(SELF_JOIN_FULL_TILE, &tile, timeseries_a, timeseries_b);
+        // Full Tile
+        err = tile.execute(SELF_JOIN_FULL_TILE);
       }
-    } else if (_info.computing_rows) {
-      // BiDirectional AB-join
-      err = do_tile(AB_FULL_JOIN_FULL_TILE, &tile, timeseries_a, timeseries_b);
     } else {
-      // Column AB-join
-      err = do_tile(AB_JOIN_FULL_TILE, &tile, timeseries_a, timeseries_b);
+      // AB-join
+      err = tile.execute(AB_FULL_JOIN_FULL_TILE);
     }
     if (err != SCAMP_NO_ERROR) {
       printf("ERROR %d executing tile. \n", err);
     }
     // Merge join result
     tile.MergeProfile(_profile_a, _profile_a_lock, _profile_b, _profile_b_lock);
+
+    // Update our counter with a lock
     std::unique_lock<std::mutex> lock(_counter_lock);
     _completed_tiles++;
   }
 }
 
+// This method is the top level interface for a user to request
+// that a join between timeseries_a and timeseries_b be computied
+// using the configuration set up in SCAMP_Operation's constructor
 SCAMPError_t SCAMP_Operation::do_join(
     const google::protobuf::RepeatedField<double> &timeseries_a,
     const google::protobuf::RepeatedField<double> &timeseries_b) {
   const int num_workers = _cpu_workers + _devices.size();
   printf("Num workers = %d\n", num_workers);
 
-  // Compute statistics
+  // Compute statistics for entire problem
 #ifdef _HAS_CUDA_
   compute_statistics_gpu(timeseries_a, &_precompA, _info.mp_window);
   compute_statistics_gpu(timeseries_b, &_precompB, _info.mp_window);
@@ -172,12 +173,14 @@ SCAMPError_t SCAMP_Operation::do_join(
             << std::endl;
   std::vector<std::future<void>> futures(num_workers);
 
-  // Start workers
+  // Start CUDA Workers
   for (int i = 0; i < _devices.size(); ++i) {
     futures[i] = std::async(std::launch::async, &SCAMP_Operation::do_work, this,
                             timeseries_a, timeseries_b, &_info, CUDA_GPU_WORKER,
                             _devices.at(i));
   }
+
+  // Start CPU Workers
   for (int i = _devices.size(); i < num_workers; ++i) {
     futures[i] = std::async(std::launch::async, &SCAMP_Operation::do_work, this,
                             timeseries_a, timeseries_b, &_info, CPU_WORKER, -1);
@@ -191,6 +194,8 @@ SCAMPError_t SCAMP_Operation::do_join(
   return SCAMP_NO_ERROR;
 }
 
+// Wrapper on SCAMP_Operation called by main(), this function constructs
+// and executes a SCAMP_Operation given a set of user selected parameters.
 void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
               int num_threads) {
   if (devices.empty() && num_threads == 0) {
@@ -200,7 +205,6 @@ void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
   // Allocate and initialize memory
   clock_t start, end;
   OptionalArgs _opt_args(args->distance_threshold());
-  printf("Constructing SCAMP_Operation\n");
   // Construct operation
   SCAMP_Operation op(
       args->timeseries_a().size(), args->timeseries_b().size(), args->window(),
@@ -211,11 +215,8 @@ void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
       args->mutable_profile_b(), args->keep_rows_separate(),
       args->computing_rows(), args->computing_columns(), args->is_aligned(),
       num_threads);
-  // Init memory
-  op.init();
-  start = clock();
   // Execute op
-  printf("Starting Join\n");
+  start = clock();
   if (args->has_b()) {
     op.do_join(args->timeseries_a(), args->timeseries_b());
   } else {
@@ -227,7 +228,6 @@ void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
       "seconds on %lu devices:\n",
       op.get_completed_tiles(),
       (end - start) / static_cast<double>(CLOCKS_PER_SEC), devices.size());
-  op.destroy();
 }
 
 }  // namespace SCAMP

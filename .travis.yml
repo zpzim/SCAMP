@@ -4,7 +4,7 @@ language: cpp
 jobs:
   include:
   - stage: "Build Checks"
-    name: "Fedora Build"
+    name: "Fedora CUDA Build"
     services:
       - docker
   
@@ -19,7 +19,7 @@ jobs:
 
 
   - stage: "Build Checks"
-    name: "Ubuntu Build"
+    name: "Ubuntu CUDA Build"
     os: linux
     dist: xenial
     addons:
@@ -43,21 +43,22 @@ jobs:
       - sudo ln -s /usr/local/cuda-10.0/ /usr/local/cuda
     script: 
       - set -e
+      - export PATH=$PATH:/usr/local/cuda/bin
       # Build with clang
-      - cmake -D CMAKE_CXX_COMPILER=clang++ .
+      - cmake -D FORCE_CUDA=1 -D CMAKE_CXX_COMPILER=clang++ .
       - make -j4
       - make clean
       # Build with gcc
-      - cmake -D CMAKE_CXX_COMPILER=g++ .
+      - cmake -D FORCE_CUDA=1 -D CMAKE_CXX_COMPILER=g++ .
       - make -j4
       - make clean
       # Build with Default compiler
-      - cmake .
+      - cmake -D FORCE_CUDA=1 .
       - make -j4
       - make clean 
 
   - stage: "Build Checks"
-    name: "Ubuntu Build no CUDA"
+    name: "Ubuntu Build"
     os: linux
     dist: xenial
     addons:
