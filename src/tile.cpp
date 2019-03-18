@@ -1,4 +1,5 @@
 #include "tile.h"
+#include <functional>
 #ifdef _HAS_CUDA_
 #include "kernels.h"
 #endif
@@ -28,6 +29,46 @@ void elementwise_max(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
   }
 }
 
+// Allocator for tile memory which can reside on the host or cuda devices
+template <typename T>
+T *alloc_mem(size_t count, SCAMPArchitecture arch, int deviceid) {
+  switch (arch) {
+    case CUDA_GPU_WORKER: {
+#ifdef _HAS_CUDA_
+      cudaSetDevice(deviceid);
+      size_t bytes = count * sizeof(T);
+      T *ptr;
+      cudaMalloc(&ptr, bytes);
+      gpuErrchk(cudaPeekAtLastError());
+      return ptr;
+#else
+      assert("Using CUDA in binary not built with it");
+      return nullptr;
+#endif
+    }
+    case CPU_WORKER:
+      return new T[count];  // NOLINT
+  }
+}
+
+// Deleter for tile memory which can reside on the host cuda devices
+template <typename T>
+void free_mem(T *ptr, SCAMPArchitecture arch, int deviceid) {
+  switch (arch) {
+    case CUDA_GPU_WORKER:
+#ifdef _HAS_CUDA_
+      cudaSetDevice(deviceid);
+      cudaFree(ptr);
+#else
+      assert("Using CUDA in binary not built with it");
+#endif
+      break;
+    case CPU_WORKER:
+      delete[] ptr;  // NOLINT
+      break;
+  }
+}
+
 Tile::Tile(const OpInfo *info, SCAMPArchitecture arch, int cuda_id)
     : _info(info),
       _arch(arch),
@@ -35,17 +76,57 @@ Tile::Tile(const OpInfo *info, SCAMPArchitecture arch, int cuda_id)
       _current_tile_width(0),
       _current_tile_height(0),
       _current_tile_row(0),
-      _current_tile_col(0) {
-  _profile_a_tile_dev[_info->profile_type] = nullptr;
-  _profile_b_tile_dev[_info->profile_type] = nullptr;
+      _current_tile_col(0),
+      // Allocate memory based on architecture
+      _T_A_dev(alloc_mem<double>(info->max_tile_ts_size, arch, cuda_id),
+               [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
+      _T_B_dev(alloc_mem<double>(info->max_tile_ts_size, arch, cuda_id),
+               [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
+      _QT_dev(alloc_mem<double>(info->max_tile_width, arch, cuda_id),
+              [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
+      _means_A(alloc_mem<double>(info->max_tile_width, arch, cuda_id),
+               [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
+      _means_B(alloc_mem<double>(info->max_tile_height, arch, cuda_id),
+               [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
+      _norms_A(alloc_mem<double>(info->max_tile_width, arch, cuda_id),
+               [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
+      _norms_B(alloc_mem<double>(info->max_tile_height, arch, cuda_id),
+               [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
+      _df_A(alloc_mem<double>(info->max_tile_width, arch, cuda_id),
+            [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
+      _df_B(alloc_mem<double>(info->max_tile_height, arch, cuda_id),
+            [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
+      _dg_A(alloc_mem<double>(info->max_tile_width, arch, cuda_id),
+            [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
+      _dg_B(alloc_mem<double>(info->max_tile_height, arch, cuda_id),
+            [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
+      _scratchpad(
+          static_cast<double *>(
+              alloc_mem<double>(info->max_tile_ts_size, arch, cuda_id)),
+          [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
+      _scratch(std::make_unique<fft_precompute_helper>(
+          info->max_tile_ts_size, info->mp_window, true, arch)) {
+  size_t profile_size = GetProfileTypeSize(_info->profile_type);
+  _profile_a_tile_dev[_info->profile_type] =
+      alloc_mem<char>(profile_size * _info->max_tile_width, arch, cuda_id);
+  _profile_b_tile_dev[_info->profile_type] =
+      alloc_mem<char>(profile_size * _info->max_tile_height, arch, cuda_id);
+
   _profile_a_tile = AllocProfile(_info->profile_type, _info->max_tile_height);
   _profile_b_tile = AllocProfile(_info->profile_type, _info->max_tile_width);
+
   switch (_arch) {
     case CUDA_GPU_WORKER:
-      init_cuda();
+#ifdef _HAS_CUDA_
+      cudaSetDevice(_cuda_id);
+      cudaGetDeviceProperties(&_dev_props, _cuda_id);
+      cudaStreamCreate(&_stream);
+#else
+      assert("ERROR: CUDA used in binary not built with CUDA");
+#endif
       break;
     case CPU_WORKER:
-      init_cpu();
+      // Add any arch-specific inits here
       break;
   }
 }
@@ -53,12 +134,21 @@ Tile::Tile(const OpInfo *info, SCAMPArchitecture arch, int cuda_id)
 Tile::~Tile() {
   switch (_arch) {
     case CUDA_GPU_WORKER:
-      free_cuda();
+#ifdef _HAS_CUDA_
+      cudaSetDevice(_cuda_id);
+      cudaStreamDestroy(_stream);
+#else
+      assert("ERROR: CUDA used in binary not built with CUDA");
+#endif
       break;
     case CPU_WORKER:
-      free_cpu();
+      // Add any arch-specific cleanup here
       break;
   }
+  free_mem<char>(static_cast<char *>(_profile_a_tile_dev[_info->profile_type]),
+                 _arch, _cuda_id);
+  free_mem<char>(static_cast<char *>(_profile_b_tile_dev[_info->profile_type]),
+                 _arch, _cuda_id);
 }
 
 void Tile::Sync() {
@@ -80,11 +170,11 @@ void Tile::InitTimeseries(const google::protobuf::RepeatedField<double> &Ta_h,
   switch (_arch) {
     case CUDA_GPU_WORKER:
 #if _HAS_CUDA_
-      cudaMemcpyAsync(_T_A_dev, Ta_h.data() + _current_tile_col,
+      cudaMemcpyAsync(_T_A_dev.get(), Ta_h.data() + _current_tile_col,
                       sizeof(double) * _current_tile_width,
                       cudaMemcpyHostToDevice, _stream);
       gpuErrchk(cudaPeekAtLastError());
-      cudaMemcpyAsync(_T_B_dev, Tb_h.data() + _current_tile_row,
+      cudaMemcpyAsync(_T_B_dev.get(), Tb_h.data() + _current_tile_row,
                       sizeof(double) * _current_tile_height,
                       cudaMemcpyHostToDevice, _stream);
       gpuErrchk(cudaPeekAtLastError());
@@ -95,9 +185,9 @@ void Tile::InitTimeseries(const google::protobuf::RepeatedField<double> &Ta_h,
     case CPU_WORKER:
       // TODO(zpzim): we don't actually have to copy memory here, we
       // can just set a reference.
-      memcpy(_T_A_dev, Ta_h.data() + _current_tile_col,
+      memcpy(_T_A_dev.get(), Ta_h.data() + _current_tile_col,
              sizeof(double) * _current_tile_width);
-      memcpy(_T_B_dev, Tb_h.data() + _current_tile_row,
+      memcpy(_T_B_dev.get(), Tb_h.data() + _current_tile_row,
              sizeof(double) * _current_tile_height);
       break;
   }
@@ -220,29 +310,29 @@ void Tile::InitStats(const PrecomputedInfo &a, const PrecomputedInfo &b) {
   switch (_arch) {
     case CUDA_GPU_WORKER:
 #ifdef _HAS_CUDA_
-      cudaMemcpyAsync(_norms_A, a.norms().data() + _current_tile_col, bytes_a,
+      cudaMemcpyAsync(_norms_A.get(), a.norms().data() + _current_tile_col,
+                      bytes_a, cudaMemcpyHostToDevice, _stream);
+      gpuErrchk(cudaPeekAtLastError());
+      cudaMemcpyAsync(_df_A.get(), a.df().data() + _current_tile_col, bytes_a,
                       cudaMemcpyHostToDevice, _stream);
       gpuErrchk(cudaPeekAtLastError());
-      cudaMemcpyAsync(_df_A, a.df().data() + _current_tile_col, bytes_a,
+      cudaMemcpyAsync(_dg_A.get(), a.dg().data() + _current_tile_col, bytes_a,
                       cudaMemcpyHostToDevice, _stream);
       gpuErrchk(cudaPeekAtLastError());
-      cudaMemcpyAsync(_dg_A, a.dg().data() + _current_tile_col, bytes_a,
+      cudaMemcpyAsync(_means_A.get(), a.means().data() + _current_tile_col,
+                      bytes_a, cudaMemcpyHostToDevice, _stream);
+      gpuErrchk(cudaPeekAtLastError());
+      cudaMemcpyAsync(_norms_B.get(), b.norms().data() + _current_tile_row,
+                      bytes_b, cudaMemcpyHostToDevice, _stream);
+      gpuErrchk(cudaPeekAtLastError());
+      cudaMemcpyAsync(_df_B.get(), b.df().data() + _current_tile_row, bytes_b,
                       cudaMemcpyHostToDevice, _stream);
       gpuErrchk(cudaPeekAtLastError());
-      cudaMemcpyAsync(_means_A, a.means().data() + _current_tile_col, bytes_a,
+      cudaMemcpyAsync(_dg_B.get(), b.dg().data() + _current_tile_row, bytes_b,
                       cudaMemcpyHostToDevice, _stream);
       gpuErrchk(cudaPeekAtLastError());
-      cudaMemcpyAsync(_norms_B, b.norms().data() + _current_tile_row, bytes_b,
-                      cudaMemcpyHostToDevice, _stream);
-      gpuErrchk(cudaPeekAtLastError());
-      cudaMemcpyAsync(_df_B, b.df().data() + _current_tile_row, bytes_b,
-                      cudaMemcpyHostToDevice, _stream);
-      gpuErrchk(cudaPeekAtLastError());
-      cudaMemcpyAsync(_dg_B, b.dg().data() + _current_tile_row, bytes_b,
-                      cudaMemcpyHostToDevice, _stream);
-      gpuErrchk(cudaPeekAtLastError());
-      cudaMemcpyAsync(_means_B, b.means().data() + _current_tile_row, bytes_b,
-                      cudaMemcpyHostToDevice, _stream);
+      cudaMemcpyAsync(_means_B.get(), b.means().data() + _current_tile_row,
+                      bytes_b, cudaMemcpyHostToDevice, _stream);
       gpuErrchk(cudaPeekAtLastError());
 #else
       assert("ERROR: CUDA used in binary not built with CUDA");
@@ -251,14 +341,14 @@ void Tile::InitStats(const PrecomputedInfo &a, const PrecomputedInfo &b) {
     case CPU_WORKER:
       // TODO(zpzim): we don't actually have to copy memory here, we
       // can just set a reference.
-      memcpy(_norms_A, a.norms().data() + _current_tile_col, bytes_a);
-      memcpy(_df_A, a.df().data() + _current_tile_col, bytes_a);
-      memcpy(_dg_A, a.dg().data() + _current_tile_col, bytes_a);
-      memcpy(_means_A, a.means().data() + _current_tile_col, bytes_a);
-      memcpy(_norms_B, b.norms().data() + _current_tile_row, bytes_b);
-      memcpy(_df_B, b.df().data() + _current_tile_row, bytes_b);
-      memcpy(_dg_B, b.dg().data() + _current_tile_row, bytes_b);
-      memcpy(_means_B, b.means().data() + _current_tile_row, bytes_b);
+      memcpy(_norms_A.get(), a.norms().data() + _current_tile_col, bytes_a);
+      memcpy(_df_A.get(), a.df().data() + _current_tile_col, bytes_a);
+      memcpy(_dg_A.get(), a.dg().data() + _current_tile_col, bytes_a);
+      memcpy(_means_A.get(), a.means().data() + _current_tile_col, bytes_a);
+      memcpy(_norms_B.get(), b.norms().data() + _current_tile_row, bytes_b);
+      memcpy(_df_B.get(), b.df().data() + _current_tile_row, bytes_b);
+      memcpy(_dg_B.get(), b.dg().data() + _current_tile_row, bytes_b);
+      memcpy(_means_B.get(), b.means().data() + _current_tile_row, bytes_b);
       break;
   }
 }
@@ -389,122 +479,6 @@ void Tile::CopyProfileToHost(Profile *destination_profile,
   }
 }
 
-inline void Tile::init_cuda() {
-#ifdef _HAS_CUDA_
-  cudaSetDevice(_cuda_id);
-  cudaGetDeviceProperties(&_dev_props, _cuda_id);
-  cudaStreamCreate(&_stream);
-  size_t profile_size = GetProfileTypeSize(_info->profile_type);
-  cudaMalloc(&_T_A_dev, sizeof(double) * _info->max_tile_ts_size);
-  gpuErrchk(cudaPeekAtLastError());
-  cudaMalloc(&_T_B_dev, sizeof(double) * _info->max_tile_ts_size);
-  gpuErrchk(cudaPeekAtLastError());
-  cudaMalloc(&_profile_a_tile_dev.at(_info->profile_type),
-             profile_size * _info->max_tile_width);
-  gpuErrchk(cudaPeekAtLastError());
-  cudaMalloc(&_profile_b_tile_dev.at(_info->profile_type),
-             profile_size * _info->max_tile_height);
-  gpuErrchk(cudaPeekAtLastError());
-  cudaMalloc(&_QT_dev, sizeof(double) * _info->max_tile_width);
-  gpuErrchk(cudaPeekAtLastError());
-  cudaMalloc(&_means_A, sizeof(double) * _info->max_tile_width);
-  gpuErrchk(cudaPeekAtLastError());
-  cudaMalloc(&_means_B, sizeof(double) * _info->max_tile_height);
-  gpuErrchk(cudaPeekAtLastError());
-  cudaMalloc(&_norms_A, sizeof(double) * _info->max_tile_width);
-  gpuErrchk(cudaPeekAtLastError());
-  cudaMalloc(&_norms_B, sizeof(double) * _info->max_tile_height);
-  gpuErrchk(cudaPeekAtLastError());
-  cudaMalloc(&_df_A, sizeof(double) * _info->max_tile_width);
-  gpuErrchk(cudaPeekAtLastError());
-  cudaMalloc(&_df_B, sizeof(double) * _info->max_tile_height);
-  gpuErrchk(cudaPeekAtLastError());
-  cudaMalloc(&_dg_A, sizeof(double) * _info->max_tile_width);
-  gpuErrchk(cudaPeekAtLastError());
-  cudaMalloc(&_dg_B, sizeof(double) * _info->max_tile_height);
-  gpuErrchk(cudaPeekAtLastError());
-  cudaMalloc(&_scratchpad, sizeof(double) * _info->max_tile_ts_size);
-  _scratch = std::make_shared<fft_precompute_helper>(
-      _info->max_tile_ts_size, _info->mp_window, true, CUDA_GPU_WORKER);
-#else
-  assert("ERROR: CUDA used in binary not built with CUDA");
-#endif
-}
-
-inline void Tile::free_cuda() {
-#ifdef _HAS_CUDA_
-  cudaSetDevice(_cuda_id);
-  cudaFree(_T_A_dev);
-  cudaFree(_T_B_dev);
-  cudaFree(_QT_dev);
-  cudaFree(_means_A);
-  cudaFree(_means_B);
-  cudaFree(_norms_A);
-  cudaFree(_norms_B);
-  cudaFree(_df_A);
-  cudaFree(_df_B);
-  cudaFree(_dg_A);
-  cudaFree(_dg_B);
-  cudaFree(_profile_a_tile_dev.at(_info->profile_type));
-  cudaFree(_profile_b_tile_dev.at(_info->profile_type));
-  cudaFree(_scratchpad);
-  cudaStreamDestroy(_stream);
-#else
-  assert("ERROR: CUDA used in binary not built with CUDA");
-#endif
-}
-
-// TODO(zpzim): Finish STUB
-inline void Tile::init_cpu() {
-  size_t profile_size = GetProfileTypeSize(_info->profile_type);
-  _T_A_dev =
-      static_cast<double *>(malloc(sizeof(double) * _info->max_tile_ts_size));
-  _T_B_dev =
-      static_cast<double *>(malloc(sizeof(double) * _info->max_tile_ts_size));
-  _profile_a_tile_dev.at(_info->profile_type) =
-      static_cast<double *>(malloc(profile_size * _info->max_tile_width));
-  _profile_b_tile_dev.at(_info->profile_type) =
-      static_cast<double *>(malloc(profile_size * _info->max_tile_height));
-  _QT_dev =
-      static_cast<double *>(malloc(sizeof(double) * _info->max_tile_width));
-  _means_A =
-      static_cast<double *>(malloc(sizeof(double) * _info->max_tile_width));
-  _means_B =
-      static_cast<double *>(malloc(sizeof(double) * _info->max_tile_height));
-  _norms_A =
-      static_cast<double *>(malloc(sizeof(double) * _info->max_tile_width));
-  _norms_B =
-      static_cast<double *>(malloc(sizeof(double) * _info->max_tile_height));
-  _df_A = static_cast<double *>(malloc(sizeof(double) * _info->max_tile_width));
-  _df_B =
-      static_cast<double *>(malloc(sizeof(double) * _info->max_tile_height));
-  _dg_A = static_cast<double *>(malloc(sizeof(double) * _info->max_tile_width));
-  _dg_B =
-      static_cast<double *>(malloc(sizeof(double) * _info->max_tile_height));
-  _scratchpad =
-      static_cast<double *>(malloc(sizeof(double) * _info->max_tile_ts_size));
-  _scratch = std::make_shared<fft_precompute_helper>(
-      _info->max_tile_ts_size, _info->mp_window, true, CPU_WORKER);
-}
-
-// TODO(zpzim): Finish STUB
-inline void Tile::free_cpu() {
-  free(_T_A_dev);
-  free(_T_B_dev);
-  free(_QT_dev);
-  free(_means_A);
-  free(_means_B);
-  free(_norms_A);
-  free(_norms_B);
-  free(_df_A);
-  free(_df_B);
-  free(_dg_A);
-  free(_dg_B);
-  free(_profile_a_tile_dev.at(_info->profile_type));
-  free(_profile_b_tile_dev.at(_info->profile_type));
-  free(_scratchpad);
-}
-
 SCAMPError_t Tile::execute(SCAMPTileType t) {
   SCAMPError_t error;
   switch (t) {
@@ -538,14 +512,15 @@ SCAMPError_t Tile::do_self_join_full() {
   switch (_arch) {
     case CUDA_GPU_WORKER:
 #ifdef _HAS_CUDA_
-      error =
-          _scratch->compute_QT(_QT_dev, _T_B_dev, _T_A_dev, _means_A, _stream);
+      error = _scratch->compute_QT(_QT_dev.get(), _T_B_dev.get(),
+                                   _T_A_dev.get(), _means_A.get(), _stream);
       if (error != SCAMP_NO_ERROR) {
         return error;
       }
       error = gpu_kernel_self_join_lower(
-          _QT_dev, _df_A, _df_B, _dg_A, _dg_B, _norms_A, _norms_B,
-          &_profile_a_tile_dev, &_profile_b_tile_dev, _info->mp_window,
+          _QT_dev.get(), _df_A.get(), _df_B.get(), _dg_A.get(), _dg_B.get(),
+          _norms_A.get(), _norms_B.get(), &_profile_a_tile_dev,
+          &_profile_b_tile_dev, _info->mp_window,
           _current_tile_width - _info->mp_window + 1,
           _current_tile_height - _info->mp_window + 1, _current_tile_col,
           _current_tile_row, _dev_props, _info->fp_type, _info->opt_args,
@@ -555,7 +530,8 @@ SCAMPError_t Tile::do_self_join_full() {
 #endif
       break;
     case CPU_WORKER:
-      error = _scratch->compute_QT_CPU(_QT_dev, _T_B_dev, _T_A_dev);
+      error = _scratch->compute_QT_CPU(_QT_dev.get(), _T_B_dev.get(),
+                                       _T_A_dev.get());
       if (error != SCAMP_NO_ERROR) {
         return error;
       }
@@ -578,14 +554,15 @@ SCAMPError_t Tile::do_self_join_half() {
   switch (_arch) {
     case CUDA_GPU_WORKER:
 #ifdef _HAS_CUDA_
-      error =
-          _scratch->compute_QT(_QT_dev, _T_A_dev, _T_B_dev, _means_B, _stream);
+      error = _scratch->compute_QT(_QT_dev.get(), _T_A_dev.get(),
+                                   _T_B_dev.get(), _means_B.get(), _stream);
       if (error != SCAMP_NO_ERROR) {
         return error;
       }
       error = gpu_kernel_self_join_upper(
-          _QT_dev, _df_A, _df_B, _dg_A, _dg_B, _norms_A, _norms_B,
-          &_profile_a_tile_dev, &_profile_b_tile_dev, _info->mp_window,
+          _QT_dev.get(), _df_A.get(), _df_B.get(), _dg_A.get(), _dg_B.get(),
+          _norms_A.get(), _norms_B.get(), &_profile_a_tile_dev,
+          &_profile_b_tile_dev, _info->mp_window,
           _current_tile_width - _info->mp_window + 1,
           _current_tile_height - _info->mp_window + 1, _current_tile_col,
           _current_tile_row, _dev_props, _info->fp_type, _info->opt_args,
@@ -595,7 +572,8 @@ SCAMPError_t Tile::do_self_join_half() {
 #endif
       break;
     case CPU_WORKER:
-      error = _scratch->compute_QT_CPU(_QT_dev, _T_A_dev, _T_B_dev);
+      error = _scratch->compute_QT_CPU(_QT_dev.get(), _T_A_dev.get(),
+                                       _T_B_dev.get());
       if (error != SCAMP_NO_ERROR) {
         return error;
       }
@@ -621,14 +599,15 @@ SCAMPError_t Tile::do_ab_join_full() {
   switch (_arch) {
     case CUDA_GPU_WORKER:
 #ifdef _HAS_CUDA_
-      error =
-          _scratch->compute_QT(_QT_dev, _T_A_dev, _T_B_dev, _means_B, _stream);
+      error = _scratch->compute_QT(_QT_dev.get(), _T_A_dev.get(),
+                                   _T_B_dev.get(), _means_B.get(), _stream);
       if (error != SCAMP_NO_ERROR) {
         return error;
       }
       error = gpu_kernel_ab_join_upper(
-          _QT_dev, _df_A, _df_B, _dg_A, _dg_B, _norms_A, _norms_B,
-          &_profile_a_tile_dev, &_profile_b_tile_dev, _info->mp_window,
+          _QT_dev.get(), _df_A.get(), _df_B.get(), _dg_A.get(), _dg_B.get(),
+          _norms_A.get(), _norms_B.get(), &_profile_a_tile_dev,
+          &_profile_b_tile_dev, _info->mp_window,
           _current_tile_width - _info->mp_window + 1,
           _current_tile_height - _info->mp_window + 1, _current_tile_col,
           _current_tile_row, _info->global_start_col_position,
@@ -640,7 +619,8 @@ SCAMPError_t Tile::do_ab_join_full() {
 #endif
       break;
     case CPU_WORKER:
-      error = _scratch->compute_QT_CPU(_QT_dev, _T_A_dev, _T_B_dev);
+      error = _scratch->compute_QT_CPU(_QT_dev.get(), _T_A_dev.get(),
+                                       _T_B_dev.get());
       if (error != SCAMP_NO_ERROR) {
         return error;
       }
@@ -654,14 +634,15 @@ SCAMPError_t Tile::do_ab_join_full() {
   switch (_arch) {
     case CUDA_GPU_WORKER:
 #ifdef _HAS_CUDA_
-      error =
-          _scratch->compute_QT(_QT_dev, _T_B_dev, _T_A_dev, _means_A, _stream);
+      error = _scratch->compute_QT(_QT_dev.get(), _T_B_dev.get(),
+                                   _T_A_dev.get(), _means_A.get(), _stream);
       if (error != SCAMP_NO_ERROR) {
         return error;
       }
       error = gpu_kernel_ab_join_lower(
-          _QT_dev, _df_A, _df_B, _dg_A, _dg_B, _norms_A, _norms_B,
-          &_profile_a_tile_dev, &_profile_b_tile_dev, _info->mp_window,
+          _QT_dev.get(), _df_A.get(), _df_B.get(), _dg_A.get(), _dg_B.get(),
+          _norms_A.get(), _norms_B.get(), &_profile_a_tile_dev,
+          &_profile_b_tile_dev, _info->mp_window,
           _current_tile_width - _info->mp_window + 1,
           _current_tile_height - _info->mp_window + 1, _current_tile_col,
           _current_tile_row, _info->global_start_col_position,
@@ -673,7 +654,8 @@ SCAMPError_t Tile::do_ab_join_full() {
 #endif
       break;
     case CPU_WORKER:
-      error = _scratch->compute_QT_CPU(_QT_dev, _T_B_dev, _T_A_dev);
+      error = _scratch->compute_QT_CPU(_QT_dev.get(), _T_B_dev.get(),
+                                       _T_A_dev.get());
       if (error != SCAMP_NO_ERROR) {
         return error;
       }

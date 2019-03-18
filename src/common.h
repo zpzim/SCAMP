@@ -8,6 +8,7 @@
 #include <cinttypes>
 #include <unordered_map>
 #include "SCAMP.pb.h"
+
 namespace SCAMP {
 
 typedef union {
@@ -105,8 +106,8 @@ struct PrecomputedInfo {
   std::vector<double> _means;
 
  public:
-  void move(std::vector<double>& means, std::vector<double>& norms,
-            std::vector<double>& df, std::vector<double>& dg) {
+  void set(std::vector<double>& means, std::vector<double>& norms,
+           std::vector<double>& df, std::vector<double>& dg) {
     _norms = std::move(norms);
     _means = std::move(means);
     _df = std::move(df);

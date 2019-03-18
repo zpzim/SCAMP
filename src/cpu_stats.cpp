@@ -1,21 +1,22 @@
 #include "cpu_stats.h"
+#include <vector>
 namespace SCAMP {
 
 void compute_statistics_cpu(const google::protobuf::RepeatedField<double> &T,
                             PrecomputedInfo *info, size_t m) {
-  vector<double> prefix_sum(tlen);
-  vector<double> prefix_sum_sq(tlen);
-  int n = tlen - m + 1;
-  vector<double> norms(n), means(n), df(n), dg(n);
+  std::vector<double> prefix_sum(T.size());
+  std::vector<double> prefix_sum_sq(T.size());
+  int n = T.size() - m + 1;
+  std::vector<double> norms(n), means(n), df(n), dg(n);
 
   prefix_sum[0] = T[0];
-  prefix_sq[0] = T[0] * T[0];
-  for (i = 1; i < tlen; ++i) {
+  prefix_sum_sq[0] = T[0] * T[0];
+  for (int i = 1; i < T.size(); ++i) {
     prefix_sum[i] = T[i] + prefix_sum[i - 1];
     prefix_sum_sq[i] = T[i] * T[i] + prefix_sum_sq[i - 1];
   }
 
-  for (i = 0; i < n; ++i) {
+  for (int i = 0; i < n; ++i) {
     means[i] = prefix_sum[i + m] - prefix_sum[i];
   }
 

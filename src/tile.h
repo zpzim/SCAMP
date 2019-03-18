@@ -18,8 +18,9 @@ class Tile {
   int _cuda_id;
 
   // Per worker input vectors
-  double *_T_A_dev, *_T_B_dev, *_QT_dev, *_means_A, *_means_B, *_norms_A,
-      *_norms_B, *_df_A, *_df_B, *_dg_A, *_dg_B, *_scratchpad;
+  std::unique_ptr<double, std::function<void(double *)>> _T_A_dev, _T_B_dev,
+      _QT_dev, _means_A, _means_B, _norms_A, _norms_B, _df_A, _df_B, _dg_A,
+      _dg_B, _scratchpad;
 
   // Per worker output vectors (device)
   DeviceProfile _profile_a_tile_dev, _profile_b_tile_dev;
@@ -48,12 +49,11 @@ class Tile {
   SCAMPError_t do_self_join_half();
   SCAMPError_t do_ab_join_full();
 
+  void init();
   void init_cuda();
-  void free_cuda();
   void init_cpu();
+  void free_cuda();
   void free_cpu();
-  void FirstTimeInit();
-  void Destroy();
   Profile AllocProfile(SCAMPProfileType t, uint64_t size);
   void CopyProfileToHost(Profile *destination_profile,
                          const DeviceProfile *device_tile_profile,
