@@ -15,13 +15,13 @@ Note: for self-joins on small inputs (~2M or less) the features in this reposito
 
 # Environment
 This base project requires:
- * At least version 9.0 of the CUDA toolkit available [here](https://developer.nvidia.com/cuda-toolkit).
- * Currently builds under Ubuntu/Fedora Linux using gcc/clang and nvcc with cmake (3.8+ for cuda support), this version is not available directly from all package managers so you may need to install it manually from [here](https://cmake.org/download/)
+ * Currently builds under Ubuntu/Fedora Linux using gcc/clang and nvcc (if CUDA is available) with cmake (3.8+ for cuda support), this version is not available directly from all package managers so you may need to install it manually from [here](https://cmake.org/download/)
+ * Optional (For GPU computation): At least version 9.0 of the CUDA toolkit available [here](https://developer.nvidia.com/cuda-toolkit).
  * Optional: At least version 6.0 of clang (for clang-tidy and clang-format)
  * Google protobufs (v2) must be installed as SCAMP uses this input to communicate internally, protobuf v2.6.x minimum is required, some package managers do not provide this version yet and you will need to install from source [here](https://github.com/protocolbuffers/protobuf/blob/master/src/README.md) 
  * An NVIDIA GPU with CUDA support is also required. You can find a list of CUDA compatible GPUs [here](https://developer.nvidia.com/cuda-gpus)
  * Currently Supports Kepler-Volta, but Turing and beyond will likely work as well, just add the -gencode flag for your specific architecture in CMakeLists.txt 
- * Highly recommend using a Volta GPU (we get about a 2-3x improvement over Pascal)
+ * Highly recommend using a Pascal/Volta GPU as they are much better (V100 is ~10x faster than a K80 for SCAMP, V100 is ~2-3x faster than a P100)
 ~~~~
 Ubuntu Required Packages:
    sudo apt-get install protobuf-compiler libprotobuf-dev 
@@ -41,7 +41,9 @@ CentOS:
 git clone https://github.com/zpzim/SCAMP
 cd SCAMP
 git submodule update --init --recursive
-#If you have problems with cmake, you may need to specify the correct cuda-toolkit or c++ compiler as shown below
+# cmake will look in your $PATH for the cuda/c++ compilers
+# If you have problems with cmake, you may need to specify a
+# cuda or c++ compiler as shown in the next example
 cmake .
 make -j4
 ./SCAMP --window=window_size --input_a_file_name=input_A_file_path

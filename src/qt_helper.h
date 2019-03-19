@@ -60,7 +60,7 @@ static const char *_cudaGetErrorEnum(cufftResult error) {
 
 namespace SCAMP {
 
-class fft_precompute_helper {
+class qt_compute_helper {
  private:
   const size_t size;
   const size_t window_size;
@@ -75,8 +75,8 @@ class fft_precompute_helper {
   const int fft_work_size = 512;
 #endif
  public:
-  fft_precompute_helper(size_t sz, size_t window_sz, bool dp,
-                        SCAMPArchitecture arch)
+  qt_compute_helper(size_t sz, size_t window_sz, bool dp,
+                    SCAMPArchitecture arch)
       : size(sz), window_size(window_sz), double_precision(dp), _arch(arch) {
     if (arch == CUDA_GPU_WORKER) {
 #ifdef _HAS_CUDA_
@@ -100,7 +100,7 @@ class fft_precompute_helper {
     }
   }
 #ifdef _HAS_CUDA_
-  ~fft_precompute_helper() {
+  ~qt_compute_helper() {
     if (_arch == CPU_WORKER) {
       return;
     }

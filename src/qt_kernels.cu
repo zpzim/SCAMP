@@ -1,4 +1,4 @@
-#include "fft_kernels.h"
+#include "qt_kernels.h"
 
 __global__ void elementwise_multiply_inplace(const cuDoubleComplex *A,
                                              cuDoubleComplex *B,

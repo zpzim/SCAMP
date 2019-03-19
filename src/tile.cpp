@@ -149,7 +149,7 @@ Tile::Tile(const OpInfo *info, SCAMPArchitecture arch, int cuda_id)
           static_cast<double *>(
               alloc_mem<double>(info->max_tile_ts_size, arch, cuda_id)),
           [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
-      _scratch(std::make_unique<fft_precompute_helper>(
+      _scratch(std::make_unique<qt_compute_helper>(
           info->max_tile_ts_size, info->mp_window, true, arch)) {
   size_t profile_size = GetProfileTypeSize(_info->profile_type);
   _profile_a_tile_dev[_info->profile_type] =

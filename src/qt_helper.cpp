@@ -3,23 +3,40 @@
 #include <cufft.h>
 #endif
 
-#include "fft_helper.h"
+#include "qt_helper.h"
 #ifdef _HAS_CUDA_
-#include "fft_kernels.h"
+#include "qt_kernels.h"
 #endif
 
 namespace SCAMP {
 
-SCAMPError_t fft_precompute_helper::compute_QT_CPU(double *QT, const double *T,
-                                                   const double *Q) {  // NOLINT
-  return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
+SCAMPError_t qt_compute_helper::compute_QT_CPU(double *QT, const double *T,
+                                               const double *Q) {  // NOLINT
+  const int n = size - window_size + 1;
+  double rolling_sum = 0;
+  double qmean = 0;
+  for (int i = 0; i < window_size; ++i) {
+    rolling_sum += T[i];
+    qmean += Q[i];
+  }
+  qmean /= window_size;
+  for (int i = 0; i < n; ++i) {
+    double mu = rolling_sum / window_size;
+    double sum = 0;
+    for (int j = 0; j < window_size; ++j) {
+      sum += (T[i + j] - mu) * (Q[j] - qmean);
+    }
+    QT[i] = sum;
+    rolling_sum = rolling_sum - T[i] + T[i + window_size];
+  }
+  return SCAMP_NO_ERROR;
 }
 
 #ifdef _HAS_CUDA_
-SCAMPError_t fft_precompute_helper::compute_QT(double *QT, const double *T,
-                                               const double *Q,
-                                               const double *qmeans,
-                                               cudaStream_t s) {
+SCAMPError_t qt_compute_helper::compute_QT(double *QT, const double *T,
+                                           const double *Q,
+                                           const double *qmeans,
+                                           cudaStream_t s) {
   cudaError_t error;
 
   const int n = size - window_size + 1;

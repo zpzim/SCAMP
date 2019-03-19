@@ -6,7 +6,7 @@
 #include <thread>
 #include "SCAMP.pb.h"
 #include "common.h"
-#include "fft_helper.h"
+#include "qt_helper.h"
 
 namespace SCAMP {
 
@@ -30,7 +30,7 @@ class Tile {
   Profile _profile_a_tile, _profile_b_tile;
 
   // Helper for FFT computation
-  std::shared_ptr<fft_precompute_helper> _scratch;
+  std::shared_ptr<qt_compute_helper> _scratch;
 
   // Tile-specific variables describing the current tile
   size_t _current_tile_width;

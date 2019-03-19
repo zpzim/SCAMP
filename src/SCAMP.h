@@ -4,8 +4,6 @@
 #include <vector>
 #include "SCAMP.pb.h"
 #include "common.h"
-#include "fft_helper.h"
-#include "tile.h"
 using std::list;
 using std::pair;
 using std::unordered_map;

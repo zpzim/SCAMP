@@ -109,13 +109,13 @@ else()
   target_link_libraries(common messages)
 endif()
 
-add_library(fft src/fft_helper.cpp)
+add_library(qt_helper src/qt_helper.cpp)
 
 if (CMAKE_CUDA_COMPILER)
-  add_library(fft_kernels src/fft_kernels.cu)
-  target_link_libraries(fft -lcufft fft_kernels common)
+  add_library(qt_kernels src/qt_kernels.cu)
+  target_link_libraries(qt_helper -lcufft qt_kernels common)
 else()
-  target_link_libraries(fft common)
+  target_link_libraries(qt_helper common)
 endif()
 
 
@@ -136,17 +136,17 @@ add_library(tile src/tile.cpp)
 
 
 if (CMAKE_CUDA_COMPILER)
-  target_link_libraries(tile messages common gpu_kernels cpu_kernels fft)
+  target_link_libraries(tile messages common gpu_kernels cpu_kernels qt_helper)
 else()
-  target_link_libraries(tile messages common cpu_kernels fft)
+  target_link_libraries(tile messages common cpu_kernels qt_helper)
 endif()
 
 add_library(scamp src/SCAMP.cpp)
 
 if (CMAKE_CUDA_COMPILER)
-  target_link_libraries(scamp -lpthread tile messages gpu_stats common fft)
+  target_link_libraries(scamp -lpthread tile messages gpu_stats common qt_helper)
 else()
-  target_link_libraries(scamp -lpthread tile messages cpu_stats common fft)
+  target_link_libraries(scamp -lpthread tile messages cpu_stats common qt_helper)
 endif() 
 
 if (CMAKE_CUDA_COMPILER)
@@ -172,7 +172,7 @@ if(CLANG_TIDY_EXE)
     CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
   )
   set_target_properties(
-    fft PROPERTIES
+    qt_helper PROPERTIES
     CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
   )
   set_target_properties(
