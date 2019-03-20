@@ -462,7 +462,7 @@ SCAMPError_t Tile::do_self_join_full() {
       if (error != SCAMP_NO_ERROR) {
         return error;
       }
-      error = SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
+      error = cpu_kernel_self_join_lower(this);
       break;
   }
   return error;
