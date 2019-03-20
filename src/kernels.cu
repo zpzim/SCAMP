@@ -626,7 +626,7 @@ SCAMPError_t gpu_kernel_self_join_upper(
     SCAMPProfileType profile_type, cudaStream_t s) {
   constexpr int diags_per_thread = 4;
   uint64_t blocksz = get_blocksz(t, props);
-  int32_t exclusion = get_exclusion(window_size, global_col, global_row);
+  int32_t exclusion = get_exclusion(window_size, global_row, global_col);
   uint64_t num_workers =
       ceil((tile_width - exclusion) / (float)diags_per_thread);
   uint64_t num_blocks = ceil(num_workers / (double)blocksz);
