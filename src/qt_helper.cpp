@@ -11,7 +11,7 @@
 namespace SCAMP {
 
 SCAMPError_t qt_compute_helper::compute_QT_CPU(double *QT, const double *T,
-                                               const double *Q) {  // NOLINT
+                                               const double *Q) {
   const int n = size - window_size + 1;
   double rolling_sum = 0;
   double qmean = 0;

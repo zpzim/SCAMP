@@ -73,12 +73,22 @@ class Tile {
   cudaStream_t get_stream() { return _stream; }
 #endif
 
-  SCAMPArchitecture get_arch() { return _arch; }
-  int get_cuda_id() { return _cuda_id; }
-  size_t get_tile_width() { return _current_tile_width; }
-  size_t get_tile_height() { return _current_tile_height; }
-  size_t get_tile_row() { return _current_tile_row; }
-  size_t get_tile_col() { return _current_tile_col; }
+  SCAMPArchitecture get_arch() const { return _arch; }
+  int get_cuda_id() const { return _cuda_id; }
+  size_t get_tile_width() const { return _current_tile_width; }
+  size_t get_tile_height() const { return _current_tile_height; }
+  size_t get_tile_row() const { return _current_tile_row; }
+  size_t get_tile_col() const { return _current_tile_col; }
+  const OpInfo *info() const { return _info; }
+  void *profile_a() { return _profile_a_tile_dev.at(_info->profile_type); };
+  void *profile_b() { return _profile_b_tile_dev.at(_info->profile_type); };
+  double *QT() { return _QT_dev.get(); }
+  const double *dfa() const { return _df_A.get(); }
+  const double *dfb() const { return _df_B.get(); }
+  const double *dga() const { return _dg_A.get(); }
+  const double *dgb() const { return _dg_B.get(); }
+  const double *normsa() const { return _norms_A.get(); }
+  const double *normsb() { return _norms_B.get(); }
   void set_tile_col(size_t col) { _current_tile_col = col; }
   void set_tile_row(size_t row) { _current_tile_row = row; }
   void set_tile_height(size_t height) { _current_tile_height = height; }
