@@ -18,6 +18,9 @@ DEFINE_int32(num_cpu_workers, 0, "Number of CPU workers to use");
 DEFINE_bool(output_pearson, false,
             "If true SCAMP will output pearson correlation instead of "
             "z-normalized euclidean distance.");
+DEFINE_bool(
+    no_gpu, false,
+    "If true SCAMP will not use any GPUs to compute the matrix profile");
 DEFINE_int32(max_tile_size, 1 << 20, "Maximum tile size SCAMP will use");
 DEFINE_int32(window, -1, "Length of subsequences to search for");
 DEFINE_double(
@@ -298,7 +301,7 @@ int main(int argc, char **argv) {
   }
 
 #ifdef _HAS_CUDA_
-  if (devices.empty()) {
+  if (devices.empty() && !FLAGS_no_gpu) {
     // Use all available devices
     printf("using all devices\n");
     int num_dev;
