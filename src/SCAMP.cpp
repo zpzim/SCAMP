@@ -216,17 +216,23 @@ void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
       args->computing_rows(), args->computing_columns(), args->is_aligned(),
       num_threads);
   // Execute op
-  std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
+  std::chrono::high_resolution_clock::time_point start =
+      std::chrono::high_resolution_clock::now();
   if (args->has_b()) {
     op.do_join(args->timeseries_a(), args->timeseries_b());
   } else {
     op.do_join(args->timeseries_a(), args->timeseries_a());
   }
-  std::chrono::high_resolution_clock::time_point end = std::chrono::high_resolution_clock::now();
+  std::chrono::high_resolution_clock::time_point end =
+      std::chrono::high_resolution_clock::now();
   printf(
       "Finished %d SCAMP tiles to generate  matrix profile in %lf "
       "seconds on %lu devices and %d threads\n",
-      op.get_completed_tiles(),std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / static_cast<double>(1000000), devices.size(), num_threads);
+      op.get_completed_tiles(),
+      std::chrono::duration_cast<std::chrono::microseconds>(end - start)
+              .count() /
+          static_cast<double>(1000000),
+      devices.size(), num_threads);
 }
 
 }  // namespace SCAMP
