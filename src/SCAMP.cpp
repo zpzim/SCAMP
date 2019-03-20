@@ -1,3 +1,4 @@
+#include <chrono>
 #include <cinttypes>
 #include <cmath>
 #include <future>
@@ -203,7 +204,6 @@ void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
     exit(0);
   }
   // Allocate and initialize memory
-  clock_t start, end;
   OptionalArgs _opt_args(args->distance_threshold());
   // Construct operation
   SCAMP_Operation op(
@@ -216,18 +216,17 @@ void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
       args->computing_rows(), args->computing_columns(), args->is_aligned(),
       num_threads);
   // Execute op
-  start = clock();
+  std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
   if (args->has_b()) {
     op.do_join(args->timeseries_a(), args->timeseries_b());
   } else {
     op.do_join(args->timeseries_a(), args->timeseries_a());
   }
-  end = clock();
+  std::chrono::high_resolution_clock::time_point end = std::chrono::high_resolution_clock::now();
   printf(
-      "Finished %d SCAMP tiles to generate  matrix profile in %f "
-      "seconds on %lu devices:\n",
-      op.get_completed_tiles(),
-      (end - start) / static_cast<double>(CLOCKS_PER_SEC), devices.size());
+      "Finished %d SCAMP tiles to generate  matrix profile in %lf "
+      "seconds on %lu devices and %d threads\n",
+      op.get_completed_tiles(),std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / static_cast<double>(1000000), devices.size(), num_threads);
 }
 
 }  // namespace SCAMP
