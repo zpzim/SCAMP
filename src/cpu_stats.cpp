@@ -17,8 +17,10 @@ void compute_statistics_cpu(const google::protobuf::RepeatedField<double> &T,
     prefix_sum_sq[i] = T.Get(i) * T.Get(i) + prefix_sum_sq[i - 1];
   }
 
-  for (int i = 0; i < n; ++i) {
-    means[i] = prefix_sum[i + m] - prefix_sum[i];
+  means[0] = prefix_sum[m - 1] / static_cast<double>(m);
+  for (int i = 1; i < n; ++i) {
+    means[i] =
+        (prefix_sum[i + m - 1] - prefix_sum[i - 1]) / static_cast<double>(m);
   }
 
   double sum = 0;
@@ -34,11 +36,11 @@ void compute_statistics_cpu(const google::protobuf::RepeatedField<double> &T,
                    (T.Get(i + m - 1) - T.Get(i - 1));
   }
   for (int i = 0; i < n; ++i) {
-    norms[i] = 1.0 / std::sqrt(norms[i]);
+    norms[i] = static_cast<double>(1.0) / std::sqrt(norms[i]);
   }
 
   for (int i = 0; i < n - 1; ++i) {
-    df[i] = (T.Get(i + m) - T.Get(i)) / (double)2;
+    df[i] = (T.Get(i + m) - T.Get(i)) / static_cast<double>(2);
     dg[i] = (T.Get(i + m) - means[i + 1]) + (T.Get(i) - means[i]);
   }
 
