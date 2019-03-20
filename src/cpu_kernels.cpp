@@ -1,6 +1,6 @@
 #include "cpu_kernels.h"
 #include <vector>
-#define prefalign 64
+
 namespace SCAMP {
 
 template <bool computing_rows, bool computing_cols>
@@ -11,19 +11,6 @@ static inline void partialcross_kern(
     const double* __restrict dfb, const double* __restrict dgb,
     const double* __restrict invnb, const int amx, const int bmx,
     const int amin, const int upper_excl) {
-  /*
-     dfa   = (const double*)__builtin_assume_aligned(dfa, prefalign);
-     dga   = (const double*)__builtin_assume_aligned(dga, prefalign);
-     invna = (const double*)__builtin_assume_aligned(invna, prefalign);
-     dfb   = (const double*)__builtin_assume_aligned(dfb, prefalign);
-     dgb   = (const double*)__builtin_assume_aligned(dgb, prefalign);
-     invnb = (const double*)__builtin_assume_aligned(invnb, prefalign);
-     mpa   = (double*) __builtin_assume_aligned(mpa, prefalign);
-     mpia  = (int*) __builtin_assume_aligned(mpia, prefalign);
-     mpb  = (double*) __builtin_assume_aligned(mpb, prefalign);
-     mpib = (int*) __builtin_assume_aligned(mpib, prefalign);
-     cov  = (double*)__builtin_assume_aligned(cov, prefalign);
-  */
   for (int ia = amin; ia < amx - upper_excl; ia++) {
     int mx = std::min(amx - ia, bmx);
     for (int ib = 0; ib < mx; ib++) {

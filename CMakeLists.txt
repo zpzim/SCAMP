@@ -95,6 +95,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -ffast-math -march=nativ
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=address -fno-omit-frame-pointer")
 
 if(${COMPILER_ID} MATCHES "GNU") # gcc specific flags
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -funroll-loops")
     add_definitions("-Wextra -Wpedantic")
 elseif(${COMPILER_ID} MATCHES "clang") # clang specific flags
     add_definitions("-Weverything")
