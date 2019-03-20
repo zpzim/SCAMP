@@ -7,6 +7,10 @@ project(SCAMP LANGUAGES CXX)
 set(VERSION_MAJOR 1)
 set(VERSION_MINOR 1)
 
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release)
+endif()
+
 if(FORCE_NO_CUDA)
   unset(CMAKE_CUDA_COMPILER)
 else()
@@ -64,15 +68,17 @@ set(
 # ----------------------------------------------------------------------------------------
 #                         ===== Compiler Configuration =====
 
-add_definitions("-std=c++14")
+set(CMAKE_CXX_STANDARD 14)
 
 # CUDA_CONFIG
 if (CMAKE_CUDA_COMPILER)
   add_definitions("-D_HAS_CUDA_")
+  set(CMAKE_CUDA_STANDARD 14)
   find_library(CUDART_LIBRARY cudart ${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES})
   include_directories(${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   set(CUDA_SEPARABLE_COMPILATION ON)
-  set(CUDA_COMPILATION_FLAGS "-lineinfo --expt-relaxed-constexpr -use_fast_math -O3")
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr -lineinfo")
+  set(CMAKE_CUDA_FLAGS_RELEASE "${CMAKE_CUDA_FLAGS_RELEASE} --use_fast_math")
   set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_60,code=sm_70")
   set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_61,code=sm_61")
   set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_60,code=sm_60")
@@ -82,9 +88,8 @@ if (CMAKE_CUDA_COMPILER)
   set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_30,code=sm_30")
 endif()
 
- 
 # optimize in release
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -ffast-math -march=native -O3")
 
 # build debug with sanitizer
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=address -fno-omit-frame-pointer")
@@ -150,16 +155,12 @@ else()
 endif() 
 
 if (CMAKE_CUDA_COMPILER)
-set_target_properties(gpu_kernels PROPERTIES
-    CXX_STANDARD 14
-    CXX_STANDARD_REQUIRED ON
-    COMPILE_FLAGS "${CUDA_COMPILATION_FLAGS} ${CUDA_GENCODE_FLAGS}"
-)
-set_target_properties(gpu_stats PROPERTIES
-    CXX_STANDARD 14
-    CXX_STANDARD_REQUIRED ON
-    COMPILE_FLAGS "${CUDA_COMPILATION_FLAGS} ${CUDA_GENCODE_FLAGS}"
-)
+  set_target_properties(gpu_kernels PROPERTIES
+    COMPILE_FLAGS "${COMPILE_FLAGS} ${CUDA_GENCODE_FLAGS}"
+  )
+  set_target_properties(gpu_stats PROPERTIES
+    COMPILE_FLAGS "${COMPILE_FLAGS} ${CUDA_GENCODE_FLAGS}"
+  )
 endif()
 
 if(CLANG_TIDY_EXE)
