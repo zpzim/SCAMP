@@ -181,6 +181,59 @@ class DoRowOptStrategy<
   }
 };
 
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
+          typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
+          SCAMPProfileType PROFILE_TYPE>
+class DoRowOptStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+                       COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE,
+                       std::enable_if_t<PROFILE_TYPE == PROFILE_TYPE_1NN>> {
+ public:
+  __device__ DoRowOptStrategy() {}
+  __device__ inline __attribute__((always_inline)) void exec(
+      SCAMPThreadInfo<ACCUM_TYPE> &info, float &distc1, float &distc2,
+      float &distc3, float &distc4, const DATA_TYPE &inormcx,
+      const DATA_TYPE &inormcy, const DATA_TYPE &inormcz,
+      const DATA_TYPE &inormcw, const DATA_TYPE &inormr,
+      const DATA_TYPE &df_colx, const DATA_TYPE &df_coly,
+      const DATA_TYPE &df_colz, const DATA_TYPE &df_colw,
+      const DATA_TYPE &dg_colx, const DATA_TYPE &dg_coly,
+      const DATA_TYPE &dg_colz, const DATA_TYPE &dg_colw,
+      const DATA_TYPE &df_row, const DATA_TYPE &dg_row, float &curr_mp_row_val,
+      SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE> &smem, OptionalArgs &args) {
+    float distx = info.cov1 * inormcx * inormr;
+    float disty = info.cov2 * inormcy * inormr;
+    float distz = info.cov3 * inormcz * inormr;
+    float distw = info.cov4 * inormcw * inormr;
+
+    // Compute the next covariance values
+    info.cov1 = info.cov1 + df_colx * dg_row + dg_colx * df_row;
+    info.cov2 = info.cov2 + df_coly * dg_row + dg_coly * df_row;
+    info.cov3 = info.cov3 + df_colz * dg_row + dg_colz * df_row;
+    info.cov4 = info.cov4 + df_colw * dg_row + dg_colw * df_row;
+    // Update the column best-so-far values
+
+    if (COMPUTE_COLS) {
+      distc1 = fmaxf(distc1, distx);
+      distc2 = fmaxf(distc2, disty);
+      distc3 = fmaxf(distc3, distz);
+      distc4 = fmaxf(distc4, distw);
+    }
+
+    if (COMPUTE_ROWS) {
+      // We take the maximum of the columns we computed for the row
+      // And use that value to check the matrix profile
+      float d = fmaxf(fmaxf(distx, disty), fmaxf(distz, distw));
+      fAtomicMax_check<ATOMIC_BLOCK>(smem.local_mp_row + info.local_row, d,
+                                     curr_mp_row_val);
+    }
+
+    info.local_row++;
+    info.local_col++;
+    info.global_row++;
+    info.global_col++;
+  }
+};
+
 /////////////////////////////////////////////////////
 //
 //
@@ -367,6 +420,77 @@ class DoRowEdgeStrategy<
     if (COMPUTE_ROWS) {
       MPatomicMax<ATOMIC_BLOCK>((uint64_t *)(smem.local_mp_row + i), dist_row,
                                 idx_row);
+    }
+  }
+};
+
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
+          typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
+          SCAMPProfileType PROFILE_TYPE>
+class DoRowEdgeStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+                        COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE,
+                        std::enable_if_t<PROFILE_TYPE == PROFILE_TYPE_1NN>>
+    : SCAMPStrategy {
+ public:
+  __device__ DoRowEdgeStrategy() {}
+  __device__ inline void exec(int i, int j, int x, int y, int n,
+                              ACCUM_TYPE &cov1, ACCUM_TYPE &cov2,
+                              ACCUM_TYPE &cov3, ACCUM_TYPE &cov4, size_t diag,
+                              size_t num_diags,
+                              SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE> &smem,
+                              OptionalArgs &args) {
+    float dist_row;
+    float distx;
+    float disty;
+    float distz;
+    float distw;
+
+    DATA_TYPE inormr = smem.inorm_row[i];
+    DATA_TYPE dgr = smem.dg_row[i];
+    DATA_TYPE dfr = smem.df_row[i];
+
+    // Compute the next set of distances (row y)
+    distx = cov1 * smem.inorm_col[j] * inormr;
+    disty = cov2 * smem.inorm_col[j + 1] * inormr;
+    distz = cov3 * smem.inorm_col[j + 2] * inormr;
+    distw = cov4 * smem.inorm_col[j + 3] * inormr;
+
+    // Update cov and compute the next distance values (row y)
+    cov1 = cov1 + smem.df_col[j] * dgr + smem.dg_col[j] * dfr;
+    cov2 = cov2 + smem.df_col[j + 1] * dgr + smem.dg_col[j + 1] * dfr;
+    cov3 = cov3 + smem.df_col[j + 2] * dgr + smem.dg_col[j + 2] * dfr;
+    cov4 = cov4 + smem.df_col[j + 3] * dgr + smem.dg_col[j + 3] * dfr;
+
+    if (COMPUTE_COLS) {
+      fAtomicMax<ATOMIC_BLOCK>((float *)(smem.local_mp_col + j), distx);
+    }
+    dist_row = distx;
+    if (x + 1 < n && diag + 1 < num_diags) {
+      if (COMPUTE_ROWS) {
+        dist_row = fmaxf(dist_row, disty);
+      }
+      if (COMPUTE_COLS) {
+        fAtomicMax<ATOMIC_BLOCK>((float *)(smem.local_mp_col + j + 1), disty);
+      }
+    }
+    if (x + 2 < n && diag + 2 < num_diags) {
+      if (COMPUTE_ROWS) {
+        dist_row = fmaxf(dist_row, distz);
+      }
+      if (COMPUTE_COLS) {
+        fAtomicMax<ATOMIC_BLOCK>((float *)(smem.local_mp_col + j + 2), distz);
+      }
+    }
+    if (x + 3 < n && diag + 3 < num_diags) {
+      if (COMPUTE_ROWS) {
+        dist_row = fmaxf(dist_row, distw);
+      }
+      if (COMPUTE_COLS) {
+        fAtomicMax<ATOMIC_BLOCK>((float *)(smem.local_mp_col + j + 3), distw);
+      }
+    }
+    if (COMPUTE_ROWS) {
+      fAtomicMax<ATOMIC_BLOCK>((float *)(smem.local_mp_row + i), dist_row);
     }
   }
 };

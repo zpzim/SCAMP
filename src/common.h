@@ -30,8 +30,12 @@ struct reg_mem {
 };
 
 struct OptionalArgs {
-  OptionalArgs(double threshold_) : threshold(threshold_) {}
+  OptionalArgs(double threshold_)
+      : threshold(threshold_), num_extra_operands(0) {}
+  OptionalArgs(double threshold_, int num_extra_operands_)
+      : threshold(threshold_), num_extra_operands(num_extra_operands_) {}
 
+  int num_extra_operands;
   double threshold;
 };
 

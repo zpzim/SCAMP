@@ -72,7 +72,8 @@ template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, bool COMPUTE_ROWS,
           SCAMPProfileType PROFILE_TYPE>
 class InitMemStrategy<DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
                       tile_width, tile_height, BLOCKSZ, PROFILE_TYPE,
-                      std::enable_if_t<PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX>>
+                      std::enable_if_t<PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX ||
+                                       PROFILE_TYPE == PROFILE_TYPE_1NN>>
     : public SCAMPStrategy {
  public:
   __device__ InitMemStrategy() {}
@@ -164,6 +165,43 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
       while (local_position < TILE_HEIGHT && global_position < n_y) {
         do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_GLOBAL>(
             profile_B + global_position, local_mp_row[local_position]);
+        global_position += BLOCKSZ;
+        local_position += BLOCKSZ;
+      }
+    }
+  }
+};
+
+template <typename PROFILE_DATA_TYPE, bool COMPUTE_COLS, bool COMPUTE_ROWS,
+          int TILE_WIDTH, int TILE_HEIGHT, int BLOCKSZ>
+class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
+                        TILE_WIDTH, TILE_HEIGHT, BLOCKSZ, PROFILE_TYPE_1NN>
+    : public SCAMPStrategy {
+ public:
+  __device__ WriteBackStrategy() {}
+  __device__ void exec(uint32_t tile_start_x, uint32_t tile_start_y,
+                       uint32_t n_x, uint32_t n_y,
+                       PROFILE_DATA_TYPE *__restrict__ local_mp_col,
+                       PROFILE_DATA_TYPE *__restrict__ local_mp_row,
+                       PROFILE_DATA_TYPE *__restrict__ profile_A,
+                       PROFILE_DATA_TYPE *__restrict__ profile_B) {
+    int global_position, local_position;
+    if (COMPUTE_COLS) {
+      global_position = tile_start_x + threadIdx.x;
+      local_position = threadIdx.x;
+      while (local_position < TILE_WIDTH && global_position < n_x) {
+        fAtomicMax<ATOMIC_GLOBAL>(profile_A + global_position,
+                                  local_mp_col[local_position]);
+        global_position += BLOCKSZ;
+        local_position += BLOCKSZ;
+      }
+    }
+    if (COMPUTE_ROWS) {
+      global_position = tile_start_y + threadIdx.x;
+      local_position = threadIdx.x;
+      while (local_position < TILE_HEIGHT && global_position < n_y) {
+        fAtomicMax<ATOMIC_GLOBAL>(profile_B + global_position,
+                                  local_mp_row[local_position]);
         global_position += BLOCKSZ;
         local_position += BLOCKSZ;
       }

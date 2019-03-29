@@ -31,6 +31,7 @@ enum SCAMPProfileType {
     PROFILE_TYPE_FREQUENCY_THRESH = 3;
     PROFILE_TYPE_KNN = 4;
     PROFILE_TYPE_1NN_MULTIDIM = 5;
+    PROFILE_TYPE_1NN = 6;
 }
 
 message Profile {

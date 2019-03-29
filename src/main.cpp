@@ -131,6 +131,9 @@ SCAMP::SCAMPProfileType ParseProfileType(const std::string &s) {
   if (s == "SUM_THRESH") {
     return SCAMP::PROFILE_TYPE_SUM_THRESH;
   }
+  if (s == "1NN") {
+    return SCAMP::PROFILE_TYPE_1NN;
+  }
   return SCAMP::PROFILE_TYPE_INVALID;
 }
 
@@ -156,6 +159,19 @@ bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
                  << ConvertToEuclidean<float>(e.floats[0]) << std::endl;
         }
         mpi_out << e.ints[1] + 1 << std::endl;
+      }
+      break;
+    }
+    case SCAMP::PROFILE_TYPE_1NN: {
+      std::ofstream mp_out(mp);
+      auto arr = p.data().Get(0).float_value().value();
+      for (int i = 0; i < arr.size(); ++i) {
+        if (FLAGS_output_pearson) {
+          mp_out << std::setprecision(10) << arr[i] << std::endl;
+        } else {
+          mp_out << std::setprecision(10) << ConvertToEuclidean<float>(arr[i])
+                 << std::endl;
+        }
       }
       break;
     }
@@ -201,6 +217,30 @@ void InitProfileMemory(SCAMP::SCAMPArgs *args) {
             ->mutable_data()
             ->Add()
             ->mutable_uint64_value()
+            ->mutable_value()
+            ->Swap(&data);
+      }
+    }
+    case SCAMP::PROFILE_TYPE_1NN: {
+      vector<float> temp(args->timeseries_a().size() - FLAGS_window + 1,
+                         std::numeric_limits<float>::lowest());
+      {
+        google::protobuf::RepeatedField<float> data(temp.begin(), temp.end());
+        args->mutable_profile_a()
+            ->mutable_data()
+            ->Add()
+            ->mutable_float_value()
+            ->mutable_value()
+            ->Swap(&data);
+      }
+      if (FLAGS_keep_rows) {
+        temp.resize(args->timeseries_b().size() - FLAGS_window + 1,
+                    std::numeric_limits<float>::lowest());
+        google::protobuf::RepeatedField<float> data(temp.begin(), temp.end());
+        args->mutable_profile_b()
+            ->mutable_data()
+            ->Add()
+            ->mutable_float_value()
             ->mutable_value()
             ->Swap(&data);
       }

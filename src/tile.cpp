@@ -29,6 +29,16 @@ void elementwise_max(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
   }
 }
 
+template <typename T>
+void elementwise_max(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
+                     T *to_merge) {
+  for (int i = 0; i < tile_sz; ++i) {
+    if (mp_full[i + merge_start] < to_merge[i]) {
+      mp_full[i + merge_start] = to_merge[i];
+    }
+  }
+}
+
 // Allocator for tile memory which can reside on the host or cuda devices
 template <typename T>
 T *alloc_mem(size_t count, SCAMPArchitecture arch, int deviceid) {
@@ -232,6 +242,10 @@ Profile Tile::AllocProfile(SCAMPProfileType t, uint64_t size) {
       p.mutable_data()->Add()->mutable_double_value()->mutable_value()->Resize(
           size, 0);
       return p;
+    case PROFILE_TYPE_1NN:
+      p.mutable_data()->Add()->mutable_float_value()->mutable_value()->Resize(
+          size, 0);
+      return p;
     case PROFILE_TYPE_1NN_INDEX:
       mp_entry e;
       e.ints[1] = -1u;
@@ -273,6 +287,22 @@ SCAMPError_t Tile::InitProfile(Profile *profile_a, Profile *profile_b) {
             profile_b->data().Get(0).uint64_value().value().data();
         Memcopy(_profile_b_tile_dev.at(type), pB_ptr + _current_tile_row,
                 sizeof(uint64_t) * height, false);
+      }
+      break;
+    }
+    case PROFILE_TYPE_1NN: {
+      const float *pA_ptr =
+          profile_a->data().Get(0).float_value().value().data();
+      Memcopy(_profile_a_tile_dev.at(type), pA_ptr + _current_tile_col,
+              sizeof(float) * width, false);
+      if (_info->self_join) {
+        Memcopy(_profile_b_tile_dev.at(type), pA_ptr + _current_tile_row,
+                sizeof(float) * height, false);
+      } else if (_info->computing_rows && _info->keep_rows_separate) {
+        const float *pB_ptr =
+            profile_b->data().Get(0).float_value().value().data();
+        Memcopy(_profile_b_tile_dev.at(type), pB_ptr + _current_tile_row,
+                sizeof(float) * height, false);
       }
       break;
     }
@@ -331,6 +361,19 @@ void Tile::MergeTileIntoFullProfile(Profile *tile_profile, uint64_t position,
                                     ->mutable_value()
                                     ->mutable_data(),
                                 index_start);
+      return;
+    case PROFILE_TYPE_1NN:
+      elementwise_max<float>(full_profile->mutable_data()
+                                 ->Mutable(0)
+                                 ->mutable_float_value()
+                                 ->mutable_value()
+                                 ->mutable_data(),
+                             position, length,
+                             tile_profile->mutable_data()
+                                 ->Mutable(0)
+                                 ->mutable_float_value()
+                                 ->mutable_value()
+                                 ->mutable_data());
       return;
     case PROFILE_TYPE_FREQUENCY_THRESH:
       elementwise_sum<uint64_t>(full_profile->mutable_data()
@@ -393,6 +436,15 @@ void Tile::CopyProfileToHost(Profile *destination_profile,
                   ->mutable_data(),
               device_tile_profile->at(PROFILE_TYPE_SUM_THRESH),
               length * sizeof(double), true);
+      break;
+    case PROFILE_TYPE_1NN:
+      Memcopy(destination_profile->mutable_data()
+                  ->Mutable(0)
+                  ->mutable_float_value()
+                  ->mutable_value()
+                  ->mutable_data(),
+              device_tile_profile->at(PROFILE_TYPE_1NN), length * sizeof(float),
+              true);
       break;
     case PROFILE_TYPE_1NN_INDEX:
       Memcopy(destination_profile->mutable_data()

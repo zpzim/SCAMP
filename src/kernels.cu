@@ -40,6 +40,7 @@ struct SCAMPKernelInputArgs {
   const T *__restrict__ dgb;
   const T *__restrict__ normsa;
   const T *__restrict__ normsb;
+  const T *__restrict__ extras[3];
   uint32_t n_x;
   uint32_t n_y;
   int32_t exclusion_lower;
@@ -50,7 +51,7 @@ struct SCAMPKernelInputArgs {
 template <typename DATA_TYPE, typename PROFILE_DATA_TYPE>
 struct SCAMPSmem {
   __device__ SCAMPSmem(char *smem, bool compute_rows, bool compute_columns,
-                       int tile_width, int tile_height) {
+                       int tile_width, int tile_height, int extra_operands) {
     constexpr int data_size = sizeof(DATA_TYPE);
     constexpr int profile_size = sizeof(PROFILE_DATA_TYPE);
     int curr_byte = 0;
@@ -66,6 +67,7 @@ struct SCAMPSmem {
     curr_byte += tile_height * data_size;
     inorm_row = (DATA_TYPE *)(smem + curr_byte);
     curr_byte += tile_height * data_size;
+
     if (compute_columns) {
       local_mp_col = (PROFILE_DATA_TYPE *)(smem + curr_byte);
       curr_byte += tile_width * profile_size;
@@ -85,6 +87,7 @@ struct SCAMPSmem {
   DATA_TYPE *__restrict__ df_row;
   DATA_TYPE *__restrict__ dg_row;
   DATA_TYPE *__restrict__ inorm_row;
+
   PROFILE_DATA_TYPE *__restrict__ local_mp_col;
   PROFILE_DATA_TYPE *__restrict__ local_mp_row;
 };
@@ -118,10 +121,8 @@ __device__ double atomicAdd(double *address, double val) {
 }
 #endif
 
-template <SCAMPAtomicType type>
-__device__ inline unsigned long long do_atomicCAS(unsigned long long *address,
-                                                  unsigned long long v1,
-                                                  unsigned long long v2) {
+template <typename T, SCAMPAtomicType type>
+__device__ inline T do_atomicCAS(T *address, T v1, T v2) {
 #if __CUDA_ARCH__ < 600
   return atomicCAS(address, v1, v2);
 #else
@@ -156,6 +157,61 @@ __device__ inline uint32_t do_atomicAdd(T *address, T amount) {
 #endif
 }
 
+template <typename T, SCAMPAtomicType type>
+__device__ __forceinline__ T do_atomicMax(T *address, T other) {
+#if __CUDA_ARCH__ < 600
+  return atomicMax(address, other);
+#else
+  switch (type) {
+    case ATOMIC_BLOCK:
+      return atomicMax_block(address, other);
+    case ATOMIC_GLOBAL:
+      return atomicMax(address, other);
+    case ATOMIC_SYSTEM:
+      return atomicMax_system(address, other);
+  }
+  // Should never happen
+  return 0;
+#endif
+}
+
+template <typename T, SCAMPAtomicType type>
+__device__ __forceinline__ T do_atomicMin(T *address, T other) {
+#if __CUDA_ARCH__ < 600
+  return atomicMax(address, other);
+#else
+  switch (type) {
+    case ATOMIC_BLOCK:
+      return atomicMin_block(address, other);
+    case ATOMIC_GLOBAL:
+      return atomicMin(address, other);
+    case ATOMIC_SYSTEM:
+      return atomicMin_system(address, other);
+  }
+  // Should never happen
+  return 0;
+#endif
+}
+
+template <SCAMPAtomicType type>
+__device__ __forceinline__ float fAtomicMax(float *addr, float value) {
+  float old;
+  old = (value >= 0) ? __int_as_float(do_atomicMax<int, type>(
+                           (int *)addr, __float_as_int(value)))
+                     : __uint_as_float(do_atomicMin<unsigned int, type>(
+                           (unsigned int *)addr, __float_as_uint(value)));
+  return old;
+}
+
+template <SCAMPAtomicType type>
+__device__ __forceinline__ float fAtomicMax_check(float *addr, float value,
+                                                  float check) {
+  if (value < check) {
+    return check;
+  }
+  return fAtomicMax<type>(addr, value);
+}
+
 // Atomically updates the MP/idxs using a single 64-bit integer. We lose a small
 // amount of precision in the output, if we do not do this we are unable
 // to atomically update both the matrix profile and the indexes without using a
@@ -168,8 +224,8 @@ __device__ inline void MPatomicMax(volatile uint64_t *address, float val,
   loc.ints[1] = idx;
   loctest.ulong = *address;
   while (loctest.floats[0] < val) {
-    loctest.ulong = do_atomicCAS<type>((unsigned long long int *)address,
-                                       loctest.ulong, loc.ulong);
+    loctest.ulong = do_atomicCAS<unsigned long long int, type>(
+        (unsigned long long int *)address, loctest.ulong, loc.ulong);
   }
 }
 
@@ -184,7 +240,7 @@ __device__ inline void MPatomicMax_check(
     loc.ints[1] = idx;
     loctest.ulong = *address;
     while (loctest.floats[0] < val) {
-      loctest.ulong = do_atomicCAS<ATOMIC_BLOCK>(
+      loctest.ulong = do_atomicCAS<unsigned long long int, ATOMIC_BLOCK>(
           (unsigned long long int *)address, loctest.ulong, loc.ulong);
     }
   }
@@ -323,28 +379,33 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
   SCAMPThreadInfo<ACCUM_TYPE> thread_info;
 
   extern __shared__ char smem_raw[];
-  SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE> smem(
-      smem_raw, COMPUTE_ROWS, COMPUTE_COLS, tile_width, tile_height);
 
+  // Wrap the shared memory in  a struct which contains handles shared memory
+  // accesses
+  SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE> smem(
+      smem_raw, COMPUTE_ROWS, COMPUTE_COLS, tile_width, tile_height,
+      args.opt.num_extra_operands);
+
+  // Find the starting diagonal of the distance matrix
   const unsigned int start_diag = (threadIdx.x * diags_per_thread) +
                                   blockIdx.x * (blockDim.x * diags_per_thread);
 
   // This is the index of the meta-diagonal that this thread block will work on
   const unsigned int meta_diagonal_idx = blockIdx.x;
 
-  // The first threads are acutally computing the trivial match between the same
-  // subsequence we exclude these from the calculation
+  // The first diagonals constitiure a trivial match between the same
+  // subsequence, we must exclude these from the calculation according to
+  // args.exclusion_lower
   uint32_t tile_start_col =
       meta_diagonal_idx * (BLOCKSZ * diags_per_thread) + args.exclusion_lower;
   uint32_t tile_start_row = 0;
 
-  // x is the global column of the distance matrix
-  // y is the global row of the distance matrix
-  // localX, localY are the local coordinates of the thread position in the tile
-  // it is working on
+  // Initialize the column and row position of the current thread
   thread_info.global_col = tile_start_col + threadIdx.x * diags_per_thread;
   thread_info.global_row = 0;
 
+  // num_diags is the number of diagonals in the distance matrix, less any
+  // diagonals at the end we are not computing
   const unsigned int num_diags = args.n_x - args.exclusion_upper;
 
   // Load the first dot product values
@@ -370,7 +431,7 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
   // Each threadblock finds all the distances on a 'metadiagonal'
   // We use a tiled approach for each thread block
   // The tiles are horizontal slices of the diagonal, think of a parallelogram
-  // cut from a diagonal slice of the distance matrix Each thread starts on the
+  // cut from a diagonal slice of the distance matrix. Each thread starts on the
   // first row and works its way down-right towards right side of the distance
   // matrix
   while (tile_start_col < args.n_x && tile_start_row < args.n_y) {
@@ -379,19 +440,23 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
                    tile_start_row);
     thread_info.local_col = threadIdx.x * diags_per_thread;
     thread_info.local_row = 0;
-    // Start of new tile, sync
+
+    // Start of new tile, sync so we don't have data races with shared memory
+    // initializaton
     __syncthreads();
 
     // There are 2 pathways here, most of the time we take the fast path (top),
-    // the last block (edge_tile) will take the slower path (bottom)
+    // the last tile in every thread-block will take the slower path (bottom)
     if (tile_start_col + tile_width < args.n_x &&
         tile_start_row + tile_height < args.n_y &&
         start_diag + diags_per_thread - 1 < num_diags) {
+      // Fast Path
       while (thread_info.local_row < tile_height) {
         tactic.DoIteration(thread_info, smem, args.opt);
       }
 
     } else if (start_diag < num_diags) {
+      // Slow Path
       while (thread_info.global_col < args.n_x &&
              thread_info.global_row < args.n_y &&
              thread_info.local_row < tile_height) {
@@ -411,6 +476,7 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
     // for this tile
     __syncthreads();
 
+    // Write back our best-so-far computed for this tile to global memory
     tactic.WriteBack(tile_start_col, tile_start_row, args.n_x, args.n_y,
                      smem.local_mp_col, smem.local_mp_row, profile_A,
                      profile_B);
@@ -498,14 +564,15 @@ int GetTileHeight(SCAMPPrecisionType dtype) {
 }
 
 int get_smem(bool computing_rows, bool computing_cols, int blocksz,
-             SCAMPPrecisionType intermediate_data_type, int profile_data_size) {
+             SCAMPPrecisionType intermediate_data_type, int profile_data_size,
+             int extra_operands) {
   constexpr int diags_per_thread = 4;
   constexpr int num_shared_variables = 3;
   int intermediate_data_size = FPTypeSize(intermediate_data_type);
   int tile_height = GetTileHeight(intermediate_data_type);
   int tile_width = blocksz * diags_per_thread + tile_height;
-  int smem = (tile_width + tile_height) * num_shared_variables *
-             intermediate_data_size;
+  int smem = (tile_width + tile_height) *
+             (num_shared_variables + extra_operands) * intermediate_data_size;
   if (computing_cols) {
     smem += tile_width * profile_data_size;
   }
@@ -634,7 +701,8 @@ SCAMPError_t gpu_kernel_self_join_upper(
                                          norms_B, tile_width, tile_height,
                                          exclusion, 0, args);
   uint64_t smem =
-      get_smem(true, true, blocksz, t, GetProfileTypeSize(profile_type));
+      get_smem(true, true, blocksz, t, GetProfileTypeSize(profile_type),
+               args.num_extra_operands);
   if (exclusion < tile_width) {
     switch (profile_type) {
       case PROFILE_TYPE_SUM_THRESH:
@@ -649,6 +717,12 @@ SCAMPError_t gpu_kernel_self_join_upper(
             reinterpret_cast<uint64_t *>(profile_A->at(PROFILE_TYPE_1NN_INDEX)),
             reinterpret_cast<uint64_t *>(profile_B->at(PROFILE_TYPE_1NN_INDEX)),
             t, true, true, blocksz, num_blocks, smem, s);
+      case PROFILE_TYPE_1NN:
+        return LaunchDoTile<float, PROFILE_TYPE_1NN, BLOCKSPERSM_SELF>(
+            tile_args,
+            reinterpret_cast<float *>(profile_A->at(PROFILE_TYPE_1NN)),
+            reinterpret_cast<float *>(profile_B->at(PROFILE_TYPE_1NN)), t, true,
+            true, blocksz, num_blocks, smem, s);
       default:
         return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
     }
@@ -675,7 +749,8 @@ SCAMPError_t gpu_kernel_self_join_lower(
                                          norms_A, tile_height, tile_width, 0,
                                          exclusion, args);
   uint64_t smem =
-      get_smem(true, true, blocksz, t, GetProfileTypeSize(profile_type));
+      get_smem(true, true, blocksz, t, GetProfileTypeSize(profile_type),
+               args.num_extra_operands);
   if (exclusion < tile_height) {
     switch (profile_type) {
       case PROFILE_TYPE_SUM_THRESH:
@@ -690,6 +765,12 @@ SCAMPError_t gpu_kernel_self_join_lower(
             reinterpret_cast<uint64_t *>(profile_B->at(PROFILE_TYPE_1NN_INDEX)),
             reinterpret_cast<uint64_t *>(profile_A->at(PROFILE_TYPE_1NN_INDEX)),
             t, true, true, blocksz, num_blocks, smem, s);
+      case PROFILE_TYPE_1NN:
+        return LaunchDoTile<float, PROFILE_TYPE_1NN, BLOCKSPERSM_SELF>(
+            tile_args,
+            reinterpret_cast<float *>(profile_B->at(PROFILE_TYPE_1NN)),
+            reinterpret_cast<float *>(profile_A->at(PROFILE_TYPE_1NN)), t, true,
+            true, blocksz, num_blocks, smem, s);
       default:
         return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
     }
@@ -726,8 +807,9 @@ SCAMPError_t gpu_kernel_ab_join_upper(
   SCAMPKernelInputArgs<double> tile_args(
       QT, df_A, df_B, dg_A, dg_B, norms_A, norms_B, tile_width, tile_height,
       exclusion_pair.first, exclusion_pair.second, args);
-  uint64_t smem = get_smem(computing_rows, true, blocksz, t,
-                           GetProfileTypeSize(profile_type));
+  uint64_t smem =
+      get_smem(computing_rows, true, blocksz, t,
+               GetProfileTypeSize(profile_type), args.num_extra_operands);
   if ((exclusion_pair.first + exclusion_pair.second) < tile_width) {
     switch (profile_type) {
       case PROFILE_TYPE_SUM_THRESH:
@@ -742,6 +824,12 @@ SCAMPError_t gpu_kernel_ab_join_upper(
             reinterpret_cast<uint64_t *>(profile_A->at(PROFILE_TYPE_1NN_INDEX)),
             reinterpret_cast<uint64_t *>(profile_B->at(PROFILE_TYPE_1NN_INDEX)),
             t, computing_rows, true, blocksz, num_blocks, smem, s);
+      case PROFILE_TYPE_1NN:
+        return LaunchDoTile<float, PROFILE_TYPE_1NN, BLOCKSPERSM_SELF>(
+            tile_args,
+            reinterpret_cast<float *>(profile_A->at(PROFILE_TYPE_1NN)),
+            reinterpret_cast<float *>(profile_B->at(PROFILE_TYPE_1NN)), t,
+            computing_rows, true, blocksz, num_blocks, smem, s);
       default:
         return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
     }
@@ -779,8 +867,9 @@ SCAMPError_t gpu_kernel_ab_join_lower(
   SCAMPKernelInputArgs<double> tile_args(
       QT, df_B, df_A, dg_B, dg_A, norms_B, norms_A, tile_height, tile_width,
       exclusion_pair.first, exclusion_pair.second, args);
-  uint64_t smem = get_smem(computing_rows, true, blocksz, t,
-                           GetProfileTypeSize(profile_type));
+  uint64_t smem =
+      get_smem(computing_rows, true, blocksz, t,
+               GetProfileTypeSize(profile_type), args.num_extra_operands);
   if (exclusion_pair.first + exclusion_pair.second < tile_height) {
     switch (profile_type) {
       case PROFILE_TYPE_SUM_THRESH:
@@ -795,6 +884,12 @@ SCAMPError_t gpu_kernel_ab_join_lower(
             reinterpret_cast<uint64_t *>(profile_B->at(PROFILE_TYPE_1NN_INDEX)),
             reinterpret_cast<uint64_t *>(profile_A->at(PROFILE_TYPE_1NN_INDEX)),
             t, true, computing_rows, blocksz, num_blocks, smem, s);
+      case PROFILE_TYPE_1NN:
+        return LaunchDoTile<float, PROFILE_TYPE_1NN, BLOCKSPERSM_SELF>(
+            tile_args,
+            reinterpret_cast<float *>(profile_B->at(PROFILE_TYPE_1NN)),
+            reinterpret_cast<float *>(profile_A->at(PROFILE_TYPE_1NN)), t, true,
+            computing_rows, blocksz, num_blocks, smem, s);
       default:
         return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
     }
