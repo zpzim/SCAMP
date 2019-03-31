@@ -60,8 +60,8 @@ class DoIterationStrategy<
     DISTANCE_TYPE distc6 = 0;
     DISTANCE_TYPE distc7 = 0;
 
-    // Load row values 2 at a time, load column values 4 at a time
-    int r = info.local_row >> 1;
+    // Load row values 4 at a time, load column values 4 at a time
+    int r = info.local_row >> 2;
     int c = info.local_col >> 2;
 
     // Preload the shared memory values we will use into registers
@@ -79,10 +79,10 @@ class DoIterationStrategy<
 
     // Due to a lack of registers, we only load these row values 2 at a
     // time
-    VEC2_DATA_TYPE dgr = reinterpret_cast<VEC2_DATA_TYPE *>(smem.dg_row)[r];
-    VEC2_DATA_TYPE dfr = reinterpret_cast<VEC2_DATA_TYPE *>(smem.df_row)[r];
-    VEC2_DATA_TYPE inormr =
-        reinterpret_cast<VEC2_DATA_TYPE *>(smem.inorm_row)[r];
+    VEC4_DATA_TYPE dgr = reinterpret_cast<VEC4_DATA_TYPE *>(smem.dg_row)[r];
+    VEC4_DATA_TYPE dfr = reinterpret_cast<VEC4_DATA_TYPE *>(smem.df_row)[r];
+    VEC4_DATA_TYPE inormr =
+        reinterpret_cast<VEC4_DATA_TYPE *>(smem.inorm_row)[r];
 
     // Do rows one at a time:
     _do_row.exec(info, distc1, distc2, distc3, distc4, inormc.x, inormc.y,
@@ -93,18 +93,13 @@ class DoIterationStrategy<
                  inormc.w, inormc2.x, inormr.y, dfc.y, dfc.z, dfc.w, dfc2.x,
                  dgc.y, dgc.z, dgc.w, dgc2.x, dfr.y, dgr.y, smem, args);
 
-    // Load the values for the next 2 rows
-    dgr = reinterpret_cast<VEC2_DATA_TYPE *>(smem.dg_row)[r + 1];
-    dfr = reinterpret_cast<VEC2_DATA_TYPE *>(smem.df_row)[r + 1];
-    inormr = reinterpret_cast<VEC2_DATA_TYPE *>(smem.inorm_row)[r + 1];
-
     _do_row.exec(info, distc3, distc4, distc5, distc6, inormc.z, inormc.w,
-                 inormc2.x, inormc2.y, inormr.x, dfc.z, dfc.w, dfc2.x, dfc2.y,
-                 dgc.z, dgc.w, dgc2.x, dgc2.y, dfr.x, dgr.x, smem, args);
+                 inormc2.x, inormc2.y, inormr.z, dfc.z, dfc.w, dfc2.x, dfc2.y,
+                 dgc.z, dgc.w, dgc2.x, dgc2.y, dfr.z, dgr.z, smem, args);
 
     _do_row.exec(info, distc4, distc5, distc6, distc7, inormc.w, inormc2.x,
-                 inormc2.y, inormc2.z, inormr.y, dfc.w, dfc2.x, dfc2.y, dfc2.z,
-                 dgc.w, dgc2.x, dgc2.y, dgc2.z, dfr.y, dgr.y, smem, args);
+                 inormc2.y, inormc2.z, inormr.w, dfc.w, dfc2.x, dfc2.y, dfc2.z,
+                 dgc.w, dgc2.x, dgc2.y, dgc2.z, dfr.w, dgr.w, smem, args);
 
     if (COMPUTE_COLS) {
       _update_cols.exec(distc1, distc2, distc3, distc4, distc5, distc6, distc7,
@@ -140,7 +135,7 @@ class DoIterationStrategy<
     float4 distc2 = make_float4(CC_MIN, CC_MIN, CC_MIN, CC_MIN);
     uint4 idxc, idxc2;
 
-    // Load row values 2 at a time, load column values 4 at a time
+    // Load row values 4 at a time, load column values 4 at a time
     int r = info.local_row >> 2;
     int c = info.local_col >> 2;
 
@@ -249,7 +244,7 @@ class DoIterationStrategy<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
     float4 distc = make_float4(CC_MIN, CC_MIN, CC_MIN, CC_MIN);
     float4 distc2 = make_float4(CC_MIN, CC_MIN, CC_MIN, CC_MIN);
 
-    // Load row values 2 at a time, load column values 4 at a time
+    // Load row values 4 at a time, load column values 4 at a time
     int r = info.local_row >> 2;
     int c = info.local_col >> 2;
 
