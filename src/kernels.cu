@@ -10,7 +10,6 @@ constexpr int BLOCKSPERSM_SELF = 2;
 constexpr int BLOCKSPERSM_AB = 2;
 constexpr int TILE_HEIGHT_SP = 200;
 constexpr int TILE_HEIGHT_DP = 200;
-constexpr float CC_MIN = -FLT_MAX;
 
 template <typename T>
 struct SCAMPKernelInputArgs {
@@ -48,7 +47,7 @@ struct SCAMPKernelInputArgs {
   OptionalArgs opt;
 };
 
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE>
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, SCAMPProfileType type>
 struct SCAMPSmem {
   __device__ SCAMPSmem(char *smem, bool compute_rows, bool compute_columns,
                        int tile_width, int tile_height, int extra_operands) {
@@ -258,17 +257,9 @@ __device__ inline void MPMax(const float d1, const float d2,
   }
 }
 
-// Computes max(a,b) with index and stores the result in a
-__device__ inline void MPMax2(float &d1, const float &d2, unsigned int &i1,
-                              const unsigned int &i2) {
-  if (d2 > d1) {
-    d1 = d2;
-    i1 = i2;
-  }
-}
 template <typename T>
-__device__ inline T max4(T &d1, T &d2, T &d3, T &d4, const uint32_t init,
-                         uint32_t &idx) {
+__device__ inline T max4(const T &d1, const T &d2, const T &d3, const T &d4,
+                         const uint32_t init, uint32_t &idx) {
   float ret = d1;
   idx = init;
   if (d2 > ret) {
@@ -312,24 +303,25 @@ template <typename DATA_TYPE, typename VEC2_DATA_TYPE, typename VEC4_DATA_TYPE,
 class SCAMPTactic {
  public:
   __device__ SCAMPTactic() {}
-  __device__ void InitMem(SCAMPKernelInputArgs<double> &args,
-                          SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE> &smem,
-                          PROFILE_DATA_TYPE *__restrict__ profile_a,
-                          PROFILE_DATA_TYPE *__restrict__ profile_b,
-                          uint32_t col_start, uint32_t row_start) {
+  __device__ void InitMem(
+      SCAMPKernelInputArgs<double> &args,
+      SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
+      PROFILE_DATA_TYPE *__restrict__ profile_a,
+      PROFILE_DATA_TYPE *__restrict__ profile_b, uint32_t col_start,
+      uint32_t row_start) {
     _init_mem.exec(args, smem, profile_a, profile_b, col_start, row_start);
   }
   __device__ inline __attribute__((always_inline)) void DoIteration(
       SCAMPThreadInfo<ACCUM_TYPE> &info,
-      SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE> &smem, OptionalArgs &args) {
+      SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
+      OptionalArgs &args) {
     _do_iteration.exec(info, smem, args);
   }
-  __device__ inline void DoEdge(int i, int j, int x, int y, int n,
-                                ACCUM_TYPE &cov1, ACCUM_TYPE &cov2,
-                                ACCUM_TYPE &cov3, ACCUM_TYPE &cov4, size_t diag,
-                                size_t num_diags,
-                                SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE> &smem,
-                                OptionalArgs &args) {
+  __device__ inline void DoEdge(
+      int i, int j, int x, int y, int n, ACCUM_TYPE &cov1, ACCUM_TYPE &cov2,
+      ACCUM_TYPE &cov3, ACCUM_TYPE &cov4, size_t diag, size_t num_diags,
+      SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
+      OptionalArgs &args) {
     _do_edge.exec(i, j, x, y, n, cov1, cov2, cov3, cov4, diag, num_diags, smem,
                   args);
   }
@@ -382,7 +374,7 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
 
   // Wrap the shared memory in  a struct which contains handles shared memory
   // accesses
-  SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE> smem(
+  SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> smem(
       smem_raw, COMPUTE_ROWS, COMPUTE_COLS, tile_width, tile_height,
       args.opt.num_extra_operands);
 
@@ -582,8 +574,8 @@ int get_smem(bool computing_rows, bool computing_cols, int blocksz,
   return smem;
 }
 
-template <typename PROFILE_DATA_TYPE, SCAMPProfileType PROFILE_TYPE,
-          int BLOCKSPERSM>
+template <typename PROFILE_DATA_TYPE, typename DISTANCE_TYPE,
+          SCAMPProfileType PROFILE_TYPE, int BLOCKSPERSM>
 SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
                           PROFILE_DATA_TYPE *profile_A,
                           PROFILE_DATA_TYPE *profile_B,
@@ -597,21 +589,21 @@ SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
     constexpr bool COMPUTE_ROWS = true;
     switch (fp_type) {
       case PRECISION_DOUBLE: {
-        do_tile<double, double2, double4, double, PROFILE_DATA_TYPE, double,
-                COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
-                TILE_HEIGHT_DP, BLOCKSZ_DP>
+        do_tile<double, double2, double4, double, PROFILE_DATA_TYPE,
+                DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE,
+                BLOCKSPERSM, TILE_HEIGHT_DP, BLOCKSZ_DP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
       case PRECISION_MIXED: {
-        do_tile<float, float2, float4, double, PROFILE_DATA_TYPE, float,
+        do_tile<float, float2, float4, double, PROFILE_DATA_TYPE, DISTANCE_TYPE,
                 COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
                 TILE_HEIGHT_SP, BLOCKSZ_SP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
       case PRECISION_SINGLE: {
-        do_tile<float, float2, float4, float, PROFILE_DATA_TYPE, float,
+        do_tile<float, float2, float4, float, PROFILE_DATA_TYPE, DISTANCE_TYPE,
                 COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
                 TILE_HEIGHT_SP, BLOCKSZ_SP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
@@ -627,21 +619,21 @@ SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
     constexpr bool COMPUTE_ROWS = false;
     switch (fp_type) {
       case PRECISION_DOUBLE: {
-        do_tile<double, double2, double4, double, PROFILE_DATA_TYPE, double,
-                COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
-                TILE_HEIGHT_DP, BLOCKSZ_DP>
+        do_tile<double, double2, double4, double, PROFILE_DATA_TYPE,
+                DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE,
+                BLOCKSPERSM, TILE_HEIGHT_DP, BLOCKSZ_DP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
       case PRECISION_MIXED: {
-        do_tile<float, float2, float4, double, PROFILE_DATA_TYPE, float,
+        do_tile<float, float2, float4, double, PROFILE_DATA_TYPE, DISTANCE_TYPE,
                 COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
                 TILE_HEIGHT_SP, BLOCKSZ_SP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
       case PRECISION_SINGLE: {
-        do_tile<float, float2, float4, float, PROFILE_DATA_TYPE, float,
+        do_tile<float, float2, float4, float, PROFILE_DATA_TYPE, DISTANCE_TYPE,
                 COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
                 TILE_HEIGHT_SP, BLOCKSZ_SP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
@@ -655,21 +647,21 @@ SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
     constexpr bool COMPUTE_ROWS = true;
     switch (fp_type) {
       case PRECISION_DOUBLE: {
-        do_tile<double, double2, double4, double, PROFILE_DATA_TYPE, double,
-                COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
-                TILE_HEIGHT_DP, BLOCKSZ_DP>
+        do_tile<double, double2, double4, double, PROFILE_DATA_TYPE,
+                DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE,
+                BLOCKSPERSM, TILE_HEIGHT_DP, BLOCKSZ_DP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
       case PRECISION_MIXED: {
-        do_tile<float, float2, float4, double, PROFILE_DATA_TYPE, float,
+        do_tile<float, float2, float4, double, PROFILE_DATA_TYPE, DISTANCE_TYPE,
                 COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
                 TILE_HEIGHT_SP, BLOCKSZ_SP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
       case PRECISION_SINGLE: {
-        do_tile<float, float2, float4, float, PROFILE_DATA_TYPE, float,
+        do_tile<float, float2, float4, float, PROFILE_DATA_TYPE, DISTANCE_TYPE,
                 COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
                 TILE_HEIGHT_SP, BLOCKSZ_SP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
@@ -706,19 +698,21 @@ SCAMPError_t gpu_kernel_self_join_upper(
   if (exclusion < tile_width) {
     switch (profile_type) {
       case PROFILE_TYPE_SUM_THRESH:
-        return LaunchDoTile<double, PROFILE_TYPE_SUM_THRESH, BLOCKSPERSM_SELF>(
+        return LaunchDoTile<double, double, PROFILE_TYPE_SUM_THRESH,
+                            BLOCKSPERSM_SELF>(
             tile_args,
             reinterpret_cast<double *>(profile_A->at(PROFILE_TYPE_SUM_THRESH)),
             reinterpret_cast<double *>(profile_B->at(PROFILE_TYPE_SUM_THRESH)),
             t, true, true, blocksz, num_blocks, smem, s);
       case PROFILE_TYPE_1NN_INDEX:
-        return LaunchDoTile<uint64_t, PROFILE_TYPE_1NN_INDEX, BLOCKSPERSM_SELF>(
+        return LaunchDoTile<uint64_t, float, PROFILE_TYPE_1NN_INDEX,
+                            BLOCKSPERSM_SELF>(
             tile_args,
             reinterpret_cast<uint64_t *>(profile_A->at(PROFILE_TYPE_1NN_INDEX)),
             reinterpret_cast<uint64_t *>(profile_B->at(PROFILE_TYPE_1NN_INDEX)),
             t, true, true, blocksz, num_blocks, smem, s);
       case PROFILE_TYPE_1NN:
-        return LaunchDoTile<float, PROFILE_TYPE_1NN, BLOCKSPERSM_SELF>(
+        return LaunchDoTile<float, float, PROFILE_TYPE_1NN, BLOCKSPERSM_SELF>(
             tile_args,
             reinterpret_cast<float *>(profile_A->at(PROFILE_TYPE_1NN)),
             reinterpret_cast<float *>(profile_B->at(PROFILE_TYPE_1NN)), t, true,
@@ -754,19 +748,21 @@ SCAMPError_t gpu_kernel_self_join_lower(
   if (exclusion < tile_height) {
     switch (profile_type) {
       case PROFILE_TYPE_SUM_THRESH:
-        return LaunchDoTile<double, PROFILE_TYPE_SUM_THRESH, BLOCKSPERSM_SELF>(
+        return LaunchDoTile<double, double, PROFILE_TYPE_SUM_THRESH,
+                            BLOCKSPERSM_SELF>(
             tile_args,
             reinterpret_cast<double *>(profile_B->at(PROFILE_TYPE_SUM_THRESH)),
             reinterpret_cast<double *>(profile_A->at(PROFILE_TYPE_SUM_THRESH)),
             t, true, true, blocksz, num_blocks, smem, s);
       case PROFILE_TYPE_1NN_INDEX:
-        return LaunchDoTile<uint64_t, PROFILE_TYPE_1NN_INDEX, BLOCKSPERSM_SELF>(
+        return LaunchDoTile<uint64_t, float, PROFILE_TYPE_1NN_INDEX,
+                            BLOCKSPERSM_SELF>(
             tile_args,
             reinterpret_cast<uint64_t *>(profile_B->at(PROFILE_TYPE_1NN_INDEX)),
             reinterpret_cast<uint64_t *>(profile_A->at(PROFILE_TYPE_1NN_INDEX)),
             t, true, true, blocksz, num_blocks, smem, s);
       case PROFILE_TYPE_1NN:
-        return LaunchDoTile<float, PROFILE_TYPE_1NN, BLOCKSPERSM_SELF>(
+        return LaunchDoTile<float, float, PROFILE_TYPE_1NN, BLOCKSPERSM_SELF>(
             tile_args,
             reinterpret_cast<float *>(profile_B->at(PROFILE_TYPE_1NN)),
             reinterpret_cast<float *>(profile_A->at(PROFILE_TYPE_1NN)), t, true,
@@ -813,19 +809,21 @@ SCAMPError_t gpu_kernel_ab_join_upper(
   if ((exclusion_pair.first + exclusion_pair.second) < tile_width) {
     switch (profile_type) {
       case PROFILE_TYPE_SUM_THRESH:
-        return LaunchDoTile<double, PROFILE_TYPE_SUM_THRESH, BLOCKSPERSM_AB>(
+        return LaunchDoTile<double, double, PROFILE_TYPE_SUM_THRESH,
+                            BLOCKSPERSM_AB>(
             tile_args,
             reinterpret_cast<double *>(profile_A->at(PROFILE_TYPE_SUM_THRESH)),
             reinterpret_cast<double *>(profile_B->at(PROFILE_TYPE_SUM_THRESH)),
             t, computing_rows, true, blocksz, num_blocks, smem, s);
       case PROFILE_TYPE_1NN_INDEX:
-        return LaunchDoTile<uint64_t, PROFILE_TYPE_1NN_INDEX, BLOCKSPERSM_AB>(
+        return LaunchDoTile<uint64_t, float, PROFILE_TYPE_1NN_INDEX,
+                            BLOCKSPERSM_AB>(
             tile_args,
             reinterpret_cast<uint64_t *>(profile_A->at(PROFILE_TYPE_1NN_INDEX)),
             reinterpret_cast<uint64_t *>(profile_B->at(PROFILE_TYPE_1NN_INDEX)),
             t, computing_rows, true, blocksz, num_blocks, smem, s);
       case PROFILE_TYPE_1NN:
-        return LaunchDoTile<float, PROFILE_TYPE_1NN, BLOCKSPERSM_SELF>(
+        return LaunchDoTile<float, float, PROFILE_TYPE_1NN, BLOCKSPERSM_SELF>(
             tile_args,
             reinterpret_cast<float *>(profile_A->at(PROFILE_TYPE_1NN)),
             reinterpret_cast<float *>(profile_B->at(PROFILE_TYPE_1NN)), t,
@@ -873,19 +871,21 @@ SCAMPError_t gpu_kernel_ab_join_lower(
   if (exclusion_pair.first + exclusion_pair.second < tile_height) {
     switch (profile_type) {
       case PROFILE_TYPE_SUM_THRESH:
-        return LaunchDoTile<double, PROFILE_TYPE_SUM_THRESH, BLOCKSPERSM_AB>(
+        return LaunchDoTile<double, float, PROFILE_TYPE_SUM_THRESH,
+                            BLOCKSPERSM_AB>(
             tile_args,
             reinterpret_cast<double *>(profile_B->at(PROFILE_TYPE_SUM_THRESH)),
             reinterpret_cast<double *>(profile_A->at(PROFILE_TYPE_SUM_THRESH)),
             t, true, computing_rows, blocksz, num_blocks, smem, s);
       case PROFILE_TYPE_1NN_INDEX:
-        return LaunchDoTile<uint64_t, PROFILE_TYPE_1NN_INDEX, BLOCKSPERSM_AB>(
+        return LaunchDoTile<uint64_t, float, PROFILE_TYPE_1NN_INDEX,
+                            BLOCKSPERSM_AB>(
             tile_args,
             reinterpret_cast<uint64_t *>(profile_B->at(PROFILE_TYPE_1NN_INDEX)),
             reinterpret_cast<uint64_t *>(profile_A->at(PROFILE_TYPE_1NN_INDEX)),
             t, true, computing_rows, blocksz, num_blocks, smem, s);
       case PROFILE_TYPE_1NN:
-        return LaunchDoTile<float, PROFILE_TYPE_1NN, BLOCKSPERSM_SELF>(
+        return LaunchDoTile<float, float, PROFILE_TYPE_1NN, BLOCKSPERSM_SELF>(
             tile_args,
             reinterpret_cast<float *>(profile_B->at(PROFILE_TYPE_1NN)),
             reinterpret_cast<float *>(profile_A->at(PROFILE_TYPE_1NN)), t, true,

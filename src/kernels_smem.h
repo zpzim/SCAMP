@@ -13,11 +13,12 @@ template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, bool COMPUTE_ROWS,
           SCAMPProfileType PROFILE_TYPE, typename = void>
 class InitMemStrategy : public SCAMPStrategy {
  public:
-  __device__ void exec(SCAMPKernelInputArgs<double> &args,
-                       SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE> &smem,
-                       PROFILE_DATA_TYPE *__restrict__ profile_a,
-                       PROFILE_DATA_TYPE *__restrict__ profile_B,
-                       uint32_t col_start, uint32_t row_start) {
+  __device__ void exec(
+      SCAMPKernelInputArgs<double> &args,
+      SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
+      PROFILE_DATA_TYPE *__restrict__ profile_a,
+      PROFILE_DATA_TYPE *__restrict__ profile_B, uint32_t col_start,
+      uint32_t row_start) {
     assert(false);
   }
 
@@ -34,11 +35,12 @@ class InitMemStrategy<DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
     : public SCAMPStrategy {
  public:
   __device__ InitMemStrategy() {}
-  __device__ void exec(SCAMPKernelInputArgs<double> &args,
-                       SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE> &smem,
-                       PROFILE_DATA_TYPE *__restrict__ profile_a,
-                       PROFILE_DATA_TYPE *__restrict__ profile_B,
-                       uint32_t col_start, uint32_t row_start) {
+  __device__ void exec(
+      SCAMPKernelInputArgs<double> &args,
+      SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
+      PROFILE_DATA_TYPE *__restrict__ profile_a,
+      PROFILE_DATA_TYPE *__restrict__ profile_B, uint32_t col_start,
+      uint32_t row_start) {
     int global_position = col_start + threadIdx.x;
     int local_position = threadIdx.x;
     while (local_position < tile_width && global_position < args.n_x) {
@@ -77,11 +79,12 @@ class InitMemStrategy<DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
     : public SCAMPStrategy {
  public:
   __device__ InitMemStrategy() {}
-  __device__ virtual void exec(SCAMPKernelInputArgs<double> &args,
-                               SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE> &smem,
-                               PROFILE_DATA_TYPE *__restrict__ profile_a,
-                               PROFILE_DATA_TYPE *__restrict__ profile_b,
-                               uint32_t col_start, uint32_t row_start) {
+  __device__ virtual void exec(
+      SCAMPKernelInputArgs<double> &args,
+      SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
+      PROFILE_DATA_TYPE *__restrict__ profile_a,
+      PROFILE_DATA_TYPE *__restrict__ profile_b, uint32_t col_start,
+      uint32_t row_start) {
     int global_position = col_start + threadIdx.x;
     int local_position = threadIdx.x;
     while (local_position < tile_width && global_position < args.n_x) {

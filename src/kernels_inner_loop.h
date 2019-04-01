@@ -4,240 +4,6 @@
 //
 //
 // STRATEGIES FOR COMPUTING A THREAD-ROW OF THE
-// DISTANCE MATRIX (common, optimized case)
-//
-//
-//////////////////////////////////////////////////
-
-// Catch-all strategy, should never be used
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
-          typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
-          SCAMPProfileType PROFILE_TYPE, typename = void>
-class DoRowOptStrategy : SCAMPStrategy {
- public:
-  __device__ void exec(ACCUM_TYPE &cov1, ACCUM_TYPE &cov2, ACCUM_TYPE &cov3,
-                       ACCUM_TYPE &cov4, DISTANCE_TYPE &distc1,
-                       DISTANCE_TYPE &distc2, DISTANCE_TYPE &distc3,
-                       DISTANCE_TYPE &distc4, const DATA_TYPE &inormcx,
-                       const DATA_TYPE &inormcy, const DATA_TYPE &inormcz,
-                       const DATA_TYPE &inormcw, const DATA_TYPE &inormr,
-                       const DATA_TYPE &df_colx, const DATA_TYPE &df_coly,
-                       const DATA_TYPE &df_colz, const DATA_TYPE &df_colw,
-                       const DATA_TYPE &dg_colx, const DATA_TYPE &dg_coly,
-                       const DATA_TYPE &dg_colz, const DATA_TYPE &dg_colw,
-                       const DATA_TYPE &df_row, const DATA_TYPE &dg_row,
-                       const int &row, const int &col, const int &global_row,
-                       const int &global_col,
-                       PROFILE_DATA_TYPE *__restrict__ mp_row,
-                       OptionalArgs &args) {
-    assert(false);
-  }
-
- protected:
-  __device__ DoRowOptStrategy() {}
-};
-
-// Sum-threshold join strategy
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
-          typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
-          SCAMPProfileType PROFILE_TYPE>
-class DoRowOptStrategy<
-    DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE, COMPUTE_ROWS,
-    COMPUTE_COLS, PROFILE_TYPE,
-    std::enable_if_t<PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH>>
-    : public SCAMPStrategy {
- public:
-  __device__ DoRowOptStrategy() {}
-  __device__ inline __attribute__((always_inline)) void exec(
-      SCAMPThreadInfo<ACCUM_TYPE> &info, DISTANCE_TYPE &distc1,
-      DISTANCE_TYPE &distc2, DISTANCE_TYPE &distc3, DISTANCE_TYPE &distc4,
-      const DATA_TYPE &inormcx, const DATA_TYPE &inormcy,
-      const DATA_TYPE &inormcz, const DATA_TYPE &inormcw,
-      const DATA_TYPE &inormr, const DATA_TYPE &df_colx,
-      const DATA_TYPE &df_coly, const DATA_TYPE &df_colz,
-      const DATA_TYPE &df_colw, const DATA_TYPE &dg_colx,
-      const DATA_TYPE &dg_coly, const DATA_TYPE &dg_colz,
-      const DATA_TYPE &dg_colw, const DATA_TYPE &df_row,
-      const DATA_TYPE &dg_row, SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE> &smem,
-      OptionalArgs &args) {
-    DISTANCE_TYPE distx = info.cov1 * inormcx * inormr;
-    DISTANCE_TYPE disty = info.cov2 * inormcy * inormr;
-    DISTANCE_TYPE distz = info.cov3 * inormcz * inormr;
-    DISTANCE_TYPE distw = info.cov4 * inormcw * inormr;
-    DISTANCE_TYPE thresh = args.threshold;
-
-    // Compute the next covariance values
-    info.cov1 = info.cov1 + df_colx * dg_row + dg_colx * df_row;
-    info.cov2 = info.cov2 + df_coly * dg_row + dg_coly * df_row;
-    info.cov3 = info.cov3 + df_colz * dg_row + dg_colz * df_row;
-    info.cov4 = info.cov4 + df_colw * dg_row + dg_colw * df_row;
-
-    DISTANCE_TYPE count_row = 0;
-
-    if (distx > thresh) {
-      if (COMPUTE_ROWS) {
-        count_row += distx;
-      }
-      if (COMPUTE_COLS) {
-        distc1 += distx;
-      }
-    }
-    if (disty > thresh) {
-      if (COMPUTE_ROWS) {
-        count_row += disty;
-      }
-      if (COMPUTE_COLS) {
-        distc2 += disty;
-      }
-    }
-    if (distz > thresh) {
-      if (COMPUTE_ROWS) {
-        count_row += distz;
-      }
-      if (COMPUTE_COLS) {
-        distc3 += distz;
-      }
-    }
-    if (distw > thresh) {
-      if (COMPUTE_ROWS) {
-        count_row += distw;
-      }
-      if (COMPUTE_COLS) {
-        distc4 += distw;
-      }
-    }
-    // coalesce all row updates to lane 0 of each warp and atomically update
-    // This way is more efficient than atomics when we expect a lot of updates
-    if (COMPUTE_ROWS) {
-#pragma unroll
-      for (int i = 16; i >= 1; i /= 2) {
-        count_row += __shfl_down_sync(0xffffffff, count_row, i);
-      }
-      if ((threadIdx.x & 0x1f) == 0) {
-        do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_BLOCK>(
-            smem.local_mp_row + info.local_row, count_row);
-      }
-    }
-    info.local_row++;
-    info.local_col++;
-  }
-};
-
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
-          typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
-          SCAMPProfileType PROFILE_TYPE>
-class DoRowOptStrategy<
-    DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE, COMPUTE_ROWS,
-    COMPUTE_COLS, PROFILE_TYPE,
-    std::enable_if_t<PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX>> {
- public:
-  __device__ DoRowOptStrategy() {}
-  __device__ inline __attribute__((always_inline)) void exec(
-      SCAMPThreadInfo<ACCUM_TYPE> &info, DISTANCE_TYPE &distc1,
-      DISTANCE_TYPE &distc2, DISTANCE_TYPE &distc3, DISTANCE_TYPE &distc4,
-      uint32_t &idxc1, uint32_t &idxc2, uint32_t &idxc3, uint32_t &idxc4,
-      const DATA_TYPE &inormcx, const DATA_TYPE &inormcy,
-      const DATA_TYPE &inormcz, const DATA_TYPE &inormcw,
-      const DATA_TYPE &inormr, const DATA_TYPE &df_colx,
-      const DATA_TYPE &df_coly, const DATA_TYPE &df_colz,
-      const DATA_TYPE &df_colw, const DATA_TYPE &dg_colx,
-      const DATA_TYPE &dg_coly, const DATA_TYPE &dg_colz,
-      const DATA_TYPE &dg_colw, const DATA_TYPE &df_row,
-      const DATA_TYPE &dg_row, float &curr_mp_row_val,
-      SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE> &smem, OptionalArgs &args) {
-    DISTANCE_TYPE distx = info.cov1 * inormcx * inormr;
-    DISTANCE_TYPE disty = info.cov2 * inormcy * inormr;
-    DISTANCE_TYPE distz = info.cov3 * inormcz * inormr;
-    DISTANCE_TYPE distw = info.cov4 * inormcw * inormr;
-
-    // Compute the next covariance values
-    info.cov1 = info.cov1 + df_colx * dg_row + dg_colx * df_row;
-    info.cov2 = info.cov2 + df_coly * dg_row + dg_coly * df_row;
-    info.cov3 = info.cov3 + df_colz * dg_row + dg_colz * df_row;
-    info.cov4 = info.cov4 + df_colw * dg_row + dg_colw * df_row;
-    // Update the column best-so-far values
-
-    if (COMPUTE_COLS) {
-      MPMax2(distc1, distx, idxc1, info.global_row);
-      MPMax2(distc2, disty, idxc2, info.global_row);
-      MPMax2(distc3, distz, idxc3, info.global_row);
-      MPMax2(distc4, distw, idxc4, info.global_row);
-    }
-
-    if (COMPUTE_ROWS) {
-      // We take the maximum of the columns we computed for the row
-      // And use that value to check the matrix profile
-      uint32_t idx;
-      DISTANCE_TYPE d =
-          max4<DISTANCE_TYPE>(distx, disty, distz, distw, info.global_col, idx);
-      MPatomicMax_check((uint64_t *)(smem.local_mp_row + info.local_row), d,
-                        idx, curr_mp_row_val);
-    }
-
-    info.local_row++;
-    info.local_col++;
-    info.global_row++;
-    info.global_col++;
-  }
-};
-
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
-          typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
-          SCAMPProfileType PROFILE_TYPE>
-class DoRowOptStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-                       COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE,
-                       std::enable_if_t<PROFILE_TYPE == PROFILE_TYPE_1NN>> {
- public:
-  __device__ DoRowOptStrategy() {}
-  __device__ inline __attribute__((always_inline)) void exec(
-      SCAMPThreadInfo<ACCUM_TYPE> &info, float &distc1, float &distc2,
-      float &distc3, float &distc4, const DATA_TYPE &inormcx,
-      const DATA_TYPE &inormcy, const DATA_TYPE &inormcz,
-      const DATA_TYPE &inormcw, const DATA_TYPE &inormr,
-      const DATA_TYPE &df_colx, const DATA_TYPE &df_coly,
-      const DATA_TYPE &df_colz, const DATA_TYPE &df_colw,
-      const DATA_TYPE &dg_colx, const DATA_TYPE &dg_coly,
-      const DATA_TYPE &dg_colz, const DATA_TYPE &dg_colw,
-      const DATA_TYPE &df_row, const DATA_TYPE &dg_row, float &curr_mp_row_val,
-      SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE> &smem, OptionalArgs &args) {
-    float distx = info.cov1 * inormcx * inormr;
-    float disty = info.cov2 * inormcy * inormr;
-    float distz = info.cov3 * inormcz * inormr;
-    float distw = info.cov4 * inormcw * inormr;
-
-    // Compute the next covariance values
-    info.cov1 = info.cov1 + df_colx * dg_row + dg_colx * df_row;
-    info.cov2 = info.cov2 + df_coly * dg_row + dg_coly * df_row;
-    info.cov3 = info.cov3 + df_colz * dg_row + dg_colz * df_row;
-    info.cov4 = info.cov4 + df_colw * dg_row + dg_colw * df_row;
-    // Update the column best-so-far values
-
-    if (COMPUTE_COLS) {
-      distc1 = fmaxf(distc1, distx);
-      distc2 = fmaxf(distc2, disty);
-      distc3 = fmaxf(distc3, distz);
-      distc4 = fmaxf(distc4, distw);
-    }
-
-    if (COMPUTE_ROWS) {
-      // We take the maximum of the columns we computed for the row
-      // And use that value to check the matrix profile
-      float d = fmaxf(fmaxf(distx, disty), fmaxf(distz, distw));
-      fAtomicMax_check<ATOMIC_BLOCK>(smem.local_mp_row + info.local_row, d,
-                                     curr_mp_row_val);
-    }
-
-    info.local_row++;
-    info.local_col++;
-    info.global_row++;
-    info.global_col++;
-  }
-};
-
-/////////////////////////////////////////////////////
-//
-//
-// STRATEGIES FOR COMPUTING A THREAD-ROW OF THE
 // DISTANCE MATRIX (uncommon, edge case)
 //
 // Slow path (edge tiles)
@@ -252,12 +18,11 @@ template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
           SCAMPProfileType PROFILE_TYPE, typename = void>
 class DoRowEdgeStrategy : SCAMPStrategy {
  public:
-  __device__ inline void exec(int i, int j, int x, int y, int n,
-                              ACCUM_TYPE &cov1, ACCUM_TYPE &cov2,
-                              ACCUM_TYPE &cov3, ACCUM_TYPE &cov4, size_t diag,
-                              size_t num_diags,
-                              SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE> &smem,
-                              OptionalArgs &args) {
+  __device__ inline void exec(
+      int i, int j, int x, int y, int n, ACCUM_TYPE &cov1, ACCUM_TYPE &cov2,
+      ACCUM_TYPE &cov3, ACCUM_TYPE &cov4, size_t diag, size_t num_diags,
+      SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
+      OptionalArgs &args) {
     assert(false);
   }
 
@@ -274,12 +39,11 @@ class DoRowEdgeStrategy<
     std::enable_if_t<PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH>> : SCAMPStrategy {
  public:
   __device__ DoRowEdgeStrategy() {}
-  __device__ inline void exec(int i, int j, int x, int y, int n,
-                              ACCUM_TYPE &cov1, ACCUM_TYPE &cov2,
-                              ACCUM_TYPE &cov3, ACCUM_TYPE &cov4, size_t diag,
-                              size_t num_diags,
-                              SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE> &smem,
-                              OptionalArgs &args) {
+  __device__ inline void exec(
+      int i, int j, int x, int y, int n, ACCUM_TYPE &cov1, ACCUM_TYPE &cov2,
+      ACCUM_TYPE &cov3, ACCUM_TYPE &cov4, size_t diag, size_t num_diags,
+      SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
+      OptionalArgs &args) {
     DISTANCE_TYPE distr = 0;
     DISTANCE_TYPE distx, disty, distz, distw;
     DISTANCE_TYPE thresh = static_cast<DISTANCE_TYPE>(args.threshold);
@@ -356,12 +120,11 @@ class DoRowEdgeStrategy<
     std::enable_if_t<PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX>> : SCAMPStrategy {
  public:
   __device__ DoRowEdgeStrategy() {}
-  __device__ inline void exec(int i, int j, int x, int y, int n,
-                              ACCUM_TYPE &cov1, ACCUM_TYPE &cov2,
-                              ACCUM_TYPE &cov3, ACCUM_TYPE &cov4, size_t diag,
-                              size_t num_diags,
-                              SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE> &smem,
-                              OptionalArgs &args) {
+  __device__ inline void exec(
+      int i, int j, int x, int y, int n, ACCUM_TYPE &cov1, ACCUM_TYPE &cov2,
+      ACCUM_TYPE &cov3, ACCUM_TYPE &cov4, size_t diag, size_t num_diags,
+      SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
+      OptionalArgs &args) {
     float dist_row;
     uint32_t idx_row;
     float distx;
@@ -433,12 +196,11 @@ class DoRowEdgeStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
     : SCAMPStrategy {
  public:
   __device__ DoRowEdgeStrategy() {}
-  __device__ inline void exec(int i, int j, int x, int y, int n,
-                              ACCUM_TYPE &cov1, ACCUM_TYPE &cov2,
-                              ACCUM_TYPE &cov3, ACCUM_TYPE &cov4, size_t diag,
-                              size_t num_diags,
-                              SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE> &smem,
-                              OptionalArgs &args) {
+  __device__ inline void exec(
+      int i, int j, int x, int y, int n, ACCUM_TYPE &cov1, ACCUM_TYPE &cov2,
+      ACCUM_TYPE &cov3, ACCUM_TYPE &cov4, size_t diag, size_t num_diags,
+      SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
+      OptionalArgs &args) {
     float dist_row;
     float distx;
     float disty;

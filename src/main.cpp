@@ -93,6 +93,7 @@ void readFile(const std::string &filename, std::vector<DTYPE> &v,
   while (f >> num) {
     v.push_back(num);
   }
+  std::cout << "Read " << v.size() << " values from file " << filename << std::endl;
 }
 
 std::vector<int> ParseIntList(const std::string &s) {
@@ -167,9 +168,9 @@ bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
       auto arr = p.data().Get(0).float_value().value();
       for (int i = 0; i < arr.size(); ++i) {
         if (FLAGS_output_pearson) {
-          mp_out << std::setprecision(10) << arr[i] << std::endl;
+          mp_out << std::setprecision(10) << arr.Get(i) << std::endl;
         } else {
-          mp_out << std::setprecision(10) << ConvertToEuclidean<float>(arr[i])
+          mp_out << std::setprecision(10) << ConvertToEuclidean<float>(arr.Get(i))
                  << std::endl;
         }
       }
