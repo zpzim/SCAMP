@@ -63,8 +63,11 @@ __device__ inline void update_row(
   DISTANCE_TYPE sum = 0;
 #pragma unroll 4
   for (int i = 0; i < 4; ++i) {
-    if (dist[i] > args.threshold) {
-      sum += dist[i];
+    //if (dist[i] > args.threshold) {
+      //sum += dist[i];
+    //}
+    if (abs(dist[i]) > args.threshold) {
+      sum += abs(dist[i]);
     }
   }
 #pragma unroll
@@ -160,9 +163,12 @@ __device__ inline void merge_to_column(
     unsigned int best_so_far_index[7], const OptionalArgs args) {
 #pragma unroll 4
   for (int i = 0; i < 4; ++i) {
-    if (dists_to_merge[i] > args.threshold) {
-      best_so_far[iter + i] += dists_to_merge[i];
-    }
+    //if (dists_to_merge[i] > args.threshold) {
+    //  best_so_far[iter + i] += dists_to_merge[i];
+    //}
+      if (abs(dists_to_merge[i]) > args.threshold) {
+        best_so_far[iter + i] += abs(dists_to_merge[i]);
+      }
   }
 }
 

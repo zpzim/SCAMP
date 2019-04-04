@@ -22,7 +22,7 @@ DEFINE_bool(
     no_gpu, false,
     "If true SCAMP will not use any GPUs to compute the matrix profile");
 DEFINE_int32(max_tile_size, 1 << 20, "Maximum tile size SCAMP will use");
-DEFINE_int32(window, -1, "Length of subsequences to search for");
+DEFINE_string(window, "", "Length of subsequences to search for");
 DEFINE_double(
     threshold, std::nan("NaN"),
     "Distance threshold for frequency and sum calculations, we will only count "
@@ -139,56 +139,104 @@ SCAMP::SCAMPProfileType ParseProfileType(const std::string &s) {
 }
 
 template <typename T>
-T ConvertToEuclidean(T val) {
-  return std::sqrt(std::max(2.0 * FLAGS_window * (1.0 - val), 0.0));
+T ConvertToEuclidean(T val, int window) {
+  return std::sqrt(std::max(2.0 * window * (1.0 - val), 0.0));
+}
+
+void MergeWithResult(SCAMP::Profile *result, SCAMP::Profile *to_merge) {
+  switch(to_merge->type()) {
+    case SCAMP::PROFILE_TYPE_1NN_INDEX:
+      result->mutable_data()
+            ->Add()
+            ->mutable_uint64_value()
+            ->mutable_value()
+            ->Swap(to_merge->mutable_data()->Mutable(0)->mutable_uint64_value()->mutable_value());
+      break;
+    case SCAMP::PROFILE_TYPE_1NN:
+      result->mutable_data()
+            ->Add()
+            ->mutable_float_value()
+            ->mutable_value()
+            ->Swap(to_merge->mutable_data()->Mutable(0)->mutable_float_value()->mutable_value());
+      break;
+    case SCAMP::PROFILE_TYPE_SUM_THRESH:
+      result->mutable_data()
+            ->Add()
+            ->mutable_double_value()
+            ->mutable_value()
+            ->Swap(to_merge->mutable_data()->Mutable(0)->mutable_double_value()->mutable_value());
+      break;
+    default:
+      break;
+    }
 }
 
 bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
-                        SCAMP::Profile p) {
+                        SCAMP::Profile p, std::vector<int> windows, int pad_to_size) { 
   switch (p.type()) {
     case SCAMP::PROFILE_TYPE_1NN_INDEX: {
       std::ofstream mp_out(mp);
       std::ofstream mpi_out(mpi);
-      auto arr = p.data().Get(0).uint64_value().value();
-      for (int i = 0; i < arr.size(); ++i) {
-        SCAMP::mp_entry e;
-        e.ulong = arr.Get(i);
-        if (FLAGS_output_pearson) {
-          mp_out << std::setprecision(10) << e.floats[0] << std::endl;
-        } else {
-          mp_out << std::setprecision(10)
-                 << ConvertToEuclidean<float>(e.floats[0]) << std::endl;
-        }
-        mpi_out << e.ints[1] + 1 << std::endl;
+      std::cout << p.data().size() << std::endl;
+      for (int x = 0; x < p.data().size(); ++x) {
+        auto arr = p.data().Get(x).uint64_value().value();
+        for (int i = 0; i < pad_to_size; ++i) {
+          if ( i < arr.size()) {
+            SCAMP::mp_entry e;
+            e.ulong = arr.Get(i);
+            if (FLAGS_output_pearson) {
+              mp_out << std::setprecision(10) << e.floats[0] << " ";
+            } else {
+              mp_out << std::setprecision(10)
+                     << ConvertToEuclidean<float>(e.floats[0], windows[x]) << " ";
+            }
+            mpi_out << e.ints[1] + 1 << " ";
+          } else {
+            mp_out << "NaN ";
+            mpi_out << "NaN ";
+          }
+          }
+        mp_out << std::endl;
+        mpi_out << std::endl;
       }
       break;
     }
     case SCAMP::PROFILE_TYPE_1NN: {
       std::ofstream mp_out(mp);
-      auto arr = p.data().Get(0).float_value().value();
-      for (int i = 0; i < arr.size(); ++i) {
-        if (FLAGS_output_pearson) {
-          mp_out << std::setprecision(10) << arr.Get(i) << std::endl;
-        } else {
-          mp_out << std::setprecision(10) << ConvertToEuclidean<float>(arr.Get(i))
-                 << std::endl;
+      for (int x = 0; x < p.data().size(); ++x) {
+        auto arr = p.data().Get(0).float_value().value();
+        for (int i = 0; i < arr.size(); ++i) {
+          if (FLAGS_output_pearson) {
+            mp_out << std::setprecision(10) << arr.Get(i) << " ";
+          } else {
+            mp_out << std::setprecision(10) << ConvertToEuclidean<float>(arr.Get(i), windows[x]) 
+                   << " ";
+          }
         }
+        mp_out << std::endl;
       }
       break;
     }
     case SCAMP::PROFILE_TYPE_SUM_THRESH: {
       std::ofstream mp_out(mp);
-      auto arr = p.data().Get(0).double_value().value();
-      for (int i = 0; i < arr.size(); ++i) {
-        SCAMP::mp_entry e;
-        e.ulong = arr.Get(i);
-        mp_out << std::setprecision(10) << arr.Get(i) << std::endl;
+      for (int x = 0; x < p.data().size(); ++x) {
+        auto arr = p.data().Get(x).double_value().value();
+        for (int i = 0; i < arr.size(); ++i) {
+          if( i < arr.size() ) {
+            SCAMP::mp_entry e;
+            e.ulong = arr.Get(i);
+            mp_out << std::setprecision(10) << arr.Get(i) << " ";
+          }else {
+            mp_out << "NaN ";
+          }
+        }
+        mp_out << std::endl;
       }
       break;
     }
     default:
       break;
-  }
+    }
   return true;
 }
 
@@ -198,7 +246,7 @@ void InitProfileMemory(SCAMP::SCAMPArgs *args) {
       SCAMP::mp_entry e;
       e.floats[0] = std::numeric_limits<float>::lowest();
       e.ints[1] = -1u;
-      vector<uint64_t> temp(args->timeseries_a().size() - FLAGS_window + 1,
+      vector<uint64_t> temp(args->timeseries_a().size() - args->window() + 1,
                             e.ulong);
       {
         google::protobuf::RepeatedField<uint64_t> data(temp.begin(),
@@ -210,8 +258,8 @@ void InitProfileMemory(SCAMP::SCAMPArgs *args) {
             ->mutable_value()
             ->Swap(&data);
       }
-      if (FLAGS_keep_rows) {
-        temp.resize(args->timeseries_b().size() - FLAGS_window + 1, e.ulong);
+      if (args->keep_rows_separate()) {
+        temp.resize(args->timeseries_b().size() - args->window() + 1, e.ulong);
         google::protobuf::RepeatedField<uint64_t> data(temp.begin(),
                                                        temp.end());
         args->mutable_profile_b()
@@ -223,7 +271,7 @@ void InitProfileMemory(SCAMP::SCAMPArgs *args) {
       }
     }
     case SCAMP::PROFILE_TYPE_1NN: {
-      vector<float> temp(args->timeseries_a().size() - FLAGS_window + 1,
+      vector<float> temp(args->timeseries_a().size() - args->window() + 1,
                          std::numeric_limits<float>::lowest());
       {
         google::protobuf::RepeatedField<float> data(temp.begin(), temp.end());
@@ -234,8 +282,8 @@ void InitProfileMemory(SCAMP::SCAMPArgs *args) {
             ->mutable_value()
             ->Swap(&data);
       }
-      if (FLAGS_keep_rows) {
-        temp.resize(args->timeseries_b().size() - FLAGS_window + 1,
+      if (args->keep_rows_separate()) {
+        temp.resize(args->timeseries_b().size() - args->window() + 1,
                     std::numeric_limits<float>::lowest());
         google::protobuf::RepeatedField<float> data(temp.begin(), temp.end());
         args->mutable_profile_b()
@@ -247,7 +295,7 @@ void InitProfileMemory(SCAMP::SCAMPArgs *args) {
       }
     }
     case SCAMP::PROFILE_TYPE_SUM_THRESH: {
-      vector<double> temp(args->timeseries_a().size() - FLAGS_window + 1, 0);
+      vector<double> temp(args->timeseries_a().size() - args->window() + 1, 0);
       {
         google::protobuf::RepeatedField<double> data(temp.begin(), temp.end());
         args->mutable_profile_a()
@@ -257,8 +305,8 @@ void InitProfileMemory(SCAMP::SCAMPArgs *args) {
             ->mutable_value()
             ->Swap(&data);
       }
-      if (FLAGS_keep_rows) {
-        temp.resize(args->timeseries_b().size() - FLAGS_window + 1, 0);
+      if (args->keep_rows_separate()) {
+        temp.resize(args->timeseries_b().size() - args->window() + 1, 0);
         google::protobuf::RepeatedField<double> data(temp.begin(), temp.end());
         args->mutable_profile_b()
             ->mutable_data()
@@ -289,9 +337,9 @@ int main(int argc, char **argv) {
     printf("Error: only one precision flag can be enabled at a time\n");
     return 1;
   }
-  if (FLAGS_window < 3) {
+  std::vector<int> windows = ParseIntList(FLAGS_window);
+  if (windows.empty()) {
     printf(
-        "Error: Subsequence length must be at least 3, please use "
         "--window=<window_size> to specify your subsequence length.\n");
     return 1;
   }
@@ -299,11 +347,17 @@ int main(int argc, char **argv) {
     printf("Error: max tile size must be at least 1024\n");
     return 1;
   }
-  if (FLAGS_max_tile_size / 2 < FLAGS_window) {
-    printf(
+  for (const auto &window: windows) {
+    if(window < 3) { 
+      std::cout << "Error: Subsequence lengths must be at least 3, got window size of " << window;
+      return 1;
+    }
+    if (FLAGS_max_tile_size / 2 < window) {
+      printf(
         "Error: Tile length and width must be at least 2x larger than the "
         "window size. Please set a larger --max_tile_size=<max_tile_size>\n");
-    return 1;
+      return 1;
+    }
   }
   std::vector<int> devices = ParseIntList(FLAGS_gpus);
   if (FLAGS_input_a_file_name.empty()) {
@@ -333,14 +387,6 @@ int main(int argc, char **argv) {
     readFile<double>(FLAGS_input_b_file_name, Tb_h, "%lf");
   }
 
-  int n_x = Ta_h.size() - FLAGS_window + 1;
-  int n_y;
-  if (self_join) {
-    n_y = n_x;
-  } else {
-    n_y = Tb_h.size() - FLAGS_window + 1;
-  }
-
 #ifdef _HAS_CUDA_
   if (devices.empty() && !FLAGS_no_gpu) {
     // Use all available devices
@@ -358,7 +404,6 @@ int main(int argc, char **argv) {
          "binary.");
 #endif
   SCAMP::SCAMPArgs args;
-  args.set_window(FLAGS_window);
   args.set_max_tile_size(FLAGS_max_tile_size);
   args.set_has_b(!self_join);
   args.set_distributed_start_row(FLAGS_global_row);
@@ -379,16 +424,28 @@ int main(int argc, char **argv) {
     data = google::protobuf::RepeatedField<double>(Tb_h.begin(), Tb_h.end());
     args.mutable_timeseries_b()->Swap(&data);
   }
-  InitProfileMemory(&args);
+  SCAMP::Profile result_a, result_b;
+  result_a.set_type(profile_type);
+  result_b.set_type(profile_type);
   printf("Starting SCAMP\n");
-  SCAMP::do_SCAMP(&args, devices, FLAGS_num_cpu_workers);
-
+  for (const auto& window : windows) {
+    std::cout << "Window: " << window << std::endl;
+    args.set_window(window);
+    InitProfileMemory(&args);
+    SCAMP::do_SCAMP(&args, devices, FLAGS_num_cpu_workers);
+    MergeWithResult(&result_a, args.mutable_profile_a());
+    if (FLAGS_keep_rows){
+      MergeWithResult(&result_b, args.mutable_profile_b());
+    }
+    args.mutable_profile_a()->mutable_data()->Clear();
+    args.mutable_profile_b()->mutable_data()->Clear();
+  }
   printf("Now writing result to files\n");
   WriteProfileToFile(FLAGS_output_a_file_name, FLAGS_output_a_index_file_name,
-                     args.profile_a());
+                     result_a, windows, Ta_h.size() - windows[0] + 1);
   if (FLAGS_keep_rows) {
     WriteProfileToFile(FLAGS_output_b_file_name, FLAGS_output_b_index_file_name,
-                       args.profile_b());
+                       result_b, windows, Tb_h.size() - windows[0] + 1);
   }
 #ifdef _HAS_CUDA_
   gpuErrchk(cudaDeviceSynchronize());
