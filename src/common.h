@@ -17,6 +17,9 @@
 
 namespace SCAMP {
 
+// For computing the 1NN Matrix profile and index on the GPU, we store both the
+// index and distance as a single 64 bit value which allows for atomic updating
+// on the GPU
 typedef union {
   float floats[2];       // floats[0] = lowest
   unsigned int ints[2];  // ints[1] = lowIdx
@@ -29,6 +32,7 @@ struct reg_mem {
   double qt[count];
 };
 
+// Struct describing kernel arguments which are non-standard
 struct OptionalArgs {
   OptionalArgs(double threshold_)
       : threshold(threshold_), num_extra_operands(0) {}
@@ -39,6 +43,7 @@ struct OptionalArgs {
   double threshold;
 };
 
+// Struct defines information about a SCAMP Operation
 struct OpInfo {
   OpInfo(size_t Asize, size_t Bsize, size_t window_sz, size_t max_tile_size,
          bool selfjoin, SCAMPPrecisionType t, int64_t start_row,
@@ -108,6 +113,7 @@ struct OpInfo {
   bool keep_rows_separate;
 };
 
+// Struct containing the precomputed statistics for an input time series
 struct PrecomputedInfo {
  private:
   std::vector<double> _norms;
@@ -146,6 +152,8 @@ class ThreadSafeQueue {
     return queue_.empty();
   }
 
+  // Pop an element from the queue, if the queue is already empty, return the
+  // sentinel (-1,-1) which indicates that there was no data in the queue
   std::pair<int, int> pop() {
     std::unique_lock<std::mutex> mlock(mutex_);
     auto item = std::pair<int, int>(-1, -1);
@@ -178,8 +186,12 @@ class ThreadSafeQueue {
 
 using DeviceProfile = std::unordered_map<int, void*>;
 
+// Returns the size in bytes of a the matrix profile element for a particular MP
+// type
 size_t GetProfileTypeSize(SCAMPProfileType t);
 
+// Enum describing worker architecture, used to switch on architecture specific
+// code
 enum SCAMPArchitecture {
   CPU_WORKER,
   CUDA_GPU_WORKER,

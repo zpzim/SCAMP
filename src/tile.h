@@ -89,6 +89,9 @@ class Tile {
   const double *dgb() const { return _dg_B.get(); }
   const double *normsa() const { return _norms_A.get(); }
   const double *normsb() { return _norms_B.get(); }
+
+  std::pair<int, int> get_exclusion_for_ab_join(bool upper_tile);
+  std::pair<int, int> get_exclusion_for_self_join(bool upper_tile);
   void set_tile_col(size_t col) { _current_tile_col = col; }
   void set_tile_row(size_t row) { _current_tile_row = row; }
   void set_tile_height(size_t height) { _current_tile_height = height; }
