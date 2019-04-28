@@ -39,6 +39,66 @@ void elementwise_max(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
   }
 }
 
+// Gets the exclusion zone for a particular tile (helper_function)
+static int get_exclusion(uint64_t window_size, int64_t start_row,
+                         int64_t start_column) {
+  int exclusion = window_size / 4;
+  if (start_column >= start_row && start_column <= start_row + exclusion) {
+    return exclusion;
+  }
+  return 0;
+}
+
+std::pair<int, int> Tile::get_exclusion_for_self_join(bool upper_tile) {
+  int exclusion;
+  if (upper_tile) {
+    exclusion = get_exclusion(_info->mp_window, get_tile_row(), get_tile_col());
+    return std::make_pair(exclusion, 0);
+  }
+  size_t height = get_tile_height() - _info->mp_window + 1;
+  exclusion =
+      get_exclusion(_info->mp_window, get_tile_col(), get_tile_row() + height);
+  return std::make_pair(0, exclusion);
+}
+
+// Gets the exclusion zone for a particular tile (logic for ab joins)
+std::pair<int, int> Tile::get_exclusion_for_ab_join(bool upper_tile) {
+  int exclusion_lower = 0;
+  int exclusion_upper = 0;
+
+  if (!_info->is_aligned) {
+    return std::make_pair(exclusion_lower, exclusion_upper);
+  }
+  size_t height = get_tile_height() - _info->mp_window + 1;
+  size_t width = get_tile_width() - _info->mp_window + 1;
+
+  int start_col = get_tile_col();
+  int start_row = get_tile_row();
+  if (_info->global_start_col_position >= 0 &&
+      _info->global_start_row_position >= 0) {
+    start_col += _info->global_start_col_position;
+    start_row += _info->global_start_row_position;
+  }
+  if (upper_tile) {
+    exclusion_lower = get_exclusion(_info->mp_window, start_row, start_col);
+    if (start_row > start_col) {
+      exclusion_upper =
+          get_exclusion(_info->mp_window, start_row, start_col + width);
+    } else {
+      exclusion_upper = 0;
+    }
+  } else {
+    exclusion_lower = get_exclusion(_info->mp_window, start_col, start_row);
+    if (start_row >= start_col) {
+      exclusion_upper = 0;
+    } else {
+      exclusion_upper =
+          get_exclusion(_info->mp_window, start_col, start_row + height);
+    }
+  }
+  return std::make_pair(exclusion_lower, exclusion_upper);
+}
+
 // Allocator for tile memory which can reside on the host or cuda devices
 template <typename T>
 T *alloc_mem(size_t count, SCAMPArchitecture arch, int deviceid) {
@@ -61,7 +121,7 @@ T *alloc_mem(size_t count, SCAMPArchitecture arch, int deviceid) {
   }
 }
 
-// Deleter for tile memory which can reside on the host cuda devices
+// Deleter for tile memory which can reside on the host or cuda devices
 template <typename T>
 void free_mem(T *ptr, SCAMPArchitecture arch, int deviceid) {
   switch (arch) {
@@ -264,6 +324,8 @@ Profile Tile::AllocProfile(SCAMPProfileType t, uint64_t size) {
   }
 }
 
+// Initializes the tile's local profile values based on global profiles
+// "profile_a" and "profile_b"
 SCAMPError_t Tile::InitProfile(Profile *profile_a, Profile *profile_b) {
   int profile_size = GetProfileTypeSize(_info->profile_type);
   int width = _current_tile_width - _info->mp_window + 1;
@@ -315,6 +377,7 @@ SCAMPError_t Tile::InitProfile(Profile *profile_a, Profile *profile_b) {
   return SCAMP_NO_ERROR;
 }
 
+// Initialize the tile's local stats based on global statistics "a" and "b"
 void Tile::InitStats(const PrecomputedInfo &a, const PrecomputedInfo &b) {
   size_t bytes_a =
       (_current_tile_width - _info->mp_window + 1) * sizeof(double);
@@ -330,9 +393,16 @@ void Tile::InitStats(const PrecomputedInfo &a, const PrecomputedInfo &b) {
   Memcopy(_means_B.get(), b.means().data() + _current_tile_row, bytes_b, false);
 }
 
+// TODO(zpzim): move this back into SCAMP_Operation, we shouldn't have the
+// merging be functionality of the individual tile
+// Merges a local result "tile_profile" with the global matrix profile
+// "full_profile"
 void Tile::MergeTileIntoFullProfile(Profile *tile_profile, uint64_t position,
                                     uint64_t length, Profile *full_profile,
                                     uint64_t index_start, std::mutex &lock) {
+  // Lock the entire result vector before we merge
+  // TODO(zpzim): we don't have to do this, we only need to lock the specific
+  // "tile row" or "tile_column" that we are updating
   std::unique_lock<std::mutex> mlock(lock);
   switch (_info->profile_type) {
     case PROFILE_TYPE_SUM_THRESH:
@@ -396,6 +466,8 @@ void Tile::MergeTileIntoFullProfile(Profile *tile_profile, uint64_t position,
   }
 }
 
+// TODO(zpzim): move this back into SCAMP_Operation, we shouldn't have the
+// merging be functionality of the individual tile
 void Tile::MergeProfile(Profile *profile_a, std::mutex &a_lock,
                         Profile *profile_b, std::mutex &b_lock) {
   // Set up a copy operation back to the host
@@ -424,6 +496,7 @@ void Tile::MergeProfile(Profile *profile_a, std::mutex &a_lock,
   }
 }
 
+// Copies a profile to the host
 void Tile::CopyProfileToHost(Profile *destination_profile,
                              const DeviceProfile *device_tile_profile,
                              uint64_t length) {
@@ -526,6 +599,7 @@ SCAMPError_t Tile::do_self_join_full() {
   return error;
 }
 
+// Computes the matrix profile upper triangular portion of the tile
 SCAMPError_t Tile::do_self_join_half() {
   SCAMPError_t error = SCAMP_NO_ERROR;
 
