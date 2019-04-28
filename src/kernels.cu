@@ -248,20 +248,43 @@ __device__ inline void MPatomicMax_check(
 __device__ inline void MPMax(const float d1, const float d2,
                              const unsigned int i1, const unsigned int i2,
                              float &outd, unsigned int &outi) {
-  if (d1 >= d2) {
+  if (d1 > outd) {
     outd = d1;
     outi = i1;
-  } else {
+  }
+  if (d2 > outd) {
     outd = d2;
     outi = i2;
   }
 }
 
 template <typename T>
-__device__ inline T max4(const T &d1, const T &d2, const T &d3, const T &d4,
-                         const uint32_t init, uint32_t &idx) {
-  float ret = d1;
-  idx = init;
+__device__ inline T max4(const T &d1, const T &d2, const T &d3, const T &d4) {
+  float ret = -2;
+  if (d1 > ret) {
+    ret = d1;
+  }
+  if (d2 > ret) {
+    ret = d2;
+  }
+  if (d3 > ret) {
+    ret = d3;
+  }
+  if (d4 > ret) {
+    ret = d4;
+  }
+  return ret;
+}
+
+template <typename T>
+__device__ inline T max4_index(const T &d1, const T &d2, const T &d3,
+                               const T &d4, const uint32_t init,
+                               uint32_t &idx) {
+  float ret = -2;
+  if (d1 > ret) {
+    ret = d1;
+    idx = init;
+  }
   if (d2 > ret) {
     ret = d2;
     idx = init + 1;

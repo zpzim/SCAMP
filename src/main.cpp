@@ -79,6 +79,38 @@ DEFINE_string(gpus, "",
               "IDs of GPUs on the system to use, if this flag is not set SCAMP "
               "tries to use all available GPUs on the system");
 
+std::ifstream &read_value(std::ifstream &s, double &d, int count) {
+  std::string line;
+  double parsed;
+
+  s >> line;
+  if (line.empty()) {
+    if (s.peek() != EOF) {
+      std::cout << "WARNING: got empty line #" << count + 1
+                << " in input file\n"
+                << std::endl;
+    }
+    d = NAN;
+    return s;
+  }
+
+  try {
+    parsed = std::stod(line);
+  } catch (std::invalid_argument e) {
+    std::cout << line[0] << std::endl;
+    std::cout << "FATAL ERROR: invalid argument: Could not parse line number "
+              << count + 1 << " from input file.\n";
+    exit(1);
+  } catch (std::out_of_range e) {
+    std::cout << line[0] << std::endl;
+    std::cout << "FATAL ERROR: out of range: Could not parse line number "
+              << count + 1 << " from input file.\n";
+    exit(1);
+  }
+  d = parsed;
+  return s;
+}
+
 // Reads input time series from file
 template <class DTYPE>
 void readFile(const std::string &filename, std::vector<DTYPE> &v,
@@ -89,11 +121,13 @@ void readFile(const std::string &filename, std::vector<DTYPE> &v,
               << "for reading, please make sure it exists" << std::endl;
     exit(0);
   }
+  std::cout << "Reading data from " << filename << std::endl;
   DTYPE num;
-  while (f >> num) {
+  while (read_value(f, num, v.size()) && f.peek() != EOF) {
     v.push_back(num);
   }
-  std::cout << "Read " << v.size() << " values from file " << filename << std::endl;
+  std::cout << "Read " << v.size() << " values from file " << filename
+            << std::endl;
 }
 
 std::vector<int> ParseIntList(const std::string &s) {
@@ -140,6 +174,10 @@ SCAMP::SCAMPProfileType ParseProfileType(const std::string &s) {
 
 template <typename T>
 T ConvertToEuclidean(T val) {
+  // If there was no match, we can't do a valid conversion, just return NaN
+  if (val < -1) {
+    return NAN;
+  }
   return std::sqrt(std::max(2.0 * FLAGS_window * (1.0 - val), 0.0));
 }
 
@@ -159,7 +197,14 @@ bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
           mp_out << std::setprecision(10)
                  << ConvertToEuclidean<float>(e.floats[0]) << std::endl;
         }
-        mpi_out << e.ints[1] + 1 << std::endl;
+        int index;
+        // If there was no match, set index to -1
+        if (e.floats[0] < -1) {
+          index = -1;
+        } else {
+          index = e.ints[1] + 1;
+        }
+        mpi_out << index << std::endl;
       }
       break;
     }
@@ -170,8 +215,8 @@ bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
         if (FLAGS_output_pearson) {
           mp_out << std::setprecision(10) << arr.Get(i) << std::endl;
         } else {
-          mp_out << std::setprecision(10) << ConvertToEuclidean<float>(arr.Get(i))
-                 << std::endl;
+          mp_out << std::setprecision(10)
+                 << ConvertToEuclidean<float>(arr.Get(i)) << std::endl;
         }
       }
       break;

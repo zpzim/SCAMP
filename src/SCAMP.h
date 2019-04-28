@@ -49,10 +49,9 @@ class SCAMP_Operation {
 
   void get_tiles();
 
-  void do_work(const google::protobuf::RepeatedField<double> &timeseries_a,
-               const google::protobuf::RepeatedField<double> &timeseries_b,
-               const OpInfo *info, const SCAMPArchitecture arch,
-               const int device_id);
+  void do_work(const std::vector<double> &timeseries_a,
+               const std::vector<double> &timeseries_b, const OpInfo *info,
+               const SCAMPArchitecture arch, const int device_id);
 
  public:
   SCAMP_Operation(size_t Asize, size_t Bsize, size_t window_sz,

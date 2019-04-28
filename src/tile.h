@@ -104,8 +104,8 @@ class Tile {
   SCAMPError_t InitProfile(Profile *profile_a, Profile *profile_b);
 
   // Initializes the time series for the current tile
-  void InitTimeseries(const google::protobuf::RepeatedField<double> &Ta_h,
-                      const google::protobuf::RepeatedField<double> &Tb_h);
+  void InitTimeseries(const std::vector<double> &Ta_h,
+                      const std::vector<double> &Tb_h);
 
   // Executes a pre-initialized tile
   SCAMPError_t execute(SCAMPTileType t);

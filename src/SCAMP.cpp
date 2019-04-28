@@ -11,12 +11,8 @@
 
 #include "SCAMP.h"
 #include "common.h"
-#include "tile.h"
-#ifdef _HAS_CUDA_
-#include "gpu_stats.h"
-#else
 #include "cpu_stats.h"
-#endif
+#include "tile.h"
 using std::vector;
 
 namespace SCAMP {
@@ -93,10 +89,10 @@ void SCAMP_Operation::get_tiles() {
 // and compute the partial matrix profile corresponding with
 // the tile. Afterwards, the worker will merge its partial
 // solution with the global matrix profile
-void SCAMP_Operation::do_work(
-    const google::protobuf::RepeatedField<double> &timeseries_a,
-    const google::protobuf::RepeatedField<double> &timeseries_b,
-    const OpInfo *info, const SCAMPArchitecture arch, const int device_id) {
+void SCAMP_Operation::do_work(const std::vector<double> &timeseries_a,
+                              const std::vector<double> &timeseries_b,
+                              const OpInfo *info, const SCAMPArchitecture arch,
+                              const int device_id) {
   // Init working memory and op/tile specific variables
   Tile tile(info, arch, device_id);
   while (!_work_queue.empty()) {
@@ -158,14 +154,23 @@ SCAMPError_t SCAMP_Operation::do_join(
   const int num_workers = _cpu_workers + _devices.size();
   printf("Num workers = %d\n", num_workers);
 
+  std::vector<double> timeseries_a_clean, timeseries_b_clean;
+  std::vector<bool> nanvals_a, nanvals_b;
+
+  // Remove NaN/inf values and replace with 0, this allows us to tolerate these
+  // values during the calculation. nanvals contains the subsequences which
+  // contain non-finite values, we use these to force distance calculations
+  // for these subsequences to result in NaN.
+  convert_non_finite_to_zero(timeseries_a, _info.mp_window, &timeseries_a_clean,
+                             &nanvals_a);
+  convert_non_finite_to_zero(timeseries_b, _info.mp_window, &timeseries_b_clean,
+                             &nanvals_b);
+
   // Compute statistics for entire problem
-#ifdef _HAS_CUDA_
-  compute_statistics_gpu(timeseries_a, &_precompA, _info.mp_window);
-  compute_statistics_gpu(timeseries_b, &_precompB, _info.mp_window);
-#else
-  compute_statistics_cpu(timeseries_a, &_precompA, _info.mp_window);
-  compute_statistics_cpu(timeseries_b, &_precompB, _info.mp_window);
-#endif
+  compute_statistics_cpu(timeseries_a_clean, nanvals_a, &_precompA,
+                         _info.mp_window);
+  compute_statistics_cpu(timeseries_b_clean, nanvals_b, &_precompB,
+                         _info.mp_window);
 
   // Populate Work Queue with tiles
   get_tiles();
@@ -177,14 +182,15 @@ SCAMPError_t SCAMP_Operation::do_join(
   // Start CUDA Workers
   for (int i = 0; i < _devices.size(); ++i) {
     futures[i] = std::async(std::launch::async, &SCAMP_Operation::do_work, this,
-                            timeseries_a, timeseries_b, &_info, CUDA_GPU_WORKER,
-                            _devices.at(i));
+                            timeseries_a_clean, timeseries_b_clean, &_info,
+                            CUDA_GPU_WORKER, _devices.at(i));
   }
 
   // Start CPU Workers
   for (int i = _devices.size(); i < num_workers; ++i) {
     futures[i] = std::async(std::launch::async, &SCAMP_Operation::do_work, this,
-                            timeseries_a, timeseries_b, &_info, CPU_WORKER, -1);
+                            timeseries_a_clean, timeseries_b_clean, &_info,
+                            CPU_WORKER, -1);
   }
 
   // wait for workers to be done

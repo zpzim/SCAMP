@@ -151,8 +151,11 @@ class DoRowEdgeStrategy<
     if (COMPUTE_COLS) {
       MPatomicMax<ATOMIC_BLOCK>((uint64_t *)(smem.local_mp_col + j), distx, y);
     }
-    dist_row = distx;
-    idx_row = x;
+    dist_row = -2;
+    if (distx > dist_row) {
+      dist_row = distx;
+      idx_row = x;
+    }
     if (x + 1 < n && diag + 1 < num_diags) {
       if (COMPUTE_ROWS) {
         MPMax(dist_row, disty, idx_row, x + 1, dist_row, idx_row);
@@ -226,7 +229,10 @@ class DoRowEdgeStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
     if (COMPUTE_COLS) {
       fAtomicMax<ATOMIC_BLOCK>((float *)(smem.local_mp_col + j), distx);
     }
-    dist_row = distx;
+    dist_row = -2;
+    if (distx > dist_row) {
+      dist_row = distx;
+    }
     if (x + 1 < n && diag + 1 < num_diags) {
       if (COMPUTE_ROWS) {
         dist_row = fmaxf(dist_row, disty);

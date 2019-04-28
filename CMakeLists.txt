@@ -78,7 +78,7 @@ if (CMAKE_CUDA_COMPILER)
   include_directories(${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   set(CUDA_SEPARABLE_COMPILATION ON)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr -lineinfo")
-  set(CMAKE_CUDA_FLAGS_RELEASE "${CMAKE_CUDA_FLAGS_RELEASE} --use_fast_math")
+  set(CMAKE_CUDA_FLAGS_RELEASE "${CMAKE_CUDA_FLAGS_RELEASE}")
   set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_60,code=sm_70")
   set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_61,code=sm_61")
   set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_60,code=sm_60")
@@ -89,7 +89,7 @@ if (CMAKE_CUDA_COMPILER)
 endif()
 
 # optimize in release
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -ffast-math -march=native -O3")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native -O3")
 
 # build debug with sanitizer
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=address -fno-omit-frame-pointer")
@@ -126,14 +126,12 @@ endif()
 
 
 if (CMAKE_CUDA_COMPILER)
-  add_library(gpu_stats src/gpu_stats.cu)
-  target_link_libraries(gpu_stats messages common)
   add_library(gpu_kernels src/kernels.cu)
   target_link_libraries(gpu_kernels messages common)
-else()
-  add_library(cpu_stats src/cpu_stats.cpp)
-  target_link_libraries(cpu_stats messages common)
 endif()
+
+add_library(cpu_stats src/cpu_stats.cpp)
+target_link_libraries(cpu_stats messages common)
 
 add_library(cpu_kernels src/cpu_kernels.cpp)
 target_link_libraries(cpu_kernels messages common)
@@ -149,17 +147,10 @@ endif()
 
 add_library(scamp src/SCAMP.cpp)
 
-if (CMAKE_CUDA_COMPILER)
-  target_link_libraries(scamp -lpthread tile messages gpu_stats common qt_helper)
-else()
-  target_link_libraries(scamp -lpthread tile messages cpu_stats common qt_helper)
-endif() 
+target_link_libraries(scamp -lpthread tile messages cpu_stats common qt_helper)
 
 if (CMAKE_CUDA_COMPILER)
   set_target_properties(gpu_kernels PROPERTIES
-    COMPILE_FLAGS "${COMPILE_FLAGS} ${CUDA_GENCODE_FLAGS}"
-  )
-  set_target_properties(gpu_stats PROPERTIES
     COMPILE_FLAGS "${COMPILE_FLAGS} ${CUDA_GENCODE_FLAGS}"
   )
 endif()

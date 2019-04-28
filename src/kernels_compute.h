@@ -30,7 +30,7 @@ __device__ inline void update_row(
     SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_1NN> smem,
     const DISTANCE_TYPE dist[4], const float curr_mp_row_val,
     const OptionalArgs args) {
-  DISTANCE_TYPE d = max(max(dist[0], dist[1]), max(dist[2], dist[3]));
+  DISTANCE_TYPE d = max4(dist[0], dist[1], dist[2], dist[3]);
   fAtomicMax_check<ATOMIC_BLOCK>(smem.local_mp_row + info.local_row + iter, d,
                                  curr_mp_row_val);
 }
@@ -44,8 +44,8 @@ __device__ inline void update_row(
     const DISTANCE_TYPE dist[4], const float curr_mp_row_val,
     const OptionalArgs args) {
   uint32_t idx;
-  DISTANCE_TYPE d = max4<DISTANCE_TYPE>(dist[0], dist[1], dist[2], dist[3],
-                                        info.global_col + iter, idx);
+  DISTANCE_TYPE d = max4_index<DISTANCE_TYPE>(
+      dist[0], dist[1], dist[2], dist[3], info.global_col + iter, idx);
   MPatomicMax_check((uint64_t *)(smem.local_mp_row + info.local_row + iter), d,
                     idx, curr_mp_row_val);
 }

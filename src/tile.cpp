@@ -226,8 +226,8 @@ void Tile::Sync() {
   }
 }
 
-void Tile::InitTimeseries(const google::protobuf::RepeatedField<double> &Ta_h,
-                          const google::protobuf::RepeatedField<double> &Tb_h) {
+void Tile::InitTimeseries(const std::vector<double> &Ta_h,
+                          const std::vector<double> &Tb_h) {
   Memcopy(_T_A_dev.get(), Ta_h.data() + _current_tile_col,
           sizeof(double) * _current_tile_width, false);
   Memcopy(_T_B_dev.get(), Tb_h.data() + _current_tile_row,
