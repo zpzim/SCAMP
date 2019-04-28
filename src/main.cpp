@@ -11,7 +11,6 @@
 #include <string>
 #include <vector>
 #include "SCAMP.h"
-#include "SCAMP.pb.h"
 #include "common.h"
 
 DEFINE_int32(num_cpu_workers, 0, "Number of CPU workers to use");
@@ -183,14 +182,14 @@ T ConvertToEuclidean(T val) {
 
 bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
                         SCAMP::Profile p) {
-  switch (p.type()) {
+  switch (p.type) {
     case SCAMP::PROFILE_TYPE_1NN_INDEX: {
       std::ofstream mp_out(mp);
       std::ofstream mpi_out(mpi);
-      auto arr = p.data().Get(0).uint64_value().value();
+      auto arr = p.data[0].uint64_value;
       for (int i = 0; i < arr.size(); ++i) {
         SCAMP::mp_entry e;
-        e.ulong = arr.Get(i);
+        e.ulong = arr[i];
         if (FLAGS_output_pearson) {
           mp_out << std::setprecision(10) << e.floats[0] << std::endl;
         } else {
@@ -210,24 +209,22 @@ bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
     }
     case SCAMP::PROFILE_TYPE_1NN: {
       std::ofstream mp_out(mp);
-      auto arr = p.data().Get(0).float_value().value();
+      auto arr = p.data[0].float_value;
       for (int i = 0; i < arr.size(); ++i) {
         if (FLAGS_output_pearson) {
-          mp_out << std::setprecision(10) << arr.Get(i) << std::endl;
+          mp_out << std::setprecision(10) << arr[i] << std::endl;
         } else {
-          mp_out << std::setprecision(10)
-                 << ConvertToEuclidean<float>(arr.Get(i)) << std::endl;
+          mp_out << std::setprecision(10) << ConvertToEuclidean<float>(arr[i])
+                 << std::endl;
         }
       }
       break;
     }
     case SCAMP::PROFILE_TYPE_SUM_THRESH: {
       std::ofstream mp_out(mp);
-      auto arr = p.data().Get(0).double_value().value();
+      auto arr = p.data[0].double_value;
       for (int i = 0; i < arr.size(); ++i) {
-        SCAMP::mp_entry e;
-        e.ulong = arr.Get(i);
-        mp_out << std::setprecision(10) << arr.Get(i) << std::endl;
+        mp_out << std::setprecision(10) << arr[i] << std::endl;
       }
       break;
     }
@@ -238,81 +235,41 @@ bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
 }
 
 void InitProfileMemory(SCAMP::SCAMPArgs *args) {
-  switch (args->profile_type()) {
+  switch (args->profile_type) {
     case SCAMP::PROFILE_TYPE_1NN_INDEX: {
       SCAMP::mp_entry e;
       e.floats[0] = std::numeric_limits<float>::lowest();
       e.ints[1] = -1u;
-      vector<uint64_t> temp(args->timeseries_a().size() - FLAGS_window + 1,
-                            e.ulong);
-      {
-        google::protobuf::RepeatedField<uint64_t> data(temp.begin(),
-                                                       temp.end());
-        args->mutable_profile_a()
-            ->mutable_data()
-            ->Add()
-            ->mutable_uint64_value()
-            ->mutable_value()
-            ->Swap(&data);
-      }
+      args->profile_a.data.emplace_back();
+      args->profile_a.data[0].uint64_value.resize(
+          args->timeseries_a.size() - FLAGS_window + 1, e.ulong);
       if (FLAGS_keep_rows) {
-        temp.resize(args->timeseries_b().size() - FLAGS_window + 1, e.ulong);
-        google::protobuf::RepeatedField<uint64_t> data(temp.begin(),
-                                                       temp.end());
-        args->mutable_profile_b()
-            ->mutable_data()
-            ->Add()
-            ->mutable_uint64_value()
-            ->mutable_value()
-            ->Swap(&data);
+        args->profile_b.data.emplace_back();
+        args->profile_b.data[0].uint64_value.resize(
+            args->timeseries_b.size() - FLAGS_window + 1, e.ulong);
       }
     }
     case SCAMP::PROFILE_TYPE_1NN: {
-      vector<float> temp(args->timeseries_a().size() - FLAGS_window + 1,
-                         std::numeric_limits<float>::lowest());
-      {
-        google::protobuf::RepeatedField<float> data(temp.begin(), temp.end());
-        args->mutable_profile_a()
-            ->mutable_data()
-            ->Add()
-            ->mutable_float_value()
-            ->mutable_value()
-            ->Swap(&data);
-      }
+      args->profile_a.data.emplace_back();
+      args->profile_a.data[0].float_value.resize(
+          args->timeseries_a.size() - FLAGS_window + 1,
+          std::numeric_limits<float>::lowest());
       if (FLAGS_keep_rows) {
-        temp.resize(args->timeseries_b().size() - FLAGS_window + 1,
-                    std::numeric_limits<float>::lowest());
-        google::protobuf::RepeatedField<float> data(temp.begin(), temp.end());
-        args->mutable_profile_b()
-            ->mutable_data()
-            ->Add()
-            ->mutable_float_value()
-            ->mutable_value()
-            ->Swap(&data);
+        args->profile_b.data.emplace_back();
+        args->profile_b.data[0].float_value.resize(
+            args->timeseries_b.size() - FLAGS_window + 1,
+            std::numeric_limits<float>::lowest());
       }
     }
     case SCAMP::PROFILE_TYPE_SUM_THRESH: {
-      vector<double> temp(args->timeseries_a().size() - FLAGS_window + 1, 0);
-      {
-        google::protobuf::RepeatedField<double> data(temp.begin(), temp.end());
-        args->mutable_profile_a()
-            ->mutable_data()
-            ->Add()
-            ->mutable_double_value()
-            ->mutable_value()
-            ->Swap(&data);
-      }
+      args->profile_a.data.emplace_back();
+      args->profile_a.data[0].double_value.resize(
+          args->timeseries_a.size() - FLAGS_window + 1, 0);
       if (FLAGS_keep_rows) {
-        temp.resize(args->timeseries_b().size() - FLAGS_window + 1, 0);
-        google::protobuf::RepeatedField<double> data(temp.begin(), temp.end());
-        args->mutable_profile_b()
-            ->mutable_data()
-            ->Add()
-            ->mutable_double_value()
-            ->mutable_value()
-            ->Swap(&data);
+        args->profile_b.data.emplace_back();
+        args->profile_b.data[0].double_value.resize(
+            args->timeseries_b.size() - FLAGS_window + 1, 0);
       }
-      break;
     }
     default:
       break;
@@ -398,42 +355,39 @@ int main(int argc, char **argv) {
   }
 #else
   // We cannot use gpus if we don't have CUDA
-  assert(devices.empty() &&
+  ASSERT(devices.empty(),
          "This binary was not built with CUDA, --gpus cannot be used with this "
          "binary.");
 #endif
   SCAMP::SCAMPArgs args;
-  args.set_window(FLAGS_window);
-  args.set_max_tile_size(FLAGS_max_tile_size);
-  args.set_has_b(!self_join);
-  args.set_distributed_start_row(FLAGS_global_row);
-  args.set_distributed_start_col(FLAGS_global_col);
-  args.set_distance_threshold(static_cast<double>(FLAGS_threshold));
-  args.set_computing_columns(computing_cols);
-  args.set_computing_rows(computing_rows);
-  args.mutable_profile_a()->set_type(profile_type);
-  args.mutable_profile_b()->set_type(profile_type);
-  args.set_precision_type(t);
-  args.set_profile_type(profile_type);
-  args.set_keep_rows_separate(FLAGS_keep_rows);
-  args.set_is_aligned(FLAGS_aligned);
-  printf("precision = %d\n", args.precision_type());
-  {
-    google::protobuf::RepeatedField<double> data(Ta_h.begin(), Ta_h.end());
-    args.mutable_timeseries_a()->Swap(&data);
-    data = google::protobuf::RepeatedField<double>(Tb_h.begin(), Tb_h.end());
-    args.mutable_timeseries_b()->Swap(&data);
-  }
+  args.window = FLAGS_window;
+  args.max_tile_size = FLAGS_max_tile_size;
+  args.has_b = !self_join;
+  args.distributed_start_row = FLAGS_global_row;
+  args.distributed_start_col = FLAGS_global_col;
+  args.distance_threshold = static_cast<double>(FLAGS_threshold);
+  args.computing_columns = computing_cols;
+  args.computing_rows = computing_rows;
+  args.profile_a.type = profile_type;
+  args.profile_b.type = profile_type;
+  args.precision_type = t;
+  args.profile_type = profile_type;
+  args.keep_rows_separate = FLAGS_keep_rows;
+  args.is_aligned = FLAGS_aligned;
+  args.timeseries_a = std::move(Ta_h);
+  args.timeseries_b = std::move(Tb_h);
+
   InitProfileMemory(&args);
+
   printf("Starting SCAMP\n");
   SCAMP::do_SCAMP(&args, devices, FLAGS_num_cpu_workers);
 
   printf("Now writing result to files\n");
   WriteProfileToFile(FLAGS_output_a_file_name, FLAGS_output_a_index_file_name,
-                     args.profile_a());
+                     args.profile_a);
   if (FLAGS_keep_rows) {
     WriteProfileToFile(FLAGS_output_b_file_name, FLAGS_output_b_index_file_name,
-                       args.profile_b());
+                       args.profile_b);
   }
 #ifdef _HAS_CUDA_
   gpuErrchk(cudaDeviceSynchronize());

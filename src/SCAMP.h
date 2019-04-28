@@ -2,7 +2,6 @@
 #include <list>
 #include <unordered_map>
 #include <vector>
-#include "SCAMP.pb.h"
 #include "common.h"
 using std::list;
 using std::pair;
@@ -69,9 +68,8 @@ class SCAMP_Operation {
         _profile_b(pB),
         _devices(dev),
         _cpu_workers(num_threads) {}
-  SCAMPError_t do_join(
-      const google::protobuf::RepeatedField<double> &timeseries_a,
-      const google::protobuf::RepeatedField<double> &timeseries_b);
+  SCAMPError_t do_join(const std::vector<double> &timeseries_a,
+                       const std::vector<double> &timeseries_b);
   int get_completed_tiles() { return _completed_tiles; }
 };
 

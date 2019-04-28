@@ -95,7 +95,8 @@ class qt_compute_helper {
       cudaMalloc(&Qc, sizeof(cuDoubleComplex) * cufft_data_size);
       gpuErrchk(cudaPeekAtLastError());
 #else
-      assert("Attempted to use GPU resources in a binary not built with cuda");
+      ASSERT(false,
+             "Attempted to use GPU resources in a binary not built with cuda");
 #endif
     }
   }

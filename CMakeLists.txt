@@ -105,14 +105,11 @@ endif()
 #                              ===== Build targets =====
 
 add_subdirectory(gflags)
-add_subdirectory(proto)
-include_directories("proto")
+
 add_library(common src/common.cpp)
 
 if (CMAKE_CUDA_COMPILER) 
-  target_link_libraries(common messages -lcudart_static)
-else()
-  target_link_libraries(common messages)
+  target_link_libraries(common -lcudart_static)
 endif()
 
 add_library(qt_helper src/qt_helper.cpp)
@@ -127,27 +124,27 @@ endif()
 
 if (CMAKE_CUDA_COMPILER)
   add_library(gpu_kernels src/kernels.cu)
-  target_link_libraries(gpu_kernels messages common)
+  target_link_libraries(gpu_kernels common)
 endif()
 
 add_library(cpu_stats src/cpu_stats.cpp)
-target_link_libraries(cpu_stats messages common)
+target_link_libraries(cpu_stats common)
 
 add_library(cpu_kernels src/cpu_kernels.cpp)
-target_link_libraries(cpu_kernels messages common)
+target_link_libraries(cpu_kernels common)
 
 add_library(tile src/tile.cpp)
 
 
 if (CMAKE_CUDA_COMPILER)
-  target_link_libraries(tile messages common gpu_kernels cpu_kernels qt_helper)
+  target_link_libraries(tile common gpu_kernels cpu_kernels qt_helper)
 else()
-  target_link_libraries(tile messages common cpu_kernels qt_helper)
+  target_link_libraries(tile common cpu_kernels qt_helper)
 endif()
 
 add_library(scamp src/SCAMP.cpp)
 
-target_link_libraries(scamp -lpthread tile messages cpu_stats common qt_helper)
+target_link_libraries(scamp -lpthread tile cpu_stats common qt_helper)
 
 if (CMAKE_CUDA_COMPILER)
   set_target_properties(gpu_kernels PROPERTIES
@@ -195,7 +192,7 @@ endif()
 
 add_executable(SCAMP src/main.cpp)
 if (CMAKE_CUDA_COMPILER)
-  target_link_libraries(SCAMP -lcudart_static gflags messages common scamp)
+  target_link_libraries(SCAMP -lcudart_static gflags common scamp)
 else()
-  target_link_libraries(SCAMP gflags messages common scamp)
+  target_link_libraries(SCAMP gflags common scamp)
 endif() 

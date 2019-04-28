@@ -6,9 +6,9 @@ namespace SCAMP {
 // Converts any NaN or inf values in the input to 0, returns the cleaned
 // timeseries in timeseries_clean, and returns the subsequences which contained
 // NaN in nanvals
-void convert_non_finite_to_zero(
-    const google::protobuf::RepeatedField<double> &T, const int m,
-    std::vector<double> *timeseries_clean, std::vector<bool> *nanvals) {
+void convert_non_finite_to_zero(const std::vector<double> &T, const int m,
+                                std::vector<double> *timeseries_clean,
+                                std::vector<bool> *nanvals) {
   timeseries_clean->resize(T.size());
   nanvals->resize(T.size() - m + 1);
   size_t steps_since_last_nan = m;

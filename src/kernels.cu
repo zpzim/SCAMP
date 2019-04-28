@@ -245,19 +245,7 @@ __device__ inline void MPatomicMax_check(
   }
 }
 
-__device__ inline void MPMax(const float d1, const float d2,
-                             const unsigned int i1, const unsigned int i2,
-                             float &outd, unsigned int &outi) {
-  if (d1 > outd) {
-    outd = d1;
-    outi = i1;
-  }
-  if (d2 > outd) {
-    outd = d2;
-    outi = i2;
-  }
-}
-
+// Gets the max of 4 values (avoids returning NaN if any of d1-d4 are NaN)
 template <typename T>
 __device__ inline T max4(const T &d1, const T &d2, const T &d3, const T &d4) {
   float ret = -2;
@@ -276,6 +264,8 @@ __device__ inline T max4(const T &d1, const T &d2, const T &d3, const T &d4) {
   return ret;
 }
 
+// Gets the max of 4 values (avoids returning NaN if any of d1-d4 are NaN)
+// Including the index
 template <typename T>
 __device__ inline T max4_index(const T &d1, const T &d2, const T &d3,
                                const T &d4, const uint32_t init,
@@ -340,14 +330,6 @@ class SCAMPTactic {
       OptionalArgs &args) {
     _do_iteration.exec(info, smem, args);
   }
-  __device__ inline void DoEdge(
-      int i, int j, int x, int y, int n, ACCUM_TYPE &cov1, ACCUM_TYPE &cov2,
-      ACCUM_TYPE &cov3, ACCUM_TYPE &cov4, size_t diag, size_t num_diags,
-      SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
-      OptionalArgs &args) {
-    _do_edge.exec(i, j, x, y, n, cov1, cov2, cov3, cov4, diag, num_diags, smem,
-                  args);
-  }
   __device__ inline void WriteBack(uint32_t tile_start_x, uint32_t tile_start_y,
                                    uint32_t n_x, uint32_t n_y,
                                    PROFILE_DATA_TYPE *__restrict__ local_mp_col,
@@ -366,9 +348,6 @@ class SCAMPTactic {
                       PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS,
                       COMPUTE_COLS, PROFILE_TYPE>
       _do_iteration;
-  DoRowEdgeStrategy<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-                    COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE>
-      _do_edge;
   WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS, TILE_WIDTH,
                     TILE_HEIGHT, BLOCKSZ, PROFILE_TYPE>
       _do_writeback;
@@ -475,11 +454,9 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
       while (thread_info.global_col < args.n_x &&
              thread_info.global_row < args.n_y &&
              thread_info.local_row < tile_height) {
-        tactic.DoEdge(thread_info.local_row, thread_info.local_col,
-                      thread_info.global_col, thread_info.global_row, args.n_x,
-                      thread_info.cov1, thread_info.cov2, thread_info.cov3,
-                      thread_info.cov4, start_diag, num_diags, smem, args.opt);
-
+        do_row_edge<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+                    PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS>(
+            thread_info, smem, args.n_x, start_diag, num_diags, args.opt);
         ++thread_info.global_col;
         ++thread_info.global_row;
         ++thread_info.local_col;

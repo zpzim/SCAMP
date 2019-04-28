@@ -1,7 +1,5 @@
 #pragma once
 
-#include "kernels_inner_loop.h"
-
 //////////////////////////////////////////////////////
 // UPDATE_ROW:
 // C: 0 1 2 3 4 5 6
@@ -393,9 +391,7 @@ class DoIterationStrategy : public SCAMPStrategy {
   __device__ inline void exec(
       SCAMPThreadInfo<ACCUM_TYPE> &info,
       SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
-      OptionalArgs &args) {
-    assert(false);
-  }
+      OptionalArgs &args) {}
 
  protected:
   __device__ DoIterationStrategy() {}
@@ -558,3 +554,144 @@ class DoIterationStrategy<
     info.global_row += DIAGS_PER_THREAD;
   }
 };
+
+/////////////////////////////////////////////////////////////////////////
+//  EDGE COMPUTATION
+//////////////////////////////////////////////////////////////////////
+
+template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
+          typename ACCUM_TYPE, typename DISTANCE_TYPE, bool COMPUTE_ROWS,
+          bool COMPUTE_COLS>
+__device__ inline void reduce_edge(
+    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_1NN> &smem,
+    SCAMPThreadInfo<ACCUM_TYPE> &info, DISTANCE_TYPE dist[4],
+    DISTANCE_TYPE &dist_row, uint32_t &idx_row, int diag, int num_diags, int n,
+    OptionalArgs &args) {
+  if (info.global_col + iter < n && diag + iter < num_diags) {
+    if (COMPUTE_ROWS) {
+      dist_row = fmaxf(dist_row, dist[iter]);
+    }
+    if (COMPUTE_COLS) {
+      fAtomicMax<ATOMIC_BLOCK>(
+          (float *)(smem.local_mp_col + info.local_col + iter), dist[iter]);
+    }
+  }
+}
+
+template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
+          typename ACCUM_TYPE, typename DISTANCE_TYPE, bool COMPUTE_ROWS,
+          bool COMPUTE_COLS>
+__device__ inline void reduce_edge(
+    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_1NN_INDEX> &smem,
+    SCAMPThreadInfo<ACCUM_TYPE> &info, DISTANCE_TYPE dist[4],
+    DISTANCE_TYPE &dist_row, uint32_t &idx_row, int diag, int num_diags, int n,
+    OptionalArgs &args) {
+  if (info.global_col + iter < n && diag + iter < num_diags) {
+    if (COMPUTE_ROWS) {
+      if (dist[iter] > dist_row) {
+        dist_row = dist[iter];
+        idx_row = info.global_col + iter;
+      }
+    }
+    if (COMPUTE_COLS) {
+      MPatomicMax<ATOMIC_BLOCK>(
+          (uint64_t *)(smem.local_mp_col + info.local_col + iter), dist[iter],
+          info.global_row);
+    }
+  }
+}
+
+template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
+          typename ACCUM_TYPE, typename DISTANCE_TYPE, bool COMPUTE_ROWS,
+          bool COMPUTE_COLS>
+__device__ inline void reduce_edge(
+    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_SUM_THRESH> &smem,
+    SCAMPThreadInfo<ACCUM_TYPE> &info, DISTANCE_TYPE dist[4],
+    DISTANCE_TYPE &dist_row, uint32_t &idx_row, int diag, int num_diags, int n,
+    OptionalArgs &args) {
+  if (info.global_col + iter < n && diag + iter < num_diags) {
+    if (dist[iter] > args.threshold) {
+      if (COMPUTE_ROWS) {
+        dist_row += dist[iter];
+      }
+      if (COMPUTE_COLS) {
+        do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_BLOCK>(
+            smem.local_mp_col + info.local_col + iter, dist[iter]);
+      }
+    }
+  }
+}
+
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE,
+          typename DISTANCE_TYPE>
+__device__ inline void reduce_row(
+    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_SUM_THRESH> &smem,
+    int row, DISTANCE_TYPE dist_row, uint32_t idx_row) {
+  do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_BLOCK>(smem.local_mp_row + row,
+                                                dist_row);
+}
+
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE,
+          typename DISTANCE_TYPE>
+__device__ inline void reduce_row(
+    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_1NN> &smem, int row,
+    DISTANCE_TYPE dist_row, uint32_t idx_row) {}
+
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE,
+          typename DISTANCE_TYPE>
+__device__ inline void reduce_row(
+    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_1NN_INDEX> &smem,
+    int row, DISTANCE_TYPE dist_row, uint32_t idx_row) {
+  MPatomicMax<ATOMIC_BLOCK>((uint64_t *)(smem.local_mp_row + row), dist_row,
+                            idx_row);
+}
+
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
+          typename DISTANCE_TYPE, SCAMPProfileType PROFILE_TYPE,
+          bool COMPUTE_ROWS, bool COMPUTE_COLS>
+__device__ inline void do_row_edge(
+    SCAMPThreadInfo<ACCUM_TYPE> &info,
+    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem, int n,
+    int diag, int num_diags, OptionalArgs &args) {
+  DISTANCE_TYPE dist_row = init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
+  DISTANCE_TYPE dist[4];
+  int col = info.local_col;
+  int row = info.local_row;
+  uint32_t idx_row = 0;
+  DATA_TYPE inormr = smem.inorm_row[row];
+  DATA_TYPE dgr = smem.dg_row[row];
+  DATA_TYPE dfr = smem.df_row[row];
+
+  // Compute the next set of distances (row y)
+  dist[0] = info.cov1 * smem.inorm_col[col] * inormr;
+  dist[1] = info.cov2 * smem.inorm_col[col + 1] * inormr;
+  dist[2] = info.cov3 * smem.inorm_col[col + 2] * inormr;
+  dist[3] = info.cov4 * smem.inorm_col[col + 3] * inormr;
+
+  // Update cov and compute the next distance values (row y)
+  info.cov1 = info.cov1 + smem.df_col[col] * dgr + smem.dg_col[col] * dfr;
+  info.cov2 =
+      info.cov2 + smem.df_col[col + 1] * dgr + smem.dg_col[col + 1] * dfr;
+  info.cov3 =
+      info.cov3 + smem.df_col[col + 2] * dgr + smem.dg_col[col + 2] * dfr;
+  info.cov4 =
+      info.cov4 + smem.df_col[col + 3] * dgr + smem.dg_col[col + 3] * dfr;
+
+  reduce_edge<0, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+              COMPUTE_ROWS, COMPUTE_COLS>(smem, info, dist, dist_row, idx_row,
+                                          diag, num_diags, n, args);
+  reduce_edge<1, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+              COMPUTE_ROWS, COMPUTE_COLS>(smem, info, dist, dist_row, idx_row,
+                                          diag, num_diags, n, args);
+  reduce_edge<2, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+              COMPUTE_ROWS, COMPUTE_COLS>(smem, info, dist, dist_row, idx_row,
+                                          diag, num_diags, n, args);
+  reduce_edge<3, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+              COMPUTE_ROWS, COMPUTE_COLS>(smem, info, dist, dist_row, idx_row,
+                                          diag, num_diags, n, args);
+
+  if (COMPUTE_ROWS) {
+    reduce_row<DATA_TYPE, PROFILE_DATA_TYPE, DISTANCE_TYPE>(smem, row, dist_row,
+                                                            idx_row);
+  }
+}

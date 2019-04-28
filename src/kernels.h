@@ -1,6 +1,5 @@
 #pragma once
 #include <float.h>
-#include "SCAMP.pb.h"
 #include "common.h"
 
 namespace SCAMP {

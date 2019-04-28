@@ -1,10 +1,10 @@
 #pragma once
 #include <condition_variable>
+#include <cstring>
 #include <functional>
 #include <mutex>
 #include <queue>
 #include <thread>
-#include "SCAMP.pb.h"
 #include "common.h"
 #include "qt_helper.h"
 

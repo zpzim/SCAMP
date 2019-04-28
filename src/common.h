@@ -13,9 +13,27 @@
 #include <mutex>
 #include <queue>
 #include <unordered_map>
-#include "SCAMP.pb.h"
 
 namespace SCAMP {
+
+// Types of matrix profile to compute
+enum SCAMPProfileType {
+  PROFILE_TYPE_INVALID = 0,
+  PROFILE_TYPE_1NN_INDEX = 1,
+  PROFILE_TYPE_SUM_THRESH = 2,
+  PROFILE_TYPE_FREQUENCY_THRESH = 3,
+  PROFILE_TYPE_KNN = 4,
+  PROFILE_TYPE_1NN_MULTIDIM = 5,
+  PROFILE_TYPE_1NN = 6,
+};
+
+// Precision modes
+enum SCAMPPrecisionType {
+  PRECISION_INVALID = 0,
+  PRECISION_SINGLE = 1,
+  PRECISION_MIXED = 2,
+  PRECISION_DOUBLE = 3,
+};
 
 // For computing the 1NN Matrix profile and index on the GPU, we store both the
 // index and distance as a single 64 bit value which allows for atomic updating
@@ -26,10 +44,39 @@ typedef union {
   uint64_t ulong;        // for atomic update
 } mp_entry;
 
-template <unsigned int count>
-struct reg_mem {
-  float dist[count];
-  double qt[count];
+struct ProfileData {
+  // Only one of these should be set at once
+  std::vector<uint32_t> uint32_value;
+  std::vector<uint64_t> uint64_value;
+  std::vector<float> float_value;
+  std::vector<double> double_value;
+};
+
+// Stores information about a matrix profile
+struct Profile {
+  std::vector<ProfileData> data;
+  SCAMPProfileType type;
+};
+
+// Arguments for a SCAMP operation
+// This is an external user's interface to the SCAMP library
+struct SCAMPArgs {
+  std::vector<double> timeseries_a;
+  std::vector<double> timeseries_b;
+  Profile profile_a;
+  Profile profile_b;
+  bool has_b;
+  uint64_t window;
+  uint64_t max_tile_size;
+  int64_t distributed_start_row;
+  int64_t distributed_start_col;
+  double distance_threshold;
+  SCAMPPrecisionType precision_type;
+  SCAMPProfileType profile_type;
+  bool computing_rows;
+  bool computing_columns;
+  bool keep_rows_separate;
+  bool is_aligned;
 };
 
 // Struct describing kernel arguments which are non-standard

@@ -148,9 +148,8 @@ void SCAMP_Operation::do_work(const std::vector<double> &timeseries_a,
 // This method is the top level interface for a user to request
 // that a join between timeseries_a and timeseries_b be computied
 // using the configuration set up in SCAMP_Operation's constructor
-SCAMPError_t SCAMP_Operation::do_join(
-    const google::protobuf::RepeatedField<double> &timeseries_a,
-    const google::protobuf::RepeatedField<double> &timeseries_b) {
+SCAMPError_t SCAMP_Operation::do_join(const std::vector<double> &timeseries_a,
+                                      const std::vector<double> &timeseries_b) {
   const int num_workers = _cpu_workers + _devices.size();
   printf("Num workers = %d\n", num_workers);
 
@@ -210,24 +209,23 @@ void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
     exit(0);
   }
   // Allocate and initialize memory
-  OptionalArgs _opt_args(args->distance_threshold());
+  OptionalArgs _opt_args(args->distance_threshold);
   // Construct operation
   SCAMP_Operation op(
-      args->timeseries_a().size(), args->timeseries_b().size(), args->window(),
-      args->max_tile_size(), devices, !args->has_b(), args->precision_type(),
-      args->computing_columns() && args->computing_rows(),
-      args->distributed_start_row(), args->distributed_start_col(), _opt_args,
-      args->profile_type(), args->mutable_profile_a(),
-      args->mutable_profile_b(), args->keep_rows_separate(),
-      args->computing_rows(), args->computing_columns(), args->is_aligned(),
-      num_threads);
+      args->timeseries_a.size(), args->timeseries_b.size(), args->window,
+      args->max_tile_size, devices, !args->has_b, args->precision_type,
+      args->computing_columns && args->computing_rows,
+      args->distributed_start_row, args->distributed_start_col, _opt_args,
+      args->profile_type, &args->profile_a, &args->profile_b,
+      args->keep_rows_separate, args->computing_rows, args->computing_columns,
+      args->is_aligned, num_threads);
   // Execute op
   std::chrono::high_resolution_clock::time_point start =
       std::chrono::high_resolution_clock::now();
-  if (args->has_b()) {
-    op.do_join(args->timeseries_a(), args->timeseries_b());
+  if (args->has_b) {
+    op.do_join(args->timeseries_a, args->timeseries_b);
   } else {
-    op.do_join(args->timeseries_a(), args->timeseries_a());
+    op.do_join(args->timeseries_a, args->timeseries_a);
   }
   std::chrono::high_resolution_clock::time_point end =
       std::chrono::high_resolution_clock::now();

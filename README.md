@@ -3,35 +3,32 @@
 This is a GPU/CPU implementation of the SCAMP algorithm. SCAMP takes a time series as input and computes the matrix profile for a particular window size. You can read more at the [Matrix Profile Homepage](http://www.cs.ucr.edu/~eamonn/MatrixProfile.html)
 This is a much improved framework over [GPU-STOMP](https://github.com/zpzim/STOMPSelfJoin) which has the following additional features:
  * Tiling for large inputs 
- * Computation in fp32, mixed fp32/fp64, or fp64 (mixed is recommended for most datasets, but if it doesn't work try double precision)
- * fp32 version should be compatible with GeForce cards
+ * Computation in fp32, mixed fp32/fp64, or fp64 (double is recommended for most datasets, single precision will work for some)
+ * fp32 version should get good performance on GeForce cards
  * AB joins (you can produce the matrix profile from 2 different time series)
  * Distributable (we use AWS but other cloud platforms can work) with verified scalability to billions of datapoints
  * Sum and Frequency Joins: rather than compute the nearest neighbor directly, we can compute the sum or frequency of correlations above a threshold (this better describes the frequency of an event, something not obvious from the matrix profile alone)
  * Extensible to adding optimized versions of custom join operations.
- * Some optimizations for architectures other than Volta
  * Can compute joins with the CPU (Only enabled for double precision and 1NN+Index joins for now, optimizations pending)
+ * Handles NaN input values. The matrix profile will be computed while excluding any subsequence with a NaN value
 
 # Environment
 This base project requires:
  * Currently builds under Ubuntu/Fedora Linux using gcc/clang and nvcc (if CUDA is available) with cmake (3.8+ for cuda support), this version is not available directly from all package managers so you may need to install it manually from [here](https://cmake.org/download/)
- * Required: Google protobufs (v2) must be installed as SCAMP uses this input to communicate internally, protobuf v2.6.x minimum is required, some package managers do not provide this version yet and you will need to install from source [here](https://github.com/protocolbuffers/protobuf/blob/master/src/README.md) 
  * Optional, but highly recommended: At least version 9.0 of the CUDA toolkit available [here](https://developer.nvidia.com/cuda-toolkit) and an NVIDIA GPU with CUDA (compute capability 3.0+) support. You can find a list of CUDA compatible GPUs [here](https://developer.nvidia.com/cuda-gpus)
  * Optional: Version 6.0 of clang (for clang-tidy and clang-format)
  * Currently Supports Kepler-Volta, but Turing and beyond will likely work as well, just add the -gencode flag for your specific architecture in CMakeLists.txt 
  * Highly recommend using a Pascal/Volta GPU as they are much better (V100 is ~10x faster than a K80 for SCAMP, V100 is ~2-3x faster than a P100)
 ~~~~
 Ubuntu Required Packages:
-   sudo apt-get install protobuf-compiler libprotobuf-dev 
    # Depending on Ubuntu version cmake 3.8 may not be available and you will need to install manually
    sudo apt-get install cmake
    # Install cuda via the link above
 Fedora:
-   sudo dnf install protobuf-devel cmake3 gcc-c++
+   sudo dnf install cmake3 gcc-c++
    # Install cuda via the link above
 CentOS:
   yum install cmake3
-  # Install protobufs manually from source using the link above 
   # Install cuda via the link above
 ~~~~
 

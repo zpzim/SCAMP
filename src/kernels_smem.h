@@ -18,9 +18,7 @@ class InitMemStrategy : public SCAMPStrategy {
       SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
       PROFILE_DATA_TYPE *__restrict__ profile_a,
       PROFILE_DATA_TYPE *__restrict__ profile_B, uint32_t col_start,
-      uint32_t row_start) {
-    assert(false);
-  }
+      uint32_t row_start) {}
 
  protected:
   __device__ InitMemStrategy() {}
@@ -130,9 +128,7 @@ class WriteBackStrategy : public SCAMPStrategy {
                        PROFILE_DATA_TYPE *__restrict__ local_mp_col,
                        PROFILE_DATA_TYPE *__restrict__ local_mp_row,
                        PROFILE_DATA_TYPE *__restrict__ profile_A,
-                       PROFILE_DATA_TYPE *__restrict__ profile_B) {
-    assert(false);
-  }
+                       PROFILE_DATA_TYPE *__restrict__ profile_B) {}
 
  protected:
   __device__ WriteBackStrategy() {}

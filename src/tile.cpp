@@ -296,26 +296,26 @@ void Tile::InitTimeseries(const std::vector<double> &Ta_h,
 
 Profile Tile::AllocProfile(SCAMPProfileType t, uint64_t size) {
   Profile p;
-  p.set_type(t);
+  p.type = t;
   switch (t) {
     case PROFILE_TYPE_SUM_THRESH:
-      p.mutable_data()->Add()->mutable_double_value()->mutable_value()->Resize(
-          size, 0);
+      p.data.emplace_back();
+      p.data[0].double_value.resize(size, 0);
       return p;
     case PROFILE_TYPE_1NN:
-      p.mutable_data()->Add()->mutable_float_value()->mutable_value()->Resize(
-          size, 0);
+      p.data.emplace_back();
+      p.data[0].float_value.resize(size, std::numeric_limits<float>::lowest());
       return p;
     case PROFILE_TYPE_1NN_INDEX:
       mp_entry e;
       e.ints[1] = -1u;
       e.floats[0] = std::numeric_limits<float>::lowest();
-      p.mutable_data()->Add()->mutable_uint64_value()->mutable_value()->Resize(
-          size, e.ulong);
+      p.data.emplace_back();
+      p.data[0].uint64_value.resize(size, e.ulong);
       return p;
     case PROFILE_TYPE_FREQUENCY_THRESH:
-      p.mutable_data()->Add()->mutable_uint64_value()->mutable_value()->Resize(
-          size, 0);
+      p.data.emplace_back();
+      p.data[0].uint64_value.resize(size, 0);
       return p;
     case PROFILE_TYPE_KNN:
     case PROFILE_TYPE_1NN_MULTIDIM:
@@ -337,32 +337,28 @@ SCAMPError_t Tile::InitProfile(Profile *profile_a, Profile *profile_b) {
       Memset(_profile_b_tile_dev.at(type), 0, profile_size * height);
       break;
     case PROFILE_TYPE_1NN_INDEX: {
-      const uint64_t *pA_ptr =
-          profile_a->data().Get(0).uint64_value().value().data();
+      const uint64_t *pA_ptr = profile_a->data[0].uint64_value.data();
       Memcopy(_profile_a_tile_dev.at(type), pA_ptr + _current_tile_col,
               sizeof(uint64_t) * width, false);
       if (_info->self_join) {
         Memcopy(_profile_b_tile_dev.at(type), pA_ptr + _current_tile_row,
                 sizeof(uint64_t) * height, false);
       } else if (_info->computing_rows && _info->keep_rows_separate) {
-        const uint64_t *pB_ptr =
-            profile_b->data().Get(0).uint64_value().value().data();
+        const uint64_t *pB_ptr = profile_b->data[0].uint64_value.data();
         Memcopy(_profile_b_tile_dev.at(type), pB_ptr + _current_tile_row,
                 sizeof(uint64_t) * height, false);
       }
       break;
     }
     case PROFILE_TYPE_1NN: {
-      const float *pA_ptr =
-          profile_a->data().Get(0).float_value().value().data();
+      const float *pA_ptr = profile_a->data[0].float_value.data();
       Memcopy(_profile_a_tile_dev.at(type), pA_ptr + _current_tile_col,
               sizeof(float) * width, false);
       if (_info->self_join) {
         Memcopy(_profile_b_tile_dev.at(type), pA_ptr + _current_tile_row,
                 sizeof(float) * height, false);
       } else if (_info->computing_rows && _info->keep_rows_separate) {
-        const float *pB_ptr =
-            profile_b->data().Get(0).float_value().value().data();
+        const float *pB_ptr = profile_b->data[0].float_value.data();
         Memcopy(_profile_b_tile_dev.at(type), pB_ptr + _current_tile_row,
                 sizeof(float) * height, false);
       }
@@ -406,57 +402,23 @@ void Tile::MergeTileIntoFullProfile(Profile *tile_profile, uint64_t position,
   std::unique_lock<std::mutex> mlock(lock);
   switch (_info->profile_type) {
     case PROFILE_TYPE_SUM_THRESH:
-      elementwise_sum<double>(full_profile->mutable_data()
-                                  ->Mutable(0)
-                                  ->mutable_double_value()
-                                  ->mutable_value()
-                                  ->mutable_data(),
+      elementwise_sum<double>(full_profile->data[0].double_value.data(),
                               position, length,
-                              tile_profile->mutable_data()
-                                  ->Mutable(0)
-                                  ->mutable_double_value()
-                                  ->mutable_value()
-                                  ->mutable_data());
+                              tile_profile->data[0].double_value.data());
       return;
     case PROFILE_TYPE_1NN_INDEX:
-      elementwise_max<uint64_t>(full_profile->mutable_data()
-                                    ->Mutable(0)
-                                    ->mutable_uint64_value()
-                                    ->mutable_value()
-                                    ->mutable_data(),
-                                position, length,
-                                tile_profile->mutable_data()
-                                    ->Mutable(0)
-                                    ->mutable_uint64_value()
-                                    ->mutable_value()
-                                    ->mutable_data(),
-                                index_start);
+      elementwise_max<uint64_t>(
+          full_profile->data[0].uint64_value.data(), position, length,
+          tile_profile->data[0].uint64_value.data(), index_start);
       return;
     case PROFILE_TYPE_1NN:
-      elementwise_max<float>(full_profile->mutable_data()
-                                 ->Mutable(0)
-                                 ->mutable_float_value()
-                                 ->mutable_value()
-                                 ->mutable_data(),
-                             position, length,
-                             tile_profile->mutable_data()
-                                 ->Mutable(0)
-                                 ->mutable_float_value()
-                                 ->mutable_value()
-                                 ->mutable_data());
+      elementwise_max<float>(full_profile->data[0].float_value.data(), position,
+                             length, tile_profile->data[0].float_value.data());
       return;
     case PROFILE_TYPE_FREQUENCY_THRESH:
-      elementwise_sum<uint64_t>(full_profile->mutable_data()
-                                    ->Mutable(0)
-                                    ->mutable_uint64_value()
-                                    ->mutable_value()
-                                    ->mutable_data(),
+      elementwise_sum<uint64_t>(full_profile->data[0].uint64_value.data(),
                                 position, length,
-                                tile_profile->mutable_data()
-                                    ->Mutable(0)
-                                    ->mutable_uint64_value()
-                                    ->mutable_value()
-                                    ->mutable_data());
+                                tile_profile->data[0].uint64_value.data());
       return;
     case PROFILE_TYPE_KNN:
     case PROFILE_TYPE_1NN_MULTIDIM:
@@ -502,29 +464,17 @@ void Tile::CopyProfileToHost(Profile *destination_profile,
                              uint64_t length) {
   switch (_info->profile_type) {
     case PROFILE_TYPE_SUM_THRESH:
-      Memcopy(destination_profile->mutable_data()
-                  ->Mutable(0)
-                  ->mutable_double_value()
-                  ->mutable_value()
-                  ->mutable_data(),
+      Memcopy(destination_profile->data[0].double_value.data(),
               device_tile_profile->at(PROFILE_TYPE_SUM_THRESH),
               length * sizeof(double), true);
       break;
     case PROFILE_TYPE_1NN:
-      Memcopy(destination_profile->mutable_data()
-                  ->Mutable(0)
-                  ->mutable_float_value()
-                  ->mutable_value()
-                  ->mutable_data(),
+      Memcopy(destination_profile->data[0].float_value.data(),
               device_tile_profile->at(PROFILE_TYPE_1NN), length * sizeof(float),
               true);
       break;
     case PROFILE_TYPE_1NN_INDEX:
-      Memcopy(destination_profile->mutable_data()
-                  ->Mutable(0)
-                  ->mutable_uint64_value()
-                  ->mutable_value()
-                  ->mutable_data(),
+      Memcopy(destination_profile->data[0].uint64_value.data(),
               device_tile_profile->at(PROFILE_TYPE_1NN_INDEX),
               length * sizeof(uint64_t), true);
       break;
