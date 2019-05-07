@@ -89,16 +89,16 @@ if (CMAKE_CUDA_COMPILER)
 endif()
 
 # optimize in release
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native -O3")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -funroll-loops -march=native -O3")
 
 # build debug with sanitizer
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=address -fno-omit-frame-pointer")
 
 if(${COMPILER_ID} MATCHES "GNU") # gcc specific flags
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -funroll-loops")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
     add_definitions("-Wextra -Wpedantic")
 elseif(${COMPILER_ID} MATCHES "clang") # clang specific flags
-    add_definitions("-Weverything")
+    add_definitions("-Weverything -ffp-contract=fast")
 endif()
 
 # ----------------------------------------------------------------------------------------

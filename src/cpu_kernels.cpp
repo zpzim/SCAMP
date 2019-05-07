@@ -1,13 +1,103 @@
 #include "cpu_kernels.h"
+#include <array>
 #include <vector>
-
 namespace SCAMP {
 
-// Kernel for computing matrix profiles on the CPU
-// TODO(zpzim): This is unoptimized, we can get 3x+ additional throughput
-// by performing optimizations
+// this is hard coded for now. It needs to be a power of 2
+// It may be desirable to make this larger, since the compiler is generally
+// unable to fold everything into register names with either int or long long
+// based indexing.
+constexpr int unrollWid{32};
+
+// set here for now. Could be set by cmake depending on what is supported. AVX
+// and AVX2 benefit from at least 32 particularly if masked movement
+// instructions are generated for the reduction steps.
+constexpr int simdByteLen{32};
+
 template <bool computing_rows, bool computing_cols>
-static inline void partialcross_kern(
+void partialcross_kern(double* __restrict cov, double* __restrict mpa,
+                       int* __restrict mpia, double* __restrict mpb,
+                       int* __restrict mpib, const double* __restrict dfa,
+                       const double* __restrict dga,
+                       const double* __restrict invna,
+                       const double* __restrict dfb,
+                       const double* __restrict dgb,
+                       const double* __restrict invnb, const int amx,
+                       const int bmx, const int amin, const int upper_excl) {
+  for (int ia = amin; ia < amx - upper_excl; ia += unrollWid) {
+    int rowIters = std::min(amx - ia, bmx);
+    int fullRowIters = std::max(0, std::min(amx - ia - unrollWid + 1, bmx));
+    for (int ib = 0; ib < fullRowIters; ib++) {
+      alignas(simdByteLen) std::array<double, unrollWid> corr;
+      for (int diag = 0; diag < unrollWid; diag++) {
+        corr[diag] = cov[ia + diag] * invna[ia + diag + ib] * invnb[ib];
+      }
+      if (computing_cols) {
+        for (int diag = 0; diag < unrollWid; diag++) {
+          mpia[ia + diag + ib] =
+              mpa[ia + diag + ib] >= corr[diag] ? mpia[ia + diag + ib] : ib;
+          mpa[ia + diag + ib] = mpa[ia + diag + ib] >= corr[diag]
+                                    ? mpa[ia + diag + ib]
+                                    : corr[diag];
+        }
+      }
+      if (computing_rows) {
+        std::array<int, unrollWid / 2> corrIdx;
+        for (int i = 0; i < unrollWid / 2; i++) {
+          corrIdx[i] =
+              corr[i] >= corr[i + unrollWid / 2] ? i : i + unrollWid / 2;
+          corr[i] = corr[i] >= corr[i + unrollWid / 2]
+                        ? corr[i]
+                        : corr[i + unrollWid / 2];
+        }
+        auto horizontal_reduction = [&corr, &corrIdx](int offset) {
+          for (int i = 0; i < offset; i++) {
+            corrIdx[i] =
+                corr[i] >= corr[i + offset] ? corrIdx[i] : corrIdx[i + offset];
+            corr[i] = corr[i] >= corr[i + offset] ? corr[i] : corr[i + offset];
+          }
+        };
+        for (int i = unrollWid / 4; i > 0; i /= 2) {
+          horizontal_reduction(i);
+        }
+        mpib[ib] = mpb[ib] >= corr[0] ? mpib[ib] : corrIdx[0] + ia + ib;
+        mpb[ib] = mpb[ib] >= corr[0] ? mpb[ib] : corr[0];
+      }
+      for (int diag = 0; diag < unrollWid; diag++) {
+        cov[ia + diag] += dfa[ia + diag + ib] * dgb[ib];
+        cov[ia + diag] += dfb[ib] * dga[ia + diag + ib];
+      }
+    }
+    for (int ib = fullRowIters; ib < rowIters; ib++) {
+      int diagmax =
+          std::min(std::min(amx - ia - upper_excl, amx - ia - ib), unrollWid);
+      for (int diag = 0; diag < diagmax; diag++) {
+        double corr = cov[ia + diag] * invna[ia + diag + ib] * invnb[ib];
+        if (computing_cols) {
+          if (mpa[ia + diag + ib] < corr) {
+            mpa[ia + diag + ib] = corr;
+            mpia[ia + diag + ib] = ib;
+          }
+        }
+        if (computing_rows) {
+          if (mpb[ib] < corr) {
+            mpb[ib] = corr;
+            mpib[ib] = ia + diag + ib;
+          }
+        }
+      }
+      for (int diag = 0; diag < diagmax; diag++) {
+        cov[ia + diag] += dfa[ia + diag + ib] * dgb[ib];
+        cov[ia + diag] += dga[ia + diag + ib] * dfb[ib];
+      }
+    }
+  }
+}
+/*
+// Kernel for computing matrix profiles on the CPU
+// Reference Implementation
+template <bool computing_rows, bool computing_cols>
+void partialcross_kern(
     double* __restrict cov, double* __restrict mpa, int* __restrict mpia,
     double* __restrict mpb, int* __restrict mpib, const double* __restrict dfa,
     const double* __restrict dga, const double* __restrict invna,
@@ -35,7 +125,7 @@ static inline void partialcross_kern(
     }
   }
 }
-
+*/
 void split_profile(std::vector<double>& mp, std::vector<int32_t>& mpi,
                    uint64_t* profile, int len) {
   mp_entry e;
