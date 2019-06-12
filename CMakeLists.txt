@@ -191,8 +191,60 @@ if(CLANG_FORMAT_EXE)
 endif()
 
 add_executable(SCAMP src/main.cpp)
+
+
+if (BUILD_CLIENT_SERVER)
+  set(Protobuf_USE_STATIC_LIBS 1)
+  find_package( Protobuf REQUIRED )
+  message(STATUS "Using protobuf ${Protobuf_VERSION}") 
+  message(STATUS "Using protobuf lib ${Protobuf_LIBRARY}") 
+  message(STATUS "Using protobuf compiler ${Protobuf_PROTOC_EXECUTABLE}") 
+  find_library (GRPC_LIB libgrpc.a REQUIRED)
+  find_library (Protobuf_LIB libprotobuf.a REQUIRED)
+  find_library (GRPC_CPP_LIB libgrpc++.a REQUIRED)
+  find_library (GRPCU_LIB libgrpc_unsecure.a REQUIRED)
+  find_library (GRPCU_CPP_LIB libgrpc++_unsecure.a REQUIRED)
+  message(STATUS "Using grpc lib ${GRPC_LIB}") 
+  message(STATUS "Using grpc++ lib ${GRPC_CPP_LIB}") 
+
+  
+  set(_GRPC_CPP_PLUGIN_EXECUTABLE `which grpc_cpp_plugin`)
+
+  # Proto file
+  get_filename_component(hw_proto "kubernetes/helloworld.proto" ABSOLUTE)
+  get_filename_component(hw_proto_path "${hw_proto}" PATH)
+
+  # Generated sources
+  set(hw_proto_srcs "kubernetes/helloworld.pb.cc")
+  set(hw_proto_hdrs "kubernetes/helloworld.pb.h")
+  set(hw_grpc_srcs "kubernetes/helloworld.grpc.pb.cc")
+  set(hw_grpc_hdrs "kubernetes/helloworld.grpc.pb.h")
+  
+  add_custom_command(
+      OUTPUT "${hw_proto_srcs}" "${hw_proto_hdrs}" "${hw_grpc_srcs}" "${hw_grpc_hdrs}"
+      COMMAND ${Protobuf_PROTOC_EXECUTABLE}
+      ARGS -I "${hw_proto_path}"
+      --grpc_out "kubernetes/"
+      --cpp_out "kubernetes/"
+      --plugin=protoc-gen-grpc=${_GRPC_CPP_PLUGIN_EXECUTABLE} ${hw_proto}
+      DEPENDS "${hw_proto}")
+
+  add_library(messages ${hw_proto_srcs} ${hw_proto_headers} ${hw_grpc_srcs} ${hw_grpc_headers})
+  target_link_libraries(messages ${Protobuf_LIB} ${GRPC_LIB} ${GRPC_CPP_LIB} ${GRPCU_LIB} ${GRPCU_CPP_LIB} -lz -lpthread)
+  
+  add_executable(SCAMPclient kubernetes/greeter_client.cc)
+  add_executable(SCAMPserver kubernetes/greeter_server.cc)
+  target_link_libraries(SCAMPserver messages )
+endif()
+
 if (CMAKE_CUDA_COMPILER)
   target_link_libraries(SCAMP -lcudart_static gflags common scamp)
+  if (BUILD_CLIENT_SERVER)
+	  target_link_libraries(SCAMPclient -lcudart_static common scamp messages)
+  endif()
 else()
   target_link_libraries(SCAMP gflags common scamp)
+  if (BUILD_CLIENT_SERVER)
+	  target_link_libraries(SCAMPclient common scamp messages)
+  endif()
 endif() 
