@@ -1,4 +1,5 @@
 #include <unordered_map>
+#include "defines.h"
 #include "kernels.h"
 
 namespace SCAMP {
@@ -324,7 +325,7 @@ class SCAMPTactic {
       uint32_t row_start) {
     _init_mem.exec(args, smem, profile_a, profile_b, col_start, row_start);
   }
-  __device__ inline __attribute__((always_inline)) void DoIteration(
+  __device__ inline FORCE_INLINE void DoIteration(
       SCAMPThreadInfo<ACCUM_TYPE> &info,
       SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
       OptionalArgs &args) {
