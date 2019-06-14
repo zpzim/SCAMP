@@ -219,8 +219,9 @@ Tile::Tile(const OpInfo *info, SCAMPArchitecture arch, int cuda_id)
           static_cast<double *>(
               alloc_mem<double>(info->max_tile_ts_size, arch, cuda_id)),
           [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
-      _scratch(std::make_unique<qt_compute_helper>(info->max_tile_ts_size,
-                                                   info->mp_window, true, arch))
+
+      _scratch(std::unique_ptr<qt_compute_helper>(new qt_compute_helper(
+          info->max_tile_ts_size, info->mp_window, true, arch)))
 #ifdef _HAS_CUDA_
       ,
       _stream(),
