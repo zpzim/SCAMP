@@ -204,8 +204,12 @@ SCAMPError_t SCAMP_Operation::do_join(const std::vector<double> &timeseries_a,
 // and executes a SCAMP_Operation given a set of user selected parameters.
 void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
               int num_threads) {
-  if (devices.empty() && num_threads == 0) {
+  if (devices.empty() && num_threads <= 0) {
     printf("Error: no compute_resources provided\n");
+    exit(0);
+  }
+  if (args == nullptr || !args->valid()) {
+    printf("Error: invalid arguments provided to SCAMP\n");
     exit(0);
   }
   // Allocate and initialize memory

@@ -61,6 +61,7 @@ struct Profile {
 // Arguments for a SCAMP operation
 // This is an external user's interface to the SCAMP library
 struct SCAMPArgs {
+  bool valid();
   std::vector<double> timeseries_a;
   std::vector<double> timeseries_b;
   Profile profile_a;
