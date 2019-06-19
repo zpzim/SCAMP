@@ -71,6 +71,7 @@ class Tile {
   ~Tile();
 #ifdef _HAS_CUDA_
   cudaStream_t get_stream() { return _stream; }
+  cudaDeviceProp get_dev_props() { return _dev_props; }
 #endif
 
   SCAMPArchitecture get_arch() const { return _arch; }

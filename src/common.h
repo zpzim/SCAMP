@@ -6,6 +6,7 @@
 
 #include <stdio.h>
 #include <cinttypes>
+#include <cmath>
 #include <condition_variable>
 #include <cstdlib>
 #include <iostream>
@@ -82,6 +83,7 @@ struct SCAMPArgs {
 
 // Struct describing kernel arguments which are non-standard
 struct OptionalArgs {
+  OptionalArgs() : threshold(NAN), num_extra_operands(0) {}
   OptionalArgs(double threshold_)
       : threshold(threshold_), num_extra_operands(0) {}
   OptionalArgs(double threshold_, int num_extra_operands_)

@@ -526,14 +526,7 @@ SCAMPError_t Tile::do_self_join_full() {
       if (error != SCAMP_NO_ERROR) {
         return error;
       }
-      error = gpu_kernel_self_join_lower(
-          _QT_dev.get(), _df_A.get(), _df_B.get(), _dg_A.get(), _dg_B.get(),
-          _norms_A.get(), _norms_B.get(), &_profile_a_tile_dev,
-          &_profile_b_tile_dev, _info->mp_window,
-          _current_tile_width - _info->mp_window + 1,
-          _current_tile_height - _info->mp_window + 1, _current_tile_col,
-          _current_tile_row, _dev_props, _info->fp_type, _info->opt_args,
-          _info->profile_type, _stream);
+      error = gpu_kernel_self_join_lower(this);
 #else
       ASSERT(false, "ERROR: CUDA used in binary not built with CUDA");
 #endif
@@ -569,14 +562,7 @@ SCAMPError_t Tile::do_self_join_half() {
       if (error != SCAMP_NO_ERROR) {
         return error;
       }
-      error = gpu_kernel_self_join_upper(
-          _QT_dev.get(), _df_A.get(), _df_B.get(), _dg_A.get(), _dg_B.get(),
-          _norms_A.get(), _norms_B.get(), &_profile_a_tile_dev,
-          &_profile_b_tile_dev, _info->mp_window,
-          _current_tile_width - _info->mp_window + 1,
-          _current_tile_height - _info->mp_window + 1, _current_tile_col,
-          _current_tile_row, _dev_props, _info->fp_type, _info->opt_args,
-          _info->profile_type, _stream);
+      error = gpu_kernel_self_join_upper(this);
 #else
       ASSERT(false, "ERROR: CUDA used in binary not built with CUDA");
 #endif
@@ -614,16 +600,7 @@ SCAMPError_t Tile::do_ab_join_full() {
       if (error != SCAMP_NO_ERROR) {
         return error;
       }
-      error = gpu_kernel_ab_join_upper(
-          _QT_dev.get(), _df_A.get(), _df_B.get(), _dg_A.get(), _dg_B.get(),
-          _norms_A.get(), _norms_B.get(), &_profile_a_tile_dev,
-          &_profile_b_tile_dev, _info->mp_window,
-          _current_tile_width - _info->mp_window + 1,
-          _current_tile_height - _info->mp_window + 1, _current_tile_col,
-          _current_tile_row, _info->global_start_col_position,
-          _info->global_start_row_position, _info->is_aligned, _dev_props,
-          _info->fp_type, _info->computing_rows, _info->opt_args,
-          _info->profile_type, _stream);
+      error = gpu_kernel_ab_join_upper(this);
 #else
       ASSERT(false, "ERROR: CUDA used in binary not built with CUDA");
 #endif
@@ -649,16 +626,8 @@ SCAMPError_t Tile::do_ab_join_full() {
       if (error != SCAMP_NO_ERROR) {
         return error;
       }
-      error = gpu_kernel_ab_join_lower(
-          _QT_dev.get(), _df_A.get(), _df_B.get(), _dg_A.get(), _dg_B.get(),
-          _norms_A.get(), _norms_B.get(), &_profile_a_tile_dev,
-          &_profile_b_tile_dev, _info->mp_window,
-          _current_tile_width - _info->mp_window + 1,
-          _current_tile_height - _info->mp_window + 1, _current_tile_col,
-          _current_tile_row, _info->global_start_col_position,
-          _info->global_start_row_position, _info->is_aligned, _dev_props,
-          _info->fp_type, _info->computing_rows, _info->opt_args,
-          _info->profile_type, _stream);
+
+      error = gpu_kernel_ab_join_lower(this);
 #else
       ASSERT(false, "ERROR: CUDA used in binary not built with CUDA");
 #endif
