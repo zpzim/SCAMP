@@ -234,7 +234,8 @@ if (BUILD_CLIENT_SERVER)
   
   add_executable(SCAMPclient kubernetes/greeter_client.cc)
   add_executable(SCAMPserver kubernetes/greeter_server.cc)
-  target_link_libraries(SCAMPserver messages )
+  #target_link_libraries(SCAMPserver messages ) old chad changed
+  target_link_libraries(SCAMPserver common scamp messages )
 endif()
 
 if (CMAKE_CUDA_COMPILER)

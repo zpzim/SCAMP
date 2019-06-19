@@ -24,23 +24,31 @@ package helloworld;
 // The greeting service definition.
 service Greeter {
   // Sends a greeting
-  rpc SayHello (HelloRequest) returns (HelloReply) {}
-  rpc SayChicken (HelloRequest) returns (HelloReply) {}
-  rpc Combiner (HelloRequest) returns (HelloReply) {}
+  //rpc SayHello (HelloRequest) returns (HelloReply) {}
+  //rpc SayChicken (HelloRequest) returns (HelloReply) {}
+  //rpc Combiner (HelloRequest) returns (HelloReply) {} 
+  rpc RequestSCAMPWork (SCAMPRequest) returns (SCAMPArgs) {}
+  rpc SCAMPCombiner (SCAMPArgs) returns (SCAMPResult) {}
+}
+
+message SCAMPRequest {
+}
+
+message SCAMPResult {
 }
 
 // The request message containing the user's name.
-message HelloRequest {
+/*message HelloRequest {
   string name = 1;
   string chicken = 2;
   int32 result = 3;
   int32 reqcounter = 4;
   int32 idcnt = 5;
   repeated double data = 6;
-}
+}*/
 
 // The response message containing the greetings
-message HelloReply {
+/*message HelloReply {
   string message = 1;
   string other = 2;
   int32 done = 3;
@@ -52,4 +60,74 @@ message HelloReply {
   int32 endtimer = 9;
   int32 status = 10;
   repeated double replydata = 11;
+}*/
+
+message RepeatedUInt {
+    repeated uint32 value = 1;
+}
+message RepeatedULong {
+    repeated uint64 value = 1;
+}
+message RepeatedFloat {
+    repeated float value = 1;
+}
+message RepeatedDouble {
+    repeated double value = 1;
+}
+
+message ProfileData {
+    oneof Data {
+        RepeatedUInt uint32_value = 1;
+        RepeatedULong uint64_value = 2;
+        RepeatedFloat float_value = 3;
+        RepeatedDouble double_value = 4;
+    }
+}
+
+enum SCAMPProfileType {
+    PROFILE_TYPE_INVALID = 0;
+    PROFILE_TYPE_1NN_INDEX = 1;
+    PROFILE_TYPE_SUM_THRESH = 2;
+    PROFILE_TYPE_FREQUENCY_THRESH = 3;
+    PROFILE_TYPE_KNN = 4;
+    PROFILE_TYPE_1NN_MULTIDIM = 5;
+    PROFILE_TYPE_1NN = 6;
+}
+
+message Profile {
+    repeated ProfileData data = 1;
+    SCAMPProfileType type = 2;
+}
+
+message SCAMPTileInfo {
+}
+
+enum SCAMPPrecisionType {
+    PRECISION_INVALID = 0;
+    PRECISION_SINGLE = 1;
+    PRECISION_MIXED = 2;
+    PRECISION_DOUBLE = 3;    
+}
+
+
+message SCAMPArgs {
+    repeated double timeseries_a = 1;
+    repeated double timeseries_b = 2;
+    Profile profile_a = 3;
+    Profile profile_b = 4;
+    bool has_b = 5;
+    uint64 window = 6;
+    uint64 max_tile_size = 7;
+    int64 distributed_start_row = 8;
+    int64 distributed_start_col = 9;
+    double distance_threshold = 10;
+    SCAMPPrecisionType precision_type = 11;        
+    SCAMPProfileType profile_type = 12;
+    bool computing_rows = 13;
+    bool computing_columns = 14;
+    bool keep_rows_separate = 15;
+    bool is_aligned = 16;
+    int64 timeseries_size_a = 17;
+    int64 timeseries_size_b = 18;
+    int64 job_id = 19;
 }
