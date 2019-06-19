@@ -6,6 +6,7 @@
 
 #include <stdio.h>
 #include <cinttypes>
+#include <cmath>
 #include <condition_variable>
 #include <cstdlib>
 #include <iostream>
@@ -61,6 +62,7 @@ struct Profile {
 // Arguments for a SCAMP operation
 // This is an external user's interface to the SCAMP library
 struct SCAMPArgs {
+  bool valid();
   std::vector<double> timeseries_a;
   std::vector<double> timeseries_b;
   Profile profile_a;
@@ -81,6 +83,7 @@ struct SCAMPArgs {
 
 // Struct describing kernel arguments which are non-standard
 struct OptionalArgs {
+  OptionalArgs() : threshold(NAN), num_extra_operands(0) {}
   OptionalArgs(double threshold_)
       : threshold(threshold_), num_extra_operands(0) {}
   OptionalArgs(double threshold_, int num_extra_operands_)
