@@ -1,6 +1,9 @@
 #ifdef _HAS_CUDA_
+
 #include <cuda_runtime.h>
+
 #endif
+
 #include <gflags/gflags.h>
 #include <cmath>
 #include <fstream>
@@ -12,6 +15,7 @@
 #include <vector>
 #include "SCAMP.h"
 #include "common.h"
+#include "scamp_exception.h"
 
 DEFINE_int32(num_cpu_workers, 0, "Number of CPU workers to use");
 DEFINE_bool(output_pearson, false,
@@ -380,11 +384,17 @@ int main(int argc, char **argv) {
   args.is_aligned = FLAGS_aligned;
   args.timeseries_a = std::move(Ta_h);
   args.timeseries_b = std::move(Tb_h);
+  args.silent_mode = false;
 
   InitProfileMemory(&args);
 
   printf("Starting SCAMP\n");
-  SCAMP::do_SCAMP(&args, devices, FLAGS_num_cpu_workers);
+  try {
+    SCAMP::do_SCAMP(&args, devices, FLAGS_num_cpu_workers);
+  } catch (const SCAMPException &e) {
+    std::cout << e.what() << "\n";
+    exit(1);
+  }
 
   printf("Now writing result to files\n");
   WriteProfileToFile(FLAGS_output_a_file_name, FLAGS_output_a_index_file_name,
