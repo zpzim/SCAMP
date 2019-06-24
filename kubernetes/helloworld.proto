@@ -21,15 +21,21 @@ syntax = "proto3";
 
 package helloworld;
 
+message SCAMPWork {
+  SCAMPArgs args = 1;
+  bool valid = 2;
+}
+
 // The greeting service definition.
 service Greeter {
   // Sends a greeting
   //rpc SayHello (HelloRequest) returns (HelloReply) {}
   //rpc SayChicken (HelloRequest) returns (HelloReply) {}
   //rpc Combiner (HelloRequest) returns (HelloReply) {} 
-  rpc RequestSCAMPWork (SCAMPRequest) returns (SCAMPArgs) {}
+  rpc RequestSCAMPWork (SCAMPRequest) returns (SCAMPWork) {}
   rpc SCAMPCombiner (SCAMPArgs) returns (SCAMPResult) {}
 }
+
 
 message SCAMPRequest {
 }

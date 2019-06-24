@@ -63,6 +63,7 @@ set(
   src/*.h
   src/*.cpp
   src/*.cu
+  kubernetes/*.cc
   )
 
 # ----------------------------------------------------------------------------------------
@@ -103,8 +104,6 @@ endif()
 
 # ----------------------------------------------------------------------------------------
 #                              ===== Build targets =====
-
-add_subdirectory(gflags)
 
 add_library(common src/common.cpp)
 
@@ -194,21 +193,42 @@ add_executable(SCAMP src/main.cpp)
 
 
 if (BUILD_CLIENT_SERVER)
-  set(Protobuf_USE_STATIC_LIBS 1)
-  find_package( Protobuf REQUIRED )
-  message(STATUS "Using protobuf ${Protobuf_VERSION}") 
-  message(STATUS "Using protobuf lib ${Protobuf_LIBRARY}") 
-  message(STATUS "Using protobuf compiler ${Protobuf_PROTOC_EXECUTABLE}") 
-  find_library (GRPC_LIB libgrpc.a REQUIRED)
-  find_library (Protobuf_LIB libprotobuf.a REQUIRED)
-  find_library (GRPC_CPP_LIB libgrpc++.a REQUIRED)
-  find_library (GRPCU_LIB libgrpc_unsecure.a REQUIRED)
-  find_library (GRPCU_CPP_LIB libgrpc++_unsecure.a REQUIRED)
-  message(STATUS "Using grpc lib ${GRPC_LIB}") 
-  message(STATUS "Using grpc++ lib ${GRPC_CPP_LIB}") 
+  #set(Protobuf_USE_STATIC_LIBS 1)
+  #find_package( Protobuf REQUIRED )
+  #message(STATUS "Using protobuf ${Protobuf_VERSION}") 
+  #message(STATUS "Using protobuf lib ${Protobuf_LIBRARY}") 
+  #message(STATUS "Using protobuf compiler ${Protobuf_PROTOC_EXECUTABLE}") 
+  add_subdirectory(${CMAKE_CURRENT_BINARY_DIR}/grpc EXCLUDE_FROM_ALL)
+  message(STATUS "Using gRPC via add_subdirectory.")
+  
+  # After using add_subdirectory, we can now use the grpc targets directly from
+  # this build.
+  set(_PROTOBUF_LIBPROTOBUF libprotobuf)
+  set(_PROTOBUF_PROTOC $<TARGET_FILE:protoc>)
+  set(_GRPC_GRPCPP_UNSECURE grpc++_unsecure)
+  set(_GRPC_GRPCPP grpc++)
+  set(_GRPC_GRPC grpc)
+  set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:grpc_cpp_plugin>)
+
+  get_filename_component(hw_proto "kubernetes/helloworld.proto" ABSOLUTE)
+  get_filename_component(hw_proto_path "${hw_proto}" PATH)
+
+  # Generated sources
+  set(hw_proto_srcs "${CMAKE_CURRENT_BINARY_DIR}/kubernetes/helloworld.pb.cc")
+  set(hw_proto_hdrs "${CMAKE_CURRENT_BINARY_DIR}/kubernetes/helloworld.pb.h")
+  set(hw_grpc_srcs "${CMAKE_CURRENT_BINARY_DIR}/kubernetes/helloworld.grpc.pb.cc")
+  set(hw_grpc_hdrs "${CMAKE_CURRENT_BINARY_DIR}/kubernets/helloworld.grpc.pb.h")
+
+  #find_library (GRPC_LIB libgrpc.a REQUIRED)
+  #find_library (Protobuf_LIB libprotobuf.a REQUIRED)
+  #find_library (GRPC_CPP_LIB libgrpc++.a REQUIRED)
+  #find_library (GRPCU_LIB libgrpc_unsecure.a REQUIRED)
+  #find_library (GRPCU_CPP_LIB libgrpc++_unsecure.a REQUIRED)
+  #message(STATUS "Using grpc lib ${GRPC_LIB}") 
+  #message(STATUS "Using grpc++ lib ${GRPC_CPP_LIB}") 
 
   
-  set(_GRPC_CPP_PLUGIN_EXECUTABLE `which grpc_cpp_plugin`)
+  #set(_GRPC_CPP_PLUGIN_EXECUTABLE `which grpc_cpp_plugin`)
 
   # Proto file
   get_filename_component(hw_proto "kubernetes/helloworld.proto" ABSOLUTE)
@@ -222,20 +242,29 @@ if (BUILD_CLIENT_SERVER)
   
   add_custom_command(
       OUTPUT "${hw_proto_srcs}" "${hw_proto_hdrs}" "${hw_grpc_srcs}" "${hw_grpc_hdrs}"
-      COMMAND ${Protobuf_PROTOC_EXECUTABLE}
+      COMMAND ${_PROTOBUF_PROTOC}
       ARGS -I "${hw_proto_path}"
       --grpc_out "kubernetes/"
       --cpp_out "kubernetes/"
       --plugin=protoc-gen-grpc=${_GRPC_CPP_PLUGIN_EXECUTABLE} ${hw_proto}
       DEPENDS "${hw_proto}")
 
+  message(STATUS "Using grpc lib ${_GRPC_CPP_UNSECURE}") 
+  message(STATUS "Using grpc cpp plugin ${_GRPC_CPP_PLUGIN_EXECUTABLE}") 
+  message(STATUS "Using proto lib ${_PROTOBUF_LIBPROTOBUF}")
   add_library(messages ${hw_proto_srcs} ${hw_proto_headers} ${hw_grpc_srcs} ${hw_grpc_headers})
-  target_link_libraries(messages ${Protobuf_LIB} ${GRPC_LIB} ${GRPC_CPP_LIB} ${GRPCU_LIB} ${GRPCU_CPP_LIB} -lz -lpthread)
-  
+  target_link_libraries(messages ${_PROTOBUF_LIBPROTOBUF} ${_GRPC_GRPCPP} ${_GRPC_CPP_UNSECURE} -lz -lpthread)
+  include_directories(grpc/include/) 
+  include_directories(grpc/third_party/gflags/include/)
   add_executable(SCAMPclient kubernetes/greeter_client.cc)
   add_executable(SCAMPserver kubernetes/greeter_server.cc)
   #target_link_libraries(SCAMPserver messages ) old chad changed
   target_link_libraries(SCAMPserver common scamp messages )
+endif()
+
+if(NOT TARGET gflags)
+  add_subdirectory(gflags)
+  include_directories(gflags/include/)
 endif()
 
 if (CMAKE_CUDA_COMPILER)
