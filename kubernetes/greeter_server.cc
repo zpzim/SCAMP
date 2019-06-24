@@ -109,6 +109,70 @@ void elementwise_max(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
   }
 }
 
+// TODO(zpzim): move this back into SCAMP_Operation, we shouldn't have the
+// merging be functionality of the individual tile
+// Merges a local result "tile_profile" with the global matrix profile
+// "full_profile"
+void MergeTileIntoFullProfile(Profile *tile_profile, uint64_t position,
+                                    uint64_t length, Profile *full_profile,
+			      uint64_t index_start, std::mutex &lock) {
+  // the entire result vector before we merge
+  // TODO(zpzim): we don't have to do this, we only need to lock the specific
+  // "tile row" or "tile_column" that we are updating
+  std::unique_lock<std::mutex> mlock(lock);
+
+  std::cout << "fullprofiletype: " << full_profile->type() << " position: " << position << " length: " << length  << " index start: " << index_start << std::endl;
+
+  
+  
+  //switch (full_profile->type()) {
+     switch (1) {
+    case helloworld::PROFILE_TYPE_SUM_THRESH:
+      elementwise_sum<double>(full_profile->mutable_data()->Mutable(0)->mutable_double_value()->mutable_value()->mutable_data(),
+                              position, length,
+                              tile_profile->mutable_data()->Mutable(0)->mutable_double_value()->mutable_value()->mutable_data());
+      return;
+    case helloworld::PROFILE_TYPE_1NN_INDEX:
+      elementwise_max<uint64_t>(full_profile->mutable_data()->Mutable(0)->mutable_uint64_value()->mutable_value()->mutable_data(),
+                             position, length,
+                              tile_profile->mutable_data()->Mutable(0)->mutable_uint64_value()->mutable_value()->mutable_data());
+      return;
+    case helloworld::PROFILE_TYPE_1NN:
+      elementwise_max<float>(full_profile->mutable_data()->Mutable(0)->mutable_float_value()->mutable_value()->mutable_data(),
+                             position, length,
+                              tile_profile->mutable_data()->Mutable(0)->mutable_float_value()->mutable_value()->mutable_data());
+      return;
+    case helloworld::PROFILE_TYPE_FREQUENCY_THRESH:
+    case helloworld::PROFILE_TYPE_KNN:
+    case helloworld::PROFILE_TYPE_1NN_MULTIDIM:
+    default:
+      ASSERT(false, "FUNCTIONALITY UNIMPLEMENTED");
+      return;
+  }
+}
+
+// TODO(zpzim): move this back into SCAMP_Operation, we shouldn't have the
+// merging be functionality of the individual tile
+void MergeProfile(Profile *profile_a, Profile *a_tile, uint64_t col_pos, uint64_t width, std::mutex &a_lock,
+			  Profile *profile_b, Profile *b_tile, uint64_t row_pos, uint64_t height, std::mutex &b_lock) {
+
+  //MergeProfile(&global_profile_a, &tile_a, width, col_pos, global_a_lock, &global_profile_b, &tile_b, height, row_pos, global_b_lock);
+  
+  // Merge result
+  MergeTileIntoFullProfile(a_tile, col_pos, width,
+                           profile_a, row_pos, a_lock);
+
+  std::cout << "merge profile after merge fileintofullprofile" << std::endl;
+  
+  // Self join
+  if (true) {
+    MergeTileIntoFullProfile(b_tile, row_pos, height, profile_a, col_pos, a_lock);
+  }
+  std::cout << "2 merge profile after merge fileintofullprofile" << std::endl;
+ // else if (_info->computing_rows && _info->keep_rows_separate) {
+//    MergeTileIntoFullProfile(b_tile, row_pos, height, profile_b, col_pos, b_lock);
+//  }
+}
 
 // Logic and data behind the server's behavior.
 class GreeterServiceImpl final : public Greeter::Service {
@@ -140,58 +204,6 @@ public:
 
 public:
 
-// TODO(zpzim): move this back into SCAMP_Operation, we shouldn't have the
-// merging be functionality of the individual tile
-// Merges a local result "tile_profile" with the global matrix profile
-// "full_profile"
-void MergeTileIntoFullProfile(Profile *tile_profile, uint64_t position,
-                                    uint64_t length, Profile *full_profile,
-			      uint64_t index_start, std::mutex &lock) {
-  // the entire result vector before we merge
-  // TODO(zpzim): we don't have to do this, we only need to lock the specific
-  // "tile row" or "tile_column" that we are updating
-  std::unique_lock<std::mutex> mlock(lock);
-  switch (full_profile->type()) {
-    case helloworld::PROFILE_TYPE_SUM_THRESH:
-      elementwise_sum<double>(full_profile->mutable_data()->Mutable(0)->mutable_double_value()->mutable_value()->mutable_data(),
-                              position, length,
-                              tile_profile->mutable_data()->Mutable(0)->mutable_double_value()->mutable_value()->mutable_data());
-      return;
-    case helloworld::PROFILE_TYPE_1NN_INDEX:
-      elementwise_max<uint64_t>(full_profile->mutable_data()->Mutable(0)->mutable_uint64_value()->mutable_value()->mutable_data(),
-                             position, length,
-                              tile_profile->mutable_data()->Mutable(0)->mutable_uint64_value()->mutable_value()->mutable_data());
-      return;
-    case helloworld::PROFILE_TYPE_1NN:
-      elementwise_max<float>(full_profile->mutable_data()->Mutable(0)->mutable_float_value()->mutable_value()->mutable_data(),
-                             position, length,
-                              tile_profile->mutable_data()->Mutable(0)->mutable_float_value()->mutable_value()->mutable_data());
-      return;
-    case helloworld::PROFILE_TYPE_FREQUENCY_THRESH:
-    case helloworld::PROFILE_TYPE_KNN:
-    case helloworld::PROFILE_TYPE_1NN_MULTIDIM:
-    default:
-      ASSERT(false, "FUNCTIONALITY UNIMPLEMENTED");
-      return;
-  }
-}
-
-// TODO(zpzim): move this back into SCAMP_Operation, we shouldn't have the
-// merging be functionality of the individual tile
-  void MergeProfile(Profile *profile_a, Profile *a_tile, uint64_t col_pos, uint64_t width, std::mutex &a_lock,
-			  Profile *profile_b, Profile *b_tile, uint64_t row_pos, uint64_t height, std::mutex &b_lock) {
-
-  // Merge result
-  MergeTileIntoFullProfile(a_tile, col_pos, width,
-                           profile_a, row_pos, a_lock);
-  // Self join
-  if (true) {
-    MergeTileIntoFullProfile(b_tile, row_pos, height, profile_a, col_pos, a_lock);
-  }
- // else if (_info->computing_rows && _info->keep_rows_separate) {
-//    MergeTileIntoFullProfile(b_tile, row_pos, height, profile_b, col_pos, b_lock);
-//  }
-}
   
 std::ifstream &read_value(std::ifstream &s, double &d, int count) {
   std::string line;
@@ -343,7 +355,7 @@ private:
   }
   
   
-  void sendVec(SCAMPArgs* reply)
+  bool sendVec(SCAMPArgs* reply)
   {
     // Fix decide if self join so B timeseries doesn't go or if B timeseries data should go and not self join?
     //???????????????????????????????????????????
@@ -446,12 +458,14 @@ private:
 	      	      
 	      std::cout << "Server sent idcnt: " << vec1[i][0] << " Start time: " << timer << std::endl;
 	      
-	      return;
+	      return true;
 	    }
 	}
-      std::cout << "reload set to 1****" << std::endl;
-      reload++;
+      //std::cout << "reload set to 1****" << std::endl;
+      //reload++;
 
+      return false;
+      
     }
     // end lock
 
@@ -478,32 +492,55 @@ private:
     // end lock
 
     std::cout << "before send vec call" << std::endl;
-    sendVec(reply);
+    
 
-    return Status::OK;
+    if(sendVec(reply))
+      {
+	return Status::OK;
+      }
+    else
+      {
+	return Status::CANCELLED;
+      }
 
   }
-};
 
 
   Status SCAMPCombiner (ServerContext* context, const SCAMPArgs* request,
-                  SCAMPArgs* reply)
+                  SCAMPResult* reply) override
   {
-    
-    uint64_t height = request->profile_a().Get(0).size();
-    uint64_t width = request->profile_b().Get(0).size();
+    std::cout << "SERVER SCAMPCOMBINER" << std::endl;
+    uint64_t height = request->timeseries_size_b();
+    uint64_t width = request->timeseries_size_a();
     uint64_t row_pos = request->distributed_start_row();
     uint64_t col_pos = request->distributed_start_col();
-    SCAMP::Profile tile_a;
-    SCAMP::Profile tile_b;
-    tile_a.data = request->profile_a().data();
-    tile_a.type = request->profile_a().type();
-    tile_b.data = request->profile_b().data();
-    tile_b.type = request->profile_b().type();
-    MergeProfile(global_profile_a, &tile_a, width, col_pos, global_a_lock, global_profile_b, &tile_b, height, row_pos);
+    helloworld::Profile tile_a = request->profile_a();
+    helloworld::Profile tile_b = request->profile_b();
+
+    std::cout << "SERVER SCAMPCOMBINER 2" << std::endl;
+    std::cout << "height: " << height << " width: " << width << " row_pos: " << row_pos << " col_pos: " << col_pos << std::endl;
+
     
-    return reply;
+    printf("merging\n");
+    MergeProfile(&global_profile_a, &tile_a, col_pos, width, global_a_lock, &global_profile_b, &tile_b, row_pos, height, global_b_lock);
+    printf("merging after\n");
+    std::cout << "after merging print: " << global_profile_a.mutable_data()->Add()->mutable_uint64_value()->mutable_value() << std::endl;
+    
+    //std::vector<double> outVector;
+    //std::transform(global_profile_a.data[0].cbegin(), global_profile_a.data[0].cend(), outVector.begin(), [](const double& in){return in;});
+
+    //double chicken = global_profile_a.data[0].double_value.begin();
+    
+    //std::cout << "global_profile_a: " << global_profile_a.data[0].double_value.begin() << std::endl;
+    
+    printf("merge done\n");
+    return Status::OK;
   }
+  
+};
+
+
+  
  
 
 
@@ -539,6 +576,11 @@ int main(int argc, char** argv) {
   std::cout << "array a size: " << Ta_h.size() << std::endl;
   std::cout << "array b size: " << Tb_h.size() << std::endl;
   //readFile<double>("test/SampleInput/randomlist8K.txt", Ta_h, "%lf");
+  SCAMP::mp_entry initializer;
+  initializer.floats[0] = -2;
+  initializer.ints[1] = 0;
+  global_profile_a.mutable_data()->Add()->mutable_uint64_value()->mutable_value()->Resize(Ta_h.size()-window+1, initializer.ulong);
+  global_profile_b.mutable_data()->Add()->mutable_uint64_value()->mutable_value()->Resize(Tb_h.size()-window+1, initializer.ulong);
 
   num_tile_rows = ceil((Tb_h.size() - window + 1) /
 		       static_cast<double>(max_tile_size));

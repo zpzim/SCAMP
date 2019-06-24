@@ -122,36 +122,64 @@ struct SCAMPArgs {
 */
 
 helloworld::Profile ConvertProfile(const SCAMP::Profile &p) {
+  //printf("size = %d\n", p.data.size());
+
+	std::cout << "size = " << p.data.size() << std::endl;
+	
 	helloworld::Profile out;
 	out.set_type(helloworld::PROFILE_TYPE_1NN_INDEX);
+	//TODO FIX
+	if (p.data.empty()){
+	  return out;	
+	}
 	switch(p.type){
 	case SCAMP::PROFILE_TYPE_1NN_INDEX:
-	  *out.mutable_data()->Mutable(0)->mutable_uint64_value()->mutable_value() = {p.data[0].uint64_value.begin(), p.data[0].uint64_value.end()};
+	  *out.mutable_data()->Add()->mutable_uint64_value()->mutable_value() = {p.data[0].uint64_value.begin(), p.data[0].uint64_value.end()};
 	  break;
 	case SCAMP::PROFILE_TYPE_1NN:
-	  *out.mutable_data()->Mutable(0)->mutable_float_value()->mutable_value() = {p.data[0].float_value.begin(), p.data[0].float_value.end()};
+	  *out.mutable_data()->Add()->mutable_float_value()->mutable_value() = {p.data[0].float_value.begin(), p.data[0].float_value.end()};
 	  break;
 	case SCAMP::PROFILE_TYPE_SUM_THRESH:
-	  *out.mutable_data()->Mutable(0)->mutable_double_value()->mutable_value() = {p.data[0].double_value.begin(), p.data[0].double_value.end()};
+	  *out.mutable_data()->Add()->mutable_double_value()->mutable_value() = {p.data[0].double_value.begin(), p.data[0].double_value.end()};
 	  break;
 	}
 	return out;	
+}
+
+int64_t GetProfileSize(const SCAMP::Profile &p) {
+	if (p.data.empty()) {
+	  return 0;
+	}
+	switch(p.type){
+	case SCAMP::PROFILE_TYPE_1NN_INDEX:
+	  return p.data[0].uint64_value.size();
+	case SCAMP::PROFILE_TYPE_1NN:
+	  return p.data[0].float_value.size();
+	case SCAMP::PROFILE_TYPE_SUM_THRESH:
+	  return p.data[0].double_value.size();
+	}
+	return 0;
 }
 
 helloworld::SCAMPArgs ConvertArgsToReply(const SCAMP::SCAMPArgs &args) {
 	helloworld::SCAMPArgs reply;
 	*reply.mutable_timeseries_a() = {args.timeseries_a.begin(), args.timeseries_a.end()};
 	*reply.mutable_timeseries_b() = {args.timeseries_b.begin(), args.timeseries_b.end()};
-
+	printf("Hello1\n");
 	//reply.set_timeseries_b(args.timeseries_b);
 	
 	*reply.mutable_profile_a() = ConvertProfile(args.profile_a);
 	*reply.mutable_profile_b() = ConvertProfile(args.profile_b);
+	printf("Hello2\n");
 	reply.set_has_b(args.has_b);
 	reply.set_window(args.window);
 	reply.set_max_tile_size(args.max_tile_size);
 	reply.set_distributed_start_row(args.distributed_start_row);
 	reply.set_distributed_start_col(args.distributed_start_col);
+	printf("Hello3\n");
+	reply.set_timeseries_size_a(GetProfileSize(args.profile_a));
+	reply.set_timeseries_size_b(GetProfileSize(args.profile_b));
+	printf("Hello4\n");
 	return reply;
 }
 
@@ -262,6 +290,9 @@ class GreeterClient {
       //SCAMP::SCAMPArgs args = getSCAMPArgsFromProto(reply);
       
       SCAMP::SCAMPArgs args;
+      //args.job_id = reply.job_id();
+      //args.timeseries_size_a = reply.timeseries_size_a();
+      //args.timeseries_size_b = reply.timeseries_size_b();
       args.max_tile_size = reply.max_tile_size();
       args.distributed_start_row = reply.distributed_start_row();
       args.distributed_start_col = reply.distributed_start_col();
@@ -289,12 +320,14 @@ class GreeterClient {
       InitProfileMemory(&args);
       std::cout << "CLIENT DO_SCAMP START" << std::endl << std::flush;
       do_SCAMP(&args, std::vector<int>(), 4);
-      std::cout << "CLIENT DO_SCAMP FINISH" << std::endl << std::flush;
       
       Ta_h.clear();
       Tb_h.clear();
       
       reply = ConvertArgsToReply(args);
+      std::cout << "CLIENT DO_SCAMP FINISH" << std::endl << std::flush;
+
+      std::cout << "width: " << args.max_tile_size << std::endl;
       
       //reply.profile_a().Swap(args.profile_a.data);
       //reply.profile_b().Swap(args.profile_b);
@@ -314,14 +347,26 @@ class GreeterClient {
 
   SCAMPResult SCAMPCombiner (SCAMPArgs &args)
   {
-    
     SCAMPResult reply;
     ClientContext context;
+
+    std::cout << "clietn scampcombiner" << std::endl;
     
     // The actual RPC.
     Status status = stub_->SCAMPCombiner(&context, args, &reply);
-    
-    return reply;
+
+    std::cout << "clietn scampcombiner222222" << std::endl;
+
+    if(status.ok())
+      {
+	//return reply.done();
+      }
+    else
+      {
+	std::cout << status.error_code() << ": " << status.error_message() << std::endl;
+	//return -1;
+	usleep(2*1000000);
+      }
   }
  
 
