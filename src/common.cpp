@@ -38,7 +38,7 @@ size_t SCAMP::GetProfileTypeSize(SCAMPProfileType t) {
 }
 
 #ifdef _HAS_CUDA_
-void gpuAssert(cudaError_t code, const char *file, int line, bool abort) {
+void gpuAssert(cudaError_t code, const char *file, int line) {
   if (code != cudaSuccess) {
     std::ostringstream ostream;
     ostream << "GPUasssert: " << cudaGetErrorString(code) << " " << file << " "

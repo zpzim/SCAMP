@@ -280,7 +280,7 @@ enum SCAMPTileType {
 }  // namespace SCAMP
 
 #ifdef _HAS_CUDA_
-void gpuAssert(cudaError_t code, const char *file, int line, bool abort = true);
+void gpuAssert(cudaError_t code, const char *file, int line);
 #define gpuErrchk(ans) \
   { gpuAssert((ans), __FILE__, __LINE__); }
 #endif

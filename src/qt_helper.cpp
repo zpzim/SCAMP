@@ -120,7 +120,7 @@ SCAMPError_t qt_compute_helper::compute_QT(double *QT, const double *T,
     }
   } catch (SCAMPException &e) {
     free();
-    throw e;
+    throw;
   }
   return SCAMP_NO_ERROR;
 }

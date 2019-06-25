@@ -218,11 +218,12 @@ void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
   if (devices.empty() && num_threads <= 0) {
     throw SCAMPException("Error: no compute_resources provided");
   }
+
   if (args == nullptr) {
     throw SCAMPException("Error: Invalid arguments provided to SCAMP");
-  } else {
-    args->validate();
   }
+
+  args->validate();
 
   // Allocate and initialize memory
   OptionalArgs _opt_args(args->distance_threshold);
