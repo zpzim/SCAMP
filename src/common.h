@@ -56,7 +56,7 @@ struct ProfileData {
 
 // Stores information about a matrix profile
 struct Profile {
-  std::vector<ProfileData> data;
+  ProfileData data;
   SCAMPProfileType type;
 };
 
@@ -82,6 +82,7 @@ struct SCAMPArgs {
   bool keep_rows_separate;
   bool is_aligned;
   bool silent_mode;
+  bool left_right;
 };
 
 // Struct describing kernel arguments which are non-standard
@@ -102,7 +103,7 @@ struct OpInfo {
          bool selfjoin, SCAMPPrecisionType t, int64_t start_row,
          int64_t start_col, OptionalArgs args_, SCAMPProfileType profiletype,
          bool keep_rows, bool compute_rows, bool compute_cols, bool aligned,
-         bool silent_mode, int num_workers)
+         bool silent_mode, bool leftright, int num_workers)
       : full_ts_len_A(Asize),
         full_ts_len_B(Bsize),
         mp_window(window_sz),
@@ -116,7 +117,8 @@ struct OpInfo {
         computing_rows(compute_rows),
         computing_cols(compute_cols),
         is_aligned(aligned),
-        silent_mode(silent_mode) {
+        silent_mode(silent_mode),
+        left_right(leftright) {
     if (self_join) {
       full_ts_len_B = full_ts_len_A;
     }
@@ -125,7 +127,7 @@ struct OpInfo {
 
     if (max_tile_ts_size > max_tile_size) {
       max_tile_ts_size = max_tile_size;
-    } else if (max_tile_ts_size < 1) {
+    } else if (max_tile_ts_size < mp_window) {
       max_tile_ts_size = maxSize;
     }
 
@@ -173,6 +175,8 @@ struct OpInfo {
   bool keep_rows_separate;
   // Run without printing any message by standard output
   bool silent_mode;
+
+  bool left_right;
 };
 
 // Struct containing the precomputed statistics for an input time series
