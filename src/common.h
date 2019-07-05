@@ -56,7 +56,7 @@ struct ProfileData {
 
 // Stores information about a matrix profile
 struct Profile {
-  ProfileData data;
+  std::vector<ProfileData> data;
   SCAMPProfileType type;
 };
 
