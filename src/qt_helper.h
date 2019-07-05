@@ -87,11 +87,13 @@ class qt_compute_helper {
  public:
   qt_compute_helper(size_t sz, size_t window_sz, bool dp,
                     SCAMPArchitecture arch)
-      : size(sz), window_size(window_sz), double_precision(dp), _arch(arch) {}
+      : size(sz), window_size(window_sz), double_precision(dp), _arch(arch) {
+    init();
+  }
 
 #ifdef _HAS_CUDA_
 
-  ~qt_compute_helper() {}
+  ~qt_compute_helper() { free(); }
 
   SCAMPError_t compute_QT(double *QT, const double *T, const double *Q,
                           const double *qmeans, cudaStream_t s);
