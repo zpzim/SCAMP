@@ -341,12 +341,12 @@ SCAMPError_t Tile::InitProfile(Profile *profile_a, Profile *profile_b) {
       const uint64_t *pA_ptr = profile_a->data[0].uint64_value.data();
       Memcopy(_profile_a_tile_dev.at(type), pA_ptr + _current_tile_col,
               sizeof(uint64_t) * width, false);
-      if (_info->self_join) {
-        Memcopy(_profile_b_tile_dev.at(type), pA_ptr + _current_tile_row,
-                sizeof(uint64_t) * height, false);
-      } else if (_info->computing_rows && _info->keep_rows_separate) {
+      if (_info->computing_rows && _info->keep_rows_separate) {
         const uint64_t *pB_ptr = profile_b->data[0].uint64_value.data();
         Memcopy(_profile_b_tile_dev.at(type), pB_ptr + _current_tile_row,
+                sizeof(uint64_t) * height, false);
+      } else if (_info->self_join) {
+        Memcopy(_profile_b_tile_dev.at(type), pA_ptr + _current_tile_row,
                 sizeof(uint64_t) * height, false);
       }
       break;
@@ -448,14 +448,15 @@ void Tile::MergeProfile(Profile *profile_a, std::mutex &a_lock,
   MergeTileIntoFullProfile(&_profile_a_tile, _current_tile_col,
                            _current_tile_width - _info->mp_window + 1,
                            profile_a, _current_tile_row, a_lock);
-  if (_info->self_join) {
-    MergeTileIntoFullProfile(&_profile_b_tile, _current_tile_row,
-                             _current_tile_height - _info->mp_window + 1,
-                             profile_a, _current_tile_col, a_lock);
-  } else if (_info->computing_rows && _info->keep_rows_separate) {
+
+  if (_info->computing_rows && _info->keep_rows_separate) {
     MergeTileIntoFullProfile(&_profile_b_tile, _current_tile_row,
                              _current_tile_height - _info->mp_window + 1,
                              profile_b, _current_tile_col, b_lock);
+  } else if (_info->self_join) {
+    MergeTileIntoFullProfile(&_profile_b_tile, _current_tile_row,
+                             _current_tile_height - _info->mp_window + 1,
+                             profile_a, _current_tile_col, a_lock);
   }
 }
 
