@@ -248,9 +248,11 @@ void InitProfileMemory(SCAMP::SCAMPArgs *args) {
       args->profile_a.data[0].uint64_value.resize(
           args->timeseries_a.size() - FLAGS_window + 1, e.ulong);
       if (FLAGS_keep_rows) {
+        auto b_size =
+            args->has_b ? args->timeseries_b.size() : args->timeseries_a.size();
         args->profile_b.data.emplace_back();
-        args->profile_b.data[0].uint64_value.resize(
-            args->timeseries_b.size() - FLAGS_window + 1, e.ulong);
+        args->profile_b.data[0].uint64_value.resize(b_size - FLAGS_window + 1,
+                                                    e.ulong);
       }
       break;
     }
@@ -388,7 +390,6 @@ int main(int argc, char **argv) {
   args.timeseries_a = std::move(Ta_h);
   args.timeseries_b = std::move(Tb_h);
   args.silent_mode = false;
-  args.left_right = false;
 
   InitProfileMemory(&args);
 

@@ -235,7 +235,7 @@ void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
       args->distributed_start_row, args->distributed_start_col, _opt_args,
       args->profile_type, &args->profile_a, &args->profile_b,
       args->keep_rows_separate, args->computing_rows, args->computing_columns,
-      args->is_aligned, args->silent_mode, args->left_right, num_threads);
+      args->is_aligned, args->silent_mode, num_threads);
   // Execute op
   std::chrono::high_resolution_clock::time_point start =
       std::chrono::high_resolution_clock::now();
