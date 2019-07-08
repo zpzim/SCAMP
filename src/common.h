@@ -125,7 +125,7 @@ struct OpInfo {
 
     if (max_tile_ts_size > max_tile_size) {
       max_tile_ts_size = max_tile_size;
-    } else if (max_tile_ts_size < 1) {
+    } else if (max_tile_ts_size < mp_window) {
       max_tile_ts_size = maxSize;
     }
 

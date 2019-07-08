@@ -43,7 +43,7 @@ void elementwise_max(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
 static int get_exclusion(uint64_t window_size, int64_t start_row,
                          int64_t start_column) {
   int exclusion = window_size / 4;
-  if (start_column >= start_row && start_column <= start_row + exclusion) {
+  if (start_column >= start_row && start_column < start_row + exclusion) {
     return exclusion;
   }
   return 0;

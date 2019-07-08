@@ -14,7 +14,7 @@ static inline void partialcross_kern(
     const double* __restrict dfb, const double* __restrict dgb,
     const double* __restrict invnb, const int amx, const int bmx,
     const int amin, const int upper_excl) {
-  for (int ia = amin; ia < amx - upper_excl; ia++) {
+  for (int ia = amin; ia < amx - upper_excl + 1; ia++) {
     int mx = std::min(amx - ia, bmx);
     for (int ib = 0; ib < mx; ib++) {
       double cr = cov[ia] * invna[ib + ia] * invnb[ib];

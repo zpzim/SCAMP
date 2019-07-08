@@ -419,7 +419,7 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
 
   // num_diags is the number of diagonals in the distance matrix, less any
   // diagonals at the end we are not computing
-  const unsigned int num_diags = args.n_x - args.exclusion_upper;
+  const unsigned int num_diags = args.n_x - args.exclusion_upper + 1;
 
   // Load the first dot product values
   if (thread_info.global_col < args.n_x) {
