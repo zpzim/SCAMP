@@ -28,10 +28,8 @@ message SCAMPWork {
 
 // The greeting service definition.
 service Greeter {
-  // Sends a greeting
-  //rpc SayHello (HelloRequest) returns (HelloReply) {}
-  //rpc SayChicken (HelloRequest) returns (HelloReply) {}
-  //rpc Combiner (HelloRequest) returns (HelloReply) {} 
+  // TODO:
+  // rpc IssueJob (SCAMPJob) returns (SCAMPJobResult)
   rpc RequestSCAMPWork (SCAMPRequest) returns (SCAMPWork) {}
   rpc SCAMPCombiner (SCAMPArgs) returns (SCAMPResult) {}
 }
@@ -136,4 +134,5 @@ message SCAMPArgs {
     int64 timeseries_size_a = 17;
     int64 timeseries_size_b = 18;
     int64 job_id = 19;
+    int64 tile_id = 20;
 }
