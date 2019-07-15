@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
 include(CheckLanguage)
 # ----------------------------------------------------------------------------------------
 #                              ===== Project Setup =====
-project(SCAMP LANGUAGES CXX)
+project(SCAMPmain LANGUAGES CXX)
 set(VERSION_MAJOR 1)
 set(VERSION_MINOR 1)
 
@@ -105,16 +105,16 @@ endif()
 # ----------------------------------------------------------------------------------------
 #                              ===== Build targets =====
 
-add_library(common src/common.cpp)
+add_library(common ${CMAKE_CURRENT_SOURCE_DIR}/src/common.cpp)
 
 if (CMAKE_CUDA_COMPILER) 
   target_link_libraries(common -lcudart_static)
 endif()
 
-add_library(qt_helper src/qt_helper.cpp)
+add_library(qt_helper ${CMAKE_CURRENT_SOURCE_DIR}/src/qt_helper.cpp)
 
 if (CMAKE_CUDA_COMPILER)
-  add_library(qt_kernels src/qt_kernels.cu)
+  add_library(qt_kernels ${CMAKE_CURRENT_SOURCE_DIR}/src/qt_kernels.cu)
   target_link_libraries(qt_helper -lcufft qt_kernels common)
 else()
   target_link_libraries(qt_helper common)
@@ -122,17 +122,17 @@ endif()
 
 
 if (CMAKE_CUDA_COMPILER)
-  add_library(gpu_kernels src/kernels.cu)
+  add_library(gpu_kernels ${CMAKE_CURRENT_SOURCE_DIR}/src/kernels.cu)
   target_link_libraries(gpu_kernels common)
 endif()
 
-add_library(cpu_stats src/cpu_stats.cpp)
+add_library(cpu_stats ${CMAKE_CURRENT_SOURCE_DIR}/src/cpu_stats.cpp)
 target_link_libraries(cpu_stats common)
 
-add_library(cpu_kernels src/cpu_kernels.cpp)
+add_library(cpu_kernels ${CMAKE_CURRENT_SOURCE_DIR}/src/cpu_kernels.cpp)
 target_link_libraries(cpu_kernels common)
 
-add_library(tile src/tile.cpp)
+add_library(tile ${CMAKE_CURRENT_SOURCE_DIR}/src/tile.cpp)
 
 
 if (CMAKE_CUDA_COMPILER)
@@ -141,7 +141,7 @@ else()
   target_link_libraries(tile common cpu_kernels qt_helper)
 endif()
 
-add_library(scamp src/SCAMP.cpp)
+add_library(scamp ${CMAKE_CURRENT_SOURCE_DIR}/src/SCAMP.cpp)
 
 target_link_libraries(scamp -lpthread tile cpu_stats common qt_helper)
 
@@ -189,11 +189,11 @@ if(CLANG_FORMAT_EXE)
   )
 endif()
 
-add_executable(SCAMP src/main.cpp)
+add_executable(SCAMP ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
 
 
 if (BUILD_CLIENT_SERVER)
-  add_subdirectory(${CMAKE_CURRENT_BINARY_DIR}/grpc EXCLUDE_FROM_ALL)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/grpc EXCLUDE_FROM_ALL)
   message(STATUS "Using gRPC via add_subdirectory.")
   
   # After using add_subdirectory, we can now use the grpc targets directly from
@@ -205,44 +205,13 @@ if (BUILD_CLIENT_SERVER)
   set(_GRPC_GRPC grpc)
   set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:grpc_cpp_plugin>)
 
-  get_filename_component(hw_proto "kubernetes/scamp.proto" ABSOLUTE)
-  get_filename_component(hw_proto_path "${hw_proto}" PATH)
+  # Add include directories we will use later
+  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/grpc/include/) 
+  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/grpc/third_party/gflags/include/)
+  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/grpc/third_party/protobuf/src/)
 
-  # Generated sources
-  set(hw_proto_srcs "${CMAKE_CURRENT_BINARY_DIR}/kubernetes/scamp.pb.cc")
-  set(hw_proto_hdrs "${CMAKE_CURRENT_BINARY_DIR}/kubernetes/scamp.pb.h")
-  set(hw_grpc_srcs "${CMAKE_CURRENT_BINARY_DIR}/kubernetes/scamp.grpc.pb.cc")
-  set(hw_grpc_hdrs "${CMAKE_CURRENT_BINARY_DIR}/kubernetes/scamp.grpc.pb.h")
-
-  # Proto file
-  get_filename_component(hw_proto "kubernetes/scamp.proto" ABSOLUTE)
-  get_filename_component(hw_proto_path "${hw_proto}" PATH)
-
-  # Generated sources
-  set(hw_proto_srcs "kubernetes/scamp.pb.cc")
-  set(hw_proto_hdrs "kubernetes/scamp.pb.h")
-  set(hw_grpc_srcs "kubernetes/scamp.grpc.pb.cc")
-  set(hw_grpc_hdrs "kubernetes/scamp.grpc.pb.h")
-  
-  add_custom_command(
-      OUTPUT "${hw_proto_srcs}" "${hw_proto_hdrs}" "${hw_grpc_srcs}" "${hw_grpc_hdrs}"
-      COMMAND ${_PROTOBUF_PROTOC}
-      ARGS -I "${hw_proto_path}"
-      --grpc_out "kubernetes/"
-      --cpp_out "kubernetes/"
-      --plugin=protoc-gen-grpc=${_GRPC_CPP_PLUGIN_EXECUTABLE} ${hw_proto}
-      DEPENDS "${hw_proto}")
-
-  message(STATUS "Using grpc lib ${_GRPC_CPP_UNSECURE}") 
-  message(STATUS "Using grpc cpp plugin ${_GRPC_CPP_PLUGIN_EXECUTABLE}") 
-  message(STATUS "Using proto lib ${_PROTOBUF_LIBPROTOBUF}")
-  add_library(messages ${hw_proto_srcs} ${hw_proto_headers} ${hw_grpc_srcs} ${hw_grpc_headers})
-  target_link_libraries(messages ${_PROTOBUF_LIBPROTOBUF} ${_GRPC_GRPCPP} ${_GRPC_CPP_UNSECURE} -lz -lpthread)
-  include_directories(grpc/include/) 
-  include_directories(grpc/third_party/gflags/include/)
-  add_executable(SCAMPclient kubernetes/scamp_client.cc)
-  add_executable(SCAMPserver kubernetes/scamp_server.cc)
-  target_link_libraries(SCAMPserver common scamp messages )
+  # Build scamp client and scamp server
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/kubernetes)
 endif()
 
 if(NOT TARGET gflags)
@@ -252,12 +221,6 @@ endif()
 
 if (CMAKE_CUDA_COMPILER)
   target_link_libraries(SCAMP -lcudart_static gflags common scamp)
-  if (BUILD_CLIENT_SERVER)
-	  target_link_libraries(SCAMPclient -lcudart_static common scamp messages)
-  endif()
 else()
   target_link_libraries(SCAMP gflags common scamp)
-  if (BUILD_CLIENT_SERVER)
-	  target_link_libraries(SCAMPclient common scamp messages)
-  endif()
 endif() 

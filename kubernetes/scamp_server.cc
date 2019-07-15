@@ -300,7 +300,7 @@ void createTestJob() {
   initializer.ints[1] = 0;
 
   std::vector<double> Ta_h;
-  readFile<double>("test/SampleInput/randomlist128K.txt", Ta_h, "%lf");
+  readFile<double>("../../test/SampleInput/randomlist128K.txt", Ta_h, "%lf");
 
   SCAMPProto::SCAMPArgs args;
   *args.mutable_timeseries_a() = std::move(
@@ -477,6 +477,40 @@ class SCAMPServiceImpl final : public SCAMPService::Service {
 
  public:
  private:
+  // TODO(chad): The following RPCS need to be defined so that we can issue and
+  // complete jobs on the server You will need to define the new protos
+  // associated with SCAMPStatus and SCAMPResult in scamp.proto These RPCS will
+  // be called by another command line program on a different machine
+
+  /*
+  // Takes a SCAMPArgs proto and tries to create a SCAMP job and add it to the
+  jobVec
+  // Returns a job id in SCAMPStatus if we create a job
+  // Returns failure state in SCAMPStatus if we fail to create a job
+  Status IssueNewJob(ServerContext *context, const SCAMPProto::SCAMPArgs
+  *job_args, SCAMPStatus *status) override {
+     // TODO: Chad implement this
+  }
+  */
+
+  /*
+  // Takes a job_id and returns the status of the job associated with that ID
+  Status CheckJobStatus(ServerContext *context, const int job_id, SCAMPStatus
+  *status) override {
+    // TODO: Chad implement this
+  }
+  */
+
+  /*
+  // Takes a job id and returns the completed work associated with that id if
+  the job has been completed
+  // Otherwise returns a null result
+  Status FetchJobResult(ServerContext *context, const int job_id, SCAMPResult
+  *job_result) override {
+    // TODO: Chad implement this
+  }
+  */
+
   Status RequestSCAMPWork(ServerContext *context, const SCAMPRequest *request,
                           SCAMPProto::SCAMPWork *reply) override {
     std::cout << "Work requested from server" << std::endl;
@@ -560,6 +594,7 @@ void RunServer() {
 }
 
 int main(int argc, char **argv) {
+  // TODO: move this into an asynchronous rpc which appends a new job to jobVec
   createTestJob();
   RunServer();
   return 0;
