@@ -14,18 +14,18 @@
 
 #include "../src/SCAMP.h"
 #include "../src/common.h"
-#include "helloworld.grpc.pb.h"
+#include "scamp.grpc.pb.h"
 
 using grpc::Server;
 using grpc::ServerBuilder;
 using grpc::ServerContext;
 using grpc::Status;
-using helloworld::Profile;
-using helloworld::SCAMPArgs;
-using helloworld::SCAMPRequest;
-using helloworld::SCAMPResult;
+using SCAMPProto::Profile;
+using SCAMPProto::SCAMPArgs;
+using SCAMPProto::SCAMPRequest;
+using SCAMPProto::SCAMPResult;
 
-using helloworld::Greeter;
+using SCAMPProto::SCAMPService;
 
 class Job;
 
@@ -181,7 +181,7 @@ class Job {
     return true;
   }
 
-  bool fetch_ready_tile(helloworld::SCAMPArgs *args) {
+  bool fetch_ready_tile(SCAMPArgs *args) {
     if (ready_queue.empty()) {
       std::cout << "Ready queue was empty for job " << job_id << std::endl;
       return false;
@@ -302,13 +302,13 @@ void createTestJob() {
   std::vector<double> Ta_h;
   readFile<double>("test/SampleInput/randomlist128K.txt", Ta_h, "%lf");
 
-  helloworld::SCAMPArgs args;
+  SCAMPProto::SCAMPArgs args;
   *args.mutable_timeseries_a() = std::move(
       google::protobuf::RepeatedField<double>(Ta_h.begin(), Ta_h.end()));
   *args.mutable_timeseries_b() = std::move(
       google::protobuf::RepeatedField<double>(Ta_h.begin(), Ta_h.end()));
 
-  args.mutable_profile_a()->set_type(helloworld::PROFILE_TYPE_1NN_INDEX);
+  args.mutable_profile_a()->set_type(SCAMPProto::PROFILE_TYPE_1NN_INDEX);
   args.mutable_profile_a()
       ->mutable_data()
       ->Add()
@@ -316,7 +316,7 @@ void createTestJob() {
       ->mutable_value()
       ->Resize(Ta_h.size() - window + 1, initializer.ulong);
   /*
-    args.mutable_profile_b()->set_type(helloworld::PROFILE_TYPE_1NN_INDEX);
+    args.mutable_profile_b()->set_type(SCAMPProto::PROFILE_TYPE_1NN_INDEX);
     args.mutable_profile_b()->mutable_data()
         ->Add()
         ->mutable_uint64_value()
@@ -331,8 +331,8 @@ void createTestJob() {
   args.set_distance_threshold(std::numeric_limits<double>::max());
   args.set_computing_rows(true);
   args.set_computing_columns(true);
-  args.set_profile_type(helloworld::PROFILE_TYPE_1NN_INDEX);
-  args.set_precision_type(helloworld::PRECISION_DOUBLE);
+  args.set_profile_type(SCAMPProto::PROFILE_TYPE_1NN_INDEX);
+  args.set_precision_type(SCAMPProto::PRECISION_DOUBLE);
   args.set_keep_rows_separate(false);
   args.set_is_aligned(false);
   args.set_window(window);
@@ -384,7 +384,7 @@ void MergeTileIntoFullProfile(Profile *tile_profile, uint64_t position,
             << " index start: " << index_start << std::endl;
 
   switch (full_profile->type()) {
-    case helloworld::PROFILE_TYPE_SUM_THRESH:
+    case SCAMPProto::PROFILE_TYPE_SUM_THRESH:
       elementwise_sum<double>(full_profile->mutable_data()
                                   ->Mutable(0)
                                   ->mutable_double_value()
@@ -397,7 +397,7 @@ void MergeTileIntoFullProfile(Profile *tile_profile, uint64_t position,
                                   ->mutable_value()
                                   ->mutable_data());
       return;
-    case helloworld::PROFILE_TYPE_1NN_INDEX:
+    case SCAMPProto::PROFILE_TYPE_1NN_INDEX:
       elementwise_max<uint64_t>(full_profile->mutable_data()
                                     ->Mutable(0)
                                     ->mutable_uint64_value()
@@ -411,7 +411,7 @@ void MergeTileIntoFullProfile(Profile *tile_profile, uint64_t position,
                                     ->mutable_data(),
                                 index_start);
       return;
-    case helloworld::PROFILE_TYPE_1NN:
+    case SCAMPProto::PROFILE_TYPE_1NN:
       elementwise_max<float>(full_profile->mutable_data()
                                  ->Mutable(0)
                                  ->mutable_float_value()
@@ -424,9 +424,9 @@ void MergeTileIntoFullProfile(Profile *tile_profile, uint64_t position,
                                  ->mutable_value()
                                  ->mutable_data());
       return;
-    case helloworld::PROFILE_TYPE_FREQUENCY_THRESH:
-    case helloworld::PROFILE_TYPE_KNN:
-    case helloworld::PROFILE_TYPE_1NN_MULTIDIM:
+    case SCAMPProto::PROFILE_TYPE_FREQUENCY_THRESH:
+    case SCAMPProto::PROFILE_TYPE_KNN:
+    case SCAMPProto::PROFILE_TYPE_1NN_MULTIDIM:
     default:
       ASSERT(false, "FUNCTIONALITY UNIMPLEMENTED");
       return;
@@ -451,7 +451,7 @@ void MergeProfile(const SCAMPArgs &tile_args, SCAMPArgs *job_args,
 }
 
 // Logic and data behind the server's behavior.
-class GreeterServiceImpl final : public Greeter::Service {
+class SCAMPServiceImpl final : public SCAMPService::Service {
  public:
   int counter = 0;
   int arrpos = 0;
@@ -466,7 +466,7 @@ class GreeterServiceImpl final : public Greeter::Service {
   static const int globarrsize = 1000;
   double globarr[globarrsize];
 
-  GreeterServiceImpl() {
+  SCAMPServiceImpl() {
     counter = 0;
     arrpos = 0;
     idcnt = 0;
@@ -478,7 +478,7 @@ class GreeterServiceImpl final : public Greeter::Service {
  public:
  private:
   Status RequestSCAMPWork(ServerContext *context, const SCAMPRequest *request,
-                          helloworld::SCAMPWork *reply) override {
+                          SCAMPProto::SCAMPWork *reply) override {
     std::cout << "Work requested from server" << std::endl;
     SCAMPArgs *args = reply->mutable_args();
     std::lock_guard<std::mutex> lockGuard(jobVecLock);
@@ -501,8 +501,8 @@ class GreeterServiceImpl final : public Greeter::Service {
     uint64_t width = request->timeseries_size_a();
     uint64_t row_pos = request->distributed_start_row();
     uint64_t col_pos = request->distributed_start_col();
-    helloworld::Profile tile_a = request->profile_a();
-    helloworld::Profile tile_b = request->profile_b();
+    SCAMPProto::Profile tile_a = request->profile_a();
+    SCAMPProto::Profile tile_b = request->profile_b();
 
     int job_id = request->job_id();
     int tile_id = request->tile_id();
@@ -539,7 +539,7 @@ class GreeterServiceImpl final : public Greeter::Service {
 void RunServer() {
   std::string server_address("0.0.0.0:30078");
 
-  GreeterServiceImpl service;
+  SCAMPServiceImpl service;
 
   ServerBuilder builder;
 

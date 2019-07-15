@@ -26,7 +26,7 @@
 #include <vector>
 
 #include <grpcpp/grpcpp.h>
-#include "helloworld.grpc.pb.h"
+#include "scamp.grpc.pb.h"
 
 #include "../src/SCAMP.h"
 #include "../src/common.h"
@@ -34,21 +34,19 @@
 using grpc::Channel;
 using grpc::ClientContext;
 using grpc::Status;
-// using helloworld::HelloRequest;
-// using helloworld::HelloReply;
-using helloworld::Greeter;
-using helloworld::SCAMPArgs;
-using helloworld::SCAMPRequest;
-using helloworld::SCAMPResult;
+using SCAMPProto::SCAMPArgs;
+using SCAMPProto::SCAMPRequest;
+using SCAMPProto::SCAMPResult;
+using SCAMPProto::SCAMPService;
 
 SCAMP::SCAMPPrecisionType ConvertPrecisionType(
-    const helloworld::SCAMPPrecisionType &t) {
+    const SCAMPProto::SCAMPPrecisionType &t) {
   switch (t) {
-    case helloworld::PRECISION_DOUBLE:
+    case SCAMPProto::PRECISION_DOUBLE:
       return SCAMP::PRECISION_DOUBLE;
-    case helloworld::PRECISION_MIXED:
+    case SCAMPProto::PRECISION_MIXED:
       return SCAMP::PRECISION_MIXED;
-    case helloworld::PRECISION_SINGLE:
+    case SCAMPProto::PRECISION_SINGLE:
       return SCAMP::PRECISION_SINGLE;
     default:
       return SCAMP::PRECISION_INVALID;
@@ -56,24 +54,24 @@ SCAMP::SCAMPPrecisionType ConvertPrecisionType(
 }
 
 SCAMP::SCAMPProfileType ConvertProfileType(
-    const helloworld::SCAMPProfileType &t) {
+    const SCAMPProto::SCAMPProfileType &t) {
   switch (t) {
-    case helloworld::PROFILE_TYPE_1NN_INDEX:
+    case SCAMPProto::PROFILE_TYPE_1NN_INDEX:
       return SCAMP::PROFILE_TYPE_1NN_INDEX;
-    case helloworld::PROFILE_TYPE_1NN:
+    case SCAMPProto::PROFILE_TYPE_1NN:
       return SCAMP::PROFILE_TYPE_1NN;
-    case helloworld::PROFILE_TYPE_SUM_THRESH:
+    case SCAMPProto::PROFILE_TYPE_SUM_THRESH:
       return SCAMP::PROFILE_TYPE_SUM_THRESH;
     default:
       return SCAMP::PROFILE_TYPE_INVALID;
   }
 }
 
-helloworld::Profile ConvertProfile(const SCAMP::Profile &p) {
+SCAMPProto::Profile ConvertProfile(const SCAMP::Profile &p) {
   // std::cout << "size = " << p.data.size() << std::endl;
 
-  helloworld::Profile out;
-  out.set_type(helloworld::PROFILE_TYPE_1NN_INDEX);
+  SCAMPProto::Profile out;
+  out.set_type(SCAMPProto::PROFILE_TYPE_1NN_INDEX);
 
   // TODO FIX
   if (p.data.empty()) {
@@ -112,8 +110,8 @@ int64_t GetProfileSize(const SCAMP::Profile &p) {
   return 0;
 }
 
-helloworld::SCAMPArgs ConvertArgsToReply(const SCAMP::SCAMPArgs &args) {
-  helloworld::SCAMPArgs reply;
+SCAMPProto::SCAMPArgs ConvertArgsToReply(const SCAMP::SCAMPArgs &args) {
+  SCAMPProto::SCAMPArgs reply;
   *reply.mutable_timeseries_a() = {args.timeseries_a.begin(),
                                    args.timeseries_a.end()};
   *reply.mutable_timeseries_b() = {args.timeseries_b.begin(),
@@ -130,19 +128,19 @@ helloworld::SCAMPArgs ConvertArgsToReply(const SCAMP::SCAMPArgs &args) {
   return reply;
 }
 
-class GreeterClient {
+class SCAMPClient {
  public:
   int randnum;
   std::vector<double> Ta_h, Tb_h;
 
-  GreeterClient() {
+  SCAMPClient() {
     randnum = 0;
     srand(time(NULL));
     randnum = rand();
   }
 
-  GreeterClient(std::shared_ptr<Channel> channel)
-      : stub_(Greeter::NewStub(channel)) {}
+  SCAMPClient(std::shared_ptr<Channel> channel)
+      : stub_(SCAMPService::NewStub(channel)) {}
 
   void InitProfileMemory(SCAMP::SCAMPArgs *args) {
     int FLAGS_window = 100;
@@ -188,9 +186,9 @@ class GreeterClient {
     }
   }
 
-  helloworld::SCAMPWork RequestSCAMPWork(SCAMPRequest request) {
+  SCAMPProto::SCAMPWork RequestSCAMPWork(SCAMPRequest request) {
     // Container for the data we expect from the server.
-    helloworld::SCAMPWork ret;
+    SCAMPProto::SCAMPWork ret;
 
     // Context for the client. It could be used to convey extra information to
     // the server and/or tweak certain RPC behaviors.
@@ -299,7 +297,7 @@ class GreeterClient {
   }
 
  private:
-  std::unique_ptr<Greeter::Stub> stub_;
+  std::unique_ptr<SCAMPService::Stub> stub_;
 };
 
 int main(int argc, char **argv) {
@@ -329,14 +327,14 @@ int main(int argc, char **argv) {
   // std::string good = std::string(ip) + ":" + std::string(port);
   std::string good = newip + ":" + newport;
 
-  GreeterClient greeter(
+  SCAMPClient client(
       grpc::CreateChannel(good, grpc::InsecureChannelCredentials()));
 
   while (true) {
     SCAMPRequest r;
-    helloworld::SCAMPWork work = greeter.RequestSCAMPWork(r);
+    SCAMPProto::SCAMPWork work = client.RequestSCAMPWork(r);
     if (work.valid()) {
-      SCAMPResult res = greeter.SCAMPCombiner(work.args());
+      SCAMPResult res = client.SCAMPCombiner(work.args());
     }
   }
 

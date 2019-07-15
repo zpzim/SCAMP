@@ -19,7 +19,7 @@ syntax = "proto3";
 //option java_outer_classname = "HelloWorldProto";
 //option objc_class_prefix = "HLW";
 
-package helloworld;
+package SCAMPProto;
 
 message SCAMPWork {
   SCAMPArgs args = 1;
@@ -27,7 +27,7 @@ message SCAMPWork {
 }
 
 // The greeting service definition.
-service Greeter {
+service SCAMPService {
   // TODO:
   // rpc IssueJob (SCAMPJob) returns (SCAMPJobResult)
   rpc RequestSCAMPWork (SCAMPRequest) returns (SCAMPWork) {}

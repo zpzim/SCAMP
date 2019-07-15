@@ -205,24 +205,24 @@ if (BUILD_CLIENT_SERVER)
   set(_GRPC_GRPC grpc)
   set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:grpc_cpp_plugin>)
 
-  get_filename_component(hw_proto "kubernetes/helloworld.proto" ABSOLUTE)
+  get_filename_component(hw_proto "kubernetes/scamp.proto" ABSOLUTE)
   get_filename_component(hw_proto_path "${hw_proto}" PATH)
 
   # Generated sources
-  set(hw_proto_srcs "${CMAKE_CURRENT_BINARY_DIR}/kubernetes/helloworld.pb.cc")
-  set(hw_proto_hdrs "${CMAKE_CURRENT_BINARY_DIR}/kubernetes/helloworld.pb.h")
-  set(hw_grpc_srcs "${CMAKE_CURRENT_BINARY_DIR}/kubernetes/helloworld.grpc.pb.cc")
-  set(hw_grpc_hdrs "${CMAKE_CURRENT_BINARY_DIR}/kubernets/helloworld.grpc.pb.h")
+  set(hw_proto_srcs "${CMAKE_CURRENT_BINARY_DIR}/kubernetes/scamp.pb.cc")
+  set(hw_proto_hdrs "${CMAKE_CURRENT_BINARY_DIR}/kubernetes/scamp.pb.h")
+  set(hw_grpc_srcs "${CMAKE_CURRENT_BINARY_DIR}/kubernetes/scamp.grpc.pb.cc")
+  set(hw_grpc_hdrs "${CMAKE_CURRENT_BINARY_DIR}/kubernetes/scamp.grpc.pb.h")
 
   # Proto file
-  get_filename_component(hw_proto "kubernetes/helloworld.proto" ABSOLUTE)
+  get_filename_component(hw_proto "kubernetes/scamp.proto" ABSOLUTE)
   get_filename_component(hw_proto_path "${hw_proto}" PATH)
 
   # Generated sources
-  set(hw_proto_srcs "kubernetes/helloworld.pb.cc")
-  set(hw_proto_hdrs "kubernetes/helloworld.pb.h")
-  set(hw_grpc_srcs "kubernetes/helloworld.grpc.pb.cc")
-  set(hw_grpc_hdrs "kubernetes/helloworld.grpc.pb.h")
+  set(hw_proto_srcs "kubernetes/scamp.pb.cc")
+  set(hw_proto_hdrs "kubernetes/scamp.pb.h")
+  set(hw_grpc_srcs "kubernetes/scamp.grpc.pb.cc")
+  set(hw_grpc_hdrs "kubernetes/scamp.grpc.pb.h")
   
   add_custom_command(
       OUTPUT "${hw_proto_srcs}" "${hw_proto_hdrs}" "${hw_grpc_srcs}" "${hw_grpc_hdrs}"
@@ -240,8 +240,8 @@ if (BUILD_CLIENT_SERVER)
   target_link_libraries(messages ${_PROTOBUF_LIBPROTOBUF} ${_GRPC_GRPCPP} ${_GRPC_CPP_UNSECURE} -lz -lpthread)
   include_directories(grpc/include/) 
   include_directories(grpc/third_party/gflags/include/)
-  add_executable(SCAMPclient kubernetes/greeter_client.cc)
-  add_executable(SCAMPserver kubernetes/greeter_server.cc)
+  add_executable(SCAMPclient kubernetes/scamp_client.cc)
+  add_executable(SCAMPserver kubernetes/scamp_server.cc)
   target_link_libraries(SCAMPserver common scamp messages )
 endif()
 
