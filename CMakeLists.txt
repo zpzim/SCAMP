@@ -193,11 +193,6 @@ add_executable(SCAMP src/main.cpp)
 
 
 if (BUILD_CLIENT_SERVER)
-  #set(Protobuf_USE_STATIC_LIBS 1)
-  #find_package( Protobuf REQUIRED )
-  #message(STATUS "Using protobuf ${Protobuf_VERSION}") 
-  #message(STATUS "Using protobuf lib ${Protobuf_LIBRARY}") 
-  #message(STATUS "Using protobuf compiler ${Protobuf_PROTOC_EXECUTABLE}") 
   add_subdirectory(${CMAKE_CURRENT_BINARY_DIR}/grpc EXCLUDE_FROM_ALL)
   message(STATUS "Using gRPC via add_subdirectory.")
   
@@ -218,17 +213,6 @@ if (BUILD_CLIENT_SERVER)
   set(hw_proto_hdrs "${CMAKE_CURRENT_BINARY_DIR}/kubernetes/helloworld.pb.h")
   set(hw_grpc_srcs "${CMAKE_CURRENT_BINARY_DIR}/kubernetes/helloworld.grpc.pb.cc")
   set(hw_grpc_hdrs "${CMAKE_CURRENT_BINARY_DIR}/kubernets/helloworld.grpc.pb.h")
-
-  #find_library (GRPC_LIB libgrpc.a REQUIRED)
-  #find_library (Protobuf_LIB libprotobuf.a REQUIRED)
-  #find_library (GRPC_CPP_LIB libgrpc++.a REQUIRED)
-  #find_library (GRPCU_LIB libgrpc_unsecure.a REQUIRED)
-  #find_library (GRPCU_CPP_LIB libgrpc++_unsecure.a REQUIRED)
-  #message(STATUS "Using grpc lib ${GRPC_LIB}") 
-  #message(STATUS "Using grpc++ lib ${GRPC_CPP_LIB}") 
-
-  
-  #set(_GRPC_CPP_PLUGIN_EXECUTABLE `which grpc_cpp_plugin`)
 
   # Proto file
   get_filename_component(hw_proto "kubernetes/helloworld.proto" ABSOLUTE)
@@ -258,7 +242,6 @@ if (BUILD_CLIENT_SERVER)
   include_directories(grpc/third_party/gflags/include/)
   add_executable(SCAMPclient kubernetes/greeter_client.cc)
   add_executable(SCAMPserver kubernetes/greeter_server.cc)
-  #target_link_libraries(SCAMPserver messages ) old chad changed
   target_link_libraries(SCAMPserver common scamp messages )
 endif()
 

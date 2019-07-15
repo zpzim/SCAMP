@@ -22,6 +22,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <grpcpp/grpcpp.h>
@@ -40,7 +41,8 @@ using helloworld::SCAMPArgs;
 using helloworld::SCAMPRequest;
 using helloworld::SCAMPResult;
 
-SCAMP::SCAMPPrecisionType ConvertPrecisionType(const helloworld::SCAMPPrecisionType &t) {
+SCAMP::SCAMPPrecisionType ConvertPrecisionType(
+    const helloworld::SCAMPPrecisionType &t) {
   switch (t) {
     case helloworld::PRECISION_DOUBLE:
       return SCAMP::PRECISION_DOUBLE;
@@ -53,7 +55,8 @@ SCAMP::SCAMPPrecisionType ConvertPrecisionType(const helloworld::SCAMPPrecisionT
   }
 }
 
-SCAMP::SCAMPProfileType ConvertProfileType(const helloworld::SCAMPProfileType &t) {
+SCAMP::SCAMPProfileType ConvertProfileType(
+    const helloworld::SCAMPProfileType &t) {
   switch (t) {
     case helloworld::PROFILE_TYPE_1NN_INDEX:
       return SCAMP::PROFILE_TYPE_1NN_INDEX;
@@ -66,10 +69,8 @@ SCAMP::SCAMPProfileType ConvertProfileType(const helloworld::SCAMPProfileType &t
   }
 }
 
-
 helloworld::Profile ConvertProfile(const SCAMP::Profile &p) {
-
-  //std::cout << "size = " << p.data.size() << std::endl;
+  // std::cout << "size = " << p.data.size() << std::endl;
 
   helloworld::Profile out;
   out.set_type(helloworld::PROFILE_TYPE_1NN_INDEX);
@@ -78,7 +79,7 @@ helloworld::Profile ConvertProfile(const SCAMP::Profile &p) {
   if (p.data.empty()) {
     return out;
   }
-  
+
   switch (p.type) {
     case SCAMP::PROFILE_TYPE_1NN_INDEX:
       *out.mutable_data()->Add()->mutable_uint64_value()->mutable_value() = {
@@ -154,7 +155,7 @@ class GreeterClient {
         args->profile_a.data.emplace_back();
         args->profile_a.data[0].uint64_value.resize(
             args->timeseries_a.size() - FLAGS_window + 1, e.ulong);
-        if (FLAGS_keep_rows) {
+        if (args->keep_rows_separate) {
           args->profile_b.data.emplace_back();
           args->profile_b.data[0].uint64_value.resize(
               args->timeseries_b.size() - FLAGS_window + 1, e.ulong);
@@ -165,7 +166,7 @@ class GreeterClient {
         args->profile_a.data[0].float_value.resize(
             args->timeseries_a.size() - FLAGS_window + 1,
             std::numeric_limits<float>::lowest());
-        if (FLAGS_keep_rows) {
+        if (args->keep_rows_separate) {
           args->profile_b.data.emplace_back();
           args->profile_b.data[0].float_value.resize(
               args->timeseries_b.size() - FLAGS_window + 1,
@@ -176,7 +177,7 @@ class GreeterClient {
         args->profile_a.data.emplace_back();
         args->profile_a.data[0].double_value.resize(
             args->timeseries_a.size() - FLAGS_window + 1, 0);
-        if (FLAGS_keep_rows) {
+        if (args->keep_rows_separate) {
           args->profile_b.data.emplace_back();
           args->profile_b.data[0].double_value.resize(
               args->timeseries_b.size() - FLAGS_window + 1, 0);
@@ -195,7 +196,7 @@ class GreeterClient {
     // the server and/or tweak certain RPC behaviors.
     ClientContext context;
 
-    //std::cout << "Client requests work from server" << std::endl;
+    // std::cout << "Client requests work from server" << std::endl;
 
     // The actual RPC.
     Status status = stub_->RequestSCAMPWork(&context, request, &ret);
@@ -204,7 +205,7 @@ class GreeterClient {
     if (status.ok() && ret.valid()) {
       SCAMPArgs *reply = ret.mutable_args();
 
-      //std::cout << "client got ok back from server" << std::endl;
+      // std::cout << "client got ok back from server" << std::endl;
 
       for (int i = 0; i < reply->timeseries_size_a(); i++) {
         Ta_h.push_back(reply->timeseries_a()[i]);
@@ -249,21 +250,22 @@ class GreeterClient {
       args.timeseries_a = std::move(Ta_h);
       args.timeseries_b = std::move(Tb_h);
 
-      //std::cout << "CLIENT INITPROFILEMEMEORYSTART" << std::endl << std::flush;
+      // std::cout << "CLIENT INITPROFILEMEMEORYSTART" << std::endl <<
+      // std::flush;
       InitProfileMemory(&args);
-      //std::cout << "CLIENT DO_SCAMP START" << std::endl << std::flush;
-      do_SCAMP(&args, std::vector<int>(), 4);
-     
+      // std::cout << "CLIENT DO_SCAMP START" << std::endl << std::flush;
+      do_SCAMP(&args, std::vector<int>(), std::thread::hardware_concurrency());
+
       auto result = ConvertArgsToReply(args);
       result.set_job_id(reply->job_id());
       result.set_tile_id(reply->tile_id());
       *reply = result;
-      //std::cout << "CLIENT DO_SCAMP FINISH" << std::endl << std::flush;
+      // std::cout << "CLIENT DO_SCAMP FINISH" << std::endl << std::flush;
 
-      //std::cout << "width: " << args.max_tile_size << std::endl;
+      // std::cout << "width: " << args.max_tile_size << std::endl;
 
     } else {
-      //FIXME Remove
+      // FIXME Remove
       usleep(2 * 1000000);
       std::cout << "No work from server" << std::endl;
     }
@@ -276,12 +278,12 @@ class GreeterClient {
     SCAMPResult reply;
     ClientContext context;
 
-    //std::cout << "client scampcombiner" << std::endl;
+    // std::cout << "client scampcombiner" << std::endl;
 
     // The actual RPC.
     Status status = stub_->SCAMPCombiner(&context, args, &reply);
 
-    //std::cout << "clietn scampcombiner222222" << std::endl;
+    // std::cout << "clietn scampcombiner222222" << std::endl;
 
     if (status.ok()) {
       // return reply.done();
@@ -290,7 +292,7 @@ class GreeterClient {
                 << std::endl;
       // return -1;
 
-      //FIXME remove
+      // FIXME remove
       usleep(2 * 1000000);
     }
     return reply;
@@ -305,7 +307,7 @@ int main(int argc, char **argv) {
   // are created. This channel models a connection to an endpoint (in this case,
   // localhost at port 50051). We indicate that the channel isn't authenticated
   // (use of InsecureChannelCredentials()).
-  //std::cout << "client start" << std::endl;
+  // std::cout << "client start" << std::endl;
 
   char *port;
   char *ip;
