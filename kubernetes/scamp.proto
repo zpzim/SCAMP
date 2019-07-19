@@ -32,8 +32,21 @@ service SCAMPService {
   // rpc IssueJob (SCAMPJob) returns (SCAMPJobResult)
   rpc RequestSCAMPWork (SCAMPRequest) returns (SCAMPWork) {}
   rpc SCAMPCombiner (SCAMPArgs) returns (SCAMPResult) {}
+  rpc IssueNewJob (SCAMPArgs) returns (SCAMPStatus) {}
+  rpc CheckJobStatus (SCAMPJobID) returns (SCAMPStatus) {}
+  rpc FetchJobResult (SCAMPJobID) returns (SCAMPWork) {}
 }
 
+message SCAMPStatus
+{
+  bool status = 1;
+  uint64 job_id = 2;
+}
+
+message SCAMPJobID
+{
+  uint64 job_id = 1;
+}
 
 message SCAMPRequest {
 }

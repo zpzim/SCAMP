@@ -15,6 +15,8 @@
 #include "../src/SCAMP.h"
 #include "../src/common.h"
 #include "scamp.grpc.pb.h"
+//chadd
+//#include "google.golang.org/grpc/reflection"
 
 using grpc::Server;
 using grpc::ServerBuilder;
@@ -24,6 +26,7 @@ using SCAMPProto::Profile;
 using SCAMPProto::SCAMPArgs;
 using SCAMPProto::SCAMPRequest;
 using SCAMPProto::SCAMPResult;
+using SCAMPProto::SCAMPStatus;
 
 using SCAMPProto::SCAMPService;
 
@@ -32,7 +35,7 @@ class Job;
 std::vector<Job> jobVec;
 std::mutex jobVecLock;
 
-constexpr int DISTRIBUTED_TILE_SIZE = 50000;
+constexpr int DISTRIBUTED_TILE_SIZE = 500000;
 
 std::ifstream &read_value(std::ifstream &s, double &d, int count) {
   std::string line;
@@ -82,6 +85,20 @@ void readFile(const std::string &filename, std::vector<DTYPE> &v,
   // std::cout << "Read " << v.size() << " values from file " << filename
   //          << std::endl;
 }
+
+//chad
+/*
+void check_time_out()
+{
+  for(int i = 0; i < jobVec.size(); i++)
+  {
+     if(!jobVec[i].job_done())
+     {
+        for(int k = 0; k < jobVec[i].
+     }
+  }
+}
+*/
 
 enum TileStatus {
   TILE_STATUS_INVALID = 0,
@@ -262,6 +279,13 @@ class Job {
   SCAMPArgs *get_job_args() { return &job_args; }
   const SCAMPArgs &get_tile_args(int tile_id) { return tiles[tile_id].args(); }
 
+ //chad
+ /* 
+  bool check_queue()
+  {
+    
+  }*/
+
  private:
   void Init() {
     tile_cols = ceil((job_args.timeseries_a().size() - job_args.window() + 1) /
@@ -300,11 +324,13 @@ void createTestJob() {
   initializer.ints[1] = 0;
 
   std::vector<double> Ta_h;
-  readFile<double>("../../test/SampleInput/randomlist128K.txt", Ta_h, "%lf");
+  readFile<double>("../test/SampleInput/randomlist128K.txt", Ta_h, "%lf");
 
   SCAMPProto::SCAMPArgs args;
   *args.mutable_timeseries_a() = std::move(
       google::protobuf::RepeatedField<double>(Ta_h.begin(), Ta_h.end()));
+
+  // FIXME need if for has_b then line below needs b in it???
   *args.mutable_timeseries_b() = std::move(
       google::protobuf::RepeatedField<double>(Ta_h.begin(), Ta_h.end()));
 
@@ -337,7 +363,13 @@ void createTestJob() {
   args.set_is_aligned(false);
   args.set_window(window);
   args.set_has_b(false);
-  jobVec.emplace_back(args, 0);
+  std::ofstream filestream("./testproto.proto");
+  filestream << args.DebugString();
+  //if(args.SerializeToOstream(&filestream)) {
+  //  std::cout << "Wrote proto to file" << std::endl;
+  //}
+  filestream.close();
+  //jobVec.emplace_back(args, 0);
 }
 
 template <typename T>
@@ -487,29 +519,54 @@ class SCAMPServiceImpl final : public SCAMPService::Service {
   jobVec
   // Returns a job id in SCAMPStatus if we create a job
   // Returns failure state in SCAMPStatus if we fail to create a job
+  */
   Status IssueNewJob(ServerContext *context, const SCAMPProto::SCAMPArgs
   *job_args, SCAMPStatus *status) override {
-     // TODO: Chad implement this
-  }
-  */
 
-  /*
+  std::lock_guard<std::mutex> lockGuard(jobVecLock);
+
+  uint64_t cur_job_id = jobVec.size();
+  jobVec.emplace_back(*job_args, cur_job_id);
+  
+  status->set_status(true);
+  status->set_job_id(cur_job_id);
+  return Status::OK;
+  
+  }
+  
+
   // Takes a job_id and returns the status of the job associated with that ID
-  Status CheckJobStatus(ServerContext *context, const int job_id, SCAMPStatus
+  Status CheckJobStatus(ServerContext *context, const SCAMPProto::SCAMPJobID *SCAMP_job_id, SCAMPStatus
   *status) override {
-    // TODO: Chad implement this
+    std::lock_guard<std::mutex> lockGuard(jobVecLock);
+    if (SCAMP_job_id->job_id() >= jobVec.size() || SCAMP_job_id->job_id() < 0) {
+      status->set_status(false);
+      return Status::CANCELLED;
+    }
+    status->set_status(jobVec[SCAMP_job_id->job_id()].job_done());
+    return Status::OK;
   }
-  */
 
-  /*
+  
   // Takes a job id and returns the completed work associated with that id if
-  the job has been completed
+  // the job has been completed
   // Otherwise returns a null result
-  Status FetchJobResult(ServerContext *context, const int job_id, SCAMPResult
-  *job_result) override {
-    // TODO: Chad implement this
+  Status FetchJobResult(ServerContext *context, const SCAMPProto::SCAMPJobID *SCAMP_job_id, SCAMPProto::SCAMPWork *job_result) override {
+    std::lock_guard<std::mutex> lockGuard(jobVecLock);
+    if (SCAMP_job_id->job_id() >= jobVec.size() || SCAMP_job_id->job_id() < 0) {
+      job_result->set_valid(false);
+      return Status::CANCELLED;
+    }
+    if(jobVec[SCAMP_job_id->job_id()].job_done()){
+    
+	*job_result->mutable_args() = *jobVec[SCAMP_job_id->job_id()].get_job_args();
+        job_result->set_valid(true);
+    }else {
+        job_result->set_valid(false);
+    }
+    return Status::OK;
   }
-  */
+  
 
   Status RequestSCAMPWork(ServerContext *context, const SCAMPRequest *request,
                           SCAMPProto::SCAMPWork *reply) override {
@@ -550,6 +607,9 @@ class SCAMPServiceImpl final : public SCAMPService::Service {
     MergeProfile(jobVec[job_id].get_tile_args(tile_id),
                  jobVec[job_id].get_job_args(), &tile_a, col_pos, width,
                  &tile_b, row_pos, height);
+
+    //chad
+    //jobVec[job_id].check_queue();
 
     jobVec[job_id].set_finished(tile_id);
     if (jobVec[job_id].job_done()) {
@@ -596,6 +656,9 @@ void RunServer() {
 int main(int argc, char **argv) {
   // TODO: move this into an asynchronous rpc which appends a new job to jobVec
   createTestJob();
+
+  //std::thread check_time_out();
+
   RunServer();
   return 0;
 }
