@@ -327,8 +327,13 @@ int main(int argc, char **argv) {
   // std::string good = std::string(ip) + ":" + std::string(port);
   std::string good = newip + ":" + newport;
 
-  SCAMPClient client(
-      grpc::CreateChannel(good, grpc::InsecureChannelCredentials()));
+  grpc::ChannelArguments ch_args;
+
+  // Do not limit input size
+  ch_args.SetMaxReceiveMessageSize(-1);
+
+  SCAMPClient client(grpc::CreateCustomChannel(
+      good, grpc::InsecureChannelCredentials(), ch_args));
 
   while (true) {
     SCAMPRequest r;

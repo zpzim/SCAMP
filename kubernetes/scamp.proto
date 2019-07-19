@@ -39,8 +39,9 @@ service SCAMPService {
 
 message SCAMPStatus
 {
-  bool status = 1;
-  uint64 job_id = 2;
+  int64 job_id = 1;
+  JobStatus status = 2;
+  float progress = 3;
 }
 
 message SCAMPJobID
@@ -52,6 +53,14 @@ message SCAMPRequest {
 }
 
 message SCAMPResult {
+}
+
+enum JobStatus {
+  JOB_STATUS_INVALID = 0;
+  JOB_STATUS_READY = 1;
+  JOB_STATUS_RUNNING = 2;
+  JOB_STATUS_FINISHED = 3;
+  JOB_STATUS_FAILED = 4;
 }
 
 // The request message containing the user's name.
