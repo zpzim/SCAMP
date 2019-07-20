@@ -38,6 +38,7 @@ constexpr uint64_t DISTRIBUTED_TILE_SIZE = 500000;
 constexpr uint64_t MAX_TILE_RETRIES = 3;
 constexpr uint64_t GIGAFLOP = 1000000000;
 constexpr uint64_t MIN_THROUGHPUT = 3 * GIGAFLOP;
+constexpr uint64_t SLEEP_TILE_TIME = 100;
 constexpr uint64_t TILE_TIMEOUT_SECONDS =
     DISTRIBUTED_TILE_SIZE * DISTRIBUTED_TILE_SIZE / MIN_THROUGHPUT;
 
@@ -91,20 +92,6 @@ void readFile(const std::string &filename, std::vector<DTYPE> &v,
   // std::cout << "Read " << v.size() << " values from file " << filename
   //          << std::endl;
 }
-
-// chad
-/*
-void check_time_out()
-{
-  for(int i = 0; i < jobVec.size(); i++)
-  {
-     if(!jobVec[i].job_done())
-     {
-        for(int k = 0; k < jobVec[i].
-     }
-  }
-}
-*/
 
 enum TileStatus {
   TILE_STATUS_INVALID = 0,
@@ -193,6 +180,20 @@ class Job {
     Init();
   };
 
+  void check_time_tile() {
+    for(auto elem : tiles) {
+      if(elem.second.status() == TILE_STATUS_RUNNING) {
+        if((time(0) - elem.second.start_time()) > TILE_TIMEOUT_SECONDS) {
+          std::cout << "Tile Timeout ID: " << elem.second.tile_id() << std::endl;
+          elem.second.start_time(-1);
+	  elem.second.status(TILE_STATUS_FAILED);
+	}
+      }
+    }
+
+  }
+
+
   SCAMPProto::JobStatus status() { return status_; }
   /*
     void print_state() {
@@ -212,7 +213,6 @@ class Job {
     }
     return finished / static_cast<float>(tiles.size());
   }
-
   // Checks if all the tiles for this job have finished and sets
   // the job status accordingly
   bool job_done() {
@@ -327,12 +327,6 @@ class Job {
   SCAMPArgs *get_job_args() { return &job_args; }
   const SCAMPArgs &get_tile_args(int tile_id) { return tiles[tile_id].args(); }
 
-  // chad
-  /*
-   bool check_queue()
-   {
-
-   }*/
 
  private:
   void Init() {
@@ -372,6 +366,7 @@ class Job {
     }
     return true;
   }
+
   int job_id;
   int tile_counter;
   int tile_rows;
@@ -383,6 +378,23 @@ class Job {
   // This is better as a set (key is tile id)
   SCAMPArgs job_args;
 };
+
+//chad
+void check_time_out()
+{
+	while(true)
+	{
+	 usleep(SLEEP_TILE_TIME*1000000);
+         for(int i = 0; i < jobVec.size(); i++)
+         {
+           if(!jobVec[i].job_done())
+           {
+	     jobVec[i].check_time_tile();
+           }
+         }
+	}
+}
+
 
 // Creates a dummy test job
 void createTestJob() {
@@ -661,9 +673,6 @@ class SCAMPServiceImpl final : public SCAMPService::Service {
                  jobVec[job_id].get_job_args(), &tile_a, col_pos, width,
                  &tile_b, row_pos, height);
 
-    // chad
-    // jobVec[job_id].check_queue();
-
     jobVec[job_id].set_tile_finished(tile_id);
 
     std::cout << "Finished Merging" << std::endl;
@@ -700,7 +709,8 @@ void RunServer() {
 int main(int argc, char **argv) {
   // TODO: move this into an asynchronous rpc which appends a new job to jobVec
   createTestJob();
-  // std::thread check_time_out();
+
+  std::thread check_time_out();
 
   RunServer();
   return 0;
