@@ -34,11 +34,12 @@ class Job;
 std::vector<Job> jobVec;
 std::mutex jobVecLock;
 
-constexpr int DISTRIBUTED_TILE_SIZE = 500000;
-constexpr int MAX_TILE_RETRIES = 3;
-constexpr int GIGAFLOPS = 1000000000;
-constexpr int MIN_THROUGHPUT = 3 * GIGAFLOP; 
-constexpr int TILE_TIMEOUT_SECONDS = DISTRIBUTED_TILE_SIZE * DISTRIBUTED_TILE_SIZE / MIN_THROUGHPUT
+constexpr uint64_t DISTRIBUTED_TILE_SIZE = 500000;
+constexpr uint64_t MAX_TILE_RETRIES = 3;
+constexpr uint64_t GIGAFLOP = 1000000000;
+constexpr uint64_t MIN_THROUGHPUT = 3 * GIGAFLOP;
+constexpr uint64_t TILE_TIMEOUT_SECONDS =
+    DISTRIBUTED_TILE_SIZE * DISTRIBUTED_TILE_SIZE / MIN_THROUGHPUT;
 
 // TODO: remove this test function
 std::ifstream &read_value(std::ifstream &s, double &d, int count) {
@@ -181,7 +182,6 @@ class TileQueue {
  private:
   std::queue<Tile *> queue_;
 };
-
 
 class Job {
  public:
@@ -585,12 +585,16 @@ class SCAMPServiceImpl final : public SCAMPService::Service {
   Status CheckJobStatus(ServerContext *context,
                         const SCAMPProto::SCAMPJobID *SCAMP_job_id,
                         SCAMPStatus *status) override {
+    std::cout << "In check job status" << std::endl;
     std::lock_guard<std::mutex> lockGuard(jobVecLock);
     status->set_job_id(SCAMP_job_id->job_id());
+    std::cout << "Checking status of job id: " << SCAMP_job_id->job_id()
+              << " jobvec size = " << jobVec.size() << std::endl;
     if (SCAMP_job_id->job_id() >= jobVec.size() || SCAMP_job_id->job_id() < 0) {
       status->set_status(SCAMPProto::JOB_STATUS_INVALID);
-      return Status::CANCELLED;
+      return Status::OK;
     }
+    jobVec[SCAMP_job_id->job_id()].job_done();
     status->set_status(jobVec[SCAMP_job_id->job_id()].status());
     status->set_progress(jobVec[SCAMP_job_id->job_id()].get_progress());
     return Status::OK;
@@ -662,19 +666,6 @@ class SCAMPServiceImpl final : public SCAMPService::Service {
 
     jobVec[job_id].set_tile_finished(tile_id);
 
-    if (jobVec[job_id].job_done()) {
-      for (auto elem : jobVec[job_id]
-                           .get_job_args()
-                           ->profile_a()
-                           .data()
-                           .Get(0)
-                           .uint64_value()
-                           .value()) {
-        SCAMP::mp_entry e;
-        e.ulong = elem;
-        printf("%lf\n", e.floats[0]);
-      }
-    }
     std::cout << "Finished Merging" << std::endl;
     return Status::OK;
   }

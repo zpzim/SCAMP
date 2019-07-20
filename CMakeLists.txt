@@ -64,6 +64,8 @@ set(
   src/*.cpp
   src/*.cu
   kubernetes/*.cc
+  kubernetes/*.cpp
+  kubernetes/*.h
   )
 
 # ----------------------------------------------------------------------------------------
@@ -141,9 +143,11 @@ else()
   target_link_libraries(tile common cpu_kernels qt_helper)
 endif()
 
-add_library(scamp ${CMAKE_CURRENT_SOURCE_DIR}/src/SCAMP.cpp)
+add_library(scamp_utils ${CMAKE_CURRENT_SOURCE_DIR}/src/scamp_utils.cpp)
 
+add_library(scamp ${CMAKE_CURRENT_SOURCE_DIR}/src/SCAMP.cpp)
 target_link_libraries(scamp -lpthread tile cpu_stats common qt_helper)
+
 
 if (CMAKE_CUDA_COMPILER)
   set_target_properties(gpu_kernels PROPERTIES
@@ -189,6 +193,7 @@ if(CLANG_FORMAT_EXE)
   )
 endif()
 
+
 add_executable(SCAMP ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
 
 
@@ -212,6 +217,7 @@ if (BUILD_CLIENT_SERVER)
 
   # Build scamp client and scamp server
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/kubernetes)
+
 endif()
 
 if(NOT TARGET gflags)
@@ -220,7 +226,7 @@ if(NOT TARGET gflags)
 endif()
 
 if (CMAKE_CUDA_COMPILER)
-  target_link_libraries(SCAMP -lcudart_static gflags common scamp)
+  target_link_libraries(SCAMP -lcudart_static gflags common scamp scamp_utils)
 else()
-  target_link_libraries(SCAMP gflags common scamp)
+  target_link_libraries(SCAMP gflags common scamp scamp_utils)
 endif() 
