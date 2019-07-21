@@ -28,7 +28,6 @@ jobs:
                 clang-6.0
                 clang-format-6.0
                 clang-tidy-6.0
-    compiler: clang++-6.0
     before_install:
       - sudo apt-get install make g++
     install:
@@ -95,13 +94,6 @@ jobs:
     name: "Ubuntu Client/Server Build"
     os: linux
     dist: xenial
-    addons:
-        apt:
-            packages:
-                clang-6.0
-                clang-format-6.0
-                clang-tidy-6.0
-    compiler: clang++-6.0
     before_install:
       - sudo apt-get install make g++
     install:  
@@ -150,6 +142,8 @@ jobs:
       - make -j4
       - cd ../test
       - ./run_tests.sh "--no_gpu=true --num_cpu_workers=2"
+
+  - stage: "Integration Tests"
     name: "Distributed Integration tests"
     os: linux
     dist: xenial
