@@ -44,18 +44,22 @@ jobs:
     script: 
       - set -e
       - export PATH=$PATH:/usr/local/cuda/bin
+      - mkdir build && cd build
       # Build with clang
-      - cmake -D FORCE_CUDA=1 -D CMAKE_CXX_COMPILER=clang++ .
+      - cmake -D FORCE_CUDA=1 -D CMAKE_CXX_COMPILER=clang++ ..
       - make -j4
-      - make clean
+      - rm -rf *
       # Build with gcc
-      - cmake -D FORCE_CUDA=1 -D CMAKE_CXX_COMPILER=g++ .
+      - cmake -D FORCE_CUDA=1 -D CMAKE_CXX_COMPILER=g++ ..
       - make -j4
-      - make clean
+      - rm -rf *
       # Build with Default compiler
-      - cmake -D FORCE_CUDA=1 .
+      - cmake -D FORCE_CUDA=1 ..
       - make -j4
-      - make clean 
+      - rm -rf *
+      # Build client/server
+      - cmake -DFORCE_CUDA=1 -DCMAKE_CXX_COMPILER=g++ -DBUILD_CLIENT_SERVER=1 ..
+      - make -j4
 
   - stage: "Build Checks"
     name: "Ubuntu Build"
@@ -74,19 +78,40 @@ jobs:
       - git submodule update --init --recursive
     script: 
       - set -e
+      - mkdir build && cd build
       # Build with clang
-      - cmake -D CMAKE_CXX_COMPILER=clang++ .
+      - cmake -D CMAKE_CXX_COMPILER=clang++ ..
       - make -j4
-      - make clean
+      - rm -rf *
       # Build with gcc
-      - cmake -D CMAKE_CXX_COMPILER=g++ .
+      - cmake -D CMAKE_CXX_COMPILER=g++ ..
       - make -j4
-      - make clean
+      - rm -rf *
       # Build with Default compiler
-      - cmake .
+      - cmake ..
       - make -j4
-      - make clean 
     
+  - stage: "Build Checks"
+    name: "Ubuntu Client/Server Build"
+    os: linux
+    dist: xenial
+    addons:
+        apt:
+            packages:
+                clang-6.0
+                clang-format-6.0
+                clang-tidy-6.0
+    compiler: clang++-6.0
+    before_install:
+      - sudo apt-get install make g++
+    install:  
+      - git submodule update --init --recursive
+    script: 
+      - set -e
+      - mkdir build && cd build
+      # Build with gcc
+      - cmake -DBUILD_CLIENT_SERVER=1 -D CMAKE_CXX_COMPILER=g++ ..
+      - make -j4
    
   - stage: "Build Checks"
     name: "Style Check"
@@ -119,11 +144,36 @@ jobs:
       - git submodule update --init --recursive
     script: 
       - set -e
+      - mkdir build && cd build
       # Build with clang
-      - cmake -D CMAKE_CXX_COMPILER=clang++ .
+      - cmake -D CMAKE_CXX_COMPILER=clang++ ..
       - make -j4
-      - cd test
+      - cd ../test
       - ./run_tests.sh "--no_gpu=true --num_cpu_workers=2"
+    name: "Distributed Integration tests"
+    os: linux
+    dist: xenial
+    compiler: g++
+    addons:
+      apt:
+        packages:
+          clang-6.0
+          clang-format-6.0
+          clang-tidy-6.0
+    before_install:
+      - sudo apt-get install make g++ 
+    install:  
+      - git submodule update --init --recursive
+    script: 
+      - set -e
+      - mkdir build && cd build
+      # Build client and server
+      - cmake -D CMAKE_CXX_COMPILER=g++ -DBUILD_CLIENT_SERVER=1 ..
+      - make -j4
+      - ./kubernetes/SCAMPserver &
+      - ./kubernetes/SCAMPclient &
+      - cd ../test
+      - ./run_tests.sh ../build/kubernetes/SCAMP_distributed
 
 notifications:
     email:

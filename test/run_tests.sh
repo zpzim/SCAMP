@@ -1,8 +1,9 @@
 #!/bin/bash
 
-extra_opts=$1
 
-EXECUTABLE=../SCAMP
+EXECUTABLE=$1
+extra_opts=$2
+
 ROOT_DIR_INPUT=SampleInput
 ROOT_DIR_OUTPUT=SampleOutput
 WINDOWSZ=(100)
