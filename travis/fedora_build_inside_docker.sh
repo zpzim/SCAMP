@@ -10,7 +10,7 @@ dnf -y install cuda
 ln -s /usr/local/cuda-10.0/ /usr/local/cuda
 export PATH=$PATH:/usr/local/cuda/bin
 cd SCAMP
-mkdir build & cd build
+mkdir build && cd build
 cmake3 -D FORCE_CUDA=1 -D CMAKE_CXX_COMPILER=g++ ..
 make -j4
 exit 0
