@@ -12,7 +12,6 @@ class SCAMPWorker {
   SCAMPWorker(std::shared_ptr<Channel> channel)
       : stub_(SCAMPProto::SCAMPService::NewStub(channel)) {}
   void run();
-  void do_SCAMP_distributed(SCAMPProto::SCAMPArgs *args);
 
  private:
   SCAMPProto::SCAMPWork RequestAndExecuteWork(SCAMPProto::SCAMPRequest request);

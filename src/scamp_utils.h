@@ -22,4 +22,4 @@ double ConvertToEuclidean(double val, int window);
 bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
                         SCAMP::Profile p, bool output_pearson, int window);
 
-void InitProfileMemory(SCAMP::SCAMPArgs *args);
+bool InitProfileMemory(SCAMP::SCAMPArgs *args);

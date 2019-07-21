@@ -1,5 +1,7 @@
 #pragma once
 
+#include "defines.h"
+
 //////////////////////////////////////////////////////
 // UPDATE_ROW:
 // C: 0 1 2 3 4 5 6
@@ -201,7 +203,7 @@ storing the result in 'best_so_far[iter+i]'
 template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
           typename ACCUM_TYPE, typename DISTANCE_TYPE, bool COMPUTE_ROWS,
           bool COMPUTE_COLS, SCAMPProfileType PROFILE_TYPE>
-__device__ inline __attribute__((always_inline)) void do_row(
+__device__ inline FORCE_INLINE void do_row(
     SCAMPThreadInfo<ACCUM_TYPE> &info, DISTANCE_TYPE distc[7],
     const DATA_TYPE inormc[7], const DATA_TYPE dfc[7], const DATA_TYPE dgc[7],
     const DATA_TYPE inormr[4], const DATA_TYPE dfr[4], const DATA_TYPE dgr[4],

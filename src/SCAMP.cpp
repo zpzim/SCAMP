@@ -12,7 +12,9 @@
 #include "SCAMP.h"
 #include "common.h"
 #include "cpu_stats.h"
+#include "scamp_exception.h"
 #include "tile.h"
+
 using std::vector;
 
 namespace SCAMP {
@@ -25,7 +27,10 @@ void SCAMP_Operation::get_tiles() {
                               static_cast<double>(_info.max_tile_height));
   size_t num_tile_cols = ceil((_info.full_ts_len_A - _info.mp_window + 1) /
                               static_cast<double>(_info.max_tile_width));
-  printf("num_tile_rows = %lu, cols = %lu\n", num_tile_rows, num_tile_cols);
+  if (!_info.silent_mode) {
+    printf("num_tile_rows = %lu, cols = %lu\n", num_tile_rows, num_tile_cols);
+  }
+
   if (_info.self_join) {
     for (int offset = 0; offset < num_tile_rows - 1; ++offset) {
       for (int diag = 0; diag < num_tile_cols - 1 - offset; ++diag) {
@@ -109,10 +114,12 @@ void SCAMP_Operation::do_work(const std::vector<double> &timeseries_a,
                                  _info.full_ts_len_A - tile.get_tile_col()));
     tile.set_tile_height(std::min(_info.max_tile_ts_size,
                                   _info.full_ts_len_B - tile.get_tile_row()));
-    std::cout << "Starting tile with starting row of " << tile.get_tile_row()
-              << " starting column of " << tile.get_tile_col()
-              << " with height " << tile.get_tile_height() << " and width "
-              << tile.get_tile_width() << std::endl;
+    if (!_info.silent_mode) {
+      std::cout << "Starting tile with starting row of " << tile.get_tile_row()
+                << " starting column of " << tile.get_tile_col()
+                << " with height " << tile.get_tile_height() << " and width "
+                << tile.get_tile_width() << std::endl;
+    }
     // Copy the portion of the time series and stats
     //  we will be using from the global arrays.
     tile.InitTimeseries(timeseries_a, timeseries_b);
@@ -151,7 +158,9 @@ void SCAMP_Operation::do_work(const std::vector<double> &timeseries_a,
 SCAMPError_t SCAMP_Operation::do_join(const std::vector<double> &timeseries_a,
                                       const std::vector<double> &timeseries_b) {
   const int num_workers = _cpu_workers + _devices.size();
-  printf("Num workers = %d\n", num_workers);
+  if (!_info.silent_mode) {
+    printf("Num workers = %d\n", num_workers);
+  }
 
   std::vector<double> timeseries_a_clean, timeseries_b_clean;
   std::vector<bool> nanvals_a, nanvals_b;
@@ -174,8 +183,10 @@ SCAMPError_t SCAMP_Operation::do_join(const std::vector<double> &timeseries_a,
   // Populate Work Queue with tiles
   get_tiles();
 
-  std::cout << "Performing join with " << _work_queue.size() << " tiles."
-            << std::endl;
+  if (!_info.silent_mode) {
+    std::cout << "Performing join with " << _work_queue.size() << " tiles."
+              << std::endl;
+  }
   std::vector<std::future<void>> futures(num_workers);
 
   // Start CUDA Workers
@@ -204,10 +215,16 @@ SCAMPError_t SCAMP_Operation::do_join(const std::vector<double> &timeseries_a,
 // and executes a SCAMP_Operation given a set of user selected parameters.
 void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
               int num_threads) {
-  if (devices.empty() && num_threads == 0) {
-    printf("Error: no compute_resources provided\n");
-    exit(0);
+  if (devices.empty() && num_threads <= 0) {
+    throw SCAMPException("Error: no compute_resources provided");
   }
+
+  if (args == nullptr) {
+    throw SCAMPException("Error: Invalid arguments provided to SCAMP");
+  }
+
+  args->validate();
+
   // Allocate and initialize memory
   OptionalArgs _opt_args(args->distance_threshold);
   // Construct operation
@@ -218,7 +235,7 @@ void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
       args->distributed_start_row, args->distributed_start_col, _opt_args,
       args->profile_type, &args->profile_a, &args->profile_b,
       args->keep_rows_separate, args->computing_rows, args->computing_columns,
-      args->is_aligned, num_threads);
+      args->is_aligned, args->silent_mode, num_threads);
   // Execute op
   std::chrono::high_resolution_clock::time_point start =
       std::chrono::high_resolution_clock::now();
@@ -229,14 +246,16 @@ void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
   }
   std::chrono::high_resolution_clock::time_point end =
       std::chrono::high_resolution_clock::now();
-  printf(
-      "Finished %d SCAMP tiles to generate  matrix profile in %lf "
-      "seconds on %lu devices and %d threads\n",
-      op.get_completed_tiles(),
-      std::chrono::duration_cast<std::chrono::microseconds>(end - start)
-              .count() /
-          static_cast<double>(1000000),
-      devices.size(), num_threads);
+  if (!args->silent_mode) {
+    printf(
+        "Finished %d SCAMP tiles to generate  matrix profile in %lf "
+        "seconds on %lu devices and %d threads\n",
+        op.get_completed_tiles(),
+        std::chrono::duration_cast<std::chrono::microseconds>(end - start)
+                .count() /
+            static_cast<double>(1000000),
+        devices.size(), num_threads);
+  }
 }
 
 }  // namespace SCAMP

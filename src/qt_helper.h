@@ -6,7 +6,10 @@
 
 #include <stdlib.h>
 #include "common.h"
+#include "scamp_exception.h"
+
 #ifdef _CUFFT_H_
+
 // cuFFT API errors
 static const char *_cudaGetErrorEnum(cufftResult error) {
   switch (error) {
@@ -44,17 +47,20 @@ static const char *_cudaGetErrorEnum(cufftResult error) {
       return "CUFFT_NOT_SUPPORTED";
     case CUFFT_INCOMPLETE_PARAMETER_LIST:
       return "CUFFT_INCOMPLETE_PARAMETER_LIST";
+    default:
+      return "CUFFT UNKNOWN ERROR";
   }
 }
 
-#define CHECK_CUFFT_ERRORS(call)                           \
-  {                                                        \
-    cufftResult_t err;                                     \
-    if ((err = (call)) != CUFFT_SUCCESS) {                 \
-      fprintf(stderr, "cuFFT error %d:%s at %s:%d\n", err, \
-              _cudaGetErrorEnum(err), __FILE__, __LINE__); \
-      exit(1);                                             \
-    }                                                      \
+#define CHECK_CUFFT_ERRORS(call)                                        \
+  {                                                                     \
+    cufftResult_t err;                                                  \
+    if ((err = (call)) != CUFFT_SUCCESS) {                              \
+      std::ostringstream ostream;                                       \
+      ostream << "cuFFT error " << err << ":" << _cudaGetErrorEnum(err) \
+              << " at " << __FILE__ << ":" << __LINE__;                 \
+      throw SCAMPException(ostream.str());                              \
+    }                                                                   \
   }
 #endif
 
@@ -74,49 +80,26 @@ class qt_compute_helper {
   size_t cufft_data_size;
   const int fft_work_size = 512;
 #endif
+
+  void init();
+  void free();
+
  public:
   qt_compute_helper(size_t sz, size_t window_sz, bool dp,
                     SCAMPArchitecture arch)
       : size(sz), window_size(window_sz), double_precision(dp), _arch(arch) {
-    if (arch == CUDA_GPU_WORKER) {
-#ifdef _HAS_CUDA_
-      cufft_data_size = sz / 2 + 1;
-      if (double_precision) {
-        CHECK_CUFFT_ERRORS(cufftPlan1d(&fft_plan, size, CUFFT_D2Z, 1));
-        CHECK_CUFFT_ERRORS(cufftPlan1d(&ifft_plan, size, CUFFT_Z2D, 1));
-      } else {
-        CHECK_CUFFT_ERRORS(cufftPlan1d(&fft_plan, size, CUFFT_R2C, 1));
-        CHECK_CUFFT_ERRORS(cufftPlan1d(&ifft_plan, size, CUFFT_C2R, 1));
-      }
-      cudaMalloc(&Q_reverse_pad, sizeof(double) * size);
-      gpuErrchk(cudaPeekAtLastError());
-      cudaMalloc(&Tc, sizeof(cuDoubleComplex) * cufft_data_size);
-      gpuErrchk(cudaPeekAtLastError());
-      cudaMalloc(&Qc, sizeof(cuDoubleComplex) * cufft_data_size);
-      gpuErrchk(cudaPeekAtLastError());
-#else
-      ASSERT(false,
-             "Attempted to use GPU resources in a binary not built with cuda");
-#endif
-    }
+    init();
   }
+
 #ifdef _HAS_CUDA_
-  ~qt_compute_helper() {
-    if (_arch == CPU_WORKER) {
-      return;
-    }
-    cudaFree(Q_reverse_pad);
-    gpuErrchk(cudaPeekAtLastError());
-    cudaFree(Tc);
-    gpuErrchk(cudaPeekAtLastError());
-    cudaFree(Qc);
-    gpuErrchk(cudaPeekAtLastError());
-    CHECK_CUFFT_ERRORS(cufftDestroy(fft_plan));
-    CHECK_CUFFT_ERRORS(cufftDestroy(ifft_plan));
-  }
+
+  ~qt_compute_helper() { free(); }
+
   SCAMPError_t compute_QT(double *QT, const double *T, const double *Q,
                           const double *qmeans, cudaStream_t s);
+
 #endif
+
   SCAMPError_t compute_QT_CPU(double *QT, const double *T, const double *Q);
 };
 

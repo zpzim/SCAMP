@@ -181,18 +181,17 @@ class Job {
   };
 
   void check_time_tile() {
-    for(auto elem : tiles) {
-      if(elem.second.status() == TILE_STATUS_RUNNING) {
-        if((time(0) - elem.second.start_time()) > TILE_TIMEOUT_SECONDS) {
-          std::cout << "Tile Timeout ID: " << elem.second.tile_id() << std::endl;
+    for (auto elem : tiles) {
+      if (elem.second.status() == TILE_STATUS_RUNNING) {
+        if ((time(0) - elem.second.start_time()) > TILE_TIMEOUT_SECONDS) {
+          std::cout << "Tile Timeout ID: " << elem.second.tile_id()
+                    << std::endl;
           elem.second.start_time(-1);
-	  elem.second.status(TILE_STATUS_FAILED);
-	}
+          elem.second.status(TILE_STATUS_FAILED);
+        }
       }
     }
-
   }
-
 
   SCAMPProto::JobStatus status() { return status_; }
   /*
@@ -260,23 +259,26 @@ class Job {
     args->set_tile_id(tile->tile_id());
     args->set_job_id(job_id);
 
-    uint64_t tileAsize = job_args.timeseries_a().size() / tile_cols;
-    uint64_t tileBsize = job_args.timeseries_b().size() / tile_rows;
+    uint64_t Asize = job_args.timeseries_a().size();
+    uint64_t Bsize = job_args.has_b() ? job_args.timeseries_b().size() : Asize;
+
+    uint64_t tileAsize = Asize / tile_cols;
+    uint64_t tileBsize = Bsize / tile_rows;
 
     uint64_t start_col = (tile->tile_col() * tileAsize);
     uint64_t end_col =
         (((tile->tile_col() + 1) * tileAsize) + job_args.window() - 1);
 
-    if (end_col > job_args.timeseries_a().size()) {
-      end_col = job_args.timeseries_a().size();
+    if (end_col > Asize) {
+      end_col = Asize;
     }
 
     uint64_t start_row = (tile->tile_row() * tileBsize);
     uint64_t end_row =
         (((tile->tile_row() + 1) * tileBsize) + job_args.window() - 1);
 
-    if (end_row > job_args.timeseries_b().size()) {
-      end_row = job_args.timeseries_b().size();
+    if (end_row > Bsize) {
+      end_row = Bsize;
     }
 
     args->set_timeseries_size_a(end_col - start_col);
@@ -284,15 +286,16 @@ class Job {
     args->set_distributed_start_row(start_row);
     args->set_distributed_start_col(start_col);
     args->set_max_tile_size(job_args.max_tile_size());
-    args->set_is_aligned(true);
     args->set_distance_threshold(job_args.distance_threshold());
     args->set_profile_type(job_args.profile_type());
     args->set_precision_type(job_args.precision_type());
     args->set_window(job_args.window());
+    args->set_is_aligned(job_args.is_aligned());
 
     if (!job_args.has_b()) {
       args->set_computing_columns(true);
       args->set_computing_rows(true);
+      // Is this always correct? What if tile is not square?
       if (tile->tile_row() == tile->tile_col()) {
         args->set_has_b(false);
         args->set_keep_rows_separate(job_args.keep_rows_separate());
@@ -301,6 +304,10 @@ class Job {
         args->set_keep_rows_separate(true);
       }
     } else {
+      if (tile->tile_row() != tile->tile_col()) {
+        args->set_is_aligned(false);
+      }
+      args->set_has_b(true);
       args->set_computing_columns(true);
       args->set_computing_rows(job_args.keep_rows_separate());
       args->set_keep_rows_separate(job_args.keep_rows_separate());
@@ -316,9 +323,16 @@ class Job {
     for (uint64_t i = start_col; i < end_col; i++) {
       args->add_timeseries_a(job_args.timeseries_a()[i]);
     }
-    for (uint64_t i = start_row; i < end_row; i++) {
-      args->add_timeseries_b(job_args.timeseries_b()[i]);
+    if (job_args.has_b()) {
+      for (uint64_t i = start_row; i < end_row; i++) {
+        args->add_timeseries_b(job_args.timeseries_b()[i]);
+      }
+    } else {
+      for (uint64_t i = start_row; i < end_row; i++) {
+        args->add_timeseries_b(job_args.timeseries_a()[i]);
+      }
     }
+
     // Timer Start
     tile->start_time(time(0));
     tile->status(TILE_STATUS_RUNNING);
@@ -326,7 +340,6 @@ class Job {
   }
   SCAMPArgs *get_job_args() { return &job_args; }
   const SCAMPArgs &get_tile_args(int tile_id) { return tiles[tile_id].args(); }
-
 
  private:
   void Init() {
@@ -379,22 +392,17 @@ class Job {
   SCAMPArgs job_args;
 };
 
-//chad
-void check_time_out()
-{
-	while(true)
-	{
-	 usleep(SLEEP_TILE_TIME*1000000);
-         for(int i = 0; i < jobVec.size(); i++)
-         {
-           if(!jobVec[i].job_done())
-           {
-	     jobVec[i].check_time_tile();
-           }
-         }
-	}
+// chad
+void check_time_out() {
+  while (true) {
+    usleep(SLEEP_TILE_TIME * 1000000);
+    for (int i = 0; i < jobVec.size(); i++) {
+      if (!jobVec[i].job_done()) {
+        jobVec[i].check_time_tile();
+      }
+    }
+  }
 }
-
 
 // Creates a dummy test job
 void createTestJob() {

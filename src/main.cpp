@@ -1,6 +1,7 @@
 #ifdef _HAS_CUDA_
 #include <cuda_runtime.h>
 #endif
+
 #include <gflags/gflags.h>
 #include <cmath>
 #include <iomanip>
@@ -10,6 +11,7 @@
 #include <vector>
 #include "SCAMP.h"
 #include "common.h"
+#include "scamp_exception.h"
 #include "scamp_utils.h"
 
 #ifdef _DISTRIBUTED_EXECUTION_
@@ -151,6 +153,10 @@ int main(int argc, char **argv) {
   } else {
     n_y = Tb_h.size() - FLAGS_window + 1;
   }
+  if (n_x < 1 || n_y < 1) {
+    printf("Error: window size must be smaller than the timeseries length\n");
+    return 1;
+  }
 
 #ifdef _HAS_CUDA_
   if (devices.empty() && !FLAGS_no_gpu) {
@@ -185,15 +191,22 @@ int main(int argc, char **argv) {
   args.is_aligned = FLAGS_aligned;
   args.timeseries_a = std::move(Ta_h);
   args.timeseries_b = std::move(Tb_h);
+  args.silent_mode = false;
 
   InitProfileMemory(&args);
 
   printf("Starting SCAMP\n");
+  try {
 #ifdef _DISTRIBUTED_EXECUTION_
-  do_SCAMP_distributed(&args, FLAGS_hostname_port);
+    do_SCAMP_distributed(&args, FLAGS_hostname_port);
 #else
-  SCAMP::do_SCAMP(&args, devices, FLAGS_num_cpu_workers);
+    SCAMP::do_SCAMP(&args, devices, FLAGS_num_cpu_workers);
 #endif
+  } catch (const SCAMPException &e) {
+    std::cout << e.what() << "\n";
+    exit(1);
+  }
+
   printf("Now writing result to files\n");
   WriteProfileToFile(FLAGS_output_a_file_name, FLAGS_output_a_index_file_name,
                      args.profile_a, FLAGS_output_pearson, FLAGS_window);

@@ -1,5 +1,7 @@
 #pragma once
 #include <cuComplex.h>
+#include <cuda_runtime.h>
+#include <cufft.h>
 
 void launch_elementwise_multiply_inplace(const cuDoubleComplex *A,
                                          cuDoubleComplex *B, const int size,

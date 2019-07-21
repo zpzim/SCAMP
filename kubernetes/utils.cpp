@@ -132,25 +132,37 @@ SCAMPProto::SCAMPArgs ConvertArgsToReply(const SCAMP::SCAMPArgs &args) {
 SCAMP::Profile ConvertProfile(const SCAMPProto::Profile &profile) {
   SCAMP::Profile out;
   out.type = ConvertProfileType(profile.type());
+  if (profile.data().size() < 1) {
+    return out;
+  }
   switch (profile.type()) {
     case SCAMPProto::PROFILE_TYPE_1NN_INDEX:
       out.data.emplace_back();
+      if (profile.data().Get(0).uint64_value().value().size() == 0) {
+        return out;
+      }
       out.data[0].uint64_value = {
           profile.data().Get(0).uint64_value().value().begin(),
           profile.data().Get(0).uint64_value().value().end()};
-      break;
+      return out;
     case SCAMPProto::PROFILE_TYPE_1NN:
       out.data.emplace_back();
+      if (profile.data().Get(0).float_value().value().size() == 0) {
+        return out;
+      }
       out.data[0].float_value = {
           profile.data().Get(0).float_value().value().begin(),
           profile.data().Get(0).float_value().value().end()};
-      break;
+      return out;
     case SCAMPProto::PROFILE_TYPE_SUM_THRESH:
       out.data.emplace_back();
+      if (profile.data().Get(0).double_value().value().size() == 0) {
+        return out;
+      }
       out.data[0].double_value = {
           profile.data().Get(0).double_value().value().begin(),
           profile.data().Get(0).double_value().value().end()};
-      break;
+      return out;
   }
   return out;
 }

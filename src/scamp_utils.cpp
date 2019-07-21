@@ -158,7 +158,16 @@ bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
   return true;
 }
 
-void InitProfileMemory(SCAMP::SCAMPArgs *args) {
+bool InitProfileMemory(SCAMP::SCAMPArgs *args) {
+  int64_t profile_a_size = args->timeseries_a.size() - args->window + 1;
+  int64_t profile_b_size = args->has_b
+                               ? args->timeseries_b.size() - args->window + 1
+                               : profile_a_size;
+  if (profile_a_size <= 0 ||
+      (args->keep_rows_separate && profile_b_size <= 0)) {
+    // Invalid input
+    return false;
+  }
   switch (args->profile_type) {
     case SCAMP::PROFILE_TYPE_1NN_INDEX: {
       SCAMP::mp_entry e;
@@ -172,6 +181,7 @@ void InitProfileMemory(SCAMP::SCAMPArgs *args) {
         args->profile_b.data[0].uint64_value.resize(
             args->timeseries_b.size() - args->window + 1, e.ulong);
       }
+      return true;
     }
     case SCAMP::PROFILE_TYPE_1NN: {
       args->profile_a.data.emplace_back();
@@ -184,6 +194,7 @@ void InitProfileMemory(SCAMP::SCAMPArgs *args) {
             args->timeseries_b.size() - args->window + 1,
             std::numeric_limits<float>::lowest());
       }
+      return true;
     }
     case SCAMP::PROFILE_TYPE_SUM_THRESH: {
       args->profile_a.data.emplace_back();
@@ -194,8 +205,9 @@ void InitProfileMemory(SCAMP::SCAMPArgs *args) {
         args->profile_b.data[0].double_value.resize(
             args->timeseries_b.size() - args->window + 1, 0);
       }
+      return true;
     }
     default:
-      break;
+      return false;
   }
 }

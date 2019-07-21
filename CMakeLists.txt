@@ -71,7 +71,7 @@ set(
 # ----------------------------------------------------------------------------------------
 #                         ===== Compiler Configuration =====
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 11)
 
 # CUDA_CONFIG
 if (CMAKE_CUDA_COMPILER)

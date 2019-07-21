@@ -6,13 +6,16 @@
 
 #include <stdio.h>
 #include <cinttypes>
+#include <cmath>
 #include <condition_variable>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <mutex>
 #include <queue>
+#include <sstream>
 #include <unordered_map>
+#include "scamp_exception.h"
 
 namespace SCAMP {
 
@@ -61,6 +64,9 @@ struct Profile {
 // Arguments for a SCAMP operation
 // This is an external user's interface to the SCAMP library
 struct SCAMPArgs {
+  void validate();
+  void print();
+
   std::vector<double> timeseries_a;
   std::vector<double> timeseries_b;
   Profile profile_a;
@@ -77,10 +83,12 @@ struct SCAMPArgs {
   bool computing_columns;
   bool keep_rows_separate;
   bool is_aligned;
+  bool silent_mode;
 };
 
 // Struct describing kernel arguments which are non-standard
 struct OptionalArgs {
+  OptionalArgs() : threshold(NAN), num_extra_operands(0) {}
   OptionalArgs(double threshold_)
       : threshold(threshold_), num_extra_operands(0) {}
   OptionalArgs(double threshold_, int num_extra_operands_)
@@ -96,7 +104,7 @@ struct OpInfo {
          bool selfjoin, SCAMPPrecisionType t, int64_t start_row,
          int64_t start_col, OptionalArgs args_, SCAMPProfileType profiletype,
          bool keep_rows, bool compute_rows, bool compute_cols, bool aligned,
-         int num_workers)
+         bool silent_mode, int num_workers)
       : full_ts_len_A(Asize),
         full_ts_len_B(Bsize),
         mp_window(window_sz),
@@ -109,17 +117,24 @@ struct OpInfo {
         keep_rows_separate(keep_rows),
         computing_rows(compute_rows),
         computing_cols(compute_cols),
-        is_aligned(aligned) {
+        is_aligned(aligned),
+        silent_mode(silent_mode) {
     if (self_join) {
       full_ts_len_B = full_ts_len_A;
     }
-    max_tile_ts_size = std::max(Asize, Bsize) / (num_workers);
+    auto maxSize = std::max(Asize, Bsize);
+    max_tile_ts_size = maxSize / (num_workers);
+
     if (max_tile_ts_size > max_tile_size) {
       max_tile_ts_size = max_tile_size;
+    } else if (max_tile_ts_size < mp_window) {
+      max_tile_ts_size = maxSize;
     }
+
     max_tile_width = max_tile_ts_size - mp_window + 1;
     max_tile_height = max_tile_width;
   }
+
   // Type of profile to compute
   SCAMPProfileType profile_type;
 
@@ -158,6 +173,8 @@ struct OpInfo {
   // Determines if we should keep the row/column matrix profiles separate or to
   // merge them.
   bool keep_rows_separate;
+  // Run without printing any message by standard output
+  bool silent_mode;
 };
 
 // Struct containing the precomputed statistics for an input time series
@@ -169,21 +186,22 @@ struct PrecomputedInfo {
   std::vector<double> _means;
 
  public:
-  void set(std::vector<double>& means, std::vector<double>& norms,
-           std::vector<double>& df, std::vector<double>& dg) {
+  void set(std::vector<double> &means, std::vector<double> &norms,
+           std::vector<double> &df, std::vector<double> &dg) {
     _norms = std::move(norms);
     _means = std::move(means);
     _df = std::move(df);
     _dg = std::move(dg);
   }
-  const std::vector<double>& dg() const { return _dg; }
-  const std::vector<double>& df() const { return _df; }
-  const std::vector<double>& norms() const { return _norms; }
-  const std::vector<double>& means() const { return _means; }
-  std::vector<double>& mutable_dg() { return _dg; }
-  std::vector<double>& mutable_df() { return _df; }
-  std::vector<double>& mutable_norms() { return _norms; }
-  std::vector<double>& mutable_means() { return _means; }
+
+  const std::vector<double> &dg() const { return _dg; }
+  const std::vector<double> &df() const { return _df; }
+  const std::vector<double> &norms() const { return _norms; }
+  const std::vector<double> &means() const { return _means; }
+  std::vector<double> &mutable_dg() { return _dg; }
+  std::vector<double> &mutable_df() { return _df; }
+  std::vector<double> &mutable_norms() { return _norms; }
+  std::vector<double> &mutable_means() { return _means; }
 };
 
 // Thread safe queue to hold tiles to be executed
@@ -211,14 +229,14 @@ class ThreadSafeQueue {
     return item;
   }
 
-  void push(const std::pair<int, int>& item) {
+  void push(const std::pair<int, int> &item) {
     std::unique_lock<std::mutex> mlock(mutex_);
     queue_.push(item);
     mlock.unlock();
     cond_.notify_one();
   }
 
-  void push(std::pair<int, int>&& item) {
+  void push(std::pair<int, int> &&item) {
     std::unique_lock<std::mutex> mlock(mutex_);
     queue_.push(std::move(item));
     mlock.unlock();
@@ -231,7 +249,7 @@ class ThreadSafeQueue {
   std::condition_variable cond_;
 };
 
-using DeviceProfile = std::unordered_map<int, void*>;
+using DeviceProfile = std::unordered_map<int, void *>;
 
 // Returns the size in bytes of a the matrix profile element for a particular MP
 // type
@@ -264,16 +282,17 @@ enum SCAMPTileType {
 }  // namespace SCAMP
 
 #ifdef _HAS_CUDA_
-void gpuAssert(cudaError_t code, const char* file, int line, bool abort = true);
+void gpuAssert(cudaError_t code, const char *file, int line);
 #define gpuErrchk(ans) \
   { gpuAssert((ans), __FILE__, __LINE__); }
 #endif
 
-#define ASSERT(condition, message)                                       \
-  do {                                                                   \
-    if (!(condition)) {                                                  \
-      std::cerr << "Assertion `" #condition "` failed in " << __FILE__   \
-                << " line " << __LINE__ << ": " << message << std::endl; \
-      std::terminate();                                                  \
-    }                                                                    \
+#define ASSERT(condition, message)                                         \
+  do {                                                                     \
+    if (!(condition)) {                                                    \
+      std::ostringstream ostream;                                          \
+      ostream << "Assertion `" << #condition << "` failed in " << __FILE__ \
+              << "line " << __LINE__;                                      \
+      throw SCAMPException(ostream.str());                                 \
+    }                                                                      \
   } while (false)
