@@ -141,7 +141,7 @@ jobs:
       - cmake -D CMAKE_CXX_COMPILER=clang++ ..
       - make -j4
       - cd ../test
-      - ./run_tests.sh "--no_gpu=true --num_cpu_workers=2"
+      - ./run_tests.sh ../build/SCAMP "--no_gpu=true --num_cpu_workers=2"
 
   - stage: "Integration Tests"
     name: "Distributed Integration tests"

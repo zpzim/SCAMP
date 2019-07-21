@@ -29,7 +29,7 @@ do
             if [ $tile_sz -lt $(($count * 2)) ]; then
                 cmd="$EXECUTABLE --window=$j --max_tile_size=$tile_sz $extra_opts --input_a_file_name=$INPUT_FILE"
                 echo "Running Test: $cmd"
-                $cmd > /dev/null
+                $cmd
                 X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mp_columns_out_index | grep '^' | wc -l`
                 echo "$X matrix profile index differences"
                 if [ $X -gt $(($count / 100)) ] ; then

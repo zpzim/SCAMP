@@ -36,15 +36,15 @@ CentOS:
 If you need to specify a specific compiler or cuda toolkit if you have multiple installed, you can use the following defines. By default cmake will look for cuda at the /usr/local/cuda symlink on linux
 ~~~~
 cmake -D CMAKE_CUDA_COMPILER=/path/to/nvcc \
-      -D CMAKE_CXX_COMPILER=/path/to/clang/or/gcc .
+      -D CMAKE_CXX_COMPILER=/path/to/clang/or/gcc ..
 ~~~~
 You can force cmake to build without cuda using
 ~~~
-cmake -D FORCE_NO_CUDA=1 .
+cmake -D FORCE_NO_CUDA=1 ..
 ~~~
 For testing with cuda, you can force the build to fail if cuda is not found using
 ~~~
-cmake -D FORCE_CUDA=1 .
+cmake -D FORCE_CUDA=1 ..
 ~~~
 
 # Usage
@@ -52,11 +52,12 @@ cmake -D FORCE_CUDA=1 .
 git clone https://github.com/zpzim/SCAMP
 cd SCAMP
 git submodule update --init --recursive
+mkdir build && cd build
 # cmake will look in your $PATH for the cuda/c++ compilers
 # If you have problems with cmake, you may need to specify a
 # cuda or c++ compiler as shown above
-cmake .
-make -j4
+cmake ..
+make -j8
 ./SCAMP --window=window_size --input_a_file_name=input_A_file_path [--num_cpu_workers=N (to use CPU threads)]
 ~~~~
 This will generate two files: mp_columns_out and mp_columns_out_index, which contain the matrix profile and matrix profile index values respectively. 
@@ -73,7 +74,19 @@ This will generate two files: mp_columns_out and mp_columns_out_index, which con
 * There are more arguments that allow you even greater control over what SCAMP can do. Use --helpfull for a list of possible arguments and their descriptions.
 * cmake provides support for clang-tidy (when you build) and clang-format (using build target clang-format) to use these please make sure clang-tidy and clang-format are installed on your system
 
-# AWS operation (currently broken, port to grpc on kubernetes in progress)
-* This framework can be used with [AWS Batch](https://aws.amazon.com/batch) to distribute the computation to a cluster of p2 or p3 instances 
-* Information forthcoming, but the scripts we used to scale out the algorithm are included in the aws/ directory
-
+# Distributed operation
+* We have a client/server architecture built using grpc. To use distributed functionality build the client and server executables via:
+~~~
+git submodule update --init --recursive
+mkdir build && cd build
+# grpc client and server only build with gcc (clang not supported)
+# requires golang-go and libz
+cmake -DBUILD_CLIENT_SERVER=1 -DCMAKE_CXX_COMPILER=g++ ..
+make -j8
+~~~
+* This will produce three executables in build/kubernetes:
+    * "SCAMPserver": This is the SCAMP server. It accepts jobs via grpc and handles divying them up among worker clients.
+    * "SCAMPclient": Run this on worker nodes, it must be configured with the hostname and port where the SCAMPserver is. This is the workhorse of the computation, it will utilize all gpus or cpus on the host system to compute work handed to it by the server. Each worker node should have only one client executable running at a time. Though not completely necessary, these clients should have high bandwidth to the server for best performance.
+    * "SCAMP_distributed": This behaves similarly to the SCAMP executable above, except that it issues jobs to the server via rpc instead of computing them locally. use the --hostname_port="hostname:port" to configure the address of the server. Currently does not support any kind of authentication, so it will need to be run inside any firewalls that would block internet traffic to the compute cluster.
+* The server/clients can be set up to run under kubernetes pods using the Dockerfile in this repo.
+* More information coming
