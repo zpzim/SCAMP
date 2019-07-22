@@ -166,6 +166,7 @@ jobs:
       - make -j4
       - ./kubernetes/SCAMPserver &
       - ./kubernetes/SCAMPclient &
+      - sleep 10
       - cd ../test
       - ./run_tests.sh ../build/kubernetes/SCAMP_distributed
 
