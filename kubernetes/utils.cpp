@@ -197,4 +197,5 @@ void ConvertProtoArgsToSCAMPArgs(const SCAMPProto::SCAMPArgs &proto_args,
   args->has_b = proto_args.has_b();
   args->timeseries_a = std::move(Ta_h);
   args->timeseries_b = std::move(Tb_h);
+  args->silent_mode = true;
 }

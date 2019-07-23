@@ -28,7 +28,6 @@ void SCAMPInterface::do_SCAMP_distributed(SCAMPProto::SCAMPArgs *args) {
   bool done = false;
   while (!done) {
     std::this_thread::sleep_for(std::chrono::seconds(2));
-    std::cout << "Checking Job Status. " << std::endl;
     {
       grpc::ClientContext context;
       s = stub_->CheckJobStatus(&context, id, &status);
@@ -37,7 +36,7 @@ void SCAMPInterface::do_SCAMP_distributed(SCAMPProto::SCAMPArgs *args) {
       std::cout << "Error Checking Job Status. " << std::endl;
       continue;
     } else {
-      std::cout << "Checked Job Status, got: " << status.status() << std::endl;
+      std::cout << status.DebugString() << std::endl;
     }
     if (status.status() == SCAMPProto::JOB_STATUS_FINISHED) {
       done = true;
