@@ -32,6 +32,7 @@ service SCAMPService {
   // rpc IssueJob (SCAMPJob) returns (SCAMPJobResult)
   rpc RequestSCAMPWork (SCAMPRequest) returns (SCAMPWork) {}
   rpc SCAMPCombiner (SCAMPArgs) returns (SCAMPResult) {}
+  rpc ReportTileFailure (SCAMPArgs) returns (SCAMPResult) {}
   rpc IssueNewJob (SCAMPArgs) returns (SCAMPStatus) {}
   rpc CheckJobStatus (SCAMPJobID) returns (SCAMPStatus) {}
   rpc FetchJobResult (SCAMPJobID) returns (SCAMPWork) {}

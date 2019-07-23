@@ -13,7 +13,7 @@
 #include "scamp_worker.h"
 #include "utils.h"
 
-SCAMPProto::SCAMPWork SCAMPWorker::RequestAndExecuteWork(
+SCAMPProto::SCAMPWork SCAMPWorker::RequestWork(
     SCAMPProto::SCAMPRequest request) {
   // Container for the data we expect from the server.
   SCAMPProto::SCAMPWork ret;
@@ -25,61 +25,80 @@ SCAMPProto::SCAMPWork SCAMPWorker::RequestAndExecuteWork(
   // The actual RPC.
   Status status = stub_->RequestSCAMPWork(&context, request, &ret);
 
-  // Act upon its status.
-  if (status.ok() && ret.valid()) {
-    std::cout << "Got work from server" << std::endl;
-    SCAMP::SCAMPArgs args;
-    auto reply = ret.mutable_args();
-    ConvertProtoArgsToSCAMPArgs(*reply, &args);
-    std::cout << "Converted arguments to SCAMP format" << std::endl;
-
-    std::cout << "Issuing the following args to SCAMP: " << std::endl;
-    args.print();
-
-    InitProfileMemory(&args);
-    try {
-#ifdef _HAS_CUDA_
-      int num_dev;
-      vector<int> devices;
-      if (cudaGetDeviceCount(&num_dev) == cudaSuccess) {
-        for (int i = 0; i < num_dev; ++i) {
-          devices.push_back(i);
-        }
-      }
-      if (devices.empty()) {
-        do_SCAMP(&args, std::vector<int>(),
-                 std::thread::hardware_concurrency());
-      } else {
-        std::cout << "Starting SCAMP with GPUs" << std::endl;
-        do_SCAMP(&args, devices, 0);
-      }
-#else
-      do_SCAMP(&args, std::vector<int>(), std::thread::hardware_concurrency());
-#endif
-    } catch (SCAMPException e) {
-      std::cout << "Error: Problem computing tile: " << e.what() << std::endl;
-      ret.set_valid(false);
-      return ret;
-    }
-    auto result = ConvertArgsToReply(args);
-    result.set_job_id(reply->job_id());
-    result.set_tile_id(reply->tile_id());
-    *reply = result;
-
-  } else {
-    std::this_thread::sleep_for(std::chrono::seconds(2));
-    std::cout << "No work from server" << std::endl;
+  if (!status.ok()) {
+    std::cout << "Could not get work from server." << std::endl;
   }
+
   return ret;
 }
 
+SCAMPProto::SCAMPWork SCAMPWorker::ExecuteWork(SCAMPProto::SCAMPWork work) {
+  SCAMP::SCAMPArgs args;
+  auto reply = work.mutable_args();
+  ConvertProtoArgsToSCAMPArgs(*reply, &args);
+  std::cout << "Converted arguments to SCAMP format" << std::endl;
+
+  std::cout << "Issuing the following args to SCAMP: " << std::endl;
+  args.print();
+
+  if (!InitProfileMemory(&args)) {
+    std::cout << "Error: Problem allocating memory for matrix profile."
+              << std::endl;
+    work.set_valid(false);
+    return work;
+  }
+  try {
+#ifdef _HAS_CUDA_
+    int num_dev;
+    vector<int> devices;
+    if (cudaGetDeviceCount(&num_dev) == cudaSuccess) {
+      for (int i = 0; i < num_dev; ++i) {
+        devices.push_back(i);
+      }
+    }
+    if (devices.empty()) {
+      do_SCAMP(&args, std::vector<int>(), std::thread::hardware_concurrency());
+    } else {
+      std::cout << "Starting SCAMP with GPUs" << std::endl;
+      do_SCAMP(&args, devices, 0);
+    }
+#else
+    do_SCAMP(&args, std::vector<int>(), std::thread::hardware_concurrency());
+#endif
+  } catch (SCAMPException e) {
+    std::cout << "Error: Problem computing tile: " << e.what() << std::endl;
+    work.set_valid(false);
+    return work;
+  }
+  auto result = ConvertArgsToReply(args);
+  result.set_job_id(reply->job_id());
+  result.set_tile_id(reply->tile_id());
+  *reply = result;
+  return work;
+}
+
 SCAMPProto::SCAMPResult SCAMPWorker::MergeResultWithGlobal(
-    const SCAMPProto::SCAMPArgs &args) {
+    const SCAMPProto::SCAMPArgs &computed_result) {
   SCAMPProto::SCAMPResult reply;
   grpc::ClientContext context;
 
   // The actual RPC.
-  Status status = stub_->SCAMPCombiner(&context, args, &reply);
+  Status status = stub_->SCAMPCombiner(&context, computed_result, &reply);
+
+  if (!status.ok()) {
+    std::cout << status.error_code() << ": " << status.error_message()
+              << std::endl;
+  }
+  return reply;
+}
+
+SCAMPProto::SCAMPResult SCAMPWorker::ReportFailedTile(
+    const SCAMPProto::SCAMPArgs &failed_args) {
+  SCAMPProto::SCAMPResult reply;
+  grpc::ClientContext context;
+
+  // The actual RPC.
+  Status status = stub_->ReportTileFailure(&context, failed_args, &reply);
 
   if (!status.ok()) {
     std::cout << status.error_code() << ": " << status.error_message()
@@ -92,9 +111,21 @@ SCAMPProto::SCAMPResult SCAMPWorker::MergeResultWithGlobal(
 void SCAMPWorker::run() {
   while (true) {
     SCAMPProto::SCAMPRequest r;
-    SCAMPProto::SCAMPWork result = RequestAndExecuteWork(r);
-    if (result.valid()) {
-      SCAMPProto::SCAMPResult res = MergeResultWithGlobal(result.args());
+    SCAMPProto::SCAMPWork work = RequestWork(r);
+    // Act upon its status.
+    if (work.valid()) {
+      // Execute the work using SCAMP
+      SCAMPProto::SCAMPWork computed_result = ExecuteWork(work);
+      if (computed_result.valid()) {
+        // Merge completed result with the server's master copy
+        MergeResultWithGlobal(computed_result.args());
+      } else {
+        // If execution failed, we need to report this to the server
+        ReportFailedTile(work.args());
+      }
+    } else {
+      std::cout << "No work from server" << std::endl;
+      std::this_thread::sleep_for(std::chrono::seconds(2));
     }
   }
 }

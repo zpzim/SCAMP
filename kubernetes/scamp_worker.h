@@ -14,8 +14,12 @@ class SCAMPWorker {
   void run();
 
  private:
-  SCAMPProto::SCAMPWork RequestAndExecuteWork(SCAMPProto::SCAMPRequest request);
+  SCAMPProto::SCAMPWork RequestWork(SCAMPProto::SCAMPRequest request);
+  SCAMPProto::SCAMPWork ExecuteWork(SCAMPProto::SCAMPWork work);
   SCAMPProto::SCAMPResult MergeResultWithGlobal(
       const SCAMPProto::SCAMPArgs &args);
+
+  SCAMPProto::SCAMPResult ReportFailedTile(
+      const SCAMPProto::SCAMPArgs &failed_args);
   std::unique_ptr<SCAMPProto::SCAMPService::Stub> stub_;
 };

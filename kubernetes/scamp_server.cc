@@ -1,7 +1,7 @@
-#include <time.h>
-#include <unistd.h>
+#include <chrono>
 #include <cmath>
 #include <condition_variable>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -30,11 +30,7 @@ using SCAMPProto::SCAMPService;
 
 class Job;
 
-// Job list
-std::vector<Job> jobVec;
-std::mutex jobVecLock;
-
-constexpr uint64_t DISTRIBUTED_TILE_SIZE = 500000;
+constexpr uint64_t DISTRIBUTED_TILE_SIZE = 5000;
 constexpr uint64_t MAX_TILE_RETRIES = 3;
 constexpr uint64_t GIGAFLOP = 1000000000;
 constexpr uint64_t MIN_THROUGHPUT = 3 * GIGAFLOP;
@@ -42,57 +38,11 @@ constexpr uint64_t TIMEOUT_CHECK_FREQUENCY = 20;
 constexpr uint64_t TILE_TIMEOUT_SECONDS =
     DISTRIBUTED_TILE_SIZE * DISTRIBUTED_TILE_SIZE / MIN_THROUGHPUT;
 
-// TODO: remove this test function
-std::ifstream &read_value(std::ifstream &s, double &d, int count) {
-  std::string line;
-  double parsed;
+// Job list
+std::vector<Job> jobVec;
+std::mutex jobVecLock;
 
-  s >> line;
-  if (line.empty()) {
-    if (s.peek() != EOF) {
-      std::cout << "WARNING: got empty line #" << count + 1
-                << " in input file\n"
-                << std::endl;
-    }
-    d = 0;
-    return s;
-  }
-  try {
-    parsed = std::stod(line);
-  } catch (std::invalid_argument e) {
-    std::cout << line[0] << std::endl;
-    std::cout << "FATAL ERROR: invalid argument: Could not parse line number "
-              << count + 1 << " from input file.\n";
-    exit(1);
-  } catch (std::out_of_range e) {
-    std::cout << line[0] << std::endl;
-    std::cout << "FATAL ERROR: out of range: Could not parse line number "
-              << count + 1 << " from input file.\n";
-    exit(1);
-  }
-  d = parsed;
-  return s;
-}
-
-// TODO: remove this test function
-template <class DTYPE>
-void readFile(const std::string &filename, std::vector<DTYPE> &v,
-              const char *format_str) {
-  std::ifstream f(filename);
-  if (f.fail()) {
-    std::cout << "Unable to open" << filename
-              << "for reading, please make sure it exists" << std::endl;
-    exit(0);
-  }
-  // std::cout << "Reading data from " << filename << std::endl;
-  DTYPE num;
-  while (read_value(f, num, v.size()) && f.peek() != EOF) {
-    v.push_back(num);
-  }
-  // std::cout << "Read " << v.size() << " values from file " << filename
-  //          << std::endl;
-}
-
+// Enum describing Tile status
 enum TileStatus {
   TILE_STATUS_INVALID = 0,
   TILE_STATUS_READY = 1,
@@ -101,6 +51,7 @@ enum TileStatus {
   TILE_STATUS_FAILED = 4,
 };
 
+// Class describing particular tile in a Job
 class Tile {
  public:
   Tile() : valid(false) {}
@@ -142,41 +93,15 @@ class Tile {
   SCAMPArgs args_;
 };
 
-// Thread safe queue to hold tiles to be executed
-class TileQueue {
- public:
-  size_t size() { return queue_.size(); }
-
-  bool empty() {
-    // std::lock_guard<std::mutex> lockGuard(mutex_);
-    return queue_.empty();
-  }
-
-  // Pop an element from the queue, if the queue is already empty, return the
-  // sentinel !valid which indicates that there was no data in the queue
-  Tile *pop() {
-    if (queue_.empty()) {
-      return nullptr;
-    }
-
-    Tile *item = queue_.front();
-    queue_.pop();
-    return item;
-  }
-
-  void push(Tile *item) { queue_.push(item); }
-
- private:
-  std::queue<Tile *> queue_;
-};
-
+// Class describing a Distributed SCAMP job
 class Job {
  public:
   Job(SCAMPArgs args, int id)
       : job_id(id),
         job_args(args),
         status_(SCAMPProto::JOB_STATUS_RUNNING),
-        tile_counter(0) {
+        tile_counter(0),
+        tiles_completed_(0) {
     Init();
   };
 
@@ -193,25 +118,11 @@ class Job {
     }
   }
 
-  SCAMPProto::JobStatus status() { return status_; }
-  /*
-    void print_state() {
-      std::cout << "ready queue size: " << ready_queue.size() << " running queue
-    size: " << running.size() << " finished size: " << finished.size() <<
-    std::endl;
-    }
-  */
-
   // Returns the ratio of completed tiles to total tiles
   float get_progress() {
-    int finished = 0;
-    for (auto elem : tiles) {
-      if (elem.second.status() != TILE_STATUS_FINISHED) {
-        finished++;
-      }
-    }
-    return finished / static_cast<float>(tiles.size());
+    return tiles_completed_ / static_cast<float>(tiles.size());
   }
+
   // Checks if all the tiles for this job have finished and sets
   // the job status accordingly
   bool job_done() {
@@ -229,8 +140,19 @@ class Job {
 
   // Sets a specific tile to be complete
   void set_tile_finished(int tile_id) {
-    tiles[tile_id].status(TILE_STATUS_FINISHED);
-    tiles[tile_id].end_time(time(0));
+    if (tile_id < tiles.size() && tile_id >= 0) {
+      tiles[tile_id].status(TILE_STATUS_FINISHED);
+      tiles[tile_id].end_time(time(0));
+      tiles_completed_++;
+    }
+  }
+
+  // Sets a specific tile to the failure state
+  void set_tile_failed(int tile_id) {
+    if (tile_id < tiles.size() && tile_id >= 0) {
+      tiles[tile_id].status(TILE_STATUS_FAILED);
+      tiles[tile_id].end_time(time(0));
+    }
   }
 
   // Fetches a tile (and data) from the job and returns it in args.
@@ -251,10 +173,8 @@ class Job {
       }
     }
 
-    Tile *tile = ready_queue.pop();
-    if (tile == nullptr) {
-      return false;
-    }
+    Tile *tile = ready_queue.front();
+    ready_queue.pop();
 
     args->set_tile_id(tile->tile_id());
     args->set_job_id(job_id);
@@ -292,21 +212,21 @@ class Job {
     args->set_window(job_args.window());
     args->set_is_aligned(job_args.is_aligned());
 
+    // If the full job is a self join
     if (!job_args.has_b()) {
       args->set_computing_columns(true);
       args->set_computing_rows(true);
-      // Is this always correct? What if tile is not square?
+      // Check if we are on the diagonal, as we can save time by perfoming
+      // smaller self-joins
       if (tile->tile_row() == tile->tile_col()) {
         args->set_has_b(false);
         args->set_keep_rows_separate(job_args.keep_rows_separate());
       } else {
         args->set_has_b(true);
         args->set_keep_rows_separate(true);
+        args->set_is_aligned(true);
       }
     } else {
-      if (tile->tile_row() != tile->tile_col()) {
-        args->set_is_aligned(false);
-      }
       args->set_has_b(true);
       args->set_computing_columns(true);
       args->set_computing_rows(job_args.keep_rows_separate());
@@ -338,8 +258,10 @@ class Job {
     tile->status(TILE_STATUS_RUNNING);
     return true;
   }
+
   SCAMPArgs *get_job_args() { return &job_args; }
   const SCAMPArgs &get_tile_args(int tile_id) { return tiles[tile_id].args(); }
+  SCAMPProto::JobStatus status() { return status_; }
 
  private:
   void Init() {
@@ -380,12 +302,13 @@ class Job {
     return true;
   }
 
+  int tiles_completed_;
   int job_id;
   int tile_counter;
   int tile_rows;
   int tile_cols;
   std::unordered_map<int, Tile> tiles;
-  TileQueue ready_queue;
+  std::queue<Tile *> ready_queue;
   SCAMPProto::JobStatus status_;
 
   // This is better as a set (key is tile id)
@@ -403,52 +326,6 @@ void check_time_out() {
     }
   }
 }
-
-/*
-
-// Creates a dummy test job
-void createTestJob() {
-  int window = 100;
-  SCAMP::mp_entry initializer;
-  initializer.floats[0] = -2;
-  initializer.ints[1] = 0;
-
-  std::vector<double> Ta_h;
-  readFile<double>("../test/SampleInput/randomlist1M.txt", Ta_h, "%lf");
-
-  SCAMPProto::SCAMPArgs args;
-  *args.mutable_timeseries_a() = std::move(
-      google::protobuf::RepeatedField<double>(Ta_h.begin(), Ta_h.end()));
-
-  *args.mutable_timeseries_b() = std::move(
-      google::protobuf::RepeatedField<double>(Ta_h.begin(), Ta_h.end()));
-
-  args.mutable_profile_a()->set_type(SCAMPProto::PROFILE_TYPE_1NN_INDEX);
-  args.mutable_profile_a()
-      ->mutable_data()
-      ->Add()
-      ->mutable_uint64_value()
-      ->mutable_value()
-      ->Resize(Ta_h.size() - window + 1, initializer.ulong);
-
-  args.set_max_tile_size(512000);
-  args.set_distributed_start_row(-1);
-  args.set_distributed_start_col(-1);
-  // FIXME
-  args.set_distance_threshold(std::numeric_limits<double>::max());
-  args.set_computing_rows(true);
-  args.set_computing_columns(true);
-  args.set_profile_type(SCAMPProto::PROFILE_TYPE_1NN_INDEX);
-  args.set_precision_type(SCAMPProto::PRECISION_DOUBLE);
-  args.set_keep_rows_separate(false);
-  args.set_is_aligned(false);
-  args.set_window(window);
-  args.set_has_b(false);
-  std::ofstream filestream("./testproto.proto");
-  filestream << args.DebugString();
-  filestream.close();
-}
-*/
 
 template <typename T>
 void elementwise_sum(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
@@ -481,7 +358,6 @@ void elementwise_max(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
     }
   }
 }
-
 
 void MergeTileIntoFullProfile(Profile *tile_profile, uint64_t position,
                               uint64_t length, Profile *full_profile,
@@ -618,6 +494,7 @@ class SCAMPServiceImpl final : public SCAMPService::Service {
     return Status::OK;
   }
 
+  // RPC called by workers. Fetches the next tile and sends it to the worker.
   Status RequestSCAMPWork(ServerContext *context, const SCAMPRequest *request,
                           SCAMPProto::SCAMPWork *reply) override {
     std::cout << "Work requested from server" << std::endl;
@@ -625,7 +502,6 @@ class SCAMPServiceImpl final : public SCAMPService::Service {
     std::lock_guard<std::mutex> lockGuard(jobVecLock);
 
     for (int i = 0; i < jobVec.size(); i++) {
-      std::cout << "Checking for ready tile for job " << i << std::endl;
       if (jobVec[i].fetch_ready_tile(args)) {
         std::cout << "Tile fetched from job " << i << std::endl;
         reply->set_valid(true);
@@ -636,6 +512,8 @@ class SCAMPServiceImpl final : public SCAMPService::Service {
     return Status::OK;
   }
 
+  // RPC called by workers. Retrieves completed work from worker and merges it
+  // with the global profile associated with that job
   Status SCAMPCombiner(ServerContext *context, const SCAMPArgs *request,
                        SCAMPResult *reply) override {
     uint64_t height = request->timeseries_size_b();
@@ -654,6 +532,11 @@ class SCAMPServiceImpl final : public SCAMPService::Service {
     std::cout << "height: " << height << " width: " << width << std::endl;
 
     std::lock_guard<std::mutex> lockGuard(jobVecLock);
+    if (job_id >= jobVec.size() || job_id < 0) {
+      // Invalid Input
+      return Status::CANCELLED;
+    }
+
     MergeProfile(jobVec[job_id].get_tile_args(tile_id),
                  jobVec[job_id].get_job_args(), &tile_a, col_pos, width,
                  &tile_b, row_pos, height);
@@ -661,6 +544,20 @@ class SCAMPServiceImpl final : public SCAMPService::Service {
     jobVec[job_id].set_tile_finished(tile_id);
 
     std::cout << "Finished Merging" << std::endl;
+    return Status::OK;
+  }
+
+  // RPC called by workers when tile execution fails
+  Status ReportTileFailure(ServerContext *context, const SCAMPArgs *request,
+                           SCAMPResult *reply) override {
+    int job_id = request->job_id();
+    int tile_id = request->tile_id();
+    std::lock_guard<std::mutex> lockGuard(jobVecLock);
+    if (job_id >= jobVec.size() || job_id < 0) {
+      // Invalid Input
+      return Status::CANCELLED;
+    }
+    jobVec[job_id].set_tile_failed(tile_id);
     return Status::OK;
   }
 };
@@ -688,7 +585,7 @@ void RunServer() {
   std::unique_ptr<Server> server(builder.BuildAndStart());
   if (server == nullptr) {
     std::cout << "Error building server." << std::endl;
-    exit(1);    
+    exit(1);
   }
   std::cout << "Server listening on " << server_address << std::endl;
 
