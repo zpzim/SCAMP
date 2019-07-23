@@ -2,7 +2,8 @@
 
 
 EXECUTABLE=$1
-extra_opts=$2
+OUTFILE=$2
+extra_opts=$3
 
 ROOT_DIR_INPUT=SampleInput
 ROOT_DIR_OUTPUT=SampleOutput
@@ -29,7 +30,7 @@ do
             if [ $tile_sz -lt $(($count * 2)) ]; then
                 cmd="$EXECUTABLE --window=$j --max_tile_size=$tile_sz $extra_opts --input_a_file_name=$INPUT_FILE"
                 echo "Running Test: $cmd"
-                $cmd
+                $cmd >> $OUTFILE
                 X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mp_columns_out_index | grep '^' | wc -l`
                 echo "$X matrix profile index differences"
                 if [ $X -gt $(($count / 100)) ] ; then
@@ -59,7 +60,7 @@ do
         if [ $tile_sz -lt $(($count * 2)) ]; then
             cmd="$EXECUTABLE --aligned --window=$j --max_tile_size=$tile_sz $extra_opts --input_a_file_name=$INPUT_FILE --input_b_file_name=$INPUT_FILE"
             echo "Running Test: $cmd"
-            $cmd > /dev/null
+            $cmd >> $OUTFILE
             X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mp_columns_out_index | grep '^' | wc -l`
             echo "$X matrix profile index differences"
             if [ $X -gt $(($count / 100)) ] ; then
@@ -92,7 +93,7 @@ do
                 if [ $tile_sz -lt $(($count * 2)) ]; then
                     cmd="$EXECUTABLE --max_tile_size=$tile_sz --input_b_file_name=$INPUT_FILE_B $extra_opts --window=$k --input_a_file_name=$INPUT_FILE_A"
                     echo "Running Test: $cmd"
-                    $cmd > /dev/null
+                    $cmd >> $OUTFILE
                     X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mp_columns_out_index | grep '^' | wc -l`
                     echo "$X matrix profile index differences"
                     if [ $X -gt $(($count / 100)) ] ; then
@@ -118,7 +119,7 @@ do
                 if [ $tile_sz -lt $(($count * 2)) ]; then
                     cmd="$EXECUTABLE --max_tile_size=$tile_sz --input_b_file_name=$INPUT_FILE_A $extra_opts --window=$k --input_a_file_name=$INPUT_FILE_B"
                     echo "Running Test: $cmd"
-                    $cmd > /dev/null
+                    $cmd >> $OUTFILE
                     X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mp_columns_out_index | grep '^' | wc -l`
                     echo "$X matrix profile index differences"
                     if [ $X -gt $(($count / 100)) ] ; then
@@ -146,7 +147,7 @@ do
                 if [ $tile_sz -lt $(($count * 2)) ]; then
                     cmd="$EXECUTABLE --max_tile_size=$tile_sz --input_b_file_name=$INPUT_FILE_A --keep_rows=true --global_row=9000000000 --global_col=100000 $extra_opts --window=$k --input_a_file_name=$INPUT_FILE_B"
                     echo "Running Test: $cmd"
-                    $cmd > /dev/null
+                    $cmd >> $OUTFILE
                     echo "Checking AB result"
                     X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPI mp_columns_out_index | grep '^' | wc -l`
                     echo "$X matrix profile index differences"
@@ -174,7 +175,7 @@ do
 
                     cmd="$EXECUTABLE --max_tile_size=$tile_sz --input_b_file_name=$INPUT_FILE_B --keep_rows=true --global_row=9000000000 --global_col=100000 $extra_opts --window=$k --input_a_file_name=$INPUT_FILE_A"
                     echo "Running Test: $cmd"
-                    $cmd > /dev/null
+                    $cmd >> $OUTFILE
                     echo "Checking AB result"
                     X=`diff --suppress-common-lines --speed-large-files -y $COMPARE_MPIB mp_columns_out_index | grep '^' | wc -l`
                     echo "$X matrix profile index differences"
