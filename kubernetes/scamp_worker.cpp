@@ -26,7 +26,8 @@ SCAMPProto::SCAMPWork SCAMPWorker::RequestWork(
   Status status = stub_->RequestSCAMPWork(&context, request, &ret);
 
   if (!status.ok()) {
-    std::cout << "Could not get work from server." << std::endl;
+    std::cout << "Could not get work from server: " << status.error_message()
+              << std::endl;
   }
 
   return ret;
