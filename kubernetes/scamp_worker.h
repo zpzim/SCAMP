@@ -11,9 +11,10 @@ class SCAMPWorker {
  public:
   SCAMPWorker(std::shared_ptr<Channel> channel)
       : stub_(SCAMPProto::SCAMPService::NewStub(channel)) {}
-  void run();
+  bool run();
 
  private:
+  float get_expected_throughput();
   SCAMPProto::SCAMPWork RequestWork(SCAMPProto::SCAMPRequest request);
   SCAMPProto::SCAMPWork ExecuteWork(SCAMPProto::SCAMPWork work);
   SCAMPProto::SCAMPResult MergeResultWithGlobal(

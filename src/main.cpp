@@ -19,6 +19,8 @@
 #endif
 
 #ifdef _DISTRIBUTED_EXECUTION_
+DEFINE_int64(distributed_tile_size, 5000000,
+             "tile size to use for computation on worker notes");
 DEFINE_string(hostname_port, "localhost:30078",
               "Hostname:Port of SCAMP server to perform distributed work");
 #endif
@@ -198,7 +200,8 @@ int main(int argc, char **argv) {
   printf("Starting SCAMP\n");
   try {
 #ifdef _DISTRIBUTED_EXECUTION_
-    do_SCAMP_distributed(&args, FLAGS_hostname_port);
+    do_SCAMP_distributed(&args, FLAGS_hostname_port,
+                         FLAGS_distributed_tile_size);
 #else
     SCAMP::do_SCAMP(&args, devices, FLAGS_num_cpu_workers);
 #endif

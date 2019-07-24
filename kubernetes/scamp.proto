@@ -28,8 +28,6 @@ message SCAMPWork {
 
 // The greeting service definition.
 service SCAMPService {
-  // TODO:
-  // rpc IssueJob (SCAMPJob) returns (SCAMPJobResult)
   rpc RequestSCAMPWork (SCAMPRequest) returns (SCAMPWork) {}
   rpc SCAMPCombiner (SCAMPArgs) returns (SCAMPResult) {}
   rpc ReportTileFailure (SCAMPArgs) returns (SCAMPResult) {}
@@ -38,19 +36,20 @@ service SCAMPService {
   rpc FetchJobResult (SCAMPJobID) returns (SCAMPWork) {}
 }
 
-message SCAMPStatus
-{
+message SCAMPStatus {
   int64 job_id = 1;
   JobStatus status = 2;
   float progress = 3;
+  int64 time_elapsed = 4;
+  int64 eta = 5;
 }
 
-message SCAMPJobID
-{
+message SCAMPJobID {
   uint64 job_id = 1;
 }
 
 message SCAMPRequest {
+  int64 expected_throughput = 1;
 }
 
 message SCAMPResult {
@@ -63,31 +62,6 @@ enum JobStatus {
   JOB_STATUS_FINISHED = 3;
   JOB_STATUS_FAILED = 4;
 }
-
-// The request message containing the user's name.
-/*message HelloRequest {
-  string name = 1;
-  string chicken = 2;
-  int32 result = 3;
-  int32 reqcounter = 4;
-  int32 idcnt = 5;
-  repeated double data = 6;
-}*/
-
-// The response message containing the greetings
-/*message HelloReply {
-  string message = 1;
-  string other = 2;
-  int32 done = 3;
-  int32 repcounter = 4;
-  int32 idcnt = 5;
-  int32 arrpos = 6;
-  int32 arrsize = 7;
-  int32 timer = 8;
-  int32 endtimer = 9;
-  int32 status = 10;
-  repeated double replydata = 11;
-}*/
 
 message RepeatedUInt {
     repeated uint32 value = 1;
@@ -136,7 +110,6 @@ enum SCAMPPrecisionType {
     PRECISION_DOUBLE = 3;    
 }
 
-
 message SCAMPArgs {
     repeated double timeseries_a = 1;
     repeated double timeseries_b = 2;
@@ -158,4 +131,5 @@ message SCAMPArgs {
     int64 timeseries_size_b = 18;
     int64 job_id = 19;
     int64 tile_id = 20;
+    int64 distributed_tile_size = 21;
 }

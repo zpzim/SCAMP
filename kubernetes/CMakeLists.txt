@@ -25,7 +25,7 @@ target_link_libraries(messages ${_PROTOBUF_LIBPROTOBUF} ${_GRPC_GRPCPP} ${_GRPCP
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
 add_library(kube_utils ${CMAKE_CURRENT_SOURCE_DIR}/utils.cpp)
-target_link_libraries(kube_utils messages)
+target_link_libraries(kube_utils messages scamp)
 
 add_library(worker ${CMAKE_CURRENT_SOURCE_DIR}/scamp_worker.cpp)
 if (CMAKE_CUDA_COMPILER)

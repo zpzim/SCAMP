@@ -56,8 +56,10 @@ void SCAMPInterface::do_SCAMP_distributed(SCAMPProto::SCAMPArgs *args) {
   *args = result.args();
 }
 
-int do_SCAMP_distributed(SCAMP::SCAMPArgs *args, std::string hostname_port) {
+int do_SCAMP_distributed(SCAMP::SCAMPArgs *args, std::string hostname_port,
+                         int64_t distributed_tile_size) {
   SCAMPProto::SCAMPArgs proto_args = ConvertArgsToReply(*args);
+  proto_args.set_distributed_tile_size(distributed_tile_size);
 
   grpc::ChannelArguments ch_args;
 

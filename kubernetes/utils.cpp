@@ -1,6 +1,9 @@
 #include <grpcpp/grpcpp.h>
 #include "scamp.grpc.pb.h"
 
+#include "../src/SCAMP.h"
+#include "../src/common.h"
+#include "../src/scamp_utils.h"
 #include "scamp_interface.h"
 #include "utils.h"
 
@@ -198,4 +201,48 @@ void ConvertProtoArgsToSCAMPArgs(const SCAMPProto::SCAMPArgs &proto_args,
   args->timeseries_a = std::move(Ta_h);
   args->timeseries_b = std::move(Tb_h);
   args->silent_mode = true;
+}
+
+std::vector<double> GenerateRandomVector(int NumberCount, int minimum,
+                                         int maximum) {
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::vector<double> values(NumberCount);
+  std::uniform_real_distribution<> dis(minimum, maximum);
+  std::generate(values.begin(), values.end(), [&]() { return dis(gen); });
+  return values;
+}
+
+SCAMP::SCAMPArgs get_default_args(uint64_t input_size) {
+  SCAMP::SCAMPArgs args;
+  args.timeseries_a = GenerateRandomVector(input_size, -1, 1);
+  args.has_b = false;
+  args.window = 100;
+  args.max_tile_size = 131072;
+  args.distributed_start_row = -1;
+  args.distributed_start_col = -1;
+  args.distance_threshold = NAN;
+  args.computing_rows = true;
+  args.computing_columns = true;
+  args.keep_rows_separate = false;
+  args.is_aligned = false;
+  args.silent_mode = true;
+  args.precision_type = SCAMP::PRECISION_DOUBLE;
+  args.profile_type = SCAMP::PROFILE_TYPE_1NN_INDEX;
+  args.profile_a.type = SCAMP::PROFILE_TYPE_1NN_INDEX;
+  args.profile_b.type = SCAMP::PROFILE_TYPE_1NN_INDEX;
+  return args;
+}
+
+float calibration_run(int64_t input_size, std::vector<int> gpus, int threads) {
+  SCAMP::SCAMPArgs args = get_default_args(input_size);
+  if (!InitProfileMemory(&args)) {
+    return -1.0;
+  }
+  auto begin = std::chrono::high_resolution_clock::now();
+  do_SCAMP(&args, gpus, threads);
+  auto end = std::chrono::high_resolution_clock::now();
+  auto diff = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
+
+  return diff.count() / static_cast<double>(1e9);
 }

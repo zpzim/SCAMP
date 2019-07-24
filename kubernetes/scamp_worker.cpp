@@ -107,10 +107,56 @@ SCAMPProto::SCAMPResult SCAMPWorker::ReportFailedTile(
   return reply;
 }
 
+float SCAMPWorker::get_expected_throughput() {
+  constexpr int test_input_size_base = 131072;
+  float time_to_finish;
+  int64_t input_size;
+
+  try {
+#ifdef _HAS_CUDA_
+    int num_dev;
+    vector<int> devices;
+    if (cudaGetDeviceCount(&num_dev) == cudaSuccess) {
+      for (int i = 0; i < num_dev; ++i) {
+        devices.push_back(i);
+      }
+    }
+    if (devices.empty()) {
+      input_size = test_input_size_base;
+      time_to_finish = calibration_run(input_size, std::vector<int>(),
+                                       std::thread::hardware_concurrency());
+    } else {
+      input_size = test_input_size_base * devices.size();
+      time_to_finish = calibration_run(input_size, devices, 0);
+    }
+#else
+    input_size = test_input_size_base;
+    time_to_finish = calibration_run(input_size, std::vector<int>(),
+                                     std::thread::hardware_concurrency());
+#endif
+  } catch (SCAMPException e) {
+    std::cout << "Error worker could not execute calibration test: " << e.what()
+              << std::endl;
+    time_to_finish = -1;
+  }
+  if (time_to_finish < 0) {
+    return -1;
+  }
+  std::cout << time_to_finish << std::endl;
+  return (input_size * input_size / 2) / time_to_finish;
+}
+
 // Worker will act as a slave to the server, requesting work to do ad infinitum
-void SCAMPWorker::run() {
+bool SCAMPWorker::run() {
+  SCAMPProto::SCAMPRequest r;
+  float expected_throughput = get_expected_throughput();
+  std::cout << expected_throughput << std::endl;
+  if (expected_throughput <= 0) {
+    return false;
+  }
+  std::cout << "Worker has throughput of: " << expected_throughput << std::endl;
+  r.set_expected_throughput(expected_throughput);
   while (true) {
-    SCAMPProto::SCAMPRequest r;
     SCAMPProto::SCAMPWork work = RequestWork(r);
     // Act upon its status.
     if (work.valid()) {

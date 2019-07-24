@@ -59,7 +59,7 @@ int main(int argc, char **argv) {
   SCAMPWorker worker(grpc::CreateCustomChannel(
       good, grpc::InsecureChannelCredentials(), ch_args));
 
-  worker.run();
+  bool failed = worker.run();
 
-  return 0;
+  return failed;
 }

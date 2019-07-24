@@ -30,13 +30,9 @@ using SCAMPProto::SCAMPService;
 
 class Job;
 
-constexpr uint64_t DISTRIBUTED_TILE_SIZE = 5000;
 constexpr uint64_t MAX_TILE_RETRIES = 3;
-constexpr uint64_t GIGAFLOP = 1000000000;
-constexpr uint64_t MIN_THROUGHPUT = 3 * GIGAFLOP;
 constexpr uint64_t TIMEOUT_CHECK_FREQUENCY = 20;
-constexpr uint64_t TILE_TIMEOUT_SECONDS =
-    DISTRIBUTED_TILE_SIZE * DISTRIBUTED_TILE_SIZE / MIN_THROUGHPUT;
+constexpr uint64_t MIN_TIMEOUT_SECONDS = 10;
 
 // Job list
 std::vector<Job> jobVec;
@@ -63,7 +59,8 @@ class Tile {
         status_(TILE_STATUS_READY),
         retries_(0),
         start_time_(-1),
-        end_time_(-1) {}
+        end_time_(-1),
+        tile_timeout_seconds_(INT_MAX) {}
   bool is_valid() { return valid; }
   void start_time(int64_t t) { start_time_ = t; }
   void end_time(int64_t t) { end_time_ = t; }
@@ -78,10 +75,14 @@ class Tile {
   int retries() { return retries_; }
   int retries(int retry_count) { retries_ = retry_count; }
   void args(const SCAMPArgs &args) { args_ = args; }
+  void timeout(int timeout) { tile_timeout_seconds_ = timeout; }
+  int timeout() { return tile_timeout_seconds_; }
+
   const SCAMPArgs &args() const { return args_; }
 
  private:
   bool valid;
+  int tile_timeout_seconds_;
   int retries_;
   int tile_row_;
   int tile_col_;
@@ -101,23 +102,50 @@ class Job {
         job_args(args),
         status_(SCAMPProto::JOB_STATUS_RUNNING),
         tile_counter(0),
-        tiles_completed_(0) {
+        tiles_completed_(0),
+        start_time_(std::chrono::steady_clock::now()) {
     Init();
   };
 
   void check_time_tile() {
     for (auto elem : tiles) {
       if (elem.second.status() == TILE_STATUS_RUNNING) {
-        if ((time(0) - elem.second.start_time()) > TILE_TIMEOUT_SECONDS) {
+        if ((time(0) - elem.second.start_time()) > elem.second.timeout()) {
           std::cout << "Tile Timeout ID: " << elem.second.tile_id()
                     << std::endl;
-          elem.second.start_time(-1);
+          elem.second.end_time(time(0));
           elem.second.status(TILE_STATUS_FAILED);
         }
       }
     }
   }
+  int64_t get_elapsed_time() {
+    switch (status_) {
+      case SCAMPProto::JOB_STATUS_RUNNING:
+        return std::chrono::duration_cast<std::chrono::seconds>(
+                   std::chrono::steady_clock::now() - start_time_)
+            .count();
+      case SCAMPProto::JOB_STATUS_FINISHED:
+      case SCAMPProto::JOB_STATUS_FAILED:
+        return std::chrono::duration_cast<std::chrono::seconds>(end_time_ -
+                                                                start_time_)
+            .count();
+      case SCAMPProto::JOB_STATUS_INVALID:
+        return -1;
+    }
+  }
 
+  int64_t get_eta() {
+    int64_t elapsed_time = get_elapsed_time();
+    if (elapsed_time < 0) {
+      return -1;
+    }
+    float progress = get_progress();
+    if (progress == 0) {
+      return -1;
+    }
+    return (elapsed_time / progress) - elapsed_time;
+  }
   // Returns the ratio of completed tiles to total tiles
   float get_progress() {
     return tiles_completed_ / static_cast<float>(tiles.size());
@@ -135,6 +163,7 @@ class Job {
       }
     }
     status_ = SCAMPProto::JOB_STATUS_FINISHED;
+    end_time_ = std::chrono::steady_clock::now();
     return true;
   }
 
@@ -157,7 +186,7 @@ class Job {
 
   // Fetches a tile (and data) from the job and returns it in args.
   // Returns false on failure to fetch work
-  bool fetch_ready_tile(SCAMPArgs *args) {
+  bool fetch_ready_tile(SCAMPArgs *args, const SCAMPRequest *request) {
     // If job is not running do nothing
     if (status_ != SCAMPProto::JOB_STATUS_RUNNING) {
       return false;
@@ -239,7 +268,13 @@ class Job {
     // Make a copy of the arguments passed to this tile, but do not store the
     // actual time series as this would require more space than necessary
     tile->args(*args);
-
+    int64_t timeout = distributed_tile_size_ * distributed_tile_size_ /
+                      request->expected_throughput();
+    if (!args->has_b()) {
+      timeout = timeout / 2;
+    }
+    timeout = std::max<int64_t>(MIN_TIMEOUT_SECONDS, timeout);
+    tile->timeout(timeout);
     for (uint64_t i = start_col; i < end_col; i++) {
       args->add_timeseries_a(job_args.timeseries_a()[i]);
     }
@@ -265,12 +300,13 @@ class Job {
 
  private:
   void Init() {
+    distributed_tile_size_ = job_args.distributed_tile_size();
     tile_cols = ceil((job_args.timeseries_a().size() - job_args.window() + 1) /
-                     static_cast<double>(DISTRIBUTED_TILE_SIZE));
+                     static_cast<double>(distributed_tile_size_));
     if (job_args.has_b()) {
       tile_rows =
           ceil((job_args.timeseries_b().size() - job_args.window() + 1) /
-               static_cast<double>(DISTRIBUTED_TILE_SIZE));
+               static_cast<double>(distributed_tile_size_));
     } else {
       tile_rows = tile_cols;
     }
@@ -292,9 +328,12 @@ class Job {
       if (elem.second.status() == TILE_STATUS_FAILED) {
         if (elem.second.retries() > MAX_TILE_RETRIES) {
           status_ = SCAMPProto::JOB_STATUS_FAILED;
+          end_time_ = std::chrono::steady_clock::now();
           return false;
         } else {
           elem.second.retries(elem.second.retries() + 1);
+          elem.second.start_time(time(0));
+          elem.second.end_time(INT_MAX);
           ready_queue.push(&elem.second);
         }
       }
@@ -302,11 +341,14 @@ class Job {
     return true;
   }
 
+  uint64_t distributed_tile_size_;
   int tiles_completed_;
   int job_id;
   int tile_counter;
   int tile_rows;
   int tile_cols;
+  std::chrono::steady_clock::time_point start_time_;
+  std::chrono::steady_clock::time_point end_time_;
   std::unordered_map<int, Tile> tiles;
   std::queue<Tile *> ready_queue;
   SCAMPProto::JobStatus status_;
@@ -458,7 +500,6 @@ class SCAMPServiceImpl final : public SCAMPService::Service {
   Status CheckJobStatus(ServerContext *context,
                         const SCAMPProto::SCAMPJobID *SCAMP_job_id,
                         SCAMPStatus *status) override {
-    std::cout << "In check job status" << std::endl;
     std::lock_guard<std::mutex> lockGuard(jobVecLock);
     status->set_job_id(SCAMP_job_id->job_id());
     std::cout << "Checking status of job id: " << SCAMP_job_id->job_id()
@@ -467,9 +508,12 @@ class SCAMPServiceImpl final : public SCAMPService::Service {
       status->set_status(SCAMPProto::JOB_STATUS_INVALID);
       return Status::OK;
     }
-    jobVec[SCAMP_job_id->job_id()].job_done();
-    status->set_status(jobVec[SCAMP_job_id->job_id()].status());
-    status->set_progress(jobVec[SCAMP_job_id->job_id()].get_progress());
+    Job &job = jobVec[SCAMP_job_id->job_id()];
+    job.job_done();
+    status->set_status(job.status());
+    status->set_progress(job.get_progress());
+    status->set_time_elapsed(job.get_elapsed_time());
+    status->set_eta(job.get_eta());
     return Status::OK;
   }
 
@@ -502,7 +546,7 @@ class SCAMPServiceImpl final : public SCAMPService::Service {
     std::lock_guard<std::mutex> lockGuard(jobVecLock);
 
     for (int i = 0; i < jobVec.size(); i++) {
-      if (jobVec[i].fetch_ready_tile(args)) {
+      if (jobVec[i].fetch_ready_tile(args, request)) {
         std::cout << "Tile fetched from job " << i << std::endl;
         reply->set_valid(true);
         return Status::OK;

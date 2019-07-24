@@ -19,3 +19,5 @@ SCAMPProto::SCAMPArgs ConvertArgsToReply(const SCAMP::SCAMPArgs &args);
 
 void ConvertProtoArgsToSCAMPArgs(const SCAMPProto::SCAMPArgs &proto_args,
                                  SCAMP::SCAMPArgs *args);
+
+float calibration_run(int64_t input_size, std::vector<int> gpus, int threads);
