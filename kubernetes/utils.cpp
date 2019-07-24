@@ -1,4 +1,5 @@
 #include <grpcpp/grpcpp.h>
+#include <random>
 #include "scamp.grpc.pb.h"
 
 #include "../src/SCAMP.h"
