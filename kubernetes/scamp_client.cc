@@ -40,16 +40,19 @@ int main(int argc, char **argv) {
   port = getenv("SERVERVEC_SERVICE_PORT");
   ip = getenv("SERVERVEC_SERVICE_HOST");
 
-  if (ip != NULL) {
-    std::cout << "ip: " << ip << std::endl;
-    std::cout << "port: " << port << std::endl;
+  std::string newip, newport;
+
+  if (ip != nullptr && port != nullptr) {
+    newip = ip;
+    newport = port;
+  } else {
+    newip = "localhost";
+    newport = "30078";
   }
 
-  std::string newip = "localhost";
-  std::string newport = "30078";
-
-  // std::string good = std::string(ip) + ":" + std::string(port);
   std::string good = newip + ":" + newport;
+
+  std::cout << "Using addr: " << good << std::endl;
 
   grpc::ChannelArguments ch_args;
 
