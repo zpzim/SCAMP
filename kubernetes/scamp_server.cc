@@ -12,9 +12,9 @@
 
 #include <grpcpp/grpcpp.h>
 
-#include "../src/SCAMP.h"
 #include "../src/common.h"
 #include "scamp.grpc.pb.h"
+#include "utils.h"
 
 using grpc::Server;
 using grpc::ServerBuilder;
@@ -300,6 +300,21 @@ class Job {
 
  private:
   void Init() {
+    if (!ProfileAllocated(job_args.profile_a())) {
+      InitProfile(job_args.mutable_profile_a(), job_args.profile_type(),
+                  job_args.timeseries_a().size() - job_args.window() + 1);
+    }
+
+    if (job_args.keep_rows_separate() &&
+        !ProfileAllocated(job_args.profile_b())) {
+      if (job_args.has_b()) {
+        InitProfile(job_args.mutable_profile_b(), job_args.profile_type(),
+                    job_args.timeseries_b().size() - job_args.window() + 1);
+      } else {
+        InitProfile(job_args.mutable_profile_b(), job_args.profile_type(),
+                    job_args.timeseries_a().size() - job_args.window() + 1);
+      }
+    }
     distributed_tile_size_ = job_args.distributed_tile_size();
     tile_cols = ceil((job_args.timeseries_a().size() - job_args.window() + 1) /
                      static_cast<double>(distributed_tile_size_));
@@ -369,112 +384,6 @@ void check_time_out() {
   }
 }
 
-template <typename T>
-void elementwise_sum(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
-                     T *to_merge) {
-  for (int i = 0; i < tile_sz; ++i) {
-    mp_full[i + merge_start] += to_merge[i];
-  }
-}
-
-template <typename T>
-void elementwise_max(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
-                     T *to_merge, uint64_t index_offset) {
-  for (int i = 0; i < tile_sz; ++i) {
-    SCAMP::mp_entry e1, e2;
-    e1.ulong = mp_full[i + merge_start];
-    e2.ulong = to_merge[i];
-    if (e1.floats[0] < e2.floats[0]) {
-      e2.ints[1] += index_offset;
-      mp_full[i + merge_start] = e2.ulong;
-    }
-  }
-}
-
-template <typename T>
-void elementwise_max(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
-                     T *to_merge) {
-  for (int i = 0; i < tile_sz; ++i) {
-    if (mp_full[i + merge_start] < to_merge[i]) {
-      mp_full[i + merge_start] = to_merge[i];
-    }
-  }
-}
-
-void MergeTileIntoFullProfile(Profile *tile_profile, uint64_t position,
-                              uint64_t length, Profile *full_profile,
-                              uint64_t index_start) {
-  std::cout << "fullprofiletype: " << full_profile->type()
-            << " position: " << position << " length: " << length
-            << " index start: " << index_start << std::endl;
-
-  switch (full_profile->type()) {
-    case SCAMPProto::PROFILE_TYPE_SUM_THRESH:
-      elementwise_sum<double>(full_profile->mutable_data()
-                                  ->Mutable(0)
-                                  ->mutable_double_value()
-                                  ->mutable_value()
-                                  ->mutable_data(),
-                              position, length,
-                              tile_profile->mutable_data()
-                                  ->Mutable(0)
-                                  ->mutable_double_value()
-                                  ->mutable_value()
-                                  ->mutable_data());
-      return;
-    case SCAMPProto::PROFILE_TYPE_1NN_INDEX:
-      elementwise_max<uint64_t>(full_profile->mutable_data()
-                                    ->Mutable(0)
-                                    ->mutable_uint64_value()
-                                    ->mutable_value()
-                                    ->mutable_data(),
-                                position, length,
-                                tile_profile->mutable_data()
-                                    ->Mutable(0)
-                                    ->mutable_uint64_value()
-                                    ->mutable_value()
-                                    ->mutable_data(),
-                                index_start);
-      return;
-    case SCAMPProto::PROFILE_TYPE_1NN:
-      elementwise_max<float>(full_profile->mutable_data()
-                                 ->Mutable(0)
-                                 ->mutable_float_value()
-                                 ->mutable_value()
-                                 ->mutable_data(),
-                             position, length,
-                             tile_profile->mutable_data()
-                                 ->Mutable(0)
-                                 ->mutable_float_value()
-                                 ->mutable_value()
-                                 ->mutable_data());
-      return;
-    case SCAMPProto::PROFILE_TYPE_FREQUENCY_THRESH:
-    case SCAMPProto::PROFILE_TYPE_KNN:
-    case SCAMPProto::PROFILE_TYPE_1NN_MULTIDIM:
-    default:
-      ASSERT(false, "FUNCTIONALITY UNIMPLEMENTED");
-      return;
-  }
-}
-
-void MergeProfile(const SCAMPArgs &tile_args, SCAMPArgs *job_args,
-                  Profile *a_tile, uint64_t col_pos, uint64_t width,
-                  Profile *b_tile, uint64_t row_pos, uint64_t height) {
-  // Merge result
-  MergeTileIntoFullProfile(a_tile, col_pos, width,
-                           job_args->mutable_profile_a(), row_pos);
-  if (tile_args.keep_rows_separate()) {
-    if (job_args->computing_rows() && job_args->keep_rows_separate()) {
-      MergeTileIntoFullProfile(b_tile, row_pos, height,
-                               job_args->mutable_profile_b(), col_pos);
-    } else if (!job_args->has_b()) {
-      MergeTileIntoFullProfile(b_tile, row_pos, height,
-                               job_args->mutable_profile_a(), col_pos);
-    }
-  }
-}
-
 // Logic and data behind the server's behavior.
 class SCAMPServiceImpl final : public SCAMPService::Service {
  public:
@@ -487,10 +396,8 @@ class SCAMPServiceImpl final : public SCAMPService::Service {
                      const SCAMPProto::SCAMPArgs *job_args,
                      SCAMPStatus *status) override {
     std::lock_guard<std::mutex> lockGuard(jobVecLock);
-
     uint64_t cur_job_id = jobVec.size();
     jobVec.emplace_back(*job_args, cur_job_id);
-
     status->set_status(SCAMPProto::JOB_STATUS_RUNNING);
     status->set_job_id(cur_job_id);
     return Status::OK;

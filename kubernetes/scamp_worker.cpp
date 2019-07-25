@@ -70,6 +70,11 @@ SCAMPProto::SCAMPWork SCAMPWorker::ExecuteWork(SCAMPProto::SCAMPWork work) {
     work.set_valid(false);
     return work;
   }
+
+  // Clear out the input data, we don't need it anymore
+  args.timeseries_a.clear();
+  args.timeseries_b.clear();
+
   auto result = ConvertArgsToReply(args);
   result.set_job_id(reply->job_id());
   result.set_tile_id(reply->tile_id());
@@ -107,8 +112,22 @@ SCAMPProto::SCAMPResult SCAMPWorker::ReportFailedTile(
   return reply;
 }
 
+float calibration_run(int64_t input_size, std::vector<int> gpus, int threads) {
+  SCAMP::SCAMPArgs args = get_default_args(input_size);
+  if (!InitProfileMemory(&args)) {
+    return -1.0;
+  }
+  auto begin = std::chrono::high_resolution_clock::now();
+  do_SCAMP(&args, gpus, threads);
+  auto end = std::chrono::high_resolution_clock::now();
+  auto diff = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
+
+  return diff.count() / static_cast<double>(1e9);
+}
+
 float SCAMPWorker::get_expected_throughput() {
-  constexpr int test_input_size_base = 131072;
+  constexpr int64_t test_input_size_cpu = 1 << 17;
+  constexpr int64_t test_input_size_gpu = 1 << 20;
   float time_to_finish;
   int64_t input_size;
 
@@ -122,15 +141,15 @@ float SCAMPWorker::get_expected_throughput() {
       }
     }
     if (devices.empty()) {
-      input_size = test_input_size_base;
+      input_size = test_input_size_cpu;
       time_to_finish = calibration_run(input_size, std::vector<int>(),
                                        std::thread::hardware_concurrency());
     } else {
-      input_size = test_input_size_base * devices.size();
+      input_size = test_input_size_gpu;
       time_to_finish = calibration_run(input_size, devices, 0);
     }
 #else
-    input_size = test_input_size_base;
+    input_size = test_input_size_cpu;
     time_to_finish = calibration_run(input_size, std::vector<int>(),
                                      std::thread::hardware_concurrency());
 #endif
@@ -164,6 +183,7 @@ bool SCAMPWorker::run() {
       SCAMPProto::SCAMPWork computed_result = ExecuteWork(work);
       if (computed_result.valid()) {
         // Merge completed result with the server's master copy
+        // TODO(zpzim): we can do more work while this is happening
         MergeResultWithGlobal(computed_result.args());
       } else {
         // If execution failed, we need to report this to the server

@@ -20,4 +20,11 @@ SCAMPProto::SCAMPArgs ConvertArgsToReply(const SCAMP::SCAMPArgs &args);
 void ConvertProtoArgsToSCAMPArgs(const SCAMPProto::SCAMPArgs &proto_args,
                                  SCAMP::SCAMPArgs *args);
 
-float calibration_run(int64_t input_size, std::vector<int> gpus, int threads);
+bool ProfileAllocated(const SCAMPProto::Profile &p);
+bool InitProfile(SCAMPProto::Profile *p, SCAMPProto::SCAMPProfileType type,
+                 int64_t size);
+void MergeProfile(const SCAMPProto::SCAMPArgs &tile_args,
+                  SCAMPProto::SCAMPArgs *job_args, SCAMPProto::Profile *a_tile,
+                  uint64_t col_pos, uint64_t width, SCAMPProto::Profile *b_tile,
+                  uint64_t row_pos, uint64_t height);
+SCAMP::SCAMPArgs get_default_args(uint64_t input_size);
