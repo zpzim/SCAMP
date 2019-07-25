@@ -57,6 +57,25 @@ std::string GetPrecisionTypeString(SCAMPPrecisionType t) {
   }
 }
 
+std::string getSCAMPErrorString(SCAMPError_t err) {
+  switch (err) {
+    case SCAMP_NO_ERROR:
+      return "SCAMP_NO_ERROR";
+    case SCAMP_FUNCTIONALITY_UNIMPLEMENTED:
+      return "SCAMP_FUNCTIONALITY_UNIMPLEMENTED";
+    case SCAMP_TILE_ILLEGAL_TYPE:
+      return "SCAMP_TILE_ILLEGAL_TYPE";
+    case SCAMP_CUDA_ERROR:
+      return "SCAMP_CUDA_ERROR";
+    case SCAMP_CUFFT_ERROR:
+      return "SCAMP_CUFFT_ERROR";
+    case SCAMP_CUFFT_EXEC_ERROR:
+      return "SCAMP_CUFFT_EXEC_ERROR";
+    case SCAMP_DIM_INCOMPATIBLE:
+      return "SCAMP_DIM_INCOMPATIBLE";
+  }
+}
+
 void SCAMPArgs::print() {
   std::cout << "window: " << window << std::endl;
   std::cout << "max_tile_size: " << max_tile_size << std::endl;

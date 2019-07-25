@@ -262,6 +262,7 @@ enum SCAMPArchitecture {
   CUDA_GPU_WORKER,
 };
 
+// Enum describing different types of SCAMP errors
 enum SCAMPError_t {
   SCAMP_NO_ERROR,
   SCAMP_FUNCTIONALITY_UNIMPLEMENTED,
@@ -272,6 +273,10 @@ enum SCAMPError_t {
   SCAMP_DIM_INCOMPATIBLE
 };
 
+// Returns the string associated with a SCAMPError_t
+std::string getSCAMPErrorString(SCAMPError_t err);
+
+// Enum describing different tile execution configurations for SCAMP
 enum SCAMPTileType {
   SELF_JOIN_FULL_TILE,
   SELF_JOIN_UPPER_TRIANGULAR,
