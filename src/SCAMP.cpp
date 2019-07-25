@@ -141,7 +141,8 @@ void SCAMP_Operation::do_work(const std::vector<double> &timeseries_a,
       err = tile.execute(AB_FULL_JOIN_FULL_TILE);
     }
     if (err != SCAMP_NO_ERROR) {
-      printf("ERROR %d executing tile. \n", err);
+      throw SCAMPException("ERROR " + getSCAMPErrorString(err) +
+                           " executing tile");
     }
     // Merge join result
     tile.MergeProfile(_profile_a, _profile_a_lock, _profile_b, _profile_b_lock);
