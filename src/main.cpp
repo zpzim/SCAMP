@@ -195,14 +195,13 @@ int main(int argc, char **argv) {
   args.timeseries_b = std::move(Tb_h);
   args.silent_mode = false;
 
-  InitProfileMemory(&args);
-
   printf("Starting SCAMP\n");
   try {
 #ifdef _DISTRIBUTED_EXECUTION_
     do_SCAMP_distributed(&args, FLAGS_hostname_port,
                          FLAGS_distributed_tile_size);
 #else
+    InitProfileMemory(&args);
     SCAMP::do_SCAMP(&args, devices, FLAGS_num_cpu_workers);
 #endif
   } catch (const SCAMPException &e) {
