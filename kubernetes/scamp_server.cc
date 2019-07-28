@@ -13,6 +13,7 @@
 #include <grpcpp/grpcpp.h>
 
 #include "../src/common.h"
+#include "distributed_tile.h"
 #include "scamp.grpc.pb.h"
 #include "utils.h"
 
@@ -37,62 +38,6 @@ constexpr uint64_t MIN_TIMEOUT_SECONDS = 10;
 // Job list
 std::vector<Job> jobVec;
 std::mutex jobVecLock;
-
-// Enum describing Tile status
-enum TileStatus {
-  TILE_STATUS_INVALID = 0,
-  TILE_STATUS_READY = 1,
-  TILE_STATUS_RUNNING = 2,
-  TILE_STATUS_FINISHED = 3,
-  TILE_STATUS_FAILED = 4,
-};
-
-// Class describing particular tile in a Job
-class Tile {
- public:
-  Tile() : valid(false) {}
-  Tile(int r, int c, int id)
-      : tile_id_(id),
-        valid(true),
-        tile_row_(r),
-        tile_col_(c),
-        status_(TILE_STATUS_READY),
-        retries_(0),
-        start_time_(-1),
-        end_time_(-1),
-        tile_timeout_seconds_(INT_MAX) {}
-  bool is_valid() { return valid; }
-  void start_time(int64_t t) { start_time_ = t; }
-  void end_time(int64_t t) { end_time_ = t; }
-  void status(TileStatus s) { status_ = s; }
-  void tile_id(int id) { tile_id_ = id; }
-  int64_t start_time() { return start_time_; }
-  int64_t end_time() { return end_time_; }
-  int tile_id() { return tile_id_; }
-  TileStatus status() { return status_; }
-  int tile_row() { return tile_row_; }
-  int tile_col() { return tile_col_; }
-  int retries() { return retries_; }
-  int retries(int retry_count) { retries_ = retry_count; }
-  void args(const SCAMPArgs &args) { args_ = args; }
-  void timeout(int timeout) { tile_timeout_seconds_ = timeout; }
-  int timeout() { return tile_timeout_seconds_; }
-
-  const SCAMPArgs &args() const { return args_; }
-
- private:
-  bool valid;
-  int tile_timeout_seconds_;
-  int retries_;
-  int tile_row_;
-  int tile_col_;
-  int tile_id_;
-  int64_t start_time_;
-  int64_t end_time_;
-  TileStatus status_;
-  // Contains a copy of the arguments used by the tile. But not the data.
-  SCAMPArgs args_;
-};
 
 // Class describing a Distributed SCAMP job
 class Job {
@@ -202,72 +147,13 @@ class Job {
       }
     }
 
-    Tile *tile = ready_queue.front();
+    DistributedTile *tile = ready_queue.front();
     ready_queue.pop();
 
-    args->set_tile_id(tile->tile_id());
-    args->set_job_id(job_id);
+    // Generate arguments for tile execution
+    tile->generate_args(job_args, tile_rows, tile_cols, args);
 
-    uint64_t Asize = job_args.timeseries_a().size();
-    uint64_t Bsize = job_args.has_b() ? job_args.timeseries_b().size() : Asize;
-
-    uint64_t tileAsize = Asize / tile_cols;
-    uint64_t tileBsize = Bsize / tile_rows;
-
-    uint64_t start_col = (tile->tile_col() * tileAsize);
-    uint64_t end_col =
-        (((tile->tile_col() + 1) * tileAsize) + job_args.window() - 1);
-
-    if (end_col > Asize) {
-      end_col = Asize;
-    }
-
-    uint64_t start_row = (tile->tile_row() * tileBsize);
-    uint64_t end_row =
-        (((tile->tile_row() + 1) * tileBsize) + job_args.window() - 1);
-
-    if (end_row > Bsize) {
-      end_row = Bsize;
-    }
-
-    args->set_timeseries_size_a(end_col - start_col);
-    args->set_timeseries_size_b(end_row - start_row);
-    args->set_distributed_start_row(start_row);
-    args->set_distributed_start_col(start_col);
-    args->set_max_tile_size(job_args.max_tile_size());
-    args->set_distance_threshold(job_args.distance_threshold());
-    args->set_profile_type(job_args.profile_type());
-    args->set_precision_type(job_args.precision_type());
-    args->set_window(job_args.window());
-    args->set_is_aligned(job_args.is_aligned());
-
-    // If the full job is a self join
-    if (!job_args.has_b()) {
-      args->set_computing_columns(true);
-      args->set_computing_rows(true);
-      // Check if we are on the diagonal, as we can save time by perfoming
-      // smaller self-joins
-      if (tile->tile_row() == tile->tile_col()) {
-        args->set_has_b(false);
-        args->set_keep_rows_separate(job_args.keep_rows_separate());
-      } else {
-        args->set_has_b(true);
-        args->set_keep_rows_separate(true);
-        args->set_is_aligned(true);
-      }
-    } else {
-      args->set_has_b(true);
-      args->set_computing_columns(true);
-      args->set_computing_rows(job_args.keep_rows_separate());
-      args->set_keep_rows_separate(job_args.keep_rows_separate());
-    }
-
-    args->mutable_profile_a()->set_type(job_args.profile_type());
-    args->mutable_profile_b()->set_type(job_args.profile_type());
-
-    // Make a copy of the arguments passed to this tile, but do not store the
-    // actual time series as this would require more space than necessary
-    tile->args(*args);
+    // Set timeout
     int64_t timeout = distributed_tile_size_ * distributed_tile_size_ /
                       request->expected_throughput();
     if (!args->has_b()) {
@@ -275,20 +161,9 @@ class Job {
     }
     timeout = std::max<int64_t>(MIN_TIMEOUT_SECONDS, timeout);
     tile->timeout(timeout);
-    for (uint64_t i = start_col; i < end_col; i++) {
-      args->add_timeseries_a(job_args.timeseries_a()[i]);
-    }
-    if (job_args.has_b()) {
-      for (uint64_t i = start_row; i < end_row; i++) {
-        args->add_timeseries_b(job_args.timeseries_b()[i]);
-      }
-    } else {
-      for (uint64_t i = start_row; i < end_row; i++) {
-        args->add_timeseries_b(job_args.timeseries_a()[i]);
-      }
-    }
 
     // Timer Start
+    args->set_job_id(job_id);
     tile->start_time(time(0));
     tile->status(TILE_STATUS_RUNNING);
     return true;
@@ -328,7 +203,7 @@ class Job {
 
     for (int r = 0; r < tile_rows; r++) {
       for (int c = 0; c < tile_cols; c++) {
-        tiles.emplace(tile_counter, Tile(r, c, tile_counter));
+        tiles.emplace(tile_counter, DistributedTile(r, c, tile_counter));
         ready_queue.push(&tiles[tile_counter]);
         tile_counter++;
       }
@@ -364,8 +239,8 @@ class Job {
   int tile_cols;
   std::chrono::steady_clock::time_point start_time_;
   std::chrono::steady_clock::time_point end_time_;
-  std::unordered_map<int, Tile> tiles;
-  std::queue<Tile *> ready_queue;
+  std::unordered_map<int, DistributedTile> tiles;
+  std::queue<DistributedTile *> ready_queue;
   SCAMPProto::JobStatus status_;
 
   // This is better as a set (key is tile id)
