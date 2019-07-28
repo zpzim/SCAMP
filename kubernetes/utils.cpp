@@ -129,20 +129,22 @@ SCAMPProto::SCAMPArgs ConvertArgsToReply(const SCAMP::SCAMPArgs &args) {
 
   *reply.mutable_profile_a() = ConvertProfile(args.profile_a);
   *reply.mutable_profile_b() = ConvertProfile(args.profile_b);
-  reply.set_has_b(args.has_b);
-  reply.set_window(args.window);
-  reply.set_max_tile_size(args.max_tile_size);
-  reply.set_distributed_start_row(args.distributed_start_row);
-  reply.set_distributed_start_col(args.distributed_start_col);
-  reply.set_timeseries_size_a(GetProfileSize(args.profile_a));
-  reply.set_timeseries_size_b(GetProfileSize(args.profile_b));
-  reply.set_profile_type(ConvertProfileType(args.profile_type));
-  reply.set_precision_type(ConvertPrecisionType(args.precision_type));
-  reply.set_distance_threshold(args.distance_threshold);
-  reply.set_computing_rows(args.computing_rows);
-  reply.set_computing_columns(args.computing_columns);
-  reply.set_keep_rows_separate(args.keep_rows_separate);
-  reply.set_is_aligned(args.is_aligned);
+  SCAMPProto::SCAMPInfo *info = reply.mutable_info();
+
+  info->set_has_b(args.has_b);
+  info->set_window(args.window);
+  info->set_max_tile_size(args.max_tile_size);
+  info->set_distributed_start_row(args.distributed_start_row);
+  info->set_distributed_start_col(args.distributed_start_col);
+  info->set_timeseries_size_a(args.timeseries_a.size());
+  info->set_timeseries_size_b(args.timeseries_b.size());
+  info->set_profile_type(ConvertProfileType(args.profile_type));
+  info->set_precision_type(ConvertPrecisionType(args.precision_type));
+  info->set_distance_threshold(args.distance_threshold);
+  info->set_computing_rows(args.computing_rows);
+  info->set_computing_columns(args.computing_columns);
+  info->set_keep_rows_separate(args.keep_rows_separate);
+  info->set_is_aligned(args.is_aligned);
 
   return reply;
 }
@@ -188,33 +190,34 @@ SCAMP::Profile ConvertProfile(const SCAMPProto::Profile &profile) {
 void ConvertProtoArgsToSCAMPArgs(const SCAMPProto::SCAMPArgs &proto_args,
                                  SCAMP::SCAMPArgs *args) {
   std::vector<double> Ta_h, Tb_h;
+  const SCAMPProto::SCAMPInfo &info = proto_args.info();
 
-  for (int i = 0; i < proto_args.timeseries_size_a(); i++) {
+  for (int i = 0; i < info.timeseries_size_a(); i++) {
     Ta_h.push_back(proto_args.timeseries_a()[i]);
   }
 
-  for (int i = 0; i < proto_args.timeseries_size_b(); i++) {
+  for (int i = 0; i < info.timeseries_size_b(); i++) {
     Tb_h.push_back(proto_args.timeseries_b()[i]);
   }
-
-  args->max_tile_size = proto_args.max_tile_size();
-  args->distributed_start_row = proto_args.distributed_start_row();
-  args->distributed_start_col = proto_args.distributed_start_col();
-  args->distance_threshold = proto_args.distance_threshold();
-  args->computing_columns = proto_args.computing_columns();
-  args->computing_rows = proto_args.computing_rows();
-  args->profile_a = std::move(ConvertProfile(proto_args.profile_a()));
-  if (proto_args.keep_rows_separate()) {
-    args->profile_b = std::move(ConvertProfile(proto_args.profile_b()));
-  }
-  args->profile_type = ConvertProfileType(proto_args.profile_type());
-  args->precision_type = ConvertPrecisionType(proto_args.precision_type());
-  args->keep_rows_separate = proto_args.keep_rows_separate();
-  args->is_aligned = proto_args.is_aligned();
-  args->window = proto_args.window();
-  args->has_b = proto_args.has_b();
   args->timeseries_a = std::move(Ta_h);
   args->timeseries_b = std::move(Tb_h);
+  args->profile_a = std::move(ConvertProfile(proto_args.profile_a()));
+  if (info.keep_rows_separate()) {
+    args->profile_b = std::move(ConvertProfile(proto_args.profile_b()));
+  }
+
+  args->max_tile_size = info.max_tile_size();
+  args->distributed_start_row = info.distributed_start_row();
+  args->distributed_start_col = info.distributed_start_col();
+  args->distance_threshold = info.distance_threshold();
+  args->computing_columns = info.computing_columns();
+  args->computing_rows = info.computing_rows();
+  args->profile_type = ConvertProfileType(info.profile_type());
+  args->precision_type = ConvertPrecisionType(info.precision_type());
+  args->keep_rows_separate = info.keep_rows_separate();
+  args->is_aligned = info.is_aligned();
+  args->window = info.window();
+  args->has_b = info.has_b();
   args->silent_mode = true;
 }
 
@@ -388,20 +391,24 @@ void MergeTileIntoFullProfile(SCAMPProto::Profile *tile_profile,
   }
 }
 
-void MergeProfile(const SCAMPProto::SCAMPArgs &tile_args,
+void MergeProfile(const SCAMPProto::SCAMPInfo &tile_info,
                   SCAMPProto::SCAMPArgs *job_args, SCAMPProto::Profile *a_tile,
                   uint64_t col_pos, uint64_t width, SCAMPProto::Profile *b_tile,
                   uint64_t row_pos, uint64_t height) {
   // Merge result
   MergeTileIntoFullProfile(a_tile, col_pos, width,
                            job_args->mutable_profile_a(), row_pos);
-  if (tile_args.keep_rows_separate()) {
-    if (job_args->computing_rows() && job_args->keep_rows_separate()) {
+  if (tile_info.keep_rows_separate()) {
+    if (job_args->info().computing_rows() &&
+        job_args->info().keep_rows_separate()) {
       MergeTileIntoFullProfile(b_tile, row_pos, height,
                                job_args->mutable_profile_b(), col_pos);
-    } else if (!job_args->has_b()) {
+    } else if (!job_args->info().has_b()) {
       MergeTileIntoFullProfile(b_tile, row_pos, height,
                                job_args->mutable_profile_a(), col_pos);
     }
   }
 }
+
+// TODO(zpzim): Finish this function
+bool validateArgs(const SCAMPProto::SCAMPArgs &args) { return true; }

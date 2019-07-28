@@ -14,8 +14,16 @@ class SCAMPInterface {
  public:
   SCAMPInterface(std::shared_ptr<Channel> channel)
       : stub_(SCAMPProto::SCAMPService::NewStub(channel)) {}
-  void do_SCAMP_distributed(SCAMPProto::SCAMPArgs *args);
+  grpc::Status do_SCAMP_distributed(SCAMPProto::SCAMPArgs *args,
+                                    bool async = false);
+  void IssueJobsAsync(std::vector<SCAMPProto::SCAMPArgs *> args,
+                      int max_wait_seconds);
 
  private:
+  void ManageAsyncJobs();
+
+  static constexpr int max_async_retries_ = 10;
+  std::mutex job_m_;
   std::unique_ptr<SCAMPProto::SCAMPService::Stub> stub_;
+  std::vector<SCAMPProto::SCAMPStatus> job_statuses_;
 };

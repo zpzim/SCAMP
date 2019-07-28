@@ -23,8 +23,9 @@ void ConvertProtoArgsToSCAMPArgs(const SCAMPProto::SCAMPArgs &proto_args,
 bool ProfileAllocated(const SCAMPProto::Profile &p);
 bool InitProfile(SCAMPProto::Profile *p, SCAMPProto::SCAMPProfileType type,
                  int64_t size);
-void MergeProfile(const SCAMPProto::SCAMPArgs &tile_args,
+void MergeProfile(const SCAMPProto::SCAMPInfo &tile_args,
                   SCAMPProto::SCAMPArgs *job_args, SCAMPProto::Profile *a_tile,
                   uint64_t col_pos, uint64_t width, SCAMPProto::Profile *b_tile,
                   uint64_t row_pos, uint64_t height);
 SCAMP::SCAMPArgs get_default_args(uint64_t input_size);
+bool validateArgs(const SCAMPProto::SCAMPArgs &args);
