@@ -77,8 +77,8 @@ SCAMPProto::SCAMPWork SCAMPWorker::ExecuteWork(SCAMPProto::SCAMPWork work) {
   args.timeseries_b.clear();
 
   auto result = ConvertArgsToReply(args);
-  result.mutable_info()->set_job_id(reply->info().job_id());
-  result.mutable_info()->set_tile_id(reply->info().tile_id());
+  result.set_job_id(reply->job_id());
+  result.set_tile_id(reply->tile_id());
   *reply = result;
   return work;
 }

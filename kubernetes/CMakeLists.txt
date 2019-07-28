@@ -27,10 +27,6 @@ include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 add_library(kube_utils ${CMAKE_CURRENT_SOURCE_DIR}/utils.cpp)
 target_link_libraries(kube_utils messages)
 
-add_library(distributed_tile ${CMAKE_CURRENT_SOURCE_DIR}/distributed_tile.cpp)
-target_link_libraries(distributed_tile scamp_utils messages)
-
-
 add_library(worker ${CMAKE_CURRENT_SOURCE_DIR}/scamp_worker.cpp)
 if (CMAKE_CUDA_COMPILER)
     target_link_libraries(worker -lcudart_static common scamp kube_utils scamp_utils messages )
@@ -43,7 +39,7 @@ target_link_libraries(scamp_interface common kube_utils messages )
 
 add_executable(SCAMPclient ${CMAKE_CURRENT_SOURCE_DIR}/scamp_client.cc)
 add_executable(SCAMPserver ${CMAKE_CURRENT_SOURCE_DIR}/scamp_server.cc)
-target_link_libraries(SCAMPserver distributed_tile kube_utils messages -Wl,--whole-archive grpc++_reflection -Wl,--no-whole-archive)
+target_link_libraries(SCAMPserver kube_utils messages -Wl,--whole-archive grpc++_reflection -Wl,--no-whole-archive)
 target_link_libraries(SCAMPclient worker)
 
 add_definitions("-D_DISTRIBUTED_EXECUTION_")

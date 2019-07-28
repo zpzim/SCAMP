@@ -32,7 +32,6 @@ service SCAMPService {
   rpc SCAMPCombiner (SCAMPArgs) returns (SCAMPResult) {}
   rpc ReportTileFailure (SCAMPArgs) returns (SCAMPResult) {}
   rpc IssueNewJob (SCAMPArgs) returns (SCAMPStatus) {}
-  rpc IssueChunkedJob (stream SCAMPArgsChunk) returns (SCAMPStatus) {}
   rpc CheckJobStatus (SCAMPJobID) returns (SCAMPStatus) {}
   rpc FetchJobResult (SCAMPJobID) returns (SCAMPWork) {}
 }
@@ -111,7 +110,11 @@ enum SCAMPPrecisionType {
     PRECISION_DOUBLE = 3;    
 }
 
-message SCAMPInfo {
+message SCAMPArgs {
+    repeated double timeseries_a = 1;
+    repeated double timeseries_b = 2;
+    Profile profile_a = 3;
+    Profile profile_b = 4;
     bool has_b = 5;
     uint64 window = 6;
     uint64 max_tile_size = 7;
@@ -129,23 +132,4 @@ message SCAMPInfo {
     int64 job_id = 19;
     int64 tile_id = 20;
     int64 distributed_tile_size = 21;
-    bool use_file_io = 22;
-    string timeseries_a_file_path = 23;
-    string timeseries_b_file_path = 24;
 }
-
-message SCAMPArgs {
-    repeated double timeseries_a = 1;
-    repeated double timeseries_b = 2;
-    Profile profile_a = 3;
-    Profile profile_b = 4;
-    SCAMPInfo info = 5;
-
-}
-
-message SCAMPArgsChunk {
-  repeated double timeseries_chunk = 1;
-  bool is_b = 2;
-  SCAMPInfo info = 3;
-}
-  

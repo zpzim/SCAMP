@@ -13,7 +13,6 @@
 #include <grpcpp/grpcpp.h>
 
 #include "../src/common.h"
-#include "distributed_tile.h"
 #include "scamp.grpc.pb.h"
 #include "utils.h"
 
@@ -38,6 +37,62 @@ constexpr uint64_t MIN_TIMEOUT_SECONDS = 10;
 // Job list
 std::vector<Job> jobVec;
 std::mutex jobVecLock;
+
+// Enum describing Tile status
+enum TileStatus {
+  TILE_STATUS_INVALID = 0,
+  TILE_STATUS_READY = 1,
+  TILE_STATUS_RUNNING = 2,
+  TILE_STATUS_FINISHED = 3,
+  TILE_STATUS_FAILED = 4,
+};
+
+// Class describing particular tile in a Job
+class Tile {
+ public:
+  Tile() : valid(false) {}
+  Tile(int r, int c, int id)
+      : tile_id_(id),
+        valid(true),
+        tile_row_(r),
+        tile_col_(c),
+        status_(TILE_STATUS_READY),
+        retries_(0),
+        start_time_(-1),
+        end_time_(-1),
+        tile_timeout_seconds_(INT_MAX) {}
+  bool is_valid() { return valid; }
+  void start_time(int64_t t) { start_time_ = t; }
+  void end_time(int64_t t) { end_time_ = t; }
+  void status(TileStatus s) { status_ = s; }
+  void tile_id(int id) { tile_id_ = id; }
+  int64_t start_time() { return start_time_; }
+  int64_t end_time() { return end_time_; }
+  int tile_id() { return tile_id_; }
+  TileStatus status() { return status_; }
+  int tile_row() { return tile_row_; }
+  int tile_col() { return tile_col_; }
+  int retries() { return retries_; }
+  int retries(int retry_count) { retries_ = retry_count; }
+  void args(const SCAMPArgs &args) { args_ = args; }
+  void timeout(int timeout) { tile_timeout_seconds_ = timeout; }
+  int timeout() { return tile_timeout_seconds_; }
+
+  const SCAMPArgs &args() const { return args_; }
+
+ private:
+  bool valid;
+  int tile_timeout_seconds_;
+  int retries_;
+  int tile_row_;
+  int tile_col_;
+  int tile_id_;
+  int64_t start_time_;
+  int64_t end_time_;
+  TileStatus status_;
+  // Contains a copy of the arguments used by the tile. But not the data.
+  SCAMPArgs args_;
+};
 
 // Class describing a Distributed SCAMP job
 class Job {
@@ -147,21 +202,92 @@ class Job {
       }
     }
 
-    DistributedTile *tile = ready_queue.front();
+    Tile *tile = ready_queue.front();
     ready_queue.pop();
 
-    tile->generate_args(job_args, tile_rows, tile_cols, args);
+    args->set_tile_id(tile->tile_id());
+    args->set_job_id(job_id);
 
-    SCAMPProto::SCAMPInfo *info = args->mutable_info();
-    info->set_job_id(job_id);
+    uint64_t Asize = job_args.timeseries_a().size();
+    uint64_t Bsize = job_args.has_b() ? job_args.timeseries_b().size() : Asize;
 
+    uint64_t tileAsize = Asize / tile_cols;
+    uint64_t tileBsize = Bsize / tile_rows;
+
+    uint64_t start_col = (tile->tile_col() * tileAsize);
+    uint64_t end_col =
+        (((tile->tile_col() + 1) * tileAsize) + job_args.window() - 1);
+
+    if (end_col > Asize) {
+      end_col = Asize;
+    }
+
+    uint64_t start_row = (tile->tile_row() * tileBsize);
+    uint64_t end_row =
+        (((tile->tile_row() + 1) * tileBsize) + job_args.window() - 1);
+
+    if (end_row > Bsize) {
+      end_row = Bsize;
+    }
+
+    args->set_timeseries_size_a(end_col - start_col);
+    args->set_timeseries_size_b(end_row - start_row);
+    args->set_distributed_start_row(start_row);
+    args->set_distributed_start_col(start_col);
+    args->set_max_tile_size(job_args.max_tile_size());
+    args->set_distance_threshold(job_args.distance_threshold());
+    args->set_profile_type(job_args.profile_type());
+    args->set_precision_type(job_args.precision_type());
+    args->set_window(job_args.window());
+    args->set_is_aligned(job_args.is_aligned());
+
+    // If the full job is a self join
+    if (!job_args.has_b()) {
+      args->set_computing_columns(true);
+      args->set_computing_rows(true);
+      // Check if we are on the diagonal, as we can save time by perfoming
+      // smaller self-joins
+      if (tile->tile_row() == tile->tile_col()) {
+        args->set_has_b(false);
+        args->set_keep_rows_separate(job_args.keep_rows_separate());
+      } else {
+        args->set_has_b(true);
+        args->set_keep_rows_separate(true);
+        args->set_is_aligned(true);
+      }
+    } else {
+      args->set_has_b(true);
+      args->set_computing_columns(true);
+      args->set_computing_rows(job_args.keep_rows_separate());
+      args->set_keep_rows_separate(job_args.keep_rows_separate());
+    }
+
+    args->mutable_profile_a()->set_type(job_args.profile_type());
+    args->mutable_profile_b()->set_type(job_args.profile_type());
+
+    // Make a copy of the arguments passed to this tile, but do not store the
+    // actual time series as this would require more space than necessary
+    tile->args(*args);
     int64_t timeout = distributed_tile_size_ * distributed_tile_size_ /
                       request->expected_throughput();
-    if (!info->has_b()) {
+    if (!args->has_b()) {
       timeout = timeout / 2;
     }
     timeout = std::max<int64_t>(MIN_TIMEOUT_SECONDS, timeout);
     tile->timeout(timeout);
+    for (uint64_t i = start_col; i < end_col; i++) {
+      args->add_timeseries_a(job_args.timeseries_a()[i]);
+    }
+    if (job_args.has_b()) {
+      for (uint64_t i = start_row; i < end_row; i++) {
+        args->add_timeseries_b(job_args.timeseries_b()[i]);
+      }
+    } else {
+      for (uint64_t i = start_row; i < end_row; i++) {
+        args->add_timeseries_b(job_args.timeseries_a()[i]);
+      }
+    }
+
     // Timer Start
     tile->start_time(time(0));
     tile->status(TILE_STATUS_RUNNING);
@@ -169,42 +295,40 @@ class Job {
   }
 
   SCAMPArgs *get_job_args() { return &job_args; }
-  const SCAMPProto::SCAMPInfo &get_tile_info(int tile_id) {
-    return tiles[tile_id].info();
-  }
+  const SCAMPArgs &get_tile_args(int tile_id) { return tiles[tile_id].args(); }
   SCAMPProto::JobStatus status() { return status_; }
 
  private:
   void Init() {
-    const SCAMPProto::SCAMPInfo &job_info = job_args.info();
-    // If the input does not contain an allocated profile, allocate one
     if (!ProfileAllocated(job_args.profile_a())) {
-      InitProfile(job_args.mutable_profile_a(), job_info.profile_type(),
-                  job_info.timeseries_size_a() - job_info.window() + 1);
+      InitProfile(job_args.mutable_profile_a(), job_args.profile_type(),
+                  job_args.timeseries_a().size() - job_args.window() + 1);
     }
-    if (job_info.keep_rows_separate() &&
+
+    if (job_args.keep_rows_separate() &&
         !ProfileAllocated(job_args.profile_b())) {
-      if (job_info.has_b()) {
-        InitProfile(job_args.mutable_profile_b(), job_info.profile_type(),
-                    job_info.timeseries_size_b() - job_info.window() + 1);
+      if (job_args.has_b()) {
+        InitProfile(job_args.mutable_profile_b(), job_args.profile_type(),
+                    job_args.timeseries_b().size() - job_args.window() + 1);
       } else {
-        InitProfile(job_args.mutable_profile_b(), job_info.profile_type(),
-                    job_info.timeseries_size_a() - job_info.window() + 1);
+        InitProfile(job_args.mutable_profile_b(), job_args.profile_type(),
+                    job_args.timeseries_a().size() - job_args.window() + 1);
       }
     }
-    distributed_tile_size_ = job_info.distributed_tile_size();
-    tile_cols = ceil((job_info.timeseries_size_a() - job_info.window() + 1) /
+    distributed_tile_size_ = job_args.distributed_tile_size();
+    tile_cols = ceil((job_args.timeseries_a().size() - job_args.window() + 1) /
                      static_cast<double>(distributed_tile_size_));
-    if (job_info.has_b()) {
-      tile_rows = ceil((job_info.timeseries_size_b() - job_info.window() + 1) /
-                       static_cast<double>(distributed_tile_size_));
+    if (job_args.has_b()) {
+      tile_rows =
+          ceil((job_args.timeseries_b().size() - job_args.window() + 1) /
+               static_cast<double>(distributed_tile_size_));
     } else {
       tile_rows = tile_cols;
     }
 
     for (int r = 0; r < tile_rows; r++) {
       for (int c = 0; c < tile_cols; c++) {
-        tiles.emplace(tile_counter, DistributedTile(r, c, tile_counter));
+        tiles.emplace(tile_counter, Tile(r, c, tile_counter));
         ready_queue.push(&tiles[tile_counter]);
         tile_counter++;
       }
@@ -240,8 +364,8 @@ class Job {
   int tile_cols;
   std::chrono::steady_clock::time_point start_time_;
   std::chrono::steady_clock::time_point end_time_;
-  std::unordered_map<int, DistributedTile> tiles;
-  std::queue<DistributedTile *> ready_queue;
+  std::unordered_map<int, Tile> tiles;
+  std::queue<Tile *> ready_queue;
   SCAMPProto::JobStatus status_;
 
   // This is better as a set (key is tile id)
@@ -271,33 +395,11 @@ class SCAMPServiceImpl final : public SCAMPService::Service {
   Status IssueNewJob(ServerContext *context,
                      const SCAMPProto::SCAMPArgs *job_args,
                      SCAMPStatus *status) override {
-    if (!validateArgs(*job_args)) {
-      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
-                          "Invalid SCAMP arguments");
-    }
-    try {
-      std::lock_guard<std::mutex> lockGuard(jobVecLock);
-      uint64_t cur_job_id = jobVec.size();
-      jobVec.emplace_back(*job_args, cur_job_id);
-      status->set_status(SCAMPProto::JOB_STATUS_RUNNING);
-      status->set_job_id(cur_job_id);
-    } catch (const std::bad_alloc &e) {
-      return grpc::Status(grpc::StatusCode::RESOURCE_EXHAUSTED, e.what());
-    } catch (const std::exception &e) {
-      return grpc::Status(grpc::StatusCode::INTERNAL, e.what());
-    }
-    return Status::OK;
-  }
-
-  Status IssueChunkedJob(
-      ServerContext *context,
-      const grpc::ServerReader<SCAMPProto::SCAMPArgsChunk> &args,
-      SCAMPProto::SCAMPStatus &status) {
-    // for (auto &elem : args) {
-
-    //  args.timeseries
-    //}
-
+    std::lock_guard<std::mutex> lockGuard(jobVecLock);
+    uint64_t cur_job_id = jobVec.size();
+    jobVec.emplace_back(*job_args, cur_job_id);
+    status->set_status(SCAMPProto::JOB_STATUS_RUNNING);
+    status->set_job_id(cur_job_id);
     return Status::OK;
   }
 
@@ -311,7 +413,7 @@ class SCAMPServiceImpl final : public SCAMPService::Service {
               << " jobvec size = " << jobVec.size() << std::endl;
     if (SCAMP_job_id->job_id() >= jobVec.size() || SCAMP_job_id->job_id() < 0) {
       status->set_status(SCAMPProto::JOB_STATUS_INVALID);
-      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "Invalid Job ID");
+      return Status::OK;
     }
     Job &job = jobVec[SCAMP_job_id->job_id()];
     job.job_done();
@@ -331,7 +433,7 @@ class SCAMPServiceImpl final : public SCAMPService::Service {
     std::lock_guard<std::mutex> lockGuard(jobVecLock);
     if (SCAMP_job_id->job_id() >= jobVec.size() || SCAMP_job_id->job_id() < 0) {
       job_result->set_valid(false);
-      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "Invalid Job ID");
+      return Status::CANCELLED;
     }
     if (jobVec[SCAMP_job_id->job_id()].job_done()) {
       *job_result->mutable_args() =
@@ -365,23 +467,28 @@ class SCAMPServiceImpl final : public SCAMPService::Service {
   // with the global profile associated with that job
   Status SCAMPCombiner(ServerContext *context, const SCAMPArgs *request,
                        SCAMPResult *reply) override {
-    const SCAMPProto::SCAMPInfo &info = request->info();
-    uint64_t height = info.timeseries_size_b();
-    uint64_t width = info.timeseries_size_a();
-    uint64_t row_pos = info.distributed_start_row();
-    uint64_t col_pos = info.distributed_start_col();
+    uint64_t height = request->timeseries_size_b();
+    uint64_t width = request->timeseries_size_a();
+    uint64_t row_pos = request->distributed_start_row();
+    uint64_t col_pos = request->distributed_start_col();
     SCAMPProto::Profile tile_a = request->profile_a();
     SCAMPProto::Profile tile_b = request->profile_b();
 
-    int job_id = info.job_id();
-    int tile_id = info.tile_id();
+    int job_id = request->job_id();
+    int tile_id = request->tile_id();
+    std::cout << "Combining tile " << tile_id << " for job " << job_id
+              << std::endl;
+    std::cout << "start_row: " << row_pos << " start_col: " << col_pos
+              << std::endl;
+    std::cout << "height: " << height << " width: " << width << std::endl;
 
     std::lock_guard<std::mutex> lockGuard(jobVecLock);
     if (job_id >= jobVec.size() || job_id < 0) {
-      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "Invalid Job ID");
+      // Invalid Input
+      return Status::CANCELLED;
     }
 
-    MergeProfile(jobVec[job_id].get_tile_info(tile_id),
+    MergeProfile(jobVec[job_id].get_tile_args(tile_id),
                  jobVec[job_id].get_job_args(), &tile_a, col_pos, width,
                  &tile_b, row_pos, height);
 
@@ -394,11 +501,12 @@ class SCAMPServiceImpl final : public SCAMPService::Service {
   // RPC called by workers when tile execution fails
   Status ReportTileFailure(ServerContext *context, const SCAMPArgs *request,
                            SCAMPResult *reply) override {
-    int job_id = request->info().job_id();
-    int tile_id = request->info().tile_id();
+    int job_id = request->job_id();
+    int tile_id = request->tile_id();
     std::lock_guard<std::mutex> lockGuard(jobVecLock);
     if (job_id >= jobVec.size() || job_id < 0) {
-      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "Invalid Job ID");
+      // Invalid Input
+      return Status::CANCELLED;
     }
     jobVec[job_id].set_tile_failed(tile_id);
     return Status::OK;
