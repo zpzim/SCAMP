@@ -1,6 +1,7 @@
 #pragma once
 
 #include <grpcpp/grpcpp.h>
+#include <queue>
 #include "scamp.grpc.pb.h"
 
 using grpc::Channel;
@@ -15,12 +16,14 @@ class SCAMPWorker {
 
  private:
   float get_expected_throughput();
+  void MergeCompletedResults();
   SCAMPProto::SCAMPWork RequestWork(SCAMPProto::SCAMPRequest request);
   SCAMPProto::SCAMPWork ExecuteWork(SCAMPProto::SCAMPWork work);
-  SCAMPProto::SCAMPResult MergeResultWithGlobal(
-      const SCAMPProto::SCAMPArgs &args);
+  grpc::Status MergeResultWithGlobal(const SCAMPProto::SCAMPArgs &args);
 
   SCAMPProto::SCAMPResult ReportFailedTile(
       const SCAMPProto::SCAMPArgs &failed_args);
   std::unique_ptr<SCAMPProto::SCAMPService::Stub> stub_;
+  std::mutex merge_m_;
+  std::queue<std::pair<int, SCAMPProto::SCAMPWork>> work_to_merge_;
 };

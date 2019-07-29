@@ -1,4 +1,5 @@
 #include <chrono>
+#include <future>
 #include <thread>
 #include <vector>
 
@@ -12,6 +13,8 @@
 #include "../src/scamp_utils.h"
 #include "scamp_worker.h"
 #include "utils.h"
+
+constexpr int MAX_MERGE_RETRIES = 5;
 
 SCAMPProto::SCAMPWork SCAMPWorker::RequestWork(
     SCAMPProto::SCAMPRequest request) {
@@ -82,7 +85,7 @@ SCAMPProto::SCAMPWork SCAMPWorker::ExecuteWork(SCAMPProto::SCAMPWork work) {
   return work;
 }
 
-SCAMPProto::SCAMPResult SCAMPWorker::MergeResultWithGlobal(
+grpc::Status SCAMPWorker::MergeResultWithGlobal(
     const SCAMPProto::SCAMPArgs &computed_result) {
   SCAMPProto::SCAMPResult reply;
   grpc::ClientContext context;
@@ -94,7 +97,7 @@ SCAMPProto::SCAMPResult SCAMPWorker::MergeResultWithGlobal(
     std::cout << status.error_code() << ": " << status.error_message()
               << std::endl;
   }
-  return reply;
+  return status;
 }
 
 SCAMPProto::SCAMPResult SCAMPWorker::ReportFailedTile(
@@ -165,11 +168,41 @@ float SCAMPWorker::get_expected_throughput() {
   return (input_size * input_size / 2) / time_to_finish;
 }
 
+void SCAMPWorker::MergeCompletedResults() {
+  while (true) {
+    {
+      std::unique_lock<std::mutex> mergeLock(merge_m_);
+      int size = work_to_merge_.size();
+      std::cout << "Checking for completed tiles to merge got " << size
+                << " tiles." << std::endl;
+      for (int i = 0; i < size; ++i) {
+        auto completed_work = work_to_merge_.front();
+        work_to_merge_.pop();
+        grpc::Status s = MergeResultWithGlobal(completed_work.second.args());
+        if (!s.ok() && completed_work.first < MAX_MERGE_RETRIES) {
+          // Couldn't merge, retry later
+          completed_work.first++;
+          work_to_merge_.push(completed_work);
+        } else if (!s.ok()) {
+          // Unable to merge
+          ReportFailedTile(completed_work.second.args());
+        }
+      }
+    }
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+  }
+}
+
 // Worker will act as a slave to the server, requesting work to do ad infinitum
 bool SCAMPWorker::run() {
   SCAMPProto::SCAMPRequest r;
   float expected_throughput = get_expected_throughput();
   std::cout << expected_throughput << std::endl;
+
+  // Asyncronous thread to do merging
+  auto f =
+      std::async(std::launch::async, &SCAMPWorker::MergeCompletedResults, this);
+
   if (expected_throughput <= 0) {
     return false;
   }
@@ -182,9 +215,9 @@ bool SCAMPWorker::run() {
       // Execute the work using SCAMP
       SCAMPProto::SCAMPWork computed_result = ExecuteWork(work);
       if (computed_result.valid()) {
-        // Merge completed result with the server's master copy
-        // TODO(zpzim): we can do more work while this is happening
-        MergeResultWithGlobal(computed_result.args());
+        // Save the result to the merge queue
+        std::unique_lock<std::mutex> mergeLock(merge_m_);
+        work_to_merge_.emplace(0, std::move(computed_result));
       } else {
         // If execution failed, we need to report this to the server
         ReportFailedTile(work.args());

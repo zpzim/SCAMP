@@ -223,7 +223,7 @@ class Job {
       tile_rows = tile_cols;
     }
     for (int r = 0; r < tile_rows; r++) {
-      for (int c = 0; c < tile_cols; c++) {
+      for (int c = job_args.has_b() ? 0 : r; c < tile_cols; c++) {
         int64_t height =
             std::min(distributed_tile_size_,
                      distance_matrix_height_ - (r * distributed_tile_size_));
