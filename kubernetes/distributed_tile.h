@@ -15,43 +15,57 @@ enum TileStatus {
 class DistributedTile {
  public:
   DistributedTile() : valid(false) {}
-  DistributedTile(int r, int c, int id)
+  DistributedTile(int r, int c, int64_t height, int64_t width, int id)
       : tile_id_(id),
         valid(true),
         tile_row_(r),
         tile_col_(c),
+        height_(height),
+        width_(width),
         status_(TILE_STATUS_READY),
+        has_args_(false),
         retries_(0),
         start_time_(-1),
         end_time_(-1),
         tile_timeout_seconds_(INT_MAX) {}
-  bool is_valid() { return valid; }
+  bool is_valid() const { return valid; }
   void start_time(int64_t t) { start_time_ = t; }
   void end_time(int64_t t) { end_time_ = t; }
   void status(TileStatus s) { status_ = s; }
   void tile_id(int id) { tile_id_ = id; }
-  int64_t start_time() { return start_time_; }
-  int64_t end_time() { return end_time_; }
-  int tile_id() { return tile_id_; }
-  TileStatus status() { return status_; }
-  int tile_row() { return tile_row_; }
-  int tile_col() { return tile_col_; }
-  int retries() { return retries_; }
+  int64_t start_time() const { return start_time_; }
+  int64_t end_time() const { return end_time_; }
+  int tile_id() const { return tile_id_; }
+  TileStatus status() const { return status_; }
+  int tile_row() const { return tile_row_; }
+  int tile_col() const { return tile_col_; }
+  int64_t height() const { return height_; }
+  int64_t width() const { return width_; }
+  int64_t start_row() const { return start_row_; }
+  int64_t start_col() const { return start_col_; }
+  bool has_args() const { return has_args_; }
+  int retries() const { return retries_; }
   int retries(int retry_count) { retries_ = retry_count; }
   void args(const SCAMPProto::SCAMPArgs &args) { args_ = args; }
-  const SCAMPProto::SCAMPArgs &args() { return args_; }
+  const SCAMPProto::SCAMPArgs &args() const { return args_; }
   void timeout(int timeout) { tile_timeout_seconds_ = timeout; }
-  int timeout() { return tile_timeout_seconds_; }
+  int timeout() const { return tile_timeout_seconds_; }
   const SCAMPProto::SCAMPArgs &info() const { return args_; }
-  bool generate_args(const SCAMPProto::SCAMPArgs &job_args, int rows,
-                     int columns, SCAMPProto::SCAMPArgs *args);
+  bool generate_args(const SCAMPProto::SCAMPArgs &job_args,
+                     SCAMPProto::SCAMPArgs *args);
 
  private:
   bool valid;
+  bool has_args_;
   int tile_timeout_seconds_;
   int retries_;
   int tile_row_;
   int tile_col_;
+  int64_t height_;
+  int64_t width_;
+  int64_t start_row_;
+  int64_t start_col_;
+
   int tile_id_;
   int64_t start_time_;
   int64_t end_time_;

@@ -4,32 +4,17 @@
 #include "scamp.pb.h"
 
 bool DistributedTile::generate_args(const SCAMPProto::SCAMPArgs &job_args,
-                                    int rows, int columns,
                                     SCAMPProto::SCAMPArgs *args) {
-  uint64_t Asize = job_args.timeseries_a().size();
-  uint64_t Bsize = job_args.has_b() ? job_args.timeseries_b().size() : Asize;
+  start_col_ = (tile_col_ * job_args.distributed_tile_size());
+  uint64_t end_col = start_col_ + width_;
 
-  uint64_t tileAsize = Asize / columns;
-  uint64_t tileBsize = Bsize / rows;
+  start_row_ = (tile_row_ * job_args.distributed_tile_size());
+  uint64_t end_row = start_row_ + height_;
 
-  uint64_t start_col = (tile_col_ * tileAsize);
-  uint64_t end_col = (((tile_col_ + 1) * tileAsize) + job_args.window() - 1);
-
-  if (end_col > Asize) {
-    end_col = Asize;
-  }
-
-  uint64_t start_row = (tile_row_ * tileBsize);
-  uint64_t end_row = (((tile_row_ + 1) * tileBsize) + job_args.window() - 1);
-
-  if (end_row > Bsize) {
-    end_row = Bsize;
-  }
-
-  args->set_timeseries_size_a(end_col - start_col);
-  args->set_timeseries_size_b(end_row - start_row);
-  args->set_distributed_start_row(start_row);
-  args->set_distributed_start_col(start_col);
+  args->set_timeseries_size_a(end_col - start_col_ + job_args.window() - 1);
+  args->set_timeseries_size_b(end_row - start_row_ + job_args.window() - 1);
+  args->set_distributed_start_row(start_row_);
+  args->set_distributed_start_col(start_col_);
   args->set_max_tile_size(job_args.max_tile_size());
   args->set_distance_threshold(job_args.distance_threshold());
   args->set_profile_type(job_args.profile_type());
@@ -65,18 +50,18 @@ bool DistributedTile::generate_args(const SCAMPProto::SCAMPArgs &job_args,
   // Make a copy of the arguments passed to this tile, but do not store the
   // actual time series as this would require more space than necessary
   this->args(*args);
-
+  has_args_ = true;
   // Set the timeseries values in the tile arguments
-  for (uint64_t i = start_col; i < end_col; i++) {
+  for (uint64_t i = start_col_; i < end_col + job_args.window() - 1; i++) {
     args->add_timeseries_a(job_args.timeseries_a()[i]);
   }
   if (job_args.has_b()) {
-    for (uint64_t i = start_row; i < end_row; i++) {
+    for (uint64_t i = start_row_; i < end_row + job_args.window() - 1; i++) {
       args->add_timeseries_b(job_args.timeseries_b()[i]);
     }
   } else {
     // TODO(zpzim): we don't always need to set this
-    for (uint64_t i = start_row; i < end_row; i++) {
+    for (uint64_t i = start_row_; i < end_row + job_args.window() - 1; i++) {
       args->add_timeseries_b(job_args.timeseries_a()[i]);
     }
   }

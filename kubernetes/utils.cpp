@@ -8,6 +8,7 @@
 #include "scamp_interface.h"
 #include "utils.h"
 
+// Converts between SCAMP:: and SCAMPProto:: precision types
 SCAMP::SCAMPPrecisionType ConvertPrecisionType(
     const SCAMPProto::SCAMPPrecisionType &t) {
   switch (t) {
@@ -22,6 +23,7 @@ SCAMP::SCAMPPrecisionType ConvertPrecisionType(
   }
 }
 
+// Converts between SCAMP:: and SCAMPProto:: profile types
 SCAMP::SCAMPProfileType ConvertProfileType(
     const SCAMPProto::SCAMPProfileType &t) {
   switch (t) {
@@ -36,6 +38,7 @@ SCAMP::SCAMPProfileType ConvertProfileType(
   }
 }
 
+// Converts between SCAMP:: and SCAMPProto:: precision types
 SCAMPProto::SCAMPPrecisionType ConvertPrecisionType(
     const SCAMP::SCAMPPrecisionType &t) {
   switch (t) {
@@ -50,6 +53,7 @@ SCAMPProto::SCAMPPrecisionType ConvertPrecisionType(
   }
 }
 
+// Converts between SCAMP:: and SCAMPProto:: profile types
 SCAMPProto::SCAMPProfileType ConvertProfileType(
     const SCAMP::SCAMPProfileType &t) {
   switch (t) {
@@ -64,6 +68,7 @@ SCAMPProto::SCAMPProfileType ConvertProfileType(
   }
 }
 
+// Converts between SCAMP:: and SCAMPProto:: profile formats
 SCAMPProto::Profile ConvertProfile(const SCAMP::Profile &p) {
   SCAMPProto::Profile out;
   out.set_type(ConvertProfileType(p.type));
@@ -101,52 +106,7 @@ SCAMPProto::Profile ConvertProfile(const SCAMP::Profile &p) {
   return out;
 }
 
-int64_t GetProfileSize(const SCAMP::Profile &p) {
-  if (p.data.empty()) {
-    return 0;
-  }
-  switch (p.type) {
-    case SCAMP::PROFILE_TYPE_1NN_INDEX:
-      return p.data[0].uint64_value.size();
-    case SCAMP::PROFILE_TYPE_1NN:
-      return p.data[0].float_value.size();
-    case SCAMP::PROFILE_TYPE_SUM_THRESH:
-      return p.data[0].double_value.size();
-  }
-  return 0;
-}
-
-SCAMPProto::SCAMPArgs ConvertArgsToReply(const SCAMP::SCAMPArgs &args) {
-  SCAMPProto::SCAMPArgs reply;
-  if (args.timeseries_a.size() > 0) {
-    *reply.mutable_timeseries_a() = {args.timeseries_a.begin(),
-                                     args.timeseries_a.end()};
-  }
-  if (args.timeseries_b.size() > 0) {
-    *reply.mutable_timeseries_b() = {args.timeseries_b.begin(),
-                                     args.timeseries_b.end()};
-  }
-
-  *reply.mutable_profile_a() = ConvertProfile(args.profile_a);
-  *reply.mutable_profile_b() = ConvertProfile(args.profile_b);
-  reply.set_has_b(args.has_b);
-  reply.set_window(args.window);
-  reply.set_max_tile_size(args.max_tile_size);
-  reply.set_distributed_start_row(args.distributed_start_row);
-  reply.set_distributed_start_col(args.distributed_start_col);
-  reply.set_timeseries_size_a(GetProfileSize(args.profile_a));
-  reply.set_timeseries_size_b(GetProfileSize(args.profile_b));
-  reply.set_profile_type(ConvertProfileType(args.profile_type));
-  reply.set_precision_type(ConvertPrecisionType(args.precision_type));
-  reply.set_distance_threshold(args.distance_threshold);
-  reply.set_computing_rows(args.computing_rows);
-  reply.set_computing_columns(args.computing_columns);
-  reply.set_keep_rows_separate(args.keep_rows_separate);
-  reply.set_is_aligned(args.is_aligned);
-
-  return reply;
-}
-
+// Converts between SCAMP:: and SCAMPProto:: profile formats
 SCAMP::Profile ConvertProfile(const SCAMPProto::Profile &profile) {
   SCAMP::Profile out;
   out.type = ConvertProfileType(profile.type());
@@ -185,15 +145,47 @@ SCAMP::Profile ConvertProfile(const SCAMPProto::Profile &profile) {
   return out;
 }
 
+SCAMPProto::SCAMPArgs ConvertSCAMPArgsToProtoArgs(
+    const SCAMP::SCAMPArgs &args) {
+  SCAMPProto::SCAMPArgs proto_args;
+  if (args.timeseries_a.size() > 0) {
+    *proto_args.mutable_timeseries_a() = {args.timeseries_a.begin(),
+                                          args.timeseries_a.end()};
+  }
+  if (args.timeseries_b.size() > 0) {
+    *proto_args.mutable_timeseries_b() = {args.timeseries_b.begin(),
+                                          args.timeseries_b.end()};
+  }
+
+  *proto_args.mutable_profile_a() = ConvertProfile(args.profile_a);
+  *proto_args.mutable_profile_b() = ConvertProfile(args.profile_b);
+  proto_args.set_has_b(args.has_b);
+  proto_args.set_window(args.window);
+  proto_args.set_max_tile_size(args.max_tile_size);
+  proto_args.set_distributed_start_row(args.distributed_start_row);
+  proto_args.set_distributed_start_col(args.distributed_start_col);
+  proto_args.set_timeseries_size_a(args.timeseries_a.size());
+  proto_args.set_timeseries_size_b(args.timeseries_b.size());
+  proto_args.set_profile_type(ConvertProfileType(args.profile_type));
+  proto_args.set_precision_type(ConvertPrecisionType(args.precision_type));
+  proto_args.set_distance_threshold(args.distance_threshold);
+  proto_args.set_computing_rows(args.computing_rows);
+  proto_args.set_computing_columns(args.computing_columns);
+  proto_args.set_keep_rows_separate(args.keep_rows_separate);
+  proto_args.set_is_aligned(args.is_aligned);
+
+  return proto_args;
+}
+
 void ConvertProtoArgsToSCAMPArgs(const SCAMPProto::SCAMPArgs &proto_args,
                                  SCAMP::SCAMPArgs *args) {
   std::vector<double> Ta_h, Tb_h;
 
-  for (int i = 0; i < proto_args.timeseries_size_a(); i++) {
+  for (int i = 0; i < proto_args.timeseries_a().size(); i++) {
     Ta_h.push_back(proto_args.timeseries_a()[i]);
   }
 
-  for (int i = 0; i < proto_args.timeseries_size_b(); i++) {
+  for (int i = 0; i < proto_args.timeseries_b().size(); i++) {
     Tb_h.push_back(proto_args.timeseries_b()[i]);
   }
 
@@ -216,6 +208,21 @@ void ConvertProtoArgsToSCAMPArgs(const SCAMPProto::SCAMPArgs &proto_args,
   args->timeseries_a = std::move(Ta_h);
   args->timeseries_b = std::move(Tb_h);
   args->silent_mode = true;
+}
+
+int64_t GetProfileSize(const SCAMPProto::Profile &p) {
+  if (p.data().empty()) {
+    return 0;
+  }
+  switch (p.type()) {
+    case SCAMPProto::PROFILE_TYPE_1NN_INDEX:
+      return p.data(0).uint64_value().value_size();
+    case SCAMPProto::PROFILE_TYPE_1NN:
+      return p.data(0).float_value().value_size();
+    case SCAMPProto::PROFILE_TYPE_SUM_THRESH:
+      return p.data(0).double_value().value_size();
+  }
+  return 0;
 }
 
 std::vector<double> GenerateRandomVector(int NumberCount, int minimum,
@@ -340,41 +347,35 @@ void MergeTileIntoFullProfile(SCAMPProto::Profile *tile_profile,
 
   switch (full_profile->type()) {
     case SCAMPProto::PROFILE_TYPE_SUM_THRESH:
-      elementwise_sum<double>(full_profile->mutable_data()
-                                  ->Mutable(0)
+      elementwise_sum<double>(full_profile->mutable_data(0)
                                   ->mutable_double_value()
                                   ->mutable_value()
                                   ->mutable_data(),
                               position, length,
-                              tile_profile->mutable_data()
-                                  ->Mutable(0)
+                              tile_profile->mutable_data(0)
                                   ->mutable_double_value()
                                   ->mutable_value()
                                   ->mutable_data());
       return;
     case SCAMPProto::PROFILE_TYPE_1NN_INDEX:
-      elementwise_max<uint64_t>(full_profile->mutable_data()
-                                    ->Mutable(0)
+      elementwise_max<uint64_t>(full_profile->mutable_data(0)
                                     ->mutable_uint64_value()
                                     ->mutable_value()
                                     ->mutable_data(),
                                 position, length,
-                                tile_profile->mutable_data()
-                                    ->Mutable(0)
+                                tile_profile->mutable_data(0)
                                     ->mutable_uint64_value()
                                     ->mutable_value()
                                     ->mutable_data(),
                                 index_start);
       return;
     case SCAMPProto::PROFILE_TYPE_1NN:
-      elementwise_max<float>(full_profile->mutable_data()
-                                 ->Mutable(0)
+      elementwise_max<float>(full_profile->mutable_data(0)
                                  ->mutable_float_value()
                                  ->mutable_value()
                                  ->mutable_data(),
                              position, length,
-                             tile_profile->mutable_data()
-                                 ->Mutable(0)
+                             tile_profile->mutable_data(0)
                                  ->mutable_float_value()
                                  ->mutable_value()
                                  ->mutable_data());
@@ -405,3 +406,6 @@ void MergeProfile(const SCAMPProto::SCAMPArgs &tile_args,
     }
   }
 }
+
+// TODO(zpzim): finish this stub
+bool validateArgs(const SCAMPProto::SCAMPArgs &args) { return true; }

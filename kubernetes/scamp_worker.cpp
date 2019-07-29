@@ -73,13 +73,12 @@ SCAMPProto::SCAMPWork SCAMPWorker::ExecuteWork(SCAMPProto::SCAMPWork work) {
   }
 
   // Clear out the input data, we don't need it anymore
-  args.timeseries_a.clear();
-  args.timeseries_b.clear();
+  reply->mutable_timeseries_a()->Clear();
+  reply->mutable_timeseries_b()->Clear();
 
-  auto result = ConvertArgsToReply(args);
-  result.set_job_id(reply->job_id());
-  result.set_tile_id(reply->tile_id());
-  *reply = result;
+  *reply->mutable_profile_a() = std::move(ConvertProfile(args.profile_a));
+  *reply->mutable_profile_b() = std::move(ConvertProfile(args.profile_b));
+
   return work;
 }
 
