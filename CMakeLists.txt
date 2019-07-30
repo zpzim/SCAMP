@@ -172,6 +172,23 @@ if(CLANG_TIDY_EXE)
     tile PROPERTIES
     CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
   )
+  set_target_properties(
+    scamp_utils PROPERTIES
+    CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
+  )
+  set_target_properties(
+    cpu_kernels PROPERTIES
+    CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
+  )
+  set_target_properties(
+    gpu_kernels PROPERTIES
+    CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
+  )
+  set_target_properties(
+    cpu_stats PROPERTIES
+    CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
+  )
+
 endif()
 
 function(prepend var prefix)

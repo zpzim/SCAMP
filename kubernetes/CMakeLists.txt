@@ -30,6 +30,10 @@ target_link_libraries(kube_utils messages)
 add_library(distributed_tile ${CMAKE_CURRENT_SOURCE_DIR}/distributed_tile.cpp)
 target_link_libraries(distributed_tile messages)
 
+add_library(distributed_job ${CMAKE_CURRENT_SOURCE_DIR}/distributed_job.cpp)
+target_link_libraries(distributed_job distributed_tile messages)
+
+
 add_library(worker ${CMAKE_CURRENT_SOURCE_DIR}/scamp_worker.cpp)
 if (CMAKE_CUDA_COMPILER)
     target_link_libraries(worker -lcudart_static common scamp kube_utils scamp_utils messages )
@@ -40,9 +44,33 @@ endif()
 add_library(scamp_interface ${CMAKE_CURRENT_SOURCE_DIR}/scamp_interface.cpp)
 target_link_libraries(scamp_interface common kube_utils messages )
 
+if (CLANG_TIDY_EXE)
+  set_target_properties(
+    kube_utils PROPERTIES
+    CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
+  )
+  set_target_properties(
+    distributed_tile PROPERTIES
+    CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
+  )
+  set_target_properties(
+    distributed_job PROPERTIES
+    CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
+  )
+  set_target_properties(
+    worker PROPERTIES
+    CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
+  )
+  set_target_properties(
+    scamp_interface PROPERTIES
+    CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
+  )
+endif()
+
+
 add_executable(SCAMPclient ${CMAKE_CURRENT_SOURCE_DIR}/scamp_client.cc)
 add_executable(SCAMPserver ${CMAKE_CURRENT_SOURCE_DIR}/scamp_server.cc)
-target_link_libraries(SCAMPserver kube_utils distributed_tile messages -Wl,--whole-archive grpc++_reflection -Wl,--no-whole-archive)
+target_link_libraries(SCAMPserver kube_utils distributed_job messages -Wl,--whole-archive grpc++_reflection -Wl,--no-whole-archive)
 target_link_libraries(SCAMPclient worker)
 
 add_definitions("-D_DISTRIBUTED_EXECUTION_")
