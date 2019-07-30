@@ -1,10 +1,10 @@
 #include <grpcpp/grpcpp.h>
 #include <random>
-#include "scamp.grpc.pb.h"
 
 #include "../src/SCAMP.h"
 #include "../src/common.h"
 #include "../src/scamp_utils.h"
+#include "scamp.grpc.pb.h"
 #include "scamp_interface.h"
 #include "utils.h"
 
@@ -102,6 +102,9 @@ SCAMPProto::Profile ConvertProfile(const SCAMP::Profile &p) {
       *out.mutable_data()->Add()->mutable_double_value()->mutable_value() = {
           p.data[0].double_value.begin(), p.data[0].double_value.end()};
       break;
+    default:
+      ASSERT(false, "Undefined Profile Type");
+      break;
   }
   return out;
 }
@@ -110,13 +113,13 @@ SCAMPProto::Profile ConvertProfile(const SCAMP::Profile &p) {
 SCAMP::Profile ConvertProfile(const SCAMPProto::Profile &profile) {
   SCAMP::Profile out;
   out.type = ConvertProfileType(profile.type());
-  if (profile.data().size() < 1) {
+  if (profile.data().empty()) {
     return out;
   }
   switch (profile.type()) {
     case SCAMPProto::PROFILE_TYPE_1NN_INDEX:
       out.data.emplace_back();
-      if (profile.data().Get(0).uint64_value().value().size() == 0) {
+      if (profile.data().Get(0).uint64_value().value().empty()) {
         return out;
       }
       out.data[0].uint64_value = {
@@ -125,7 +128,7 @@ SCAMP::Profile ConvertProfile(const SCAMPProto::Profile &profile) {
       return out;
     case SCAMPProto::PROFILE_TYPE_1NN:
       out.data.emplace_back();
-      if (profile.data().Get(0).float_value().value().size() == 0) {
+      if (profile.data().Get(0).float_value().value().empty()) {
         return out;
       }
       out.data[0].float_value = {
@@ -134,12 +137,15 @@ SCAMP::Profile ConvertProfile(const SCAMPProto::Profile &profile) {
       return out;
     case SCAMPProto::PROFILE_TYPE_SUM_THRESH:
       out.data.emplace_back();
-      if (profile.data().Get(0).double_value().value().size() == 0) {
+      if (profile.data().Get(0).double_value().value().empty()) {
         return out;
       }
       out.data[0].double_value = {
           profile.data().Get(0).double_value().value().begin(),
           profile.data().Get(0).double_value().value().end()};
+      return out;
+    default:
+      ASSERT(false, "Undefined Profile Type");
       return out;
   }
   return out;
@@ -148,11 +154,11 @@ SCAMP::Profile ConvertProfile(const SCAMPProto::Profile &profile) {
 SCAMPProto::SCAMPArgs ConvertSCAMPArgsToProtoArgs(
     const SCAMP::SCAMPArgs &args) {
   SCAMPProto::SCAMPArgs proto_args;
-  if (args.timeseries_a.size() > 0) {
+  if (!args.timeseries_a.empty()) {
     *proto_args.mutable_timeseries_a() = {args.timeseries_a.begin(),
                                           args.timeseries_a.end()};
   }
-  if (args.timeseries_b.size() > 0) {
+  if (!args.timeseries_b.empty()) {
     *proto_args.mutable_timeseries_b() = {args.timeseries_b.begin(),
                                           args.timeseries_b.end()};
   }
@@ -181,12 +187,12 @@ void ConvertProtoArgsToSCAMPArgs(const SCAMPProto::SCAMPArgs &proto_args,
                                  SCAMP::SCAMPArgs *args) {
   std::vector<double> Ta_h, Tb_h;
 
-  for (int i = 0; i < proto_args.timeseries_a().size(); i++) {
-    Ta_h.push_back(proto_args.timeseries_a()[i]);
+  for (const double elem : proto_args.timeseries_a()) {
+    Ta_h.push_back(elem);
   }
 
-  for (int i = 0; i < proto_args.timeseries_b().size(); i++) {
-    Tb_h.push_back(proto_args.timeseries_b()[i]);
+  for (const double elem : proto_args.timeseries_b()) {
+    Tb_h.push_back(elem);
   }
 
   args->max_tile_size = proto_args.max_tile_size();
@@ -221,6 +227,9 @@ int64_t GetProfileSize(const SCAMPProto::Profile &p) {
       return p.data(0).float_value().value_size();
     case SCAMPProto::PROFILE_TYPE_SUM_THRESH:
       return p.data(0).double_value().value_size();
+    default:
+      ASSERT(false, "Undefined Profile Type");
+      return -1;
   }
   return 0;
 }
@@ -408,4 +417,4 @@ void MergeProfile(const SCAMPProto::SCAMPArgs &tile_args,
 }
 
 // TODO(zpzim): finish this stub
-bool validateArgs(const SCAMPProto::SCAMPArgs &args) { return true; }
+bool validateArgs(const SCAMPProto::SCAMPArgs &args) { return true; }  // NOLINT

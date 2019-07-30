@@ -36,18 +36,19 @@ static inline void partialcross_kern(
   }
 }
 
-void split_profile(std::vector<double>& mp, std::vector<int32_t>& mpi,
-                   uint64_t* profile, int len) {
+void split_profile(std::vector<double>* mp, std::vector<int32_t>* mpi,
+                   const uint64_t* profile, int len) {
   mp_entry e;
   for (int i = 0; i < len; ++i) {
     e.ulong = profile[i];
-    mp[i] = static_cast<double>(e.floats[0]);
-    mpi[i] = e.ints[1];
+    mp->at(i) = static_cast<double>(e.floats[0]);
+    mpi->at(i) = e.ints[1];
   }
 }
 
-void combine_profile(std::vector<double>& mp, std::vector<int32_t>& mpi,
-                     uint64_t* profile, int len) {
+void combine_profile(const std::vector<double>& mp,
+                     const std::vector<int32_t>& mpi, uint64_t* profile,
+                     int len) {
   mp_entry e;
   for (int i = 0; i < len; ++i) {
     e.floats[0] = static_cast<float>(mp[i]);
@@ -75,8 +76,12 @@ SCAMPError_t cpu_kernel_self_join_upper(Tile* t) {
 
   // TODO(zpzim): These splits should be done during the InitProfile method in
   // tile.cpp
-  split_profile(mpa, mpia, reinterpret_cast<uint64_t*>(t->profile_a()), width);
-  split_profile(mpb, mpib, reinterpret_cast<uint64_t*>(t->profile_b()), height);
+  split_profile(&mpa, &mpia,
+                reinterpret_cast<uint64_t*>(t->profile_a()),  // NOLINT
+                width);
+  split_profile(&mpb, &mpib,
+                reinterpret_cast<uint64_t*>(t->profile_b()),  // NOLINT
+                height);
 
   std::pair<int, int> exclusion = t->get_exclusion_for_self_join(true);
   partialcross_kern<true, true>(t->QT(), mpa.data(), mpia.data(), mpb.data(),
@@ -85,9 +90,11 @@ SCAMPError_t cpu_kernel_self_join_upper(Tile* t) {
                                 exclusion.first, exclusion.second);
   // TODO(zpzim): These combines should be done in the CopyProfileToHost method
   // in tile.cpp
-  combine_profile(mpa, mpia, reinterpret_cast<uint64_t*>(t->profile_a()),
+  combine_profile(mpa, mpia,
+                  reinterpret_cast<uint64_t*>(t->profile_a()),  // NOLINT
                   width);
-  combine_profile(mpb, mpib, reinterpret_cast<uint64_t*>(t->profile_b()),
+  combine_profile(mpb, mpib,
+                  reinterpret_cast<uint64_t*>(t->profile_b()),  // NOLINT
                   height);
   return SCAMP_NO_ERROR;
 }
@@ -111,8 +118,12 @@ SCAMPError_t cpu_kernel_self_join_lower(Tile* t) {
 
   // TODO(zpzim): These splits should be done during the InitProfile method in
   // tile.cpp
-  split_profile(mpa, mpia, reinterpret_cast<uint64_t*>(t->profile_a()), width);
-  split_profile(mpb, mpib, reinterpret_cast<uint64_t*>(t->profile_b()), height);
+  split_profile(&mpa, &mpia,
+                reinterpret_cast<uint64_t*>(t->profile_a()),  // NOLINT
+                width);
+  split_profile(&mpb, &mpib,
+                reinterpret_cast<uint64_t*>(t->profile_b()),  // NOLINT
+                height);
 
   std::pair<int, int> exclusion = t->get_exclusion_for_self_join(false);
   partialcross_kern<true, true>(t->QT(), mpb.data(), mpib.data(), mpa.data(),
@@ -121,9 +132,11 @@ SCAMPError_t cpu_kernel_self_join_lower(Tile* t) {
                                 exclusion.first, exclusion.second);
   // TODO(zpzim): These combines should be done in the CopyProfileToHost method
   // in tile.cpp
-  combine_profile(mpa, mpia, reinterpret_cast<uint64_t*>(t->profile_a()),
+  combine_profile(mpa, mpia,
+                  reinterpret_cast<uint64_t*>(t->profile_a()),  // NOLINT
                   width);
-  combine_profile(mpb, mpib, reinterpret_cast<uint64_t*>(t->profile_b()),
+  combine_profile(mpb, mpib,
+                  reinterpret_cast<uint64_t*>(t->profile_b()),  // NOLINT
                   height);
   return SCAMP_NO_ERROR;
 }
@@ -145,8 +158,12 @@ SCAMPError_t cpu_kernel_ab_join_upper(Tile* t) {
 
   // TODO(zpzim): These splits should be done during the InitProfile method in
   // tile.cpp
-  split_profile(mpa, mpia, reinterpret_cast<uint64_t*>(t->profile_a()), width);
-  split_profile(mpb, mpib, reinterpret_cast<uint64_t*>(t->profile_b()), height);
+  split_profile(&mpa, &mpia,
+                reinterpret_cast<uint64_t*>(t->profile_a()),  // NOLINT
+                width);
+  split_profile(&mpb, &mpib,
+                reinterpret_cast<uint64_t*>(t->profile_b()),  // NOLINT
+                height);
 
   std::pair<int, int> exclusion_pair = t->get_exclusion_for_ab_join(true);
   if (t->info()->computing_rows) {
@@ -162,9 +179,11 @@ SCAMPError_t cpu_kernel_ab_join_upper(Tile* t) {
   }
   // TODO(zpzim): These combines should be done in the CopyProfileToHost method
   // in tile.cpp
-  combine_profile(mpa, mpia, reinterpret_cast<uint64_t*>(t->profile_a()),
+  combine_profile(mpa, mpia,
+                  reinterpret_cast<uint64_t*>(t->profile_a()),  // NOLINT
                   width);
-  combine_profile(mpb, mpib, reinterpret_cast<uint64_t*>(t->profile_b()),
+  combine_profile(mpb, mpib,
+                  reinterpret_cast<uint64_t*>(t->profile_b()),  // NOLINT
                   height);
   return SCAMP_NO_ERROR;
 }
@@ -186,8 +205,12 @@ SCAMPError_t cpu_kernel_ab_join_lower(Tile* t) {
 
   // TODO(zpzim): These splits should be done during the InitProfile method in
   // tile.cpp
-  split_profile(mpa, mpia, reinterpret_cast<uint64_t*>(t->profile_a()), width);
-  split_profile(mpb, mpib, reinterpret_cast<uint64_t*>(t->profile_b()), height);
+  split_profile(&mpa, &mpia,
+                reinterpret_cast<uint64_t*>(t->profile_a()),  // NOLINT
+                width);
+  split_profile(&mpb, &mpib,
+                reinterpret_cast<uint64_t*>(t->profile_b()),  // NOLINT
+                height);
   std::pair<int, int> exclusion_pair = t->get_exclusion_for_ab_join(false);
 
   if (t->info()->computing_rows) {
@@ -203,9 +226,11 @@ SCAMPError_t cpu_kernel_ab_join_lower(Tile* t) {
   }
   // TODO(zpzim): These combines should be done in the CopyProfileToHost method
   // in tile.cpp
-  combine_profile(mpa, mpia, reinterpret_cast<uint64_t*>(t->profile_a()),
+  combine_profile(mpa, mpia,
+                  reinterpret_cast<uint64_t*>(t->profile_a()),  // NOLINT
                   width);
-  combine_profile(mpb, mpib, reinterpret_cast<uint64_t*>(t->profile_b()),
+  combine_profile(mpb, mpib,
+                  reinterpret_cast<uint64_t*>(t->profile_b()),  // NOLINT
                   height);
   return SCAMP_NO_ERROR;
 }

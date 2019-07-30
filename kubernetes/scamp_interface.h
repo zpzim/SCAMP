@@ -7,8 +7,9 @@ using grpc::Channel;
 using grpc::ClientContext;
 using grpc::Status;
 
-int do_SCAMP_distributed(SCAMP::SCAMPArgs *args, std::string hostname_port,
-                         int64_t distributed_tile_size);
+void do_SCAMP_distributed(SCAMP::SCAMPArgs *args,
+                          const std::string &hostname_port,
+                          int64_t distributed_tile_size);
 
 class SCAMPInterface {
  public:

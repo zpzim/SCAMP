@@ -19,9 +19,8 @@ void SCAMPInterface::do_SCAMP_distributed(SCAMPProto::SCAMPArgs *args) {
   if (!s.ok()) {
     std::cout << "Error issuing SCAMP Job" << std::endl;
     return;
-  } else {
-    std::cout << "Issued Job: " << status.job_id() << std::endl;
   }
+  std::cout << "Issued Job: " << status.job_id() << std::endl;
   SCAMPProto::SCAMPJobID id;
   id.set_job_id(status.job_id());
   // id.set_job_id(0);
@@ -35,9 +34,8 @@ void SCAMPInterface::do_SCAMP_distributed(SCAMPProto::SCAMPArgs *args) {
     if (!s.ok()) {
       std::cout << "Error Checking Job Status. " << std::endl;
       continue;
-    } else {
-      std::cout << status.DebugString() << std::endl;
     }
+    std::cout << status.DebugString() << std::endl;
     if (status.status() == SCAMPProto::JOB_STATUS_FINISHED) {
       done = true;
     }
@@ -50,14 +48,14 @@ void SCAMPInterface::do_SCAMP_distributed(SCAMPProto::SCAMPArgs *args) {
   if (!s.ok()) {
     std::cout << "Error fetching job Result" << std::endl;
     return;
-  } else {
-    std::cout << "Fetched Job Result" << std::endl;
   }
+  std::cout << "Fetched Job Result" << std::endl;
   *args = result.args();
 }
 
-int do_SCAMP_distributed(SCAMP::SCAMPArgs *args, std::string hostname_port,
-                         int64_t distributed_tile_size) {
+void do_SCAMP_distributed(SCAMP::SCAMPArgs *args,
+                          const std::string &hostname_port,
+                          int64_t distributed_tile_size) {
   SCAMPProto::SCAMPArgs proto_args = ConvertSCAMPArgsToProtoArgs(*args);
   proto_args.set_distributed_tile_size(distributed_tile_size);
 

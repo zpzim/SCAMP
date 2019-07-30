@@ -7,8 +7,7 @@
 
 std::ifstream &read_value(std::ifstream &s, double &d, int count);
 
-void readFile(const std::string &filename, std::vector<double> &v,
-              const char *format_str);
+void readFile(const std::string &filename, std::vector<double> &v);
 
 std::vector<int> ParseIntList(const std::string &s);
 

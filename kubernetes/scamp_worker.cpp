@@ -17,7 +17,7 @@
 constexpr int MAX_MERGE_RETRIES = 5;
 
 SCAMPProto::SCAMPWork SCAMPWorker::RequestWork(
-    SCAMPProto::SCAMPRequest request) {
+    const SCAMPProto::SCAMPRequest &request) {
   // Container for the data we expect from the server.
   SCAMPProto::SCAMPWork ret;
 
@@ -69,7 +69,7 @@ SCAMPProto::SCAMPWork SCAMPWorker::ExecuteWork(SCAMPProto::SCAMPWork work) {
 #else
     do_SCAMP(&args, std::vector<int>(), std::thread::hardware_concurrency());
 #endif
-  } catch (SCAMPException e) {
+  } catch (SCAMPException &e) {
     std::cout << "Error: Problem computing tile: " << e.what() << std::endl;
     work.set_valid(false);
     return work;
@@ -115,7 +115,8 @@ SCAMPProto::SCAMPResult SCAMPWorker::ReportFailedTile(
   return reply;
 }
 
-float calibration_run(int64_t input_size, std::vector<int> gpus, int threads) {
+float calibration_run(int64_t input_size, const std::vector<int> &gpus,
+                      int threads) {
   SCAMP::SCAMPArgs args = get_default_args(input_size);
   if (!InitProfileMemory(&args)) {
     return -1.0;
@@ -128,11 +129,11 @@ float calibration_run(int64_t input_size, std::vector<int> gpus, int threads) {
   return diff.count() / static_cast<double>(1e9);
 }
 
-float SCAMPWorker::get_expected_throughput() {
-  constexpr int64_t test_input_size_cpu = 1 << 17;
-  constexpr int64_t test_input_size_gpu = 1 << 20;
-  float time_to_finish;
-  int64_t input_size;
+double SCAMPWorker::get_expected_throughput() {
+  constexpr uint64_t test_input_size_cpu = 1ull << 17ull;
+  constexpr uint64_t test_input_size_gpu = 1ull << 20ull;
+  double time_to_finish;
+  double input_size;
 
   try {
 #ifdef _HAS_CUDA_
@@ -156,7 +157,7 @@ float SCAMPWorker::get_expected_throughput() {
     time_to_finish = calibration_run(input_size, std::vector<int>(),
                                      std::thread::hardware_concurrency());
 #endif
-  } catch (SCAMPException e) {
+  } catch (SCAMPException &e) {
     std::cout << "Error worker could not execute calibration test: " << e.what()
               << std::endl;
     time_to_finish = -1;
@@ -164,7 +165,6 @@ float SCAMPWorker::get_expected_throughput() {
   if (time_to_finish < 0) {
     return -1;
   }
-  std::cout << time_to_finish << std::endl;
   return (input_size * input_size / 2) / time_to_finish;
 }
 

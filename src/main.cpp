@@ -142,10 +142,10 @@ int main(int argc, char **argv) {
 
   std::vector<double> Ta_h, Tb_h;
 
-  readFile(FLAGS_input_a_file_name, Ta_h, "%lf");
+  readFile(FLAGS_input_a_file_name, Ta_h);
 
   if (!self_join) {
-    readFile(FLAGS_input_b_file_name, Tb_h, "%lf");
+    readFile(FLAGS_input_b_file_name, Tb_h);
   }
 
   int n_x = Ta_h.size() - FLAGS_window + 1;

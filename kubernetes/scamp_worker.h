@@ -15,11 +15,12 @@ class SCAMPWorker {
   bool run();
 
  private:
-  float get_expected_throughput();
+  double get_expected_throughput();
   void MergeCompletedResults();
-  SCAMPProto::SCAMPWork RequestWork(SCAMPProto::SCAMPRequest request);
+  SCAMPProto::SCAMPWork RequestWork(const SCAMPProto::SCAMPRequest &request);
   SCAMPProto::SCAMPWork ExecuteWork(SCAMPProto::SCAMPWork work);
-  grpc::Status MergeResultWithGlobal(const SCAMPProto::SCAMPArgs &args);
+  grpc::Status MergeResultWithGlobal(
+      const SCAMPProto::SCAMPArgs &computed_result);
 
   SCAMPProto::SCAMPResult ReportFailedTile(
       const SCAMPProto::SCAMPArgs &failed_args);

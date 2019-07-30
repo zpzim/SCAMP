@@ -4,12 +4,19 @@
 constexpr uint64_t MAX_TILE_RETRIES = 3;
 constexpr uint64_t MIN_TIMEOUT_SECONDS = 10;
 
+inline int64_t get_current_time() {
+  return std::chrono::duration_cast<std::chrono::seconds>(
+             std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+}
+
 void Job::check_time_tile() {
   for (auto elem : tiles) {
     if (elem.second.status() == TILE_STATUS_RUNNING) {
-      if ((time(0) - elem.second.start_time()) > elem.second.timeout()) {
+      if (get_current_time() - elem.second.start_time() >
+          elem.second.timeout()) {
         std::cout << "Tile Timeout ID: " << elem.second.tile_id() << std::endl;
-        elem.second.end_time(time(0));
+        elem.second.end_time(get_current_time());
         elem.second.status(TILE_STATUS_FAILED);
       }
     }
@@ -17,6 +24,8 @@ void Job::check_time_tile() {
 }
 int64_t Job::get_elapsed_time() {
   switch (status_) {
+    case SCAMPProto::JOB_STATUS_READY:
+      return 0;
     case SCAMPProto::JOB_STATUS_RUNNING:
       return std::chrono::duration_cast<std::chrono::seconds>(
                  std::chrono::steady_clock::now() - start_time_)
@@ -27,8 +36,10 @@ int64_t Job::get_elapsed_time() {
                                                               start_time_)
           .count();
     case SCAMPProto::JOB_STATUS_INVALID:
+    default:
       return -1;
   }
+  return -1;
 }
 int64_t Job::get_eta() {
   int64_t elapsed_time = get_elapsed_time();
@@ -64,9 +75,9 @@ bool Job::is_done() {
 
 // Sets a specific tile to be complete
 void Job::set_tile_finished(int tile_id) {
-  if (tiles.count(tile_id)) {
+  if (tiles.count(tile_id) != 0) {
     tiles[tile_id].status(TILE_STATUS_FINISHED);
-    tiles[tile_id].end_time(time(0));
+    tiles[tile_id].end_time(get_current_time());
     tiles_completed_++;
   }
 }
@@ -75,7 +86,7 @@ void Job::set_tile_finished(int tile_id) {
 void Job::set_tile_failed(int tile_id) {
   if (tile_id < tiles.size() && tile_id >= 0) {
     tiles[tile_id].status(TILE_STATUS_FAILED);
-    tiles[tile_id].end_time(time(0));
+    tiles[tile_id].end_time(get_current_time());
   }
 }
 
@@ -115,13 +126,14 @@ bool Job::fetch_ready_tile(SCAMPProto::SCAMPArgs *args,
 
   // Timer Start
   args->set_job_id(job_id);
-  tile->start_time(time(0));
+
+  tile->start_time(get_current_time());
   tile->status(TILE_STATUS_RUNNING);
   return true;
 }
 
 const DistributedTile *Job::get_tile(int tile_id) {
-  if (!tiles.count(tile_id)) {
+  if (tiles.count(tile_id) == 0) {
     return nullptr;
   }
   return &tiles[tile_id];
@@ -190,15 +202,16 @@ bool Job::cleanup_failed_tiles() {
   for (auto &elem : tiles) {
     if (elem.second.status() == TILE_STATUS_FAILED) {
       if (elem.second.retries() > MAX_TILE_RETRIES) {
+        // Tile failed and therefore job has failed
         status_ = SCAMPProto::JOB_STATUS_FAILED;
         end_time_ = std::chrono::steady_clock::now();
         return false;
-      } else {
-        elem.second.retries(elem.second.retries() + 1);
-        elem.second.start_time(time(0));
-        elem.second.end_time(INT_MAX);
-        ready_queue.push(&elem.second);
       }
+      // Retry the tile
+      elem.second.retries(elem.second.retries() + 1);
+      elem.second.start_time(get_current_time());
+      elem.second.end_time(INT_MAX);
+      ready_queue.push(&elem.second);
     }
   }
   return true;

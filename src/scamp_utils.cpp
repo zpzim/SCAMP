@@ -1,8 +1,9 @@
-#include "scamp_utils.h"
 #include <cmath>
 #include <iomanip>
 #include <iostream>
+
 #include "common.h"
+#include "scamp_utils.h"
 
 std::ifstream &read_value(std::ifstream &s, double &d, int count) {
   std::string line;
@@ -21,12 +22,12 @@ std::ifstream &read_value(std::ifstream &s, double &d, int count) {
 
   try {
     parsed = std::stod(line);
-  } catch (std::invalid_argument e) {
+  } catch (std::invalid_argument &e) {
     std::cout << line[0] << std::endl;
     std::cout << "FATAL ERROR: invalid argument: Could not parse line number "
               << count + 1 << " from input file.\n";
     exit(1);
-  } catch (std::out_of_range e) {
+  } catch (std::out_of_range &e) {
     std::cout << line[0] << std::endl;
     std::cout << "FATAL ERROR: out of range: Could not parse line number "
               << count + 1 << " from input file.\n";
@@ -37,8 +38,7 @@ std::ifstream &read_value(std::ifstream &s, double &d, int count) {
 }
 
 // Reads input time series from file
-void readFile(const std::string &filename, std::vector<double> &v,
-              const char *format_str) {
+void readFile(const std::string &filename, std::vector<double> &v) {
   std::ifstream f(filename);
   if (f.fail()) {
     std::cout << "Unable to open" << filename
@@ -111,9 +111,9 @@ bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
       std::ofstream mp_out(mp);
       std::ofstream mpi_out(mpi);
       auto arr = p.data[0].uint64_value;
-      for (int i = 0; i < arr.size(); ++i) {
+      for (const uint64_t elem : arr) {
         SCAMP::mp_entry e;
-        e.ulong = arr[i];
+        e.ulong = elem;
         if (output_pearson) {
           mp_out << std::setprecision(10) << e.floats[0] << std::endl;
         } else {
@@ -134,11 +134,11 @@ bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
     case SCAMP::PROFILE_TYPE_1NN: {
       std::ofstream mp_out(mp);
       auto arr = p.data[0].float_value;
-      for (int i = 0; i < arr.size(); ++i) {
+      for (const float elem : arr) {
         if (output_pearson) {
-          mp_out << std::setprecision(10) << arr[i] << std::endl;
+          mp_out << std::setprecision(10) << elem << std::endl;
         } else {
-          mp_out << std::setprecision(10) << ConvertToEuclidean(arr[i], window)
+          mp_out << std::setprecision(10) << ConvertToEuclidean(elem, window)
                  << std::endl;
         }
       }
@@ -147,8 +147,8 @@ bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
     case SCAMP::PROFILE_TYPE_SUM_THRESH: {
       std::ofstream mp_out(mp);
       auto arr = p.data[0].double_value;
-      for (int i = 0; i < arr.size(); ++i) {
-        mp_out << std::setprecision(10) << arr[i] << std::endl;
+      for (const double elem : arr) {
+        mp_out << std::setprecision(10) << elem << std::endl;
       }
       break;
     }
