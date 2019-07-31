@@ -607,7 +607,7 @@ class SCAMPServiceImpl final : public SCAMPService::Service {
 };
 
 void RunServer() {
-  std::string server_address("localhost:30078");
+  std::string server_address("0.0.0.0:30078");
 
   SCAMPServiceImpl service;
 
@@ -639,7 +639,7 @@ void RunServer() {
 }
 
 int main(int argc, char **argv) {
-  std::thread check_time_out();
+  //std::thread check_time_out();
 
   RunServer();
   return 0;
