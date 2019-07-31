@@ -618,7 +618,7 @@ void RunServer() {
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
 
   // Do not limit input size
-  //builder.SetMaxReceiveMessageSize(INT_MAX);
+  builder.SetMaxReceiveMessageSize(INT_MAX);
 
   // Register "service" as the instance through which we'll communicate with
   // clients. In this case it corresponds to an *synchronous* service.
@@ -639,8 +639,6 @@ void RunServer() {
 }
 
 int main(int argc, char **argv) {
-  //std::thread check_time_out();
-
   RunServer();
   return 0;
 }
