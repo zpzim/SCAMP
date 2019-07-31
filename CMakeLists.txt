@@ -155,6 +155,7 @@ if (CMAKE_CUDA_COMPILER)
   )
 endif()
 
+# Add clang tidy rules
 if(CLANG_TIDY_EXE)
   set_target_properties(
     common PROPERTIES
@@ -181,13 +182,15 @@ if(CLANG_TIDY_EXE)
     CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
   )
   set_target_properties(
-    gpu_kernels PROPERTIES
-    CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
-  )
-  set_target_properties(
     cpu_stats PROPERTIES
     CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
   )
+  if (CMAKE_CUDA_COMPILER)
+    set_target_properties(
+      gpu_kernels PROPERTIES
+      CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
+    )
+  endif()
 
 endif()
 
