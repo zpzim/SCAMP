@@ -639,6 +639,7 @@ void RunServer() {
 }
 
 int main(int argc, char **argv) {
+  // TODO(zpzim): add async thread to check for timeout
   RunServer();
   return 0;
 }
