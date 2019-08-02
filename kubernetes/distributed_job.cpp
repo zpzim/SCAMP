@@ -4,14 +4,9 @@
 constexpr uint64_t MAX_TILE_RETRIES = 3;
 constexpr uint64_t MIN_TIMEOUT_SECONDS = 10;
 
-inline int64_t get_current_time() {
-  return std::chrono::duration_cast<std::chrono::seconds>(
-             std::chrono::steady_clock::now().time_since_epoch())
-      .count();
-}
-
 void Job::check_time_tile() {
-  for (auto elem : tiles) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  for (auto &elem : tiles) {
     if (elem.second.status() == TILE_STATUS_RUNNING) {
       if (get_current_time() - elem.second.start_time() >
           elem.second.timeout()) {
@@ -23,6 +18,7 @@ void Job::check_time_tile() {
   }
 }
 int64_t Job::get_elapsed_time() {
+  std::lock_guard<std::mutex> lock(mutex_);
   switch (status_) {
     case SCAMPProto::JOB_STATUS_READY:
       return 0;
@@ -41,6 +37,7 @@ int64_t Job::get_elapsed_time() {
   }
   return -1;
 }
+
 int64_t Job::get_eta() {
   int64_t elapsed_time = get_elapsed_time();
   if (elapsed_time < 0) {
@@ -54,12 +51,14 @@ int64_t Job::get_eta() {
 }
 // Returns the ratio of completed tiles to total tiles
 float Job::get_progress() {
+  std::lock_guard<std::mutex> lock(mutex_);
   return tiles_completed_ / static_cast<float>(tiles.size());
 }
 
 // Checks if all the tiles for this job have finished and sets
 // the job status accordingly
 bool Job::is_done() {
+  std::lock_guard<std::mutex> lock(mutex_);
   if (status_ == SCAMPProto::JOB_STATUS_FINISHED) {
     return true;
   }
@@ -73,20 +72,11 @@ bool Job::is_done() {
   return true;
 }
 
-// Sets a specific tile to be complete
-void Job::set_tile_finished(int tile_id) {
-  if (tiles.count(tile_id) != 0) {
-    tiles[tile_id].status(TILE_STATUS_FINISHED);
-    tiles[tile_id].end_time(get_current_time());
-    tiles_completed_++;
-  }
-}
-
 // Sets a specific tile to the failure state
 void Job::set_tile_failed(int tile_id) {
+  std::lock_guard<std::mutex> lock(mutex_);
   if (tile_id < tiles.size() && tile_id >= 0) {
-    tiles[tile_id].status(TILE_STATUS_FAILED);
-    tiles[tile_id].end_time(get_current_time());
+    tiles[tile_id].set_failed();
   }
 }
 
@@ -94,8 +84,10 @@ void Job::set_tile_failed(int tile_id) {
 // Returns false on failure to fetch work
 bool Job::fetch_ready_tile(SCAMPProto::SCAMPArgs *args,
                            const SCAMPProto::SCAMPRequest *request) {
+  std::lock_guard<std::mutex> lock(mutex_);
   // If job is not running do nothing
   if (status_ != SCAMPProto::JOB_STATUS_RUNNING) {
+    std::cout << "Fetch Ready tile job not running" << std::endl;
     return false;
   }
   if (ready_queue.empty()) {
@@ -132,14 +124,92 @@ bool Job::fetch_ready_tile(SCAMPProto::SCAMPArgs *args,
   return true;
 }
 
-const DistributedTile *Job::get_tile(int tile_id) {
+bool Job::CombineProfile(const SCAMPProto::SCAMPArgs &request) {
+  uint64_t request_width, request_height;
+  request_width = request.timeseries_size_a() - request.window() + 1;
+  request_height = request.has_b()
+                       ? request.timeseries_size_b() - request.window() + 1
+                       : request_width;
+  uint64_t request_start_row = request.distributed_start_row();
+  uint64_t request_start_col = request.distributed_start_col();
+  SCAMPProto::Profile tile_a = request.profile_a();
+  SCAMPProto::Profile tile_b = request.profile_b();
+  int tile_id = request.tile_id();
+
+  std::lock_guard<std::mutex> lock(mutex_);
+
   if (tiles.count(tile_id) == 0) {
-    return nullptr;
+    std::cout << "Combiner trying to use invalid tile." << std::endl;
+    return false;
   }
-  return &tiles[tile_id];
+  DistributedTile *tile = &tiles[tile_id];
+
+  if (tile == nullptr) {
+    std::cout << "Combiner trying to use invlalid tile." << std::endl;
+    return false;
+  }
+
+  if (!tile->has_args()) {
+    std::cout << "Combiner trying to use uninitialzed tile." << std::endl;
+    return false;
+  }
+
+  if (tile->status() != TILE_STATUS_RUNNING) {
+    std::cout << "Combiner trying to use tile not running." << std::endl;
+    return false;
+  }
+
+  if (tile->height() != request_height) {
+    std::cout << "Combiner request and tile height do not match tile: "
+              << tile->height() << " request: " << request_height << std::endl;
+    return false;
+  }
+
+  if (tile->width() != request_width) {
+    std::cout << "Combiner request and tile width do not match tile: "
+              << tile->width() << " request: " << request_width << std::endl;
+    return false;
+  }
+
+  if (tile->start_row() != request_start_row) {
+    std::cout << "Combiner request and tile start_row do not match tile: "
+              << tile->start_row() << " request: " << request_start_row
+              << std::endl;
+    return false;
+  }
+
+  if (tile->start_col() != request_start_col) {
+    std::cout << "Combiner request and tile start_col do not match tile: "
+              << tile->start_col() << " request: " << request_start_col
+              << std::endl;
+    return false;
+  }
+
+  if (GetProfileSize(tile_a) != tile->width()) {
+    std::cout << "Combiner request and tile profile a sizes do not match tile: "
+              << tile->width() << " request: " << GetProfileSize(tile_a)
+              << std::endl;
+    return false;
+  }
+
+  if (tile->args().keep_rows_separate() &&
+      GetProfileSize(tile_b) != tile->height()) {
+    std::cout << "Combiner request and tile profile b sizes do not match tile: "
+              << tile->height() << " request: " << GetProfileSize(tile_b)
+              << std::endl;
+    return false;
+  }
+
+  MergeProfile(tile->args(), &this->job_args, &tile_a, tile->start_col(),
+               tile->width(), &tile_b, tile->start_row(), tile->height());
+
+  tile->set_finished();
+  tiles_completed_++;
+  return true;
 }
 
 void Job::Init() {
+  std::lock_guard<std::mutex> lock(mutex_);
   if (!validateArgs(job_args)) {
     status_ = SCAMPProto::JOB_STATUS_INVALID;
     return;
@@ -198,7 +268,10 @@ void Job::Init() {
   status_ = SCAMPProto::JOB_STATUS_RUNNING;
 }
 
+// This method should only be called from fetch_ready_tile()
+// job's mutex must already be held before calling this method
 bool Job::cleanup_failed_tiles() {
+  std::cout << "Cleaning up failed tiles." << std::endl;
   for (auto &elem : tiles) {
     if (elem.second.status() == TILE_STATUS_FAILED) {
       if (elem.second.retries() > MAX_TILE_RETRIES) {
@@ -211,8 +284,25 @@ bool Job::cleanup_failed_tiles() {
       elem.second.retries(elem.second.retries() + 1);
       elem.second.start_time(get_current_time());
       elem.second.end_time(INT_MAX);
+      std::cout << "Tile " << elem.first << " Retry #" << elem.second.retries()
+                << std::endl;
       ready_queue.push(&elem.second);
     }
   }
   return true;
+}
+
+SCAMPProto::JobStatus Job::status() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return status_;
+}
+
+const SCAMPProto::SCAMPArgs &Job::args() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return job_args;
+}
+
+bool Job::has_work() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return !ready_queue.empty();
 }

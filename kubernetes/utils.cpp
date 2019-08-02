@@ -8,6 +8,12 @@
 #include "scamp_interface.h"
 #include "utils.h"
 
+int64_t get_current_time() {
+  return std::chrono::duration_cast<std::chrono::seconds>(
+             std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+}
+
 // Converts between SCAMP:: and SCAMPProto:: precision types
 SCAMP::SCAMPPrecisionType ConvertPrecisionType(
     const SCAMPProto::SCAMPPrecisionType &t) {
@@ -350,10 +356,6 @@ void MergeTileIntoFullProfile(SCAMPProto::Profile *tile_profile,
                               uint64_t position, uint64_t length,
                               SCAMPProto::Profile *full_profile,
                               uint64_t index_start) {
-  std::cout << "fullprofiletype: " << full_profile->type()
-            << " position: " << position << " length: " << length
-            << " index start: " << index_start << std::endl;
-
   switch (full_profile->type()) {
     case SCAMPProto::PROFILE_TYPE_SUM_THRESH:
       elementwise_sum<double>(full_profile->mutable_data(0)

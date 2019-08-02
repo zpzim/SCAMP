@@ -19,6 +19,24 @@ class Job {
     Init();
   }
 
+  Job(Job &&other) {
+    std::lock_guard<std::mutex> lock(other.mutex_);
+    distributed_tile_size_ = other.distributed_tile_size_;
+    tiles_completed_ = other.tiles_completed_;
+    job_id = other.job_id;
+    tile_counter = other.tile_counter;
+    tile_rows = other.tile_rows;
+    tile_cols = other.tile_cols;
+    distance_matrix_width_ = other.distance_matrix_width_;
+    distance_matrix_height_ = other.distance_matrix_height_;
+    start_time_ = std::move(other.start_time_);
+    end_time_ = std::move(other.end_time_);
+    tiles = std::move(other.tiles);
+    ready_queue = std::move(other.ready_queue);
+    status_ = other.status_;
+    job_args = std::move(other.job_args);
+  }
+
   // Checks tiles to see if any timed out
   void check_time_tile();
 
@@ -27,30 +45,30 @@ class Job {
 
   // Returns the expected time (in seconds) from now the job will finish
   int64_t get_eta();
+
   // Returns the ratio of completed tiles to total tiles
   float get_progress();
+
+  // Sets a specific tile to the failure state
+  void set_tile_failed(int tile_id);
 
   // Checks if all the tiles for this job have finished and sets
   // the job status accordingly
   bool is_done();
 
-  // Sets a specific tile to be complete
-  void set_tile_finished(int tile_id);
-
-  // Sets a specific tile to the failure state
-  void set_tile_failed(int tile_id);
+  bool has_work();
 
   // Fetches a tile (and data) from the job and returns it in args.
   // Returns false on failure to fetch work
   bool fetch_ready_tile(SCAMPProto::SCAMPArgs *args,
                         const SCAMPProto::SCAMPRequest *request);
 
-  // Gets a specific tile from the job, returns nullptr if there is no such tile
-  const DistributedTile *get_tile(int tile_id);
+  // Combines the profile from a set of SCAMPArgs into jobArgs
+  bool CombineProfile(const SCAMPProto::SCAMPArgs &request);
 
   // Getters
-  SCAMPProto::SCAMPArgs *mutable_args() { return &job_args; }
-  SCAMPProto::JobStatus status() { return status_; }
+  SCAMPProto::JobStatus status();
+  const SCAMPProto::SCAMPArgs &args();
 
  private:
   // Initializes the job using job_args, generates the appropriate tiles and
@@ -78,4 +96,6 @@ class Job {
   SCAMPProto::JobStatus status_;
 
   SCAMPProto::SCAMPArgs job_args;
+
+  std::mutex mutex_;
 };

@@ -53,6 +53,8 @@ class DistributedTile {
   const SCAMPProto::SCAMPArgs &info() const { return args_; }
   bool generate_args(const SCAMPProto::SCAMPArgs &job_args,
                      SCAMPProto::SCAMPArgs *args);
+  void set_finished();
+  void set_failed();
 
  private:
   bool valid;

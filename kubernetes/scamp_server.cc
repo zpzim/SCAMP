@@ -30,21 +30,130 @@ using SCAMPProto::SCAMPStatus;
 
 using SCAMPProto::SCAMPService;
 
-constexpr uint64_t TIMEOUT_CHECK_FREQUENCY = 20;
+constexpr uint64_t CLEANUP_CHECK_FREQUENCY = 20;
 
-// Job list
-std::vector<Job> jobVec;
-std::mutex jobVecLock;
+enum JobListSchedulerType {
+  SCHEDULE_TYPE_ISSUE_ORDER = 0,
+  SCHEDULE_TYPE_ROUND_ROBIN = 1,
+  SCHEDULE_TYPE_LEAST_ETA = 2,
+  SCHEDULE_TYPE_LEAST_PROGRESS = 3,
+};
 
-void check_time_out() {
-  while (true) {
-    std::this_thread::sleep_for(std::chrono::seconds(TIMEOUT_CHECK_FREQUENCY));
-    std::lock_guard<std::mutex> lockGuard(jobVecLock);
-    for (int i = 0; i < jobVec.size(); i++) {
-      if (!jobVec[i].is_done()) {
-        jobVec[i].check_time_tile();
+class JobList {
+ public:
+  JobList(JobListSchedulerType t) : schedule_type_(t) {}
+  uint64_t add_job(const SCAMPProto::SCAMPArgs &args) {
+    std::lock_guard<std::mutex> lockGuard(task_list_mutex_);
+    uint64_t job_id = task_list_.size();
+    task_list_.emplace(job_id, std::move(Job(args, job_id)));
+    run_list_.emplace_back(job_id);
+    return job_id;
+  }
+  Job *get_job(int job_id) {
+    std::lock_guard<std::mutex> lockGuard(task_list_mutex_);
+    if (task_list_.count(job_id) == 0) {
+      return nullptr;
+    }
+    return &task_list_.at(job_id);
+  }
+  Job *get_job_to_work_on() {
+    std::lock_guard<std::mutex> lockGuard(task_list_mutex_);
+    return get_highest_priority_job();
+  }
+  void cleanup_jobs() {
+    std::lock_guard<std::mutex> lockGuard(task_list_mutex_);
+    std::vector<int> to_remove;
+    auto iter = run_list_.begin();
+    while (iter != run_list_.end()) {
+      Job &job = task_list_.at(*iter);
+      // Check if job timed out
+      job.check_time_tile();
+      if (job.status() != SCAMPProto::JOB_STATUS_RUNNING) {
+        // Remove job from run_list if it has finished
+        iter = run_list_.erase(iter);
+      } else {
+        iter++;
       }
     }
+  }
+
+ private:
+  Job *get_highest_priority_job() {
+    Job *ret = nullptr;
+    switch (schedule_type_) {
+      case SCHEDULE_TYPE_ISSUE_ORDER:
+        for (auto &job_id : run_list_) {
+          Job &job = task_list_.at(job_id);
+          if (job.has_work()) {
+            ret = &job;
+            break;
+          }
+        }
+        break;
+      case SCHEDULE_TYPE_ROUND_ROBIN:
+        for (int i = 0; i < run_list_.size(); ++i) {
+          int job_id = run_list_.front();
+          run_list_.pop_front();
+          run_list_.push_back(job_id);
+          Job &job = task_list_.at(job_id);
+          if (job.has_work()) {
+            ret = &job;
+            break;
+          }
+        }
+        break;
+      case SCHEDULE_TYPE_LEAST_ETA: {
+        bool found = false;
+        int best_eta = INT_MAX;
+        int best_job;
+        for (auto &job_id : run_list_) {
+          if (task_list_.at(job_id).has_work()) {
+            int eta = task_list_.at(job_id).get_eta();
+            if (eta < best_eta) {
+              best_eta = eta;
+              best_job = job_id;
+              found = true;
+            }
+          }
+        }
+        if (found) {
+          ret = &task_list_.at(best_job);
+        }
+        break;
+      }
+      case SCHEDULE_TYPE_LEAST_PROGRESS: {
+        bool found = false;
+        double best_prog = 0;
+        int best_job;
+        for (auto &job_id : run_list_) {
+          if (task_list_.at(job_id).has_work()) {
+            double prog = task_list_.at(job_id).get_progress();
+            if (prog > best_prog) {
+              best_prog = prog;
+              best_job = job_id;
+            }
+          }
+        }
+        if (found) {
+          ret = &task_list_.at(best_job);
+        }
+        break;
+      }
+    }
+    return ret;
+  }
+  std::mutex task_list_mutex_;
+  std::unordered_map<int, Job> task_list_;
+  std::list<int> run_list_;
+  JobListSchedulerType schedule_type_;
+};
+
+static JobList jobs(SCHEDULE_TYPE_ROUND_ROBIN);
+
+void cleanup_check() {
+  while (true) {
+    std::this_thread::sleep_for(std::chrono::seconds(CLEANUP_CHECK_FREQUENCY));
+    jobs.cleanup_jobs();
   }
 }
 
@@ -64,11 +173,10 @@ class SCAMPServiceImpl final : public SCAMPService::Service {
                           "Invalid SCAMP arguments");
     }
     try {
-      std::lock_guard<std::mutex> lockGuard(jobVecLock);
-      uint64_t cur_job_id = jobVec.size();
-      jobVec.emplace_back(*job_args, cur_job_id);
-      status->set_status(jobVec.back().status());
-      status->set_job_id(cur_job_id);
+      uint64_t curr_job_id = jobs.add_job(*job_args);
+      Job *job = jobs.get_job(curr_job_id);
+      status->set_status(job->status());
+      status->set_job_id(curr_job_id);
     } catch (const std::bad_alloc &e) {
       return grpc::Status(grpc::StatusCode::RESOURCE_EXHAUSTED, e.what());
     } catch (const std::exception &e) {
@@ -81,20 +189,17 @@ class SCAMPServiceImpl final : public SCAMPService::Service {
   Status CheckJobStatus(ServerContext *context,
                         const SCAMPProto::SCAMPJobID *SCAMP_job_id,
                         SCAMPStatus *status) override {
-    std::lock_guard<std::mutex> lockGuard(jobVecLock);
     status->set_job_id(SCAMP_job_id->job_id());
-    std::cout << "Checking status of job id: " << SCAMP_job_id->job_id()
-              << " jobvec size = " << jobVec.size() << std::endl;
-    if (SCAMP_job_id->job_id() >= jobVec.size() || SCAMP_job_id->job_id() < 0) {
+    Job *job = jobs.get_job(SCAMP_job_id->job_id());
+    if (job == nullptr) {
       status->set_status(SCAMPProto::JOB_STATUS_INVALID);
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "Invalid Job ID");
     }
-    Job &job = jobVec[SCAMP_job_id->job_id()];
-    job.is_done();
-    status->set_status(job.status());
-    status->set_progress(job.get_progress());
-    status->set_time_elapsed(job.get_elapsed_time());
-    status->set_eta(job.get_eta());
+    job->is_done();
+    status->set_status(job->status());
+    status->set_progress(job->get_progress());
+    status->set_time_elapsed(job->get_elapsed_time());
+    status->set_eta(job->get_eta());
     return Status::OK;
   }
 
@@ -104,14 +209,13 @@ class SCAMPServiceImpl final : public SCAMPService::Service {
   Status FetchJobResult(ServerContext *context,
                         const SCAMPProto::SCAMPJobID *SCAMP_job_id,
                         SCAMPProto::SCAMPWork *job_result) override {
-    std::lock_guard<std::mutex> lockGuard(jobVecLock);
-    if (SCAMP_job_id->job_id() >= jobVec.size() || SCAMP_job_id->job_id() < 0) {
+    Job *job = jobs.get_job(SCAMP_job_id->job_id());
+    if (job == nullptr) {
       job_result->set_valid(false);
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "Invalid Job ID");
     }
-    if (jobVec[SCAMP_job_id->job_id()].is_done()) {
-      *job_result->mutable_args() =
-          *jobVec[SCAMP_job_id->job_id()].mutable_args();
+    if (job->is_done()) {
+      *job_result->mutable_args() = job->args();
       job_result->set_valid(true);
     } else {
       job_result->set_valid(false);
@@ -124,16 +228,16 @@ class SCAMPServiceImpl final : public SCAMPService::Service {
                           SCAMPProto::SCAMPWork *reply) override {
     std::cout << "Work requested from server" << std::endl;
     SCAMPArgs *args = reply->mutable_args();
-    std::lock_guard<std::mutex> lockGuard(jobVecLock);
-
-    for (int i = 0; i < jobVec.size(); i++) {
-      if (jobVec[i].fetch_ready_tile(args, request)) {
-        std::cout << "Tile fetched from job " << i << std::endl;
-        reply->set_valid(true);
-        return Status::OK;
-      }
+    Job *job = jobs.get_job_to_work_on();
+    if (job == nullptr) {
+      reply->set_valid(false);
+      return Status::OK;
     }
-    reply->set_valid(false);
+    if (!job->fetch_ready_tile(args, request)) {
+      reply->set_valid(false);
+      return Status::OK;
+    }
+    reply->set_valid(true);
     return Status::OK;
   }
 
@@ -141,98 +245,14 @@ class SCAMPServiceImpl final : public SCAMPService::Service {
   // with the global profile associated with that job
   Status SCAMPCombiner(ServerContext *context, const SCAMPArgs *request,
                        SCAMPResult *reply) override {
-    uint64_t request_width, request_height;
-    request_width = request->timeseries_size_a() - request->window() + 1;
-    request_height = request->has_b()
-                         ? request->timeseries_size_b() - request->window() + 1
-                         : request_width;
-    uint64_t request_start_row = request->distributed_start_row();
-    uint64_t request_start_col = request->distributed_start_col();
-    SCAMPProto::Profile tile_a = request->profile_a();
-    SCAMPProto::Profile tile_b = request->profile_b();
     int job_id = request->job_id();
-    int tile_id = request->tile_id();
-
-    std::lock_guard<std::mutex> lockGuard(jobVecLock);
-    if (job_id >= jobVec.size() || job_id < 0) {
+    Job *job = jobs.get_job(job_id);
+    if (job == nullptr) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "Invalid Job ID");
     }
-    Job &job = jobVec[job_id];
 
-    const DistributedTile *tile = job.get_tile(tile_id);
-    if (tile == nullptr) {
-      std::cout << "Combiner trying to use invlalid tile." << std::endl;
-      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
-                          "Invalid Tile ID");
-    }
-
-    if (!tile->has_args()) {
-      std::cout << "Combiner trying to use uninitialzed tile." << std::endl;
-      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
-                          "Invalid Tile ID");
-    }
-
-    if (tile->status() != TILE_STATUS_RUNNING) {
-      std::cout << "Combiner trying to use tile not running." << std::endl;
-      return grpc::Status(grpc::StatusCode::ABORTED,
-                          "Execution was cancelled by server!");
-    }
-
-    if (tile->height() != request_height) {
-      std::cout << "Combiner request and tile height do not match tile: "
-                << tile->height() << " request: " << request_height
-                << std::endl;
-      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
-                          "Tile parameter height mismatch");
-    }
-
-    if (tile->width() != request_width) {
-      std::cout << "Combiner request and tile width do not match tile: "
-                << tile->width() << " request: " << request_width << std::endl;
-      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
-                          "Tile parameter width mismatch");
-    }
-
-    if (tile->start_row() != request_start_row) {
-      std::cout << "Combiner request and tile start_row do not match tile: "
-                << tile->start_row() << " request: " << request_start_row
-                << std::endl;
-      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
-                          "Tile parameter start row mismatch");
-    }
-
-    if (tile->start_col() != request_start_col) {
-      std::cout << "Combiner request and tile start_col do not match tile: "
-                << tile->start_col() << " request: " << request_start_col
-                << std::endl;
-      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
-                          "Tile parameter start_col mismatch");
-    }
-
-    if (GetProfileSize(tile_a) != tile->width()) {
-      std::cout
-          << "Combiner request and tile profile a sizes do not match tile: "
-          << tile->width() << " request: " << GetProfileSize(tile_a)
-          << std::endl;
-      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
-                          "Tile parameter profile a size mismatch");
-    }
-
-    if (tile->args().keep_rows_separate() &&
-        GetProfileSize(tile_b) != tile->height()) {
-      std::cout
-          << "Combiner request and tile profile b sizes do not match tile: "
-          << tile->height() << " request: " << GetProfileSize(tile_b)
-          << std::endl;
-      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
-                          "Tile parameter profile b size  mismatch");
-    }
-
-    MergeProfile(tile->args(), job.mutable_args(), &tile_a, tile->start_col(),
-                 tile->width(), &tile_b, tile->start_row(), tile->height());
-
-    job.set_tile_finished(tile_id);
-
+    std::cout << "Start Merge" << std::endl;
+    job->CombineProfile(*request);
     std::cout << "Finished Merging" << std::endl;
     return Status::OK;
   }
@@ -242,11 +262,11 @@ class SCAMPServiceImpl final : public SCAMPService::Service {
                            SCAMPResult *reply) override {
     int job_id = request->job_id();
     int tile_id = request->tile_id();
-    std::lock_guard<std::mutex> lockGuard(jobVecLock);
-    if (job_id >= jobVec.size() || job_id < 0) {
+    Job *job = jobs.get_job(job_id);
+    if (job == nullptr) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "Invalid Job ID");
     }
-    jobVec[job_id].set_tile_failed(tile_id);
+    job->set_tile_failed(tile_id);
     return Status::OK;
   }
 };
@@ -284,7 +304,7 @@ void RunServer() {
 }
 
 int main(int argc, char **argv) {
-  auto f = std::async(std::launch::async, check_time_out);
+  auto f = std::async(std::launch::async, cleanup_check);
 
   RunServer();
   return 0;

@@ -2,6 +2,7 @@
 
 #include "../src/scamp_utils.h"
 #include "scamp.pb.h"
+#include "utils.h"
 
 bool DistributedTile::generate_args(const SCAMPProto::SCAMPArgs &job_args,
                                     SCAMPProto::SCAMPArgs *args) {
@@ -67,4 +68,16 @@ bool DistributedTile::generate_args(const SCAMPProto::SCAMPArgs &job_args,
   }
 
   return true;
+}
+
+// Sets tile to be complete
+void DistributedTile::set_finished() {
+  status_ = TILE_STATUS_FINISHED;
+  end_time_ = get_current_time();
+}
+
+// Sets tile to failed
+void DistributedTile::set_failed() {
+  status_ = TILE_STATUS_FAILED;
+  end_time_ = get_current_time();
 }

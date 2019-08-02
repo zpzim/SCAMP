@@ -5,6 +5,8 @@
 #include "../src/common.h"
 #include "scamp.pb.h"
 
+int64_t get_current_time();
+
 SCAMP::SCAMPPrecisionType ConvertPrecisionType(
     const SCAMPProto::SCAMPPrecisionType &t);
 
