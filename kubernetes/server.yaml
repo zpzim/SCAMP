@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: servervec
+  labels:
+    app: servervec
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      run: servervec
+  template:
+    metadata:
+      labels:
+        run: servervec
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: run
+                operator: In
+                values: 
+                - clientvec
+                - servervec
+            topologyKey: "kubernetes.io/hostname"
+      containers:
+      - name: server56
+        image: gcr.io/docker02/server56
+        ports:
+        - containerPort: 30078

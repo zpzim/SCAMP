@@ -1,0 +1,17 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: servervec
+  labels:
+    app: servervec
+spec:
+  selector:
+    run: servervec
+  ports:
+  - protocol: TCP
+    port: 30078
+    targetPort: 30078
+  sessionAffinity: None
+  type: ClusterIP
+status:
+  loadBalancer: {}

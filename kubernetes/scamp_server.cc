@@ -272,7 +272,7 @@ class SCAMPServiceImpl final : public SCAMPService::Service {
 };
 
 void RunServer() {
-  std::string server_address("localhost:30078");
+  std::string server_address("0.0.0.0:30078");
 
   SCAMPServiceImpl service;
 

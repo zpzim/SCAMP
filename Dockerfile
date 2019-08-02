@@ -29,7 +29,8 @@ RUN apt-get install -y \
     gnupg \
     software-properties-common \
     golang \
-    build-essential
+    build-essential \
+    iputils-ping 
 
 RUN apt-get install software-properties-common -y
 RUN apt-get install build-essential autoconf libtool pkg-config -y
@@ -53,12 +54,14 @@ RUN apt-get update -y
 RUN apt-get install -y cmake
 
 
-
-
+# TODO(zpzim): Change branch to master once merged
+ADD https://api.github.com/repos/zpzim/SCAMP/git/refs/heads/kubernetes-wip-2 version.json
 RUN git clone --branch kubernetes-wip-2 https://github.com/zpzim/SCAMP.git
+
+
 RUN cd /SCAMP && git submodule update --init --recursive
 RUN mkdir /SCAMP/build && cd /SCAMP/build && cmake -DBUILD_CLIENT_SERVER=1 .. && make -j16
 
-
-#CMD ./SCAMP/build/kubernetes/SCAMPclient
-CMD ./SCAMP/build/kubernetes/SCAMPserver
+# TODO(zpzim): Make this an argument to docker build
+CMD ./SCAMP/build/kubernetes/SCAMPclient
+#CMD ./SCAMP/build/kubernetes/SCAMPserver
