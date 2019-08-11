@@ -545,15 +545,9 @@ int get_smem(const OpInfo *info, uint64_t blocksz) {
              intermediate_data_size;
   int profile_data_size = GetProfileTypeSize(info->profile_type);
   if (info->computing_cols) {
-    if (!info->silent_mode) {
-      printf("computing cols\n");
-    }
     smem += tile_width * profile_data_size;
   }
   if (info->computing_rows) {
-    if (!info->silent_mode) {
-      printf("computing rows\n");
-    }
     smem += tile_height * profile_data_size;
   }
   return smem;

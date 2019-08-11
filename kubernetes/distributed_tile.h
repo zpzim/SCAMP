@@ -45,7 +45,7 @@ class DistributedTile {
   int64_t start_col() const { return start_col_; }
   bool has_args() const { return has_args_; }
   int retries() const { return retries_; }
-  int retries(int retry_count) { retries_ = retry_count; }
+  void retries(int retry_count) { retries_ = retry_count; }
   void args(const SCAMPProto::SCAMPArgs &args) { args_ = args; }
   const SCAMPProto::SCAMPArgs &args() const { return args_; }
   void timeout(int timeout) { tile_timeout_seconds_ = timeout; }
