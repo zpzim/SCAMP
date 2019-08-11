@@ -157,34 +157,13 @@ endif()
 
 # Add clang tidy rules
 if(CLANG_TIDY_EXE)
-  set_target_properties(
-    common PROPERTIES
-    CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
-  )
-  set_target_properties(
-    scamp PROPERTIES
-    CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
-  )
-  set_target_properties(
-    qt_helper PROPERTIES
-    CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
-  )
-  set_target_properties(
-    tile PROPERTIES
-    CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
-  )
-  set_target_properties(
-    scamp_utils PROPERTIES
-    CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
-  )
-  set_target_properties(
-    cpu_kernels PROPERTIES
-    CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
-  )
-  set_target_properties(
-    cpu_stats PROPERTIES
-    CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
-  )
+  set(MAIN_LIBS common scamp qt_helper tile scamp_utils cpu_kernels cpu_stats)
+  foreach(lib ${MAIN_LIBS})
+    set_target_properties(
+      "${lib}" PROPERTIES
+      CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
+    )
+  endforeach(lib)
   if (CMAKE_CUDA_COMPILER)
     set_target_properties(
       gpu_kernels PROPERTIES
