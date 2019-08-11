@@ -268,10 +268,8 @@ void Job::Init() {
   status_ = SCAMPProto::JOB_STATUS_RUNNING;
 }
 
-// This method should only be called from fetch_ready_tile()
 // job's mutex must already be held before calling this method
 bool Job::cleanup_failed_tiles() {
-  std::cout << "Cleaning up failed tiles." << std::endl;
   for (auto &elem : tiles) {
     if (elem.second.status() == TILE_STATUS_FAILED) {
       if (elem.second.retries() > MAX_TILE_RETRIES) {
@@ -304,5 +302,12 @@ const SCAMPProto::SCAMPArgs &Job::args() {
 
 bool Job::has_work() {
   std::lock_guard<std::mutex> lock(mutex_);
-  return !ready_queue.empty();
+  if (status_ == SCAMPProto::JOB_STATUS_RUNNING) {
+    if (ready_queue.empty()) {
+      bool failed = cleanup_failed_tiles();
+      return !ready_queue.empty() && !failed;
+    }
+    return true;
+  }
+  return false;
 }
