@@ -1,20 +1,18 @@
 #include <chrono>
 #include <cmath>
-#include <condition_variable>
 #include <cstdlib>
 #include <fstream>
 #include <future>
 #include <iostream>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
 
 #include <grpcpp/grpcpp.h>
 
-#include "../src/common.h"
 #include "distributed_job.h"
+#include "job_list.h"
 #include "scamp.grpc.pb.h"
 #include "utils.h"
 
@@ -31,122 +29,6 @@ using SCAMPProto::SCAMPStatus;
 using SCAMPProto::SCAMPService;
 
 constexpr uint64_t CLEANUP_CHECK_FREQUENCY = 20;
-
-enum JobListSchedulerType {
-  SCHEDULE_TYPE_ISSUE_ORDER = 0,
-  SCHEDULE_TYPE_ROUND_ROBIN = 1,
-  SCHEDULE_TYPE_LEAST_ETA = 2,
-  SCHEDULE_TYPE_LEAST_PROGRESS = 3,
-};
-
-class JobList {
- public:
-  JobList(JobListSchedulerType t) : schedule_type_(t) {}
-  uint64_t add_job(const SCAMPProto::SCAMPArgs &args) {
-    std::lock_guard<std::mutex> lockGuard(task_list_mutex_);
-    uint64_t job_id = task_list_.size();
-    task_list_.emplace(job_id, std::move(Job(args, job_id)));
-    run_list_.emplace_back(job_id);
-    return job_id;
-  }
-  Job *get_job(int job_id) {
-    std::lock_guard<std::mutex> lockGuard(task_list_mutex_);
-    if (task_list_.count(job_id) == 0) {
-      return nullptr;
-    }
-    return &task_list_.at(job_id);
-  }
-  Job *get_job_to_work_on() {
-    std::lock_guard<std::mutex> lockGuard(task_list_mutex_);
-    return get_highest_priority_job();
-  }
-  void cleanup_jobs() {
-    std::lock_guard<std::mutex> lockGuard(task_list_mutex_);
-    std::vector<int> to_remove;
-    auto iter = run_list_.begin();
-    while (iter != run_list_.end()) {
-      Job &job = task_list_.at(*iter);
-      // Check if job timed out
-      job.check_time_tile();
-      if (job.status() != SCAMPProto::JOB_STATUS_RUNNING) {
-        // Remove job from run_list if it has finished
-        iter = run_list_.erase(iter);
-      } else {
-        iter++;
-      }
-    }
-  }
-
- private:
-  Job *get_highest_priority_job() {
-    Job *ret = nullptr;
-    switch (schedule_type_) {
-      case SCHEDULE_TYPE_ISSUE_ORDER:
-        for (auto &job_id : run_list_) {
-          Job &job = task_list_.at(job_id);
-          if (job.has_work()) {
-            ret = &job;
-            break;
-          }
-        }
-        break;
-      case SCHEDULE_TYPE_ROUND_ROBIN:
-        for (int i = 0; i < run_list_.size(); ++i) {
-          int job_id = run_list_.front();
-          run_list_.pop_front();
-          run_list_.push_back(job_id);
-          Job &job = task_list_.at(job_id);
-          if (job.has_work()) {
-            ret = &job;
-            break;
-          }
-        }
-        break;
-      case SCHEDULE_TYPE_LEAST_ETA: {
-        bool found = false;
-        int best_eta = INT_MAX;
-        int best_job;
-        for (auto &job_id : run_list_) {
-          if (task_list_.at(job_id).has_work()) {
-            int eta = task_list_.at(job_id).get_eta();
-            if (eta < best_eta) {
-              best_eta = eta;
-              best_job = job_id;
-              found = true;
-            }
-          }
-        }
-        if (found) {
-          ret = &task_list_.at(best_job);
-        }
-        break;
-      }
-      case SCHEDULE_TYPE_LEAST_PROGRESS: {
-        bool found = false;
-        double best_prog = 0;
-        int best_job;
-        for (auto &job_id : run_list_) {
-          if (task_list_.at(job_id).has_work()) {
-            double prog = task_list_.at(job_id).get_progress();
-            if (prog > best_prog) {
-              best_prog = prog;
-              best_job = job_id;
-            }
-          }
-        }
-        if (found) {
-          ret = &task_list_.at(best_job);
-        }
-        break;
-      }
-    }
-    return ret;
-  }
-  std::mutex task_list_mutex_;
-  std::unordered_map<int, Job> task_list_;
-  std::list<int> run_list_;
-  JobListSchedulerType schedule_type_;
-};
 
 static JobList jobs(SCHEDULE_TYPE_ROUND_ROBIN);
 

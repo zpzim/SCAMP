@@ -19,6 +19,7 @@ This base project requires:
  * Optional: Version 6.0 of clang (for clang-tidy and clang-format)
  * Currently Supports Kepler-Volta, but Turing and beyond will likely work as well, just add the -gencode flag for your specific architecture in CMakeLists.txt 
  * Highly recommend using a Pascal/Volta GPU as they are much better (V100 is ~10x faster than a K80 for SCAMP, V100 is ~2-3x faster than a P100)
+ * If you are using CPUs, using clang-6.0 or above is highly reccomended as gcc does not properly autovectorize the CPU kernels.
 ~~~~
 Ubuntu Required Packages:
    # Depending on Ubuntu version cmake 3.8 may not be available and you will need to install manually
@@ -36,7 +37,8 @@ CentOS:
 If you need to specify a specific compiler or cuda toolkit if you have multiple installed, you can use the following defines. By default cmake will look for cuda at the /usr/local/cuda symlink on linux
 ~~~~
 cmake -D CMAKE_CUDA_COMPILER=/path/to/nvcc \
-      -D CMAKE_CXX_COMPILER=/path/to/clang/or/gcc ..
+      -D CMAKE_CXX_COMPILER=/path/to/clang++/or/g++ ..
+      -D CMAKE_C_COMPILER=/path/to/clang/or/gcc ..
 ~~~~
 You can force cmake to build without cuda using
 ~~~
@@ -79,9 +81,8 @@ This will generate two files: mp_columns_out and mp_columns_out_index, which con
 ~~~
 git submodule update --init --recursive
 mkdir build && cd build
-# grpc client and server only build with gcc (clang not supported)
 # requires golang-go and libz
-cmake -DBUILD_CLIENT_SERVER=1 -DCMAKE_CXX_COMPILER=g++ ..
+cmake -DBUILD_CLIENT_SERVER=1 ..
 make -j8
 ~~~
 * This will produce three executables in build/kubernetes:

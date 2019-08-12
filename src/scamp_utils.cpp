@@ -43,7 +43,7 @@ void readFile(const std::string &filename, std::vector<double> &v) {
   if (f.fail()) {
     std::cout << "Unable to open" << filename
               << "for reading, please make sure it exists" << std::endl;
-    exit(0);
+    exit(1);
   }
   std::cout << "Reading data from " << filename << std::endl;
   double num;
