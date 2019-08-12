@@ -1,12 +1,14 @@
+# Defines the SCAMP service
+# This must be applied to a cluster before starting any server/worker pods
 kind: Service
 apiVersion: v1
 metadata:
-  name: servervec
+  name: scamp-server
   labels:
-    app: servervec
+    app: scamp-server
 spec:
   selector:
-    run: servervec
+    run: scamp-server
   ports:
   - protocol: TCP
     port: 30078

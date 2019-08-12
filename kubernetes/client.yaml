@@ -1,18 +1,31 @@
+# Configuration for scamp worker deployment
+# You must apply service.yaml before creating a worker deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: clientvec
+  name: scamp-client
 spec:
-  replicas: 4
+  # By default creates 3 worker pods, change as needed
+  replicas: 3
   selector:
     matchLabels:
-      run: clientvec
+      run: scamp-client
   template:
     metadata:
       labels:
-        run: clientvec
+        run: scamp-client
     spec:
       affinity:
+        # Prefer to run on preemptible nodes
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - preference:
+                matchExpressions:
+                - key: cloud.google.com/gke-preemptible
+                  operator: Exists
+              weight: 100
+        # Do not run on a node which is already running a pod
+        # SCAMP pods will automatically utilize all available CPUs or GPUs
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
           - labelSelector:
@@ -20,11 +33,14 @@ spec:
               - key: run
                 operator: In
                 values: 
-                - clientvec
-                - servervec
+                - scamp-client
+                - scamp-server
             topologyKey: "kubernetes.io/hostname"
       containers:
-      - name: client56
-        image: gcr.io/docker02/client56
+      - name: client
+        # Public repository which contains the docker image for the SCAMP master branch
+        image: zpzim/scamp:latest
+        # Run the worker on startup
+        command: ["/SCAMP/build/kubernetes/SCAMPclient"]
         ports:
         - containerPort: 30078

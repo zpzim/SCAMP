@@ -1,20 +1,31 @@
+# Configuration for scamp server deployment
+# You must apply service.yaml before creating a server deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: servervec
+  name: scamp-server
   labels:
-    app: servervec
+    app: scamp-server
 spec:
+  # We only have one server
   replicas: 1
   selector:
     matchLabels:
-      run: servervec
+      run: scamp-server
   template:
     metadata:
       labels:
-        run: servervec
+        run: scamp-server
     spec:
       affinity:
+        # Do not run the server on a preemptible node
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: cloud.google.com/gke-preemptible
+                operator: DoesNotExist
+        # Do not run on top of an existing server/worker pod
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
           - labelSelector:
@@ -22,11 +33,14 @@ spec:
               - key: run
                 operator: In
                 values: 
-                - clientvec
-                - servervec
+                - scamp-client
+                - scamp-server
             topologyKey: "kubernetes.io/hostname"
       containers:
-      - name: server56
-        image: gcr.io/docker02/server56
+      - name: server
+        # Public repository containing the image for the SCAMP master branch
+        image: zpzim/scamp:latest
+        # Run the server on startup
+        command: ["/SCAMP/build/kubernetes/SCAMPserver"]
         ports:
         - containerPort: 30078

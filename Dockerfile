@@ -42,8 +42,8 @@ RUN apt-get update -y
 RUN apt-get install -y cmake
 
 
-ADD https://api.github.com/repos/zpzim/SCAMP/git/refs/heads/add-tests version.json
-RUN git clone --branch add-tests https://github.com/zpzim/SCAMP.git
+ADD https://api.github.com/repos/zpzim/SCAMP/git/refs/heads/master version.json
+RUN git clone --branch master https://github.com/zpzim/SCAMP.git
 
 
 RUN cd /SCAMP && git submodule update --init --recursive

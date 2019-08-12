@@ -90,4 +90,10 @@ make -j8
     * "SCAMPclient": Run this on worker nodes, it must be configured with the hostname and port where the SCAMPserver is. This is the workhorse of the computation, it will utilize all gpus or cpus on the host system to compute work handed to it by the server. Each worker node should have only one client executable running at a time. Though not completely necessary, these clients should have high bandwidth to the server for best performance.
     * "SCAMP_distributed": This behaves similarly to the SCAMP executable above, except that it issues jobs to the server via rpc instead of computing them locally. use the --hostname_port="hostname:port" to configure the address of the server. Currently does not support any kind of authentication, so it will need to be run inside any firewalls that would block internet traffic to the compute cluster.
 * The server/clients can be set up to run under kubernetes pods using the Dockerfile in this repo.
+* The docker image zpzim/scamp will contain the latest version of the code ready to deploy to kubernetes
+* service.yaml, client.yaml, and server.yaml contain the appopriate kubernetes configurations for deploying SCAMP on GCP
+    * Workers will prefer to run on preemtible VMs
+    * Failed tiles will be automatically retried
+    * Workers will run on separate nodes (each worker fully utilizes the CPUs or GPUs on each node)
 * More information coming
+

@@ -216,10 +216,6 @@ int main(int argc, char **argv) {
     WriteProfileToFile(FLAGS_output_b_file_name, FLAGS_output_b_index_file_name,
                        args.profile_b, FLAGS_output_pearson, FLAGS_window);
   }
-#ifdef _HAS_CUDA_
-  gpuErrchk(cudaDeviceSynchronize());
-  gpuErrchk(cudaDeviceReset());
-#endif
   printf("Done\n");
   return 0;
 }
