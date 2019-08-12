@@ -32,8 +32,6 @@ RUN apt-get install make -y
 RUN apt-get install zlib1g-dev -y
 RUN apt-get install cmake -y
 RUN apt-get install clang -y
-RUN apt-get install clang-tidy -y
-RUN apt-get install clang-format -y
 RUN apt-get install module-init-tools -y
 
 RUN wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | apt-key add -
@@ -49,5 +47,5 @@ RUN git clone --branch add-tests https://github.com/zpzim/SCAMP.git
 
 
 RUN cd /SCAMP && git submodule update --init --recursive
-RUN mkdir /SCAMP/build && cd /SCAMP/build && cmake -DBUILD_CLIENT_SERVER=1 .. && make -j16
+RUN mkdir /SCAMP/build && cd /SCAMP/build && cmake -DBUILD_CLIENT_SERVER=1 -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang .. && make -j4
 

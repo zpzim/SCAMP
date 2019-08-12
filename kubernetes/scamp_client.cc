@@ -37,8 +37,8 @@ int main(int argc, char **argv) {
   char *port;
   char *ip;
 
-  port = getenv("SERVERVEC_SERVICE_PORT");
-  ip = getenv("SERVERVEC_SERVICE_HOST");
+  port = getenv("SCAMP_SERVER_SERVICE_PORT");
+  ip = getenv("SCAMP_SERVER_SERVICE_HOST");
 
   std::string newip, newport;
 
@@ -58,7 +58,7 @@ int main(int argc, char **argv) {
 
   // Do not limit input size
   ch_args.SetMaxReceiveMessageSize(-1);
-  
+
   SCAMPWorker worker(grpc::CreateCustomChannel(
       good, grpc::InsecureChannelCredentials(), ch_args));
 
