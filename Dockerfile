@@ -1,4 +1,4 @@
-FROM nvidia/cuda:10.1-devel AS base
+FROM nvidia/cuda:10.0-devel AS base
 
 RUN apt-get update && \
     apt-get upgrade -y

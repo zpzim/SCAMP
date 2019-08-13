@@ -15,6 +15,10 @@ spec:
       labels:
         run: scamp-client
     spec:
+      tolerations:
+      - key: "nvidia.com/gpu"
+        operator: "Exists"
+        effect: "NoSchedule"
       affinity:
         # Prefer to run on preemptible nodes
         nodeAffinity:
