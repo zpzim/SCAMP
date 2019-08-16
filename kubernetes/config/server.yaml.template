@@ -18,7 +18,7 @@ spec:
         run: scamp-server
     spec:
       affinity:
-        # Do not run the server on a preemptible node
+        # Do not run the server on a preemptible node on GKE
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:

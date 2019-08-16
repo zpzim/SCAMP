@@ -5,8 +5,8 @@ kind: Deployment
 metadata:
   name: scamp-client
 spec:
-  # By default creates 3 worker pods, change as needed
-  replicas: 3
+  # One replica for every worker node
+  replicas: <num_worker nodes>
   selector:
     matchLabels:
       run: scamp-client
@@ -15,12 +15,13 @@ spec:
       labels:
         run: scamp-client
     spec:
+      # Allow scheduling on gpu nodes on gke (automatically taints gpu nodes)
       tolerations:
       - key: "nvidia.com/gpu"
         operator: "Exists"
         effect: "NoSchedule"
       affinity:
-        # Prefer to run on preemptible nodes
+        # Prefer to run on preemptible nodes on gke
         nodeAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
             - preference:
@@ -28,7 +29,7 @@ spec:
                 - key: cloud.google.com/gke-preemptible
                   operator: Exists
               weight: 100
-        # Do not run on a node which is already running a pod
+        # Do not run on a node which is already running a server pod
         # SCAMP pods will automatically utilize all available CPUs or GPUs
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -37,13 +38,17 @@ spec:
               - key: run
                 operator: In
                 values: 
-                - scamp-client
                 - scamp-server
+                - scamp-client
             topologyKey: "kubernetes.io/hostname"
       containers:
       - name: client
         # Public repository which contains the docker image for the SCAMP master branch
         image: zpzim/scamp:latest
+        # Each container should use the maximum number of GPUs available on the node
+        resources:
+          limits:
+            nvidia.com/gpu: <gpus_per_node>
         # Run the worker on startup
         command: ["/SCAMP/build/kubernetes/SCAMPclient"]
         ports:
