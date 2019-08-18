@@ -77,7 +77,7 @@ This will generate two files: mp_columns_out and mp_columns_out_index, which con
 * cmake provides support for clang-tidy (when you build) and clang-format (using build target clang-format) to use these please make sure clang-tidy and clang-format are installed on your system
 
 # Distributed operation
-* We have a client/server architecture built using grpc. To use distributed functionality build the client and server executables via:
+* We have a client/server architecture built using grpc. Tested on [GKE](https://cloud.google.com/kubernetes-engine/) but should be possible to get working on [Amazon EKS](https://aws.amazon.com/eks/) as well. To use distributed functionality, build the client and server executables via:
 ~~~
 git submodule update --init --recursive
 mkdir build && cd build
@@ -91,9 +91,21 @@ make -j8
     * "SCAMP_distributed": This behaves similarly to the SCAMP executable above, except that it issues jobs to the server via rpc instead of computing them locally. use the --hostname_port="hostname:port" to configure the address of the server. Currently does not support any kind of authentication, so it will need to be run inside any firewalls that would block internet traffic to the compute cluster.
 * The server/clients can be set up to run under kubernetes pods using the Dockerfile in this repo.
 * The docker image zpzim/scamp will contain the latest version of the code ready to deploy to kubernetes
-* service.yaml, client.yaml, and server.yaml contain the appopriate kubernetes configurations for deploying SCAMP on GCP
-    * Workers will prefer to run on preemtible VMs
-    * Failed tiles will be automatically retried
-    * Workers will run on separate nodes (each worker fully utilizes the CPUs or GPUs on each node)
-* More information coming
-
+* kubernetes/config contains a sample script which will create a GKE cluster using preemptible GPUs and autoscaling as well as sample configuration files for the scamp grpc service, client, and server pods. You should edit these scripts/configuration files to suit your application
+* You can use this script to run and execute your own SCAMP workload on GKE as follows:
+* Note: The configuration below runs SCAMP_distributed on the server, this is not required and is actually not the desired functionality. We would like to be able to run this remotely. While this is currently possible to do it is not reflected in our example.
+~~~
+cd kubernetes/config && ./create_gke_cluster.sh
+# Once cluster is up and running you can copy your desired input to the server
+kubectl cp <local SCAMP input file> <SCAMP server container name>:/
+# Now you can run SCAMP_distributed on the server and wait for the job to finish
+kubectl exec <SCAMP server container name> -c server -- /SCAMP/build/kubernetes/SCAMP_distributed <SCAMP arguments>
+# Copy the results back to a local storage location
+kubectl cp <SCAMP server container name>:/mp_columns_out .
+~~~
+* The above example works on GKE but it should be simple to produce an example that works on Amazon EKS as well.
+* Limitations:
+    * Server currently does not periodlically save state, so if it dies, all jobs are lost. This will eventually be fixed by adding sever checkpointing.
+    * Server currently handles all work in memory and does not write intermediate files to disk. For this reason the server requires a lot of memory to operate on a large input. Eventually the server will operate mostly on files on disk rather than keep all intermediate data in memory.
+## Sharded implementation
+* The original distributed implementation used [AWS batch](https://aws.amazon.com/batch/) and shards the time series to Amazon S3. This approach currently avoides the above limitations of our in-memory SCAMPserver, however our initial implementation was very limited in scope and was not extensible to other types of SCAMP workloads, so it is mostly obselete. However, we still provide the scripts used for posterity in the aws/ directory. Though these would be strictly for inspiration, as there are AWS account side configurations required for operation that cannot be provided.

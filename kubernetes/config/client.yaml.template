@@ -5,8 +5,8 @@ kind: Deployment
 metadata:
   name: scamp-client
 spec:
-  # One replica for every worker node
-  replicas: <num_worker nodes>
+  # One replica for each GPU in the cluster
+  replicas: 8
   selector:
     matchLabels:
       run: scamp-client
@@ -39,16 +39,20 @@ spec:
                 operator: In
                 values: 
                 - scamp-server
-                - scamp-client
             topologyKey: "kubernetes.io/hostname"
       containers:
       - name: client
         # Public repository which contains the docker image for the SCAMP master branch
         image: zpzim/scamp:latest
         # Each container should use the maximum number of GPUs available on the node
+        # However since this is not possible to do in a flexible way on kubernetes instead
+        # We use one GPU per container and just create more pods
         resources:
+          requests:
+            memory: "2.5G"
+            cpu: "250m"
           limits:
-            nvidia.com/gpu: <gpus_per_node>
+            nvidia.com/gpu: 1
         # Run the worker on startup
         command: ["/SCAMP/build/kubernetes/SCAMPclient"]
         ports:

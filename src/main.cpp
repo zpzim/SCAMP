@@ -19,7 +19,7 @@
 #endif
 
 #ifdef _DISTRIBUTED_EXECUTION_
-DEFINE_int64(distributed_tile_size, 5000000,
+DEFINE_int64(distributed_tile_size, 4000000,
              "tile size to use for computation on worker notes");
 DEFINE_string(hostname_port, "localhost:30078",
               "Hostname:Port of SCAMP server to perform distributed work");
