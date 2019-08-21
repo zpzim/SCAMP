@@ -1,25 +1,36 @@
 [![Build Status](https://travis-ci.org/zpzim/SCAMP.svg?branch=master)](https://travis-ci.org/zpzim/SCAMP)
 # SCAMP: SCAlable Matrix Profile
+
+
+## Table of Contents
+[Overview](https://github.com/zpzim/SCAMP#overview) \
+[Environment](https://github.com/zpzim/SCAMP#environment) \
+[Configuration](https://github.com/zpzim/SCAMP#configuration) \
+[Usage](https://github.com/zpzim/SCAMP#usage) \
+[Run Using Docker](https://github.com/zpzim/SCAMP#run-using-docker) \
+[Distributed Operation](https://github.com/zpzim/SCAMP#distributed-operation)
+
+## Overview
 This is a GPU/CPU implementation of the SCAMP algorithm. SCAMP takes a time series as input and computes the matrix profile for a particular window size. You can read more at the [Matrix Profile Homepage](http://www.cs.ucr.edu/~eamonn/MatrixProfile.html)
 This is a much improved framework over [GPU-STOMP](https://github.com/zpzim/STOMPSelfJoin) which has the following additional features:
  * Tiling for large inputs 
  * Computation in fp32, mixed fp32/fp64, or fp64 (double is recommended for most datasets, single precision will work for some)
  * fp32 version should get good performance on GeForce cards
  * AB joins (you can produce the matrix profile from 2 different time series)
- * Distributable (we use AWS but other cloud platforms can work) with verified scalability to billions of datapoints
+ * Distributable (we use GCP but other cloud platforms can work) with verified scalability to billions of datapoints
  * Sum and Frequency Joins: rather than compute the nearest neighbor directly, we can compute the sum or frequency of correlations above a threshold (this better describes the frequency of an event, something not obvious from the matrix profile alone)
  * Extensible to adding optimized versions of custom join operations.
  * Can compute joins with the CPU (Only enabled for double precision and 1NN+Index joins for now, optimizations pending)
  * Handles NaN input values. The matrix profile will be computed while excluding any subsequence with a NaN value
-
-# Environment
+ 
+## Environment
 This base project requires:
  * Currently builds under Ubuntu/Fedora Linux using gcc/clang and nvcc (if CUDA is available) with cmake (3.8+ for cuda support), this version is not available directly from all package managers so you may need to install it manually from [here](https://cmake.org/download/)
  * Optional, but highly recommended: At least version 9.0 of the CUDA toolkit available [here](https://developer.nvidia.com/cuda-toolkit) and an NVIDIA GPU with CUDA (compute capability 3.0+) support. You can find a list of CUDA compatible GPUs [here](https://developer.nvidia.com/cuda-gpus)
  * Optional: Version 6.0 of clang (for clang-tidy and clang-format)
  * Currently Supports Kepler-Volta, but Turing and beyond will likely work as well, just add the -gencode flag for your specific architecture in CMakeLists.txt 
  * Highly recommend using a Pascal/Volta GPU as they are much better (V100 is ~10x faster than a K80 for SCAMP, V100 is ~2-3x faster than a P100)
- * If you are using CPUs, using clang-6.0 or above is highly reccomended as gcc does not properly autovectorize the CPU kernels.
+ * If you are using CPUs, using clang-6.0 or above is highly recomended as gcc does not properly autovectorize the CPU kernels.
 ~~~~
 Ubuntu Required Packages:
    # Depending on Ubuntu version cmake 3.8 may not be available and you will need to install manually
@@ -33,7 +44,7 @@ CentOS:
   # Install cuda via the link above
 ~~~~
 
-# Configuration
+## Configuration
 If you need to specify a specific compiler or cuda toolkit if you have multiple installed, you can use the following defines. By default cmake will look for cuda at the /usr/local/cuda symlink on linux
 ~~~~
 cmake -D CMAKE_CUDA_COMPILER=/path/to/nvcc \
@@ -49,7 +60,7 @@ For testing with cuda, you can force the build to fail if cuda is not found usin
 cmake -D FORCE_CUDA=1 ..
 ~~~
 
-# Usage
+## Usage
 ~~~~
 git clone https://github.com/zpzim/SCAMP
 cd SCAMP
@@ -64,8 +75,6 @@ make -j8
 ~~~~
 This will generate two files: mp_columns_out and mp_columns_out_index, which contain the matrix profile and matrix profile index values respectively. 
 
-
-
 * Selected Optional Arguments:
     * "--input_b_file_name=/path/to/file": allows a second input file which acts as the second time series for an AB join. An AB join compares every subsequence in input A with every subsequence in input B, the length of the matrix profile produced by this operation is always determined by input A, but the matrix profile index's values will reference subsequences in input B. Providing this parameter implies that SCAMP will compute an AB join.
 
@@ -76,7 +85,22 @@ This will generate two files: mp_columns_out and mp_columns_out_index, which con
 * There are more arguments that allow you even greater control over what SCAMP can do. Use --helpfull for a list of possible arguments and their descriptions.
 * cmake provides support for clang-tidy (when you build) and clang-format (using build target clang-format) to use these please make sure clang-tidy and clang-format are installed on your system
 
-# Distributed operation
+## Run Using Docker
+Rather than building from scratch you can run SCAMP via [nvidia-docker](https://github.com/NVIDIA/nvidia-docker) using the prebuilt [image](https://hub.docker.com/r/zpzim/scamp) on dockerhub.
+
+In order to expose the host GPUs nvidia-docker must be installed correctly. Please follow the directions provided on the nvidia-docker github page. The following example uses docker 19.03 functionality:
+~~~
+docker pull zpzim/scamp:latest
+docker run --gpus all \
+   --volume /path/to/host/input/data/directory:/data \
+   --volume /path/to/host/output/directory:/output \
+   zpzim/scamp:latest /SCAMP/build/SCAMP \
+   --window=<window_size> --input_a_file_name=/data/<filename> \
+   --output_a_file_name=/output/<mp_filename> \
+   --output_a_index_file_name=/output/<mp_index_filename>
+~~~
+
+## Distributed Operation
 * We have a client/server architecture built using grpc. Tested on [GKE](https://cloud.google.com/kubernetes-engine/) but should be possible to get working on [Amazon EKS](https://aws.amazon.com/eks/) as well. To use distributed functionality, build the client and server executables via:
 ~~~
 git submodule update --init --recursive
@@ -107,5 +131,5 @@ kubectl cp <SCAMP server container name>:/mp_columns_out .
 * Limitations:
     * Server currently does not periodlically save state, so if it dies, all jobs are lost. This will eventually be fixed by adding sever checkpointing.
     * Server currently handles all work in memory and does not write intermediate files to disk. For this reason the server requires a lot of memory to operate on a large input. Eventually the server will operate mostly on files on disk rather than keep all intermediate data in memory.
-## Sharded implementation
-* The original distributed implementation used [AWS batch](https://aws.amazon.com/batch/) and shards the time series to Amazon S3. This approach currently avoides the above limitations of our in-memory SCAMPserver, however our initial implementation was very limited in scope and was not extensible to other types of SCAMP workloads, so it is mostly obselete. However, we still provide the scripts used for posterity in the aws/ directory. Though these would be strictly for inspiration, as there are AWS account side configurations required for operation that cannot be provided.
+#### Sharded implementation
+* The original distributed implementation used [AWS batch](https://aws.amazon.com/batch/) and shards the time series to Amazon S3. This approach avoids the above limitations of our in-memory SCAMPserver, however our initial implementation was very limited in scope and was not extensible to other types of SCAMP workloads, so it is mostly obsolete. However, we still provide the scripts used for posterity in the aws/ directory. Though these would be strictly for inspiration, as there are AWS account side configurations required for operation that cannot be provided.
