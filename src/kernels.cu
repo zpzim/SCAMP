@@ -2,14 +2,30 @@
 #include "defines.h"
 #include "kernels.h"
 
+#if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 600
+#else
+// Double atomicAdd is not implemented in hardware before Pascal, providing a
+// software implementation here
+static __inline__ __device__ double atomicAdd(double *address, double val) {
+  unsigned long long int *address_as_ull = (unsigned long long int *)address;
+  unsigned long long int old = *address_as_ull, assumed;
+  do {
+    assumed = old;
+    old = atomicCAS(address_as_ull, assumed,
+                    __double_as_longlong(val + __longlong_as_double(assumed)));
+  } while (assumed != old);
+  return __longlong_as_double(old);
+}
+#endif
+
 namespace SCAMP {
 
 constexpr int DIAGS_PER_THREAD = 4;
 constexpr int BLOCKSZ_SP = 512;
 constexpr int BLOCKSZ_DP = 256;
 constexpr int BLOCKSPERSM = 2;
-constexpr int TILE_HEIGHT_SP = 200;
-constexpr int TILE_HEIGHT_DP = 200;
+constexpr int TILE_HEIGHT_SP = KERNEL_TILE_HEIGHT;
+constexpr int TILE_HEIGHT_DP = KERNEL_TILE_HEIGHT;
 
 template <typename T>
 struct SCAMPKernelInputArgs {
@@ -51,6 +67,7 @@ struct SCAMPKernelInputArgs {
     exclusion_lower = exclusion.first;
     exclusion_upper = exclusion.second;
     opt = t->info()->opt_args;
+    profile_length = t->get_mutable_dev_length();
   }
   const T *__restrict__ cov;
   const T *__restrict__ dfa;
@@ -60,6 +77,7 @@ struct SCAMPKernelInputArgs {
   const T *__restrict__ normsa;
   const T *__restrict__ normsb;
   const T *__restrict__ extras[3];
+  unsigned long long int *profile_length;
   uint32_t n_x;
   uint32_t n_y;
   int32_t exclusion_lower;
@@ -125,21 +143,6 @@ struct SCAMPThreadInfo {
 
 enum SCAMPAtomicType { ATOMIC_BLOCK, ATOMIC_GLOBAL, ATOMIC_SYSTEM };
 
-#if __CUDA_ARCH__ < 600
-// Double atomicAdd is not implemented in hardware before Pascal, providing a
-// software implementation here
-__device__ double atomicAdd(double *address, double val) {
-  unsigned long long int *address_as_ull = (unsigned long long int *)address;
-  unsigned long long int old = *address_as_ull, assumed;
-  do {
-    assumed = old;
-    old = atomicCAS(address_as_ull, assumed,
-                    __double_as_longlong(val + __longlong_as_double(assumed)));
-  } while (assumed != old);
-  return __longlong_as_double(old);
-}
-#endif
-
 template <typename T, SCAMPAtomicType type>
 __device__ inline T do_atomicCAS(T *address, T v1, T v2) {
 #if __CUDA_ARCH__ < 600
@@ -159,9 +162,9 @@ __device__ inline T do_atomicCAS(T *address, T v1, T v2) {
 }
 
 template <typename T, SCAMPAtomicType type>
-__device__ inline uint32_t do_atomicAdd(T *address, T amount) {
+__device__ inline T do_atomicAdd(T *address, T amount) {
 #if __CUDA_ARCH__ < 600
-  return atomicAdd(address, amount);
+  return ::atomicAdd(address, amount);
 #else
   switch (type) {
     case ATOMIC_BLOCK:
@@ -350,13 +353,14 @@ class SCAMPTactic {
       OptionalArgs &args) {
     _do_iteration.exec(info, smem, args);
   }
-  __device__ inline void WriteBack(uint32_t tile_start_x, uint32_t tile_start_y,
+  __device__ inline void WriteBack(SCAMPKernelInputArgs<double> &args,
+                                   uint32_t tile_start_x, uint32_t tile_start_y,
                                    uint32_t n_x, uint32_t n_y,
                                    PROFILE_DATA_TYPE *__restrict__ local_mp_col,
                                    PROFILE_DATA_TYPE *__restrict__ local_mp_row,
                                    PROFILE_DATA_TYPE *__restrict__ profile_A,
                                    PROFILE_DATA_TYPE *__restrict__ profile_B) {
-    _do_writeback.exec(tile_start_x, tile_start_y, n_x, n_y, local_mp_col,
+    _do_writeback.exec(args, tile_start_x, tile_start_y, n_x, n_y, local_mp_col,
                        local_mp_row, profile_A, profile_B);
   }
 
@@ -488,7 +492,7 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
     __syncthreads();
 
     // Write back our best-so-far computed for this tile to global memory
-    tactic.WriteBack(tile_start_col, tile_start_row, args.n_x, args.n_y,
+    tactic.WriteBack(args, tile_start_col, tile_start_row, args.n_x, args.n_y,
                      smem.local_mp_col, smem.local_mp_row, profile_A,
                      profile_B);
 
@@ -682,6 +686,12 @@ SCAMPError_t compute_gpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
             args, reinterpret_cast<float *>(profile_a),
             reinterpret_cast<float *>(profile_b), t->info()->fp_type, do_rows,
             do_cols, blocksz, num_blocks, smem, t->get_stream());
+      case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
+        return LaunchDoTile<uint64_t, float, PROFILE_TYPE_APPROX_ALL_NEIGHBORS,
+                            BLOCKSPERSM>(
+            args, reinterpret_cast<uint64_t *>(profile_a),
+            reinterpret_cast<uint64_t *>(profile_b), t->info()->fp_type,
+            do_rows, do_cols, blocksz, num_blocks, smem, t->get_stream());
       default:
         return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
     }
@@ -691,6 +701,11 @@ SCAMPError_t compute_gpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
 
 SCAMPError_t gpu_kernel_self_join_upper(Tile *t) {
   SCAMPKernelInputArgs<double> tile_args(t, false, false);
+  if (t->info()->profile_type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
+    return compute_gpu_resources_and_launch(tile_args, t, t->profile_a(),
+                                            nullptr, t->info()->computing_rows,
+                                            t->info()->computing_cols);
+  }
   return compute_gpu_resources_and_launch(
       tile_args, t, t->profile_a(), t->profile_b(), t->info()->computing_rows,
       t->info()->computing_cols);
@@ -698,6 +713,11 @@ SCAMPError_t gpu_kernel_self_join_upper(Tile *t) {
 
 SCAMPError_t gpu_kernel_self_join_lower(Tile *t) {
   SCAMPKernelInputArgs<double> tile_args(t, true, false);
+  if (t->info()->profile_type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
+    return compute_gpu_resources_and_launch(tile_args, t, t->profile_a(),
+                                            nullptr, t->info()->computing_rows,
+                                            t->info()->computing_cols);
+  }
   return compute_gpu_resources_and_launch(
       tile_args, t, t->profile_b(), t->profile_a(), t->info()->computing_cols,
       t->info()->computing_rows);
@@ -705,6 +725,11 @@ SCAMPError_t gpu_kernel_self_join_lower(Tile *t) {
 
 SCAMPError_t gpu_kernel_ab_join_upper(Tile *t) {
   SCAMPKernelInputArgs<double> tile_args(t, false, true);
+  if (t->info()->profile_type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
+    return compute_gpu_resources_and_launch(tile_args, t, t->profile_a(),
+                                            nullptr, t->info()->computing_rows,
+                                            t->info()->computing_cols);
+  }
   return compute_gpu_resources_and_launch(
       tile_args, t, t->profile_a(), t->profile_b(), t->info()->computing_rows,
       t->info()->computing_cols);
@@ -712,6 +737,11 @@ SCAMPError_t gpu_kernel_ab_join_upper(Tile *t) {
 
 SCAMPError_t gpu_kernel_ab_join_lower(Tile *t) {
   SCAMPKernelInputArgs<double> tile_args(t, true, true);
+  if (t->info()->profile_type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
+    return compute_gpu_resources_and_launch(tile_args, t, t->profile_a(),
+                                            nullptr, t->info()->computing_rows,
+                                            t->info()->computing_cols);
+  }
   return compute_gpu_resources_and_launch(
       tile_args, t, t->profile_b(), t->profile_a(), t->info()->computing_cols,
       t->info()->computing_rows);

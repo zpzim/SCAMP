@@ -93,6 +93,9 @@ SCAMP::SCAMPProfileType ParseProfileType(const std::string &s) {
   if (s == "1NN") {
     return SCAMP::PROFILE_TYPE_1NN;
   }
+  if (s == "ALL_NEIGHBORS") {
+    return SCAMP::PROFILE_TYPE_APPROX_ALL_NEIGHBORS;
+  }
   return SCAMP::PROFILE_TYPE_INVALID;
 }
 
@@ -152,6 +155,20 @@ bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
       }
       break;
     }
+    case SCAMP::PROFILE_TYPE_APPROX_ALL_NEIGHBORS: {
+      std::ofstream mp_out(mp);
+      auto arr = p.data[0].match_value;
+      for (const SCAMP::SCAMPmatch &elem : arr) {
+        if (output_pearson) {
+          mp_out << elem.col << " " << elem.row << " " << std::setprecision(10)
+                 << elem.corr << std::endl;
+        } else {
+          mp_out << elem.col << " " << elem.row << " " << std::setprecision(10)
+                 << ConvertToEuclidean(elem.corr, window) << std::endl;
+        }
+      }
+      break;
+    }
     default:
       break;
   }
@@ -205,6 +222,10 @@ bool InitProfileMemory(SCAMP::SCAMPArgs *args) {
         args->profile_b.data[0].double_value.resize(
             args->timeseries_b.size() - args->window + 1, 0);
       }
+      return true;
+    }
+    case SCAMP::PROFILE_TYPE_APPROX_ALL_NEIGHBORS: {
+      args->profile_a.data.emplace_back();
       return true;
     }
     default:

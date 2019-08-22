@@ -26,6 +26,12 @@ class Tile {
   // Per worker output vectors (device)
   DeviceProfile _profile_a_tile_dev, _profile_b_tile_dev;
 
+  // Length of the output vector on the device
+  // Set by the kernel when the profile can have a variable length
+  unsigned long long int *_profile_dev_length;
+
+  unsigned long long int _num_elements_generated;
+
   // Per worker output vectors (host)
   Profile _profile_a_tile, _profile_b_tile;
 
@@ -90,6 +96,9 @@ class Tile {
   const double *dgb() const { return _dg_B.get(); }
   const double *normsa() const { return _norms_A.get(); }
   const double *normsb() { return _norms_B.get(); }
+  unsigned long long int *get_mutable_dev_length() {
+    return _profile_dev_length;
+  }
 
   std::pair<int, int> get_exclusion_for_ab_join(bool upper_tile);
   std::pair<int, int> get_exclusion_for_self_join(bool upper_tile);

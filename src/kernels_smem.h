@@ -111,6 +111,45 @@ class InitMemStrategy<DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
   }
 };
 
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, bool COMPUTE_ROWS,
+          bool COMPUTE_COLS, int tile_width, int tile_height, int BLOCKSZ,
+          SCAMPProfileType PROFILE_TYPE>
+class InitMemStrategy<
+    DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS, COMPUTE_COLS, tile_width,
+    tile_height, BLOCKSZ, PROFILE_TYPE,
+    std::enable_if_t<PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS>>
+    : public SCAMPStrategy {
+ public:
+  __device__ InitMemStrategy() {}
+  __device__ virtual void exec(
+      SCAMPKernelInputArgs<double> &args,
+      SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
+      PROFILE_DATA_TYPE *__restrict__ profile_a,
+      PROFILE_DATA_TYPE *__restrict__ profile_b, uint32_t col_start,
+      uint32_t row_start) {
+    int global_position = col_start + threadIdx.x;
+    int local_position = threadIdx.x;
+    while (local_position < tile_width && global_position < args.n_x) {
+      smem.dg_col[local_position] = args.dga[global_position];
+      smem.df_col[local_position] = args.dfa[global_position];
+      smem.local_mp_col[local_position] = args.opt.threshold;
+      smem.inorm_col[local_position] = args.normsa[global_position];
+      local_position += BLOCKSZ;
+      global_position += BLOCKSZ;
+    }
+
+    global_position = row_start + threadIdx.x;
+    local_position = threadIdx.x;
+    while (local_position < tile_height && global_position < args.n_y) {
+      smem.dg_row[local_position] = args.dgb[global_position];
+      smem.df_row[local_position] = args.dfb[global_position];
+      smem.inorm_row[local_position] = args.normsb[global_position];
+      local_position += BLOCKSZ;
+      global_position += BLOCKSZ;
+    }
+  }
+};
+
 ///////////////////////////////////////////////////////////////////
 //
 // STRATEGIES FOR WRITING BACK THE LOCAL MATRIX PROFILE TO MEMORY
@@ -123,7 +162,8 @@ template <typename PROFILE_DATA_TYPE, bool COMPUTE_COLS, bool COMPUTE_ROWS,
           SCAMPProfileType PROFILE_TYPE>
 class WriteBackStrategy : public SCAMPStrategy {
  public:
-  __device__ void exec(uint32_t tile_start_x, uint32_t tile_start_y,
+  __device__ void exec(SCAMPKernelInputArgs<double> &args,
+                       uint32_t tile_start_x, uint32_t tile_start_y,
                        uint32_t n_x, uint32_t n_y,
                        PROFILE_DATA_TYPE *__restrict__ local_mp_col,
                        PROFILE_DATA_TYPE *__restrict__ local_mp_row,
@@ -141,7 +181,8 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
                         PROFILE_TYPE_SUM_THRESH> : public SCAMPStrategy {
  public:
   __device__ WriteBackStrategy() {}
-  __device__ void exec(uint32_t tile_start_x, uint32_t tile_start_y,
+  __device__ void exec(SCAMPKernelInputArgs<double> &args,
+                       uint32_t tile_start_x, uint32_t tile_start_y,
                        uint32_t n_x, uint32_t n_y,
                        PROFILE_DATA_TYPE *__restrict__ local_mp_col,
                        PROFILE_DATA_TYPE *__restrict__ local_mp_row,
@@ -178,7 +219,8 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
     : public SCAMPStrategy {
  public:
   __device__ WriteBackStrategy() {}
-  __device__ void exec(uint32_t tile_start_x, uint32_t tile_start_y,
+  __device__ void exec(SCAMPKernelInputArgs<double> &args,
+                       uint32_t tile_start_x, uint32_t tile_start_y,
                        uint32_t n_x, uint32_t n_y,
                        PROFILE_DATA_TYPE *__restrict__ local_mp_col,
                        PROFILE_DATA_TYPE *__restrict__ local_mp_row,
@@ -215,7 +257,8 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
                         PROFILE_TYPE_1NN_INDEX> : public SCAMPStrategy {
  public:
   __device__ WriteBackStrategy() {}
-  __device__ void exec(uint32_t tile_start_x, uint32_t tile_start_y,
+  __device__ void exec(SCAMPKernelInputArgs<double> &args,
+                       uint32_t tile_start_x, uint32_t tile_start_y,
                        uint32_t n_x, uint32_t n_y,
                        PROFILE_DATA_TYPE *__restrict__ local_mp_col,
                        PROFILE_DATA_TYPE *__restrict__ local_mp_row,
@@ -245,6 +288,46 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
         global_position += BLOCKSZ;
         local_position += BLOCKSZ;
       }
+    }
+  }
+};
+
+template <typename PROFILE_DATA_TYPE, bool COMPUTE_COLS, bool COMPUTE_ROWS,
+          int TILE_WIDTH, int TILE_HEIGHT, int BLOCKSZ>
+class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
+                        TILE_WIDTH, TILE_HEIGHT, BLOCKSZ,
+                        PROFILE_TYPE_APPROX_ALL_NEIGHBORS>
+    : public SCAMPStrategy {
+ public:
+  __device__ WriteBackStrategy() {}
+  __device__ void exec(SCAMPKernelInputArgs<double> &args,
+                       uint32_t tile_start_x, uint32_t tile_start_y,
+                       uint32_t n_x, uint32_t n_y,
+                       PROFILE_DATA_TYPE *__restrict__ local_mp_col,
+                       PROFILE_DATA_TYPE *__restrict__ local_mp_row,
+                       PROFILE_DATA_TYPE *__restrict__ profile_A,
+                       PROFILE_DATA_TYPE *__restrict__ profile_B) {
+    int global_position, local_position;
+    global_position = tile_start_x + threadIdx.x;
+    local_position = threadIdx.x;
+    while (local_position < TILE_WIDTH && global_position < n_x) {
+      mp_entry e;
+      e.ulong = local_mp_col[local_position];
+      // This is some hacky stuff to get All neighbors working. The kernels
+      // should be refactored in the future
+      if (e.floats[0] > args.opt.threshold) {
+        unsigned long long int pos =
+            do_atomicAdd<unsigned long long int, ATOMIC_GLOBAL>(
+                args.profile_length, 1);
+        if (pos < MAX_MATCHES_TO_STORE_PER_TILE) {
+          SCAMPmatch *profile = reinterpret_cast<SCAMPmatch *>(profile_A);
+          profile[pos].corr = e.floats[0];
+          profile[pos].row = e.ints[1];
+          profile[pos].col = global_position;
+        }
+      }
+      global_position += BLOCKSZ;
+      local_position += BLOCKSZ;
     }
   }
 };

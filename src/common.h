@@ -19,6 +19,10 @@
 
 namespace SCAMP {
 
+constexpr int KERNEL_TILE_HEIGHT = 200;
+constexpr int MAX_MATCHES_TO_STORE_PER_TILE = 2000000;
+constexpr int MAX_NEIGHBORS_GLOBAL = 100;
+
 // Types of matrix profile to compute
 enum SCAMPProfileType {
   PROFILE_TYPE_INVALID = 0,
@@ -28,6 +32,7 @@ enum SCAMPProfileType {
   PROFILE_TYPE_KNN = 4,
   PROFILE_TYPE_1NN_MULTIDIM = 5,
   PROFILE_TYPE_1NN = 6,
+  PROFILE_TYPE_APPROX_ALL_NEIGHBORS = 7,
 };
 
 // Precision modes
@@ -47,12 +52,20 @@ typedef union {
   uint64_t ulong;        // for atomic update
 } mp_entry;
 
+struct SCAMPmatch {
+  SCAMPmatch(float d, uint32_t r, uint32_t c) : corr(d), row(r), col(c) {}
+  float corr;
+  uint32_t row;
+  uint32_t col;
+};
+
 struct ProfileData {
   // Only one of these should be set at once
   std::vector<uint32_t> uint32_value;
   std::vector<uint64_t> uint64_value;
   std::vector<float> float_value;
   std::vector<double> double_value;
+  std::vector<SCAMPmatch> match_value;
 };
 
 // Stores information about a matrix profile

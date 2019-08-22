@@ -1,4 +1,5 @@
 #pragma once
+#include <cuda.h>
 #include <float.h>
 #include "common.h"
 #include "tile.h"

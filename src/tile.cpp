@@ -1,4 +1,5 @@
 #include "tile.h"
+#include <algorithm>
 #include <functional>
 #ifdef _HAS_CUDA_
 #include "kernels.h"
@@ -37,6 +38,44 @@ void elementwise_max(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
       mp_full[i + merge_start] = to_merge[i];
     }
   }
+}
+
+void match_merge(std::vector<SCAMPmatch> *mp_full, uint64_t merge_start_row,
+                 uint64_t merge_start_col, uint32_t num_elements,
+                 std::vector<SCAMPmatch> *to_merge) {
+  for (int i = 0; i < num_elements; ++i) {
+    if (to_merge->at(i).corr >= -1.0) {
+      mp_full->emplace_back(to_merge->at(i).corr,
+                            to_merge->at(i).row + merge_start_row,
+                            to_merge->at(i).col + merge_start_col);
+    }
+  }
+  std::sort(mp_full->begin(), mp_full->end(),
+            [](SCAMPmatch &x1, SCAMPmatch &x2) {
+              if (x1.col < x2.col) {
+                return true;
+              }
+              if (x1.col == x2.col) {
+                return x1.corr > x2.corr;
+              }
+              return false;
+            });
+  int64_t prev_column = -1;
+  int num_entries;
+  for (int i = 0; i < mp_full->size(); ++i) {
+    if (mp_full->at(i).col == prev_column) {
+      num_entries++;
+    } else {
+      prev_column = mp_full->at(i).col;
+      num_entries = 1;
+    }
+    if (num_entries > MAX_NEIGHBORS_GLOBAL) {
+      mp_full->at(i).corr = -2.0;
+    }
+  }
+  mp_full->erase(std::remove_if(mp_full->begin(), mp_full->end(),
+                                [](SCAMPmatch x) { return x.corr == -2.0; }),
+                 mp_full->end());
 }
 
 // Gets the exclusion zone for a particular tile (helper_function)
@@ -230,13 +269,24 @@ Tile::Tile(const OpInfo *info, SCAMPArchitecture arch, int cuda_id)
 #endif
 {
   size_t profile_size = GetProfileTypeSize(_info->profile_type);
-  _profile_a_tile_dev[_info->profile_type] =
-      alloc_mem<char>(profile_size * _info->max_tile_width, arch, cuda_id);
-  _profile_b_tile_dev[_info->profile_type] =
-      alloc_mem<char>(profile_size * _info->max_tile_height, arch, cuda_id);
+  size_t rows_to_alloc, cols_to_alloc;
+  if (_info->profile_type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
+    cols_to_alloc = MAX_MATCHES_TO_STORE_PER_TILE;
+    rows_to_alloc = _info->max_tile_height;
+  } else {
+    cols_to_alloc = _info->max_tile_width;
+    rows_to_alloc = _info->max_tile_height;
+  }
 
-  _profile_a_tile = AllocProfile(_info->profile_type, _info->max_tile_height);
-  _profile_b_tile = AllocProfile(_info->profile_type, _info->max_tile_width);
+  _profile_a_tile_dev[_info->profile_type] =
+      alloc_mem<char>(profile_size * cols_to_alloc, arch, cuda_id);
+  _profile_b_tile_dev[_info->profile_type] =
+      alloc_mem<char>(profile_size * rows_to_alloc, arch, cuda_id);
+
+  _profile_dev_length = alloc_mem<unsigned long long int>(1, arch, cuda_id);
+
+  _profile_a_tile = AllocProfile(_info->profile_type, cols_to_alloc);
+  _profile_b_tile = AllocProfile(_info->profile_type, rows_to_alloc);
 
   switch (_arch) {
     case CUDA_GPU_WORKER:
@@ -272,6 +322,7 @@ Tile::~Tile() {
                  _arch, _cuda_id);
   free_mem<char>(static_cast<char *>(_profile_b_tile_dev[_info->profile_type]),
                  _arch, _cuda_id);
+  free_mem<unsigned long long int>(_profile_dev_length, _arch, _cuda_id);
 }
 
 void Tile::Sync() {
@@ -318,6 +369,10 @@ Profile Tile::AllocProfile(SCAMPProfileType t, uint64_t size) {
     case PROFILE_TYPE_FREQUENCY_THRESH:
       p.data.emplace_back();
       p.data[0].uint64_value.resize(size, 0);
+      return p;
+    case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
+      p.data.emplace_back();
+      p.data[0].match_value.resize(size, SCAMPmatch(-2, 0, 0));
       return p;
     case PROFILE_TYPE_KNN:
     case PROFILE_TYPE_1NN_MULTIDIM:
@@ -366,6 +421,9 @@ SCAMPError_t Tile::InitProfile(Profile *profile_a, Profile *profile_b) {
       }
       break;
     }
+    case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
+      Memset(_profile_dev_length, 0, sizeof(uint32_t));
+      break;
     case PROFILE_TYPE_FREQUENCY_THRESH:
     case PROFILE_TYPE_KNN:
     case PROFILE_TYPE_1NN_MULTIDIM:
@@ -422,6 +480,10 @@ void Tile::MergeTileIntoFullProfile(Profile *tile_profile, uint64_t position,
                                 position, length,
                                 tile_profile->data[0].uint64_value.data());
       return;
+    case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
+      match_merge(&full_profile->data[0].match_value, index_start, position,
+                  _num_elements_generated, &tile_profile->data[0].match_value);
+      return;
     case PROFILE_TYPE_KNN:
     case PROFILE_TYPE_1NN_MULTIDIM:
     default:
@@ -449,6 +511,9 @@ void Tile::MergeProfile(Profile *profile_a, std::mutex &a_lock,
   MergeTileIntoFullProfile(&_profile_a_tile, _current_tile_col,
                            _current_tile_width - _info->mp_window + 1,
                            profile_a, _current_tile_row, a_lock);
+  if (_info->profile_type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
+    return;
+  }
 
   if (_info->computing_rows && _info->keep_rows_separate) {
     MergeTileIntoFullProfile(&_profile_b_tile, _current_tile_row,
@@ -480,6 +545,31 @@ void Tile::CopyProfileToHost(Profile *destination_profile,
       Memcopy(destination_profile->data[0].uint64_value.data(),
               device_tile_profile->at(PROFILE_TYPE_1NN_INDEX),
               length * sizeof(uint64_t), true);
+      break;
+    case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
+      // Find the number of elements output by kernel
+      Memcopy(&_num_elements_generated, _profile_dev_length,
+              sizeof(unsigned long long int), true);
+      Sync();
+      if (_num_elements_generated > MAX_MATCHES_TO_STORE_PER_TILE) {
+        if (!_info->silent_mode) {
+          std::cout << "Warning: Unable to return all matches! SCAMP found a "
+                       "total of "
+                    << _num_elements_generated
+                    << " matches for this tile. But we could only store "
+                    << MAX_MATCHES_TO_STORE_PER_TILE
+                    << " of them. Perhaps try a smaller tile size or a higher "
+                       "match threshold? "
+                    << std::endl;
+        }
+        _num_elements_generated = MAX_MATCHES_TO_STORE_PER_TILE;
+      }
+      // Copy only the elements generated
+      // destination_profile->data[0].match_value.resize(_num_elements_generated,
+      // SCAMPmatch(-2,0,0));
+      Memcopy(destination_profile->data[0].match_value.data(),
+              device_tile_profile->at(PROFILE_TYPE_APPROX_ALL_NEIGHBORS),
+              _num_elements_generated * sizeof(SCAMPmatch), true);
       break;
     case PROFILE_TYPE_FREQUENCY_THRESH:
     case PROFILE_TYPE_KNN:

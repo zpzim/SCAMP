@@ -41,6 +41,8 @@ std::string GetProfileTypeString(SCAMPProfileType t) {
       return "PROFILE_TYPE_KNN";
     case PROFILE_TYPE_1NN_MULTIDIM:
       return "PROFILE_TYPE_1NN_MULTIDIM";
+    case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
+      return "PROFILE_TYPE_APPROX_ALL_NEIGHBORS";
   }
 }
 
@@ -104,6 +106,8 @@ size_t GetProfileTypeSize(SCAMPProfileType t) {
       return sizeof(uint64_t);
     case PROFILE_TYPE_1NN:
       return sizeof(float);
+    case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
+      return sizeof(SCAMPmatch);
     default:
       throw SCAMPException(
           "Error: Could not determine size of profile elements");
