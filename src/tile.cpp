@@ -564,6 +564,8 @@ void Tile::CopyProfileToHost(Profile *destination_profile,
         }
         _num_elements_generated = MAX_MATCHES_TO_STORE_PER_TILE;
       }
+      std::cout << _num_elements_generated << " matches found this tile."
+                << std::endl;
       // Copy only the elements generated
       // destination_profile->data[0].match_value.resize(_num_elements_generated,
       // SCAMPmatch(-2,0,0));

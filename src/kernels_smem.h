@@ -129,10 +129,15 @@ class InitMemStrategy<
       uint32_t row_start) {
     int global_position = col_start + threadIdx.x;
     int local_position = threadIdx.x;
+    mp_entry e;
+    e.floats[0] = static_cast<float>(args.opt.threshold);
+    e.ints[1] = 0;
     while (local_position < tile_width && global_position < args.n_x) {
       smem.dg_col[local_position] = args.dga[global_position];
       smem.df_col[local_position] = args.dfa[global_position];
-      smem.local_mp_col[local_position] = args.opt.threshold;
+      if (COMPUTE_COLS) {
+        smem.local_mp_col[local_position] = e.ulong;
+      }
       smem.inorm_col[local_position] = args.normsa[global_position];
       local_position += BLOCKSZ;
       global_position += BLOCKSZ;
@@ -143,6 +148,9 @@ class InitMemStrategy<
     while (local_position < tile_height && global_position < args.n_y) {
       smem.dg_row[local_position] = args.dgb[global_position];
       smem.df_row[local_position] = args.dfb[global_position];
+      if (COMPUTE_ROWS) {
+        smem.local_mp_row[local_position] = e.ulong;
+      }
       smem.inorm_row[local_position] = args.normsb[global_position];
       local_position += BLOCKSZ;
       global_position += BLOCKSZ;
@@ -308,26 +316,50 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
                        PROFILE_DATA_TYPE *__restrict__ profile_A,
                        PROFILE_DATA_TYPE *__restrict__ profile_B) {
     int global_position, local_position;
-    global_position = tile_start_x + threadIdx.x;
-    local_position = threadIdx.x;
-    while (local_position < TILE_WIDTH && global_position < n_x) {
-      mp_entry e;
-      e.ulong = local_mp_col[local_position];
-      // This is some hacky stuff to get All neighbors working. The kernels
-      // should be refactored in the future
-      if (e.floats[0] > args.opt.threshold) {
-        unsigned long long int pos =
-            do_atomicAdd<unsigned long long int, ATOMIC_GLOBAL>(
-                args.profile_length, 1);
-        if (pos < MAX_MATCHES_TO_STORE_PER_TILE) {
-          SCAMPmatch *profile = reinterpret_cast<SCAMPmatch *>(profile_A);
-          profile[pos].corr = e.floats[0];
-          profile[pos].row = e.ints[1];
-          profile[pos].col = global_position;
+    float threshold = static_cast<float>(args.opt.threshold);
+    if (COMPUTE_COLS) {
+      global_position = tile_start_x + threadIdx.x;
+      local_position = threadIdx.x;
+      while (local_position < TILE_WIDTH && global_position < n_x) {
+        mp_entry e;
+        e.ulong = local_mp_col[local_position];
+        // This is some hacky stuff to get All neighbors working. The kernels
+        // should be refactored in the future
+        if (e.floats[0] > threshold) {
+          unsigned long long int pos =
+              do_atomicAdd<unsigned long long int, ATOMIC_GLOBAL>(
+                  args.profile_length, 1);
+          if (pos < MAX_MATCHES_TO_STORE_PER_TILE) {
+            SCAMPmatch *profile = reinterpret_cast<SCAMPmatch *>(profile_A);
+            profile[pos].corr = e.floats[0];
+            profile[pos].row = e.ints[1];
+            profile[pos].col = global_position;
+          }
         }
+        global_position += BLOCKSZ;
+        local_position += BLOCKSZ;
       }
-      global_position += BLOCKSZ;
-      local_position += BLOCKSZ;
+    }
+    if (COMPUTE_ROWS) {
+      global_position = tile_start_y + threadIdx.x;
+      local_position = threadIdx.x;
+      while (local_position < TILE_HEIGHT && global_position < n_y) {
+        mp_entry e;
+        e.ulong = local_mp_row[local_position];
+        if (e.floats[0] > threshold) {
+          unsigned long long int pos =
+              do_atomicAdd<unsigned long long int, ATOMIC_GLOBAL>(
+                  args.profile_length, 1);
+          if (pos < MAX_MATCHES_TO_STORE_PER_TILE) {
+            SCAMPmatch *profile = reinterpret_cast<SCAMPmatch *>(profile_A);
+            profile[pos].corr = e.floats[0];
+            profile[pos].row = e.ints[1];
+            profile[pos].col = global_position;
+          }
+        }
+        global_position += BLOCKSZ;
+        local_position += BLOCKSZ;
+      }
     }
   }
 };

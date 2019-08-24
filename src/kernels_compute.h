@@ -44,7 +44,11 @@ __device__ inline void update_row(
         smem,
     const DISTANCE_TYPE dist[4], const float curr_mp_row_val,
     const OptionalArgs args) {
-  // Do Nothing
+  uint32_t idx;
+  DISTANCE_TYPE d = max4_index<DISTANCE_TYPE>(
+      dist[0], dist[1], dist[2], dist[3], info.global_col + iter, idx);
+  MPatomicMax_check((uint64_t *)(smem.local_mp_row + info.local_row + iter), d,
+                    idx, curr_mp_row_val);
 }
 
 // UPDATE_ROW when PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX
@@ -688,9 +692,17 @@ __device__ inline void reduce_edge(
     DISTANCE_TYPE &dist_row, uint32_t &idx_row, int diag, int num_diags, int n,
     OptionalArgs &args) {
   if (info.global_col + iter < n && diag + iter < num_diags) {
-    MPatomicMax<ATOMIC_BLOCK>(
-        (uint64_t *)(smem.local_mp_col + info.local_col + iter), dist[iter],
-        info.global_row);
+    if (COMPUTE_ROWS) {
+      if (dist[iter] > dist_row) {
+        dist_row = dist[iter];
+        idx_row = info.global_col + iter;
+      }
+    }
+    if (COMPUTE_COLS) {
+      MPatomicMax<ATOMIC_BLOCK>(
+          (uint64_t *)(smem.local_mp_col + info.local_col + iter), dist[iter],
+          info.global_row);
+    }
   }
 }
 
@@ -745,7 +757,8 @@ __device__ inline void reduce_row(
     SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_APPROX_ALL_NEIGHBORS>
         &smem,
     int row, DISTANCE_TYPE dist_row, uint32_t idx_row) {
-  // Do Nothing
+  MPatomicMax<ATOMIC_BLOCK>((uint64_t *)(smem.local_mp_row + row), dist_row,
+                            idx_row);
 }
 
 template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,

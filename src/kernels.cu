@@ -715,8 +715,8 @@ SCAMPError_t gpu_kernel_self_join_lower(Tile *t) {
   SCAMPKernelInputArgs<double> tile_args(t, true, false);
   if (t->info()->profile_type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
     return compute_gpu_resources_and_launch(tile_args, t, t->profile_a(),
-                                            nullptr, t->info()->computing_rows,
-                                            t->info()->computing_cols);
+                                            nullptr, t->info()->computing_cols,
+                                            t->info()->computing_rows);
   }
   return compute_gpu_resources_and_launch(
       tile_args, t, t->profile_b(), t->profile_a(), t->info()->computing_cols,
@@ -739,8 +739,8 @@ SCAMPError_t gpu_kernel_ab_join_lower(Tile *t) {
   SCAMPKernelInputArgs<double> tile_args(t, true, true);
   if (t->info()->profile_type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
     return compute_gpu_resources_and_launch(tile_args, t, t->profile_a(),
-                                            nullptr, t->info()->computing_rows,
-                                            t->info()->computing_cols);
+                                            nullptr, t->info()->computing_cols,
+                                            t->info()->computing_rows);
   }
   return compute_gpu_resources_and_launch(
       tile_args, t, t->profile_b(), t->profile_a(), t->info()->computing_cols,
