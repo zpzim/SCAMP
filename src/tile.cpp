@@ -40,9 +40,13 @@ void elementwise_max(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
   }
 }
 
+// TODO(zpzim): this function is slow and causes bottlenecks in host code
+//  when there are many matches. Converting output to be a vector of heaps
+//  would be better.
 void match_merge(std::vector<SCAMPmatch> *mp_full, uint64_t merge_start_row,
                  uint64_t merge_start_col, uint32_t num_elements,
                  std::vector<SCAMPmatch> *to_merge) {
+  // Merge the results to the global profile
   for (int i = 0; i < num_elements; ++i) {
     if (to_merge->at(i).corr >= -1.0) {
       mp_full->emplace_back(to_merge->at(i).corr,
@@ -50,6 +54,9 @@ void match_merge(std::vector<SCAMPmatch> *mp_full, uint64_t merge_start_row,
                             to_merge->at(i).col + merge_start_col);
     }
   }
+
+  // Sort the global profile by ascnending column then by decending
+  // correlation
   std::sort(mp_full->begin(), mp_full->end(),
             [](SCAMPmatch &x1, SCAMPmatch &x2) {
               if (x1.col < x2.col) {
@@ -60,6 +67,8 @@ void match_merge(std::vector<SCAMPmatch> *mp_full, uint64_t merge_start_row,
               }
               return false;
             });
+
+  // Remove excess results in each column more than MAX_NEIGHBORS_GLOBAL
   int64_t prev_column = -1;
   int num_entries;
   for (int i = 0; i < mp_full->size(); ++i) {
@@ -422,7 +431,7 @@ SCAMPError_t Tile::InitProfile(Profile *profile_a, Profile *profile_b) {
       break;
     }
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
-      Memset(_profile_dev_length, 0, sizeof(uint32_t));
+      Memset(_profile_dev_length, 0, sizeof(unsigned long long int));
       break;
     case PROFILE_TYPE_FREQUENCY_THRESH:
     case PROFILE_TYPE_KNN:
@@ -566,9 +575,8 @@ void Tile::CopyProfileToHost(Profile *destination_profile,
       }
       std::cout << _num_elements_generated << " matches found this tile."
                 << std::endl;
+
       // Copy only the elements generated
-      // destination_profile->data[0].match_value.resize(_num_elements_generated,
-      // SCAMPmatch(-2,0,0));
       Memcopy(destination_profile->data[0].match_value.data(),
               device_tile_profile->at(PROFILE_TYPE_APPROX_ALL_NEIGHBORS),
               _num_elements_generated * sizeof(SCAMPmatch), true);
