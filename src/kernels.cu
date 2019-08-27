@@ -68,6 +68,7 @@ struct SCAMPKernelInputArgs {
     exclusion_upper = exclusion.second;
     opt = t->info()->opt_args;
     profile_length = t->get_mutable_dev_length();
+    max_matches_per_tile = t->info()->max_matches_per_tile;
   }
   const T *__restrict__ cov;
   const T *__restrict__ dfa;
@@ -78,6 +79,7 @@ struct SCAMPKernelInputArgs {
   const T *__restrict__ normsb;
   const T *__restrict__ extras[3];
   unsigned long long int *profile_length;
+  int64_t max_matches_per_tile;
   uint32_t n_x;
   uint32_t n_y;
   int32_t exclusion_lower;

@@ -190,6 +190,10 @@ SCAMPError_t SCAMP_Operation::do_join(const std::vector<double> &timeseries_a,
   }
   std::vector<std::future<void>> futures(num_workers);
 
+  if (!_info.silent_mode) {
+    std::cout << "Main SCAMP thread spawning worker threads." << std::endl;
+  }
+
   // Start CUDA Workers
   for (int i = 0; i < _devices.size(); ++i) {
     futures[i] = std::async(std::launch::async, &SCAMP_Operation::do_work, this,
@@ -224,10 +228,17 @@ void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
     throw SCAMPException("Error: Invalid arguments provided to SCAMP");
   }
 
+  if (!args->silent_mode) {
+    std::cout << "Validating SCAMP args." << std::endl;
+  }
   args->validate();
 
   // Allocate and initialize memory
   OptionalArgs _opt_args(args->distance_threshold);
+
+  if (!args->silent_mode) {
+    std::cout << "Building SCAMP Operation from args" << std::endl;
+  }
   // Construct operation
   SCAMP_Operation op(
       args->timeseries_a.size(), args->timeseries_b.size(), args->window,
@@ -236,7 +247,12 @@ void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
       args->distributed_start_row, args->distributed_start_col, _opt_args,
       args->profile_type, &args->profile_a, &args->profile_b,
       args->keep_rows_separate, args->computing_rows, args->computing_columns,
-      args->is_aligned, args->silent_mode, num_threads);
+      args->is_aligned, args->silent_mode, num_threads,
+      args->max_matches_per_column);
+
+  if (!args->silent_mode) {
+    std::cout << "SCAMP Operation constructed" << std::endl;
+  }
   // Execute op
   std::chrono::high_resolution_clock::time_point start =
       std::chrono::high_resolution_clock::now();

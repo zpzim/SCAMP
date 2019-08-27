@@ -24,6 +24,9 @@ DEFINE_int64(distributed_tile_size, 4000000,
 DEFINE_string(hostname_port, "localhost:30078",
               "Hostname:Port of SCAMP server to perform distributed work");
 #endif
+DEFINE_int64(max_matches_per_column, 100,
+             "Maximum number of neighbors to generate for any subsequence "
+             "(used for ALL_NEIGBORS profiles).");
 DEFINE_int32(num_cpu_workers, 0, "Number of CPU workers to use");
 DEFINE_bool(output_pearson, false,
             "If true SCAMP will output pearson correlation instead of "
@@ -199,6 +202,7 @@ int main(int argc, char **argv) {
   args.timeseries_a = std::move(Ta_h);
   args.timeseries_b = std::move(Tb_h);
   args.silent_mode = false;
+  args.max_matches_per_column = FLAGS_max_matches_per_column;
 
   printf("Starting SCAMP\n");
   try {

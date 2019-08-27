@@ -329,7 +329,7 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
           unsigned long long int pos =
               do_atomicAdd<unsigned long long int, ATOMIC_GLOBAL>(
                   args.profile_length, 1);
-          if (pos < MAX_MATCHES_TO_STORE_PER_TILE) {
+          if (pos < args.max_matches_per_tile) {
             SCAMPmatch *profile = reinterpret_cast<SCAMPmatch *>(profile_A);
             profile[pos].corr = e.floats[0];
             profile[pos].row = e.ints[1];
@@ -350,7 +350,7 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
           unsigned long long int pos =
               do_atomicAdd<unsigned long long int, ATOMIC_GLOBAL>(
                   args.profile_length, 1);
-          if (pos < MAX_MATCHES_TO_STORE_PER_TILE) {
+          if (pos < args.max_matches_per_tile) {
             SCAMPmatch *profile = reinterpret_cast<SCAMPmatch *>(profile_A);
             profile[pos].corr = e.floats[0];
             profile[pos].row = e.ints[1];

@@ -19,9 +19,9 @@
 
 namespace SCAMP {
 
+constexpr int GIGABYTE = 1024 * 1024 * 1024;
 constexpr int KERNEL_TILE_HEIGHT = 200;
-constexpr int MAX_MATCHES_TO_STORE_PER_TILE = 2000000;
-constexpr int MAX_NEIGHBORS_GLOBAL = 100;
+constexpr int PROFILE_MEMORY_BUDGET = 1 * GIGABYTE;
 
 // Types of matrix profile to compute
 enum SCAMPProfileType {
@@ -59,13 +59,22 @@ struct SCAMPmatch {
   uint32_t col;
 };
 
+class compareMatch {
+ public:
+  bool operator()(const SCAMPmatch &x1, const SCAMPmatch &x2) {
+    return x1.corr > x2.corr;
+  }
+};
+
 struct ProfileData {
   // Only one of these should be set at once
   std::vector<uint32_t> uint32_value;
   std::vector<uint64_t> uint64_value;
   std::vector<float> float_value;
   std::vector<double> double_value;
-  std::vector<SCAMPmatch> match_value;
+  std::vector<
+      std::priority_queue<SCAMPmatch, std::vector<SCAMPmatch>, compareMatch>>
+      match_value;
 };
 
 // Stores information about a matrix profile
@@ -97,6 +106,7 @@ struct SCAMPArgs {
   bool keep_rows_separate;
   bool is_aligned;
   bool silent_mode;
+  int64_t max_matches_per_column;
 };
 
 // Struct describing kernel arguments which are non-standard
@@ -117,7 +127,7 @@ struct OpInfo {
          bool selfjoin, SCAMPPrecisionType t, int64_t start_row,
          int64_t start_col, OptionalArgs args_, SCAMPProfileType profiletype,
          bool keep_rows, bool compute_rows, bool compute_cols, bool aligned,
-         bool silent_mode, int num_workers)
+         bool silent_mode, int num_workers, int64_t max_matches_per_col)
       : full_ts_len_A(Asize),
         full_ts_len_B(Bsize),
         mp_window(window_sz),
@@ -131,7 +141,8 @@ struct OpInfo {
         computing_rows(compute_rows),
         computing_cols(compute_cols),
         is_aligned(aligned),
-        silent_mode(silent_mode) {
+        silent_mode(silent_mode),
+        max_matches_per_column(max_matches_per_col) {
     if (self_join) {
       full_ts_len_B = full_ts_len_A;
     }
@@ -146,6 +157,16 @@ struct OpInfo {
 
     max_tile_width = max_tile_ts_size - mp_window + 1;
     max_tile_height = max_tile_width;
+    // TODO(zpzim): make this a more generic parameter that is specified by the
+    // user or memory availibility
+    max_matches_per_tile =
+        (PROFILE_MEMORY_BUDGET / num_workers) / sizeof(SCAMPmatch);
+    if (!silent_mode && profile_type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
+      std::cout << "Profile memory budget is " << PROFILE_MEMORY_BUDGET
+                << " setting max matches per tile to: "
+                << max_matches_per_tile / 1000000.0 << " million. "
+                << std::endl;
+    }
   }
 
   // Type of profile to compute
@@ -188,6 +209,10 @@ struct OpInfo {
   bool keep_rows_separate;
   // Run without printing any message by standard output
   bool silent_mode;
+  // Max matches per column for ALL_NEIGHBORS profile type
+  int64_t max_matches_per_column;
+  // Max matches per tile for ALL_NEIGHBORS profile type
+  int64_t max_matches_per_tile;
 };
 
 // Struct containing the precomputed statistics for an input time series

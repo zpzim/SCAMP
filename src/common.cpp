@@ -94,6 +94,8 @@ void SCAMPArgs::print() {
             << std::endl;
   std::cout << "distance_threshold: " << distance_threshold << std::endl;
   std::cout << "silent_mode: " << silent_mode << std::endl;
+  std::cout << "max_matches_per_column: " << max_matches_per_column
+            << std::endl;
   std::cout << "timeseries_a size: " << timeseries_a.size() << std::endl;
   std::cout << "timeseries_b size: " << timeseries_b.size() << std::endl;
 }

@@ -30,7 +30,8 @@ class Tile {
   // Set by the kernel when the profile can have a variable length
   unsigned long long int *_profile_dev_length;
 
-  unsigned long long int _num_elements_generated;
+  // Vector of matches used for ALL_NEIGHBORS joins
+  std::vector<SCAMPmatch> _matches_local;
 
   // Per worker output vectors (host)
   Profile _profile_a_tile, _profile_b_tile;

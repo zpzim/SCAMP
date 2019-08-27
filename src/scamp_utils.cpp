@@ -1,6 +1,7 @@
 #include <cmath>
 #include <iomanip>
 #include <iostream>
+#include <list>
 
 #include "common.h"
 #include "scamp_utils.h"
@@ -158,13 +159,21 @@ bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
     case SCAMP::PROFILE_TYPE_APPROX_ALL_NEIGHBORS: {
       std::ofstream mp_out(mp);
       auto arr = p.data[0].match_value;
-      for (const SCAMP::SCAMPmatch &elem : arr) {
-        if (output_pearson) {
-          mp_out << elem.col << " " << elem.row << " " << std::setprecision(10)
-                 << elem.corr << std::endl;
-        } else {
-          mp_out << elem.col << " " << elem.row << " " << std::setprecision(10)
-                 << ConvertToEuclidean(elem.corr, window) << std::endl;
+      for (auto &pq : arr) {
+        std::list<SCAMP::SCAMPmatch> elems;
+        while (!pq.empty()) {
+          elems.push_front(pq.top());
+          pq.pop();
+        }
+        for (auto &elem : elems) {
+          if (output_pearson) {
+            mp_out << elem.col << " " << elem.row << " "
+                   << std::setprecision(10) << elem.corr << std::endl;
+          } else {
+            mp_out << elem.col << " " << elem.row << " "
+                   << std::setprecision(10)
+                   << ConvertToEuclidean(elem.corr, window) << std::endl;
+          }
         }
       }
       break;
@@ -226,6 +235,8 @@ bool InitProfileMemory(SCAMP::SCAMPArgs *args) {
     }
     case SCAMP::PROFILE_TYPE_APPROX_ALL_NEIGHBORS: {
       args->profile_a.data.emplace_back();
+      args->profile_a.data[0].match_value.resize(args->timeseries_a.size() -
+                                                 args->window + 1);
       return true;
     }
     default:
