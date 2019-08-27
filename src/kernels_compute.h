@@ -574,6 +574,7 @@ class DoIterationStrategy<
     // values from cache
     if (COMPUTE_ROWS) {
       switch (PROFILE_TYPE) {
+        case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
         case PROFILE_TYPE_1NN_INDEX: {
           ulonglong4 mp_row_check_temp;
           mp_row_check_temp =
