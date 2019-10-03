@@ -51,7 +51,7 @@ void match_merge(const std::vector<SCAMPmatch> &matches, ProfileData *profile,
       elem.col = col;
       elem.row += merge_start_row;
       pq.push(elem);
-    } else {
+    } else if (pq.size() < max_matches) {
       elem.col = col;
       elem.row += merge_start_row;
       pq.push(elem);
