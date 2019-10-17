@@ -5,6 +5,13 @@
 #include <vector>
 #include "common.h"
 
+void write_matrix(std::string mp, bool output_pearson,
+                  const std::vector<std::vector<double>> &matrix, int window);
+std::vector<std::vector<double>> reduce_all_neighbors(SCAMP::ProfileData *data,
+                                                      int height, int width,
+                                                      int output_height,
+                                                      int output_width);
+
 std::ifstream &read_value(std::ifstream &s, double &d, int count);
 
 void readFile(const std::string &filename, std::vector<double> &v);

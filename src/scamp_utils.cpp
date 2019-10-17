@@ -6,6 +6,50 @@
 #include "common.h"
 #include "scamp_utils.h"
 
+void write_matrix(std::string mp, bool output_pearson,
+                  const std::vector<std::vector<double>> &matrix, int window) {
+  std::ofstream mp_out(mp);
+  for (auto row : matrix) {
+    for (auto elem : row) {
+      if (output_pearson) {
+        mp_out << std::setprecision(10) << elem << " ";
+      } else {
+        mp_out << std::setprecision(10) << ConvertToEuclidean(elem, window)
+               << " ";
+      }
+    }
+    mp_out << std::endl;
+  }
+}
+
+std::vector<std::vector<double>> reduce_all_neighbors(SCAMP::ProfileData *data,
+                                                      int height, int width,
+                                                      int output_height,
+                                                      int output_width) {
+  int reduced_cols = std::ceil(width / static_cast<double>(output_width));
+  int reduced_rows = std::ceil(height / static_cast<double>(output_height));
+  std::vector<std::vector<double>> result(
+      output_height, std::vector<double>(output_width, -1.0));
+  for (auto pq : data->match_value) {
+    while (!pq.empty()) {
+      SCAMP::SCAMPmatch elem = pq.top();
+      pq.pop();
+      int row = elem.row / reduced_rows;
+      int col = elem.col / reduced_cols;
+      if (row >= output_height || col >= output_height) {
+        std::cout
+            << "Warning: row: " << elem.row << " col: " << elem.col
+            << " corr: " << elem.corr
+            << " did not fit into reduced matrix, there is a bug somewhere..."
+            << std::endl;
+      } else if (result[row][col] < elem.corr) {
+        result[row][col] = elem.corr;
+      }
+    }
+  }
+  return result;
+}
+
 std::ifstream &read_value(std::ifstream &s, double &d, int count) {
   std::string line;
   double parsed;

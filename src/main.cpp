@@ -27,6 +27,12 @@ DEFINE_string(hostname_port, "localhost:30078",
 DEFINE_int64(max_matches_per_column, 100,
              "Maximum number of neighbors to generate for any subsequence "
              "(used for ALL_NEIGBORS profiles).");
+DEFINE_bool(reduce_all_neighbors, false,
+            "Whether to reduce the all neighbors graph into a matrix with a "
+            "reduced size");
+DEFINE_int32(reduced_height, 512, "The final height of the output matrix");
+DEFINE_int32(reduced_width, 512, "The final width of the output matrix");
+
 DEFINE_int32(num_cpu_workers, 0, "Number of CPU workers to use");
 DEFINE_bool(output_pearson, false,
             "If true SCAMP will output pearson correlation instead of "
@@ -217,13 +223,22 @@ int main(int argc, char **argv) {
     std::cout << e.what() << "\n";
     exit(1);
   }
-
   printf("Now writing result to files\n");
-  WriteProfileToFile(FLAGS_output_a_file_name, FLAGS_output_a_index_file_name,
-                     args.profile_a, FLAGS_output_pearson, FLAGS_window);
-  if (FLAGS_keep_rows) {
-    WriteProfileToFile(FLAGS_output_b_file_name, FLAGS_output_b_index_file_name,
-                       args.profile_b, FLAGS_output_pearson, FLAGS_window);
+  if (profile_type == SCAMP::PROFILE_TYPE_APPROX_ALL_NEIGHBORS &&
+      FLAGS_reduce_all_neighbors) {
+    auto result =
+        reduce_all_neighbors(&args.profile_a.data[0], n_y, n_x,
+                             FLAGS_reduced_height, FLAGS_reduced_width);
+    write_matrix(FLAGS_output_a_file_name, FLAGS_output_pearson, result,
+                 FLAGS_window);
+  } else {
+    WriteProfileToFile(FLAGS_output_a_file_name, FLAGS_output_a_index_file_name,
+                       args.profile_a, FLAGS_output_pearson, FLAGS_window);
+    if (FLAGS_keep_rows) {
+      WriteProfileToFile(FLAGS_output_b_file_name,
+                         FLAGS_output_b_index_file_name, args.profile_b,
+                         FLAGS_output_pearson, FLAGS_window);
+    }
   }
   printf("Done\n");
   return 0;

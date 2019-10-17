@@ -19,9 +19,9 @@
 
 namespace SCAMP {
 
-constexpr int GIGABYTE = 1024 * 1024 * 1024;
 constexpr int KERNEL_TILE_HEIGHT = 200;
-constexpr int PROFILE_MEMORY_BUDGET = 1 * GIGABYTE;
+constexpr int64_t GIGABYTE = 1024 * 1024 * 1024;
+constexpr int64_t PROFILE_MEMORY_BUDGET = 2 * GIGABYTE;
 
 // Types of matrix profile to compute
 enum SCAMPProfileType {
