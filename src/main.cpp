@@ -150,10 +150,6 @@ int main(int argc, char **argv) {
       FLAGS_double_precision, FLAGS_mixed_precision, FLAGS_single_precision);
   SCAMP::SCAMPProfileType profile_type = ParseProfileType(FLAGS_profile_type);
 
-  if (profile_type == SCAMP::PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
-    computing_rows = false;
-  }
-
   std::vector<double> Ta_h, Tb_h;
 
   readFile(FLAGS_input_a_file_name, Ta_h);

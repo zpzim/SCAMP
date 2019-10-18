@@ -67,7 +67,10 @@ struct SCAMPKernelInputArgs {
     exclusion_lower = exclusion.first;
     exclusion_upper = exclusion.second;
     opt = t->info()->opt_args;
-    profile_length = t->get_mutable_dev_length();
+    profile_a_length = transpose ? t->get_mutable_b_dev_length()
+                                 : t->get_mutable_a_dev_length();
+    profile_b_length = transpose ? t->get_mutable_a_dev_length()
+                                 : t->get_mutable_b_dev_length();
     max_matches_per_tile = t->info()->max_matches_per_tile;
   }
   const T *__restrict__ cov;
@@ -78,14 +81,32 @@ struct SCAMPKernelInputArgs {
   const T *__restrict__ normsa;
   const T *__restrict__ normsb;
   const T *__restrict__ extras[3];
-  unsigned long long int *profile_length;
+  unsigned long long int *profile_a_length;
+  unsigned long long int *profile_b_length;
   int64_t max_matches_per_tile;
   uint32_t n_x;
   uint32_t n_y;
   int32_t exclusion_lower;
   int32_t exclusion_upper;
   OptionalArgs opt;
+  void Print();
 };
+
+template <typename T>
+void SCAMPKernelInputArgs<T>::Print() {
+  std::cout << "cov = " << cov << std::endl;
+  std::cout << "dfa = " << dfa << std::endl;
+  std::cout << "dfb = " << dfb << std::endl;
+  std::cout << "dga = " << dga << std::endl;
+  std::cout << "dgb = " << dgb << std::endl;
+  std::cout << "normsa = " << normsa << std::endl;
+  std::cout << "normsb = " << normsb << std::endl;
+  std::cout << "max_matches_per_tile = " << max_matches_per_tile << std::endl;
+  std::cout << "n_x = " << n_x << std::endl;
+  std::cout << "n_y  = " << n_y << std::endl;
+  std::cout << "exclusion_upper = " << exclusion_upper << std::endl;
+  std::cout << "exclusion_lower = " << exclusion_lower << std::endl;
+}
 
 template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, SCAMPProfileType type>
 struct SCAMPSmem {
@@ -515,6 +536,7 @@ int get_blocksz(Tile *t) {
     case PRECISION_SINGLE:
       return BLOCKSZ_SP;
   }
+  return 0;
 }
 
 constexpr int FPTypeSize(SCAMPPrecisionType dtype) {
@@ -658,6 +680,7 @@ SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
         return SCAMP_CUDA_ERROR;
     }
   }
+  gpuErrchk(cudaPeekAtLastError());
   return SCAMP_NO_ERROR;
 }
 
@@ -671,6 +694,12 @@ SCAMPError_t compute_gpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
                               static_cast<double>(DIAGS_PER_THREAD));
   uint64_t num_blocks = ceil(num_workers / static_cast<double>(blocksz));
   uint64_t smem = get_smem(t->info(), blocksz);
+  if (!t->info()->silent_mode) {
+    std::cout << "Launching " << num_blocks << " thread blocks of size "
+              << blocksz << " with a total of " << smem
+              << " bytes of shared memory per block." << std::endl;
+    args.Print();
+  }
   if (exclusion_total < args.n_x) {
     switch (t->info()->profile_type) {
       case PROFILE_TYPE_SUM_THRESH:

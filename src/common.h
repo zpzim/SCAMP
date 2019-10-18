@@ -19,6 +19,11 @@
 
 namespace SCAMP {
 
+using DeviceProfile = std::unordered_map<int, void *>;
+
+struct OpInfo;
+struct ExecInfo;
+
 constexpr int KERNEL_TILE_HEIGHT = 200;
 constexpr int64_t GIGABYTE = 1024 * 1024 * 1024;
 constexpr int64_t PROFILE_MEMORY_BUDGET = 2 * GIGABYTE;
@@ -43,6 +48,13 @@ enum SCAMPPrecisionType {
   PRECISION_DOUBLE = 3,
 };
 
+// Enum describing worker architecture, used to switch on architecture specific
+// code
+enum SCAMPArchitecture {
+  CPU_WORKER,
+  CUDA_GPU_WORKER,
+};
+
 // For computing the 1NN Matrix profile and index on the GPU, we store both the
 // index and distance as a single 64 bit value which allows for atomic updating
 // on the GPU
@@ -53,6 +65,7 @@ typedef union {
 } mp_entry;
 
 struct SCAMPmatch {
+  SCAMPmatch() : corr(-2), row(0), col(0) {}
   SCAMPmatch(float d, uint32_t r, uint32_t c) : corr(d), row(r), col(c) {}
   float corr;
   uint32_t row;
@@ -66,6 +79,9 @@ class compareMatch {
   }
 };
 
+void Memcopy(void *destination, const void *source, size_t bytes,
+             bool from_tile, const ExecInfo *info);
+
 struct ProfileData {
   // Only one of these should be set at once
   std::vector<uint32_t> uint32_value;
@@ -75,12 +91,28 @@ struct ProfileData {
   std::vector<
       std::priority_queue<SCAMPmatch, std::vector<SCAMPmatch>, compareMatch>>
       match_value;
+  // Unordered version of match_value
+  std::vector<SCAMPmatch> match_value_unordered;
 };
 
 // Stores information about a matrix profile
-struct Profile {
+class Profile {
+ public:
+  Profile() : type(PROFILE_TYPE_INVALID) {}
+
+  Profile(SCAMPProfileType t, size_t size) : type(t) { Alloc(size); }
   std::vector<ProfileData> data;
   SCAMPProfileType type;
+  void MergeTileToProfile(Profile *tile_profile, const OpInfo *info,
+                          uint64_t position, uint64_t length,
+                          uint64_t index_start);
+  void CopyFromDevice(const ExecInfo *info,
+                      const DeviceProfile *device_tile_profile,
+                      uint64_t length);
+  void Alloc(size_t size);
+  // void AllocUnordered(size_t size);
+ private:
+  std::mutex _profile_lock;
 };
 
 // Arguments for a SCAMP operation
@@ -119,6 +151,44 @@ struct OptionalArgs {
 
   int num_extra_operands;
   double threshold;
+};
+
+struct ExecInfo {
+  SCAMPArchitecture arch;
+  int cuda_id;
+#ifdef _HAS_CUDA_
+  cudaStream_t stream;
+  cudaDeviceProp dev_props;
+#endif
+  ExecInfo(SCAMPArchitecture _arch, int _cuda_id)
+      : arch(_arch), cuda_id(_cuda_id) {
+    switch (arch) {
+      case CUDA_GPU_WORKER:
+#ifdef _HAS_CUDA_
+        cudaSetDevice(cuda_id);
+        cudaGetDeviceProperties(&dev_props, cuda_id);
+        cudaStreamCreate(&stream);
+#else
+        ASSERT(false, "Binary not built with CUDA");
+#endif
+        break;
+      case CPU_WORKER:
+        break;
+    }
+  }
+  ~ExecInfo() {
+    switch (arch) {
+      case CUDA_GPU_WORKER:
+#ifdef _HAS_CUDA_
+        cudaSetDevice(cuda_id);
+        cudaStreamDestroy(stream);
+#endif
+        break;
+      case CPU_WORKER:
+        // Add any arch-specific cleanup here
+        break;
+    }
+  }
 };
 
 // Struct defines information about a SCAMP Operation
@@ -287,18 +357,9 @@ class ThreadSafeQueue {
   std::condition_variable cond_;
 };
 
-using DeviceProfile = std::unordered_map<int, void *>;
-
 // Returns the size in bytes of a the matrix profile element for a particular MP
 // type
 size_t GetProfileTypeSize(SCAMPProfileType t);
-
-// Enum describing worker architecture, used to switch on architecture specific
-// code
-enum SCAMPArchitecture {
-  CPU_WORKER,
-  CUDA_GPU_WORKER,
-};
 
 // Enum describing different types of SCAMP errors
 enum SCAMPError_t {

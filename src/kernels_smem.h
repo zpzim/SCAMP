@@ -328,7 +328,7 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
         if (e.floats[0] > threshold) {
           unsigned long long int pos =
               do_atomicAdd<unsigned long long int, ATOMIC_GLOBAL>(
-                  args.profile_length, 1);
+                  args.profile_a_length, 1);
           if (pos < args.max_matches_per_tile) {
             SCAMPmatch *profile = reinterpret_cast<SCAMPmatch *>(profile_A);
             profile[pos].corr = e.floats[0];
@@ -349,7 +349,7 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
         if (e.floats[0] > threshold) {
           unsigned long long int pos =
               do_atomicAdd<unsigned long long int, ATOMIC_GLOBAL>(
-                  args.profile_length, 1);
+                  args.profile_b_length, 1);
           if (pos < args.max_matches_per_tile) {
             SCAMPmatch *profile = reinterpret_cast<SCAMPmatch *>(profile_B);
             profile[pos].corr = e.floats[0];

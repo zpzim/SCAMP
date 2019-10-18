@@ -145,7 +145,7 @@ void SCAMP_Operation::do_work(const std::vector<double> &timeseries_a,
                            " executing tile");
     }
     // Merge join result
-    tile.MergeProfile(_profile_a, _profile_a_lock, _profile_b, _profile_b_lock);
+    tile.MergeProfile(_profile_a, _profile_b);
 
     // Update our counter with a lock
     std::unique_lock<std::mutex> lock(_counter_lock);

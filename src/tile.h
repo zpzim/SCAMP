@@ -12,12 +12,6 @@ namespace SCAMP {
 
 class Tile {
  private:
-  // Architecture
-  SCAMPArchitecture _arch;
-
-  // GPU id (if applicable)
-  int _cuda_id;
-
   // Per worker input vectors
   std::unique_ptr<double, std::function<void(double *)>> _T_A_dev, _T_B_dev,
       _QT_dev, _means_A, _means_B, _norms_A, _norms_B, _df_A, _df_B, _dg_A,
@@ -28,7 +22,8 @@ class Tile {
 
   // Length of the output vector on the device
   // Set by the kernel when the profile can have a variable length
-  unsigned long long int *_profile_dev_length;
+  unsigned long long int *_profile_a_dev_length;
+  unsigned long long int *_profile_b_dev_length;
 
   // Vector of matches used for ALL_NEIGHBORS joins
   std::vector<SCAMPmatch> _matches_local;
@@ -46,11 +41,7 @@ class Tile {
   size_t _current_tile_row;
 
   const OpInfo *_info;
-#ifdef _HAS_CUDA_
-  // Cuda stream and device properties associated with this worker
-  cudaStream_t _stream;
-  cudaDeviceProp _dev_props;
-#endif
+  ExecInfo _exec_info;
 
   // Private member functions which perform joins
   SCAMPError_t do_self_join_full();
@@ -69,20 +60,23 @@ class Tile {
   void CopyProfileToHost(Profile *destination_profile,
                          const DeviceProfile *device_tile_profile,
                          uint64_t length);
-  void MergeTileIntoFullProfile(Profile *tile_profile, uint64_t position,
-                                uint64_t length, Profile *full_profile,
-                                uint64_t index_start, std::mutex &lock);
+
+  // Gets the profile length computed by the kernel when there can be a variable
+  // length
+  std::pair<unsigned long long int, unsigned long long int>
+  get_profile_dims_from_device();
 
  public:
+  Tile(const OpInfo *info);
   Tile(const OpInfo *info, SCAMPArchitecture arch, int cuda_id);
   ~Tile();
 #ifdef _HAS_CUDA_
-  cudaStream_t get_stream() { return _stream; }
-  cudaDeviceProp get_dev_props() { return _dev_props; }
+  cudaStream_t get_stream() { return _exec_info.stream; }
+  cudaDeviceProp get_dev_props() { return _exec_info.dev_props; }
+  int get_cuda_id() const { return _exec_info.cuda_id; }
 #endif
 
-  SCAMPArchitecture get_arch() const { return _arch; }
-  int get_cuda_id() const { return _cuda_id; }
+  SCAMPArchitecture get_arch() const { return _exec_info.arch; }
   size_t get_tile_width() const { return _current_tile_width; }
   size_t get_tile_height() const { return _current_tile_height; }
   size_t get_tile_row() const { return _current_tile_row; }
@@ -97,8 +91,11 @@ class Tile {
   const double *dgb() const { return _dg_B.get(); }
   const double *normsa() const { return _norms_A.get(); }
   const double *normsb() { return _norms_B.get(); }
-  unsigned long long int *get_mutable_dev_length() {
-    return _profile_dev_length;
+  unsigned long long int *get_mutable_a_dev_length() {
+    return _profile_a_dev_length;
+  }
+  unsigned long long int *get_mutable_b_dev_length() {
+    return _profile_b_dev_length;
   }
 
   std::pair<int, int> get_exclusion_for_ab_join(bool upper_tile);
@@ -107,8 +104,7 @@ class Tile {
   void set_tile_row(size_t row) { _current_tile_row = row; }
   void set_tile_height(size_t height) { _current_tile_height = height; }
   void set_tile_width(size_t width) { _current_tile_width = width; }
-  void MergeProfile(Profile *profile_a, std::mutex &a_lock, Profile *profile_b,
-                    std::mutex &b_lock);
+  void MergeProfile(Profile *profile_a, Profile *profile_b);
   void Sync();
 
   // Initializes the precomputed statistics required by the current tile

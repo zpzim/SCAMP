@@ -6,7 +6,7 @@
 #include "common.h"
 #include "scamp_utils.h"
 
-void write_matrix(std::string mp, bool output_pearson,
+void write_matrix(const std::string &mp, bool output_pearson,
                   const std::vector<std::vector<double>> &matrix, int window) {
   std::ofstream mp_out(mp);
   for (auto row : matrix) {
@@ -153,7 +153,7 @@ double ConvertToEuclidean(double val, int window) {
 }
 
 bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
-                        SCAMP::Profile p, bool output_pearson, int window) {
+                        SCAMP::Profile &p, bool output_pearson, int window) {
   switch (p.type) {
     case SCAMP::PROFILE_TYPE_1NN_INDEX: {
       std::ofstream mp_out(mp);
@@ -238,52 +238,11 @@ bool InitProfileMemory(SCAMP::SCAMPArgs *args) {
     // Invalid input
     return false;
   }
-  switch (args->profile_type) {
-    case SCAMP::PROFILE_TYPE_1NN_INDEX: {
-      SCAMP::mp_entry e;
-      e.floats[0] = std::numeric_limits<float>::lowest();
-      e.ints[1] = -1u;
-      args->profile_a.data.emplace_back();
-      args->profile_a.data[0].uint64_value.resize(
-          args->timeseries_a.size() - args->window + 1, e.ulong);
-      if (args->keep_rows_separate) {
-        args->profile_b.data.emplace_back();
-        args->profile_b.data[0].uint64_value.resize(
-            args->timeseries_b.size() - args->window + 1, e.ulong);
-      }
-      return true;
-    }
-    case SCAMP::PROFILE_TYPE_1NN: {
-      args->profile_a.data.emplace_back();
-      args->profile_a.data[0].float_value.resize(
-          args->timeseries_a.size() - args->window + 1,
-          std::numeric_limits<float>::lowest());
-      if (args->keep_rows_separate) {
-        args->profile_b.data.emplace_back();
-        args->profile_b.data[0].float_value.resize(
-            args->timeseries_b.size() - args->window + 1,
-            std::numeric_limits<float>::lowest());
-      }
-      return true;
-    }
-    case SCAMP::PROFILE_TYPE_SUM_THRESH: {
-      args->profile_a.data.emplace_back();
-      args->profile_a.data[0].double_value.resize(
-          args->timeseries_a.size() - args->window + 1, 0);
-      if (args->keep_rows_separate) {
-        args->profile_b.data.emplace_back();
-        args->profile_b.data[0].double_value.resize(
-            args->timeseries_b.size() - args->window + 1, 0);
-      }
-      return true;
-    }
-    case SCAMP::PROFILE_TYPE_APPROX_ALL_NEIGHBORS: {
-      args->profile_a.data.emplace_back();
-      args->profile_a.data[0].match_value.resize(args->timeseries_a.size() -
-                                                 args->window + 1);
-      return true;
-    }
-    default:
-      return false;
+
+  args->profile_a.Alloc(profile_a_size);
+
+  if (args->keep_rows_separate) {
+    args->profile_b.Alloc(profile_b_size);
   }
+  return true;
 }

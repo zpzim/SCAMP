@@ -8,57 +8,6 @@
 
 namespace SCAMP {
 
-template <typename T>
-void elementwise_sum(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
-                     T *to_merge) {
-  for (int i = 0; i < tile_sz; ++i) {
-    mp_full[i + merge_start] += to_merge[i];
-  }
-}
-
-template <typename T>
-void elementwise_max(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
-                     T *to_merge, uint64_t index_offset) {
-  for (int i = 0; i < tile_sz; ++i) {
-    mp_entry e1, e2;
-    e1.ulong = mp_full[i + merge_start];
-    e2.ulong = to_merge[i];
-    if (e1.floats[0] < e2.floats[0]) {
-      e2.ints[1] += index_offset;
-      mp_full[i + merge_start] = e2.ulong;
-    }
-  }
-}
-
-template <typename T>
-void elementwise_max(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
-                     T *to_merge) {
-  for (int i = 0; i < tile_sz; ++i) {
-    if (mp_full[i + merge_start] < to_merge[i]) {
-      mp_full[i + merge_start] = to_merge[i];
-    }
-  }
-}
-
-void match_merge(const std::vector<SCAMPmatch> &matches, ProfileData *profile,
-                 uint64_t merge_start_row, uint64_t merge_start_col,
-                 int64_t max_matches) {
-  for (auto elem : matches) {
-    uint64_t col = elem.col + merge_start_col;
-    auto &pq = profile->match_value[col];
-    if (pq.size() == max_matches && pq.top().corr < elem.corr) {
-      pq.pop();
-      elem.col = col;
-      elem.row += merge_start_row;
-      pq.push(elem);
-    } else if (pq.size() < max_matches) {
-      elem.col = col;
-      elem.row += merge_start_row;
-      pq.push(elem);
-    }
-  }
-}
-
 // Gets the exclusion zone for a particular tile (helper_function)
 static int get_exclusion(uint64_t window_size, int64_t start_row,
                          int64_t start_column) {
@@ -126,6 +75,7 @@ T *alloc_mem(size_t count, SCAMPArchitecture arch, int deviceid) {
     case CUDA_GPU_WORKER: {
 #ifdef _HAS_CUDA_
       cudaSetDevice(deviceid);
+      gpuErrchk(cudaPeekAtLastError());
       size_t bytes = count * sizeof(T);
       T *ptr;
       cudaMalloc(&ptr, bytes);
@@ -148,7 +98,9 @@ void free_mem(T *ptr, SCAMPArchitecture arch, int deviceid) {
     case CUDA_GPU_WORKER:
 #ifdef _HAS_CUDA_
       cudaSetDevice(deviceid);
+      gpuErrchk(cudaPeekAtLastError());
       cudaFree(ptr);
+      gpuErrchk(cudaPeekAtLastError());
 #else
       ASSERT(false, "Using CUDA in binary not built with it");
 #endif
@@ -160,12 +112,12 @@ void free_mem(T *ptr, SCAMPArchitecture arch, int deviceid) {
 }
 
 void Tile::Memset(void *destination, char value, size_t bytes) {
-  switch (_arch) {
+  switch (get_arch()) {
     case CUDA_GPU_WORKER:
 #ifdef _HAS_CUDA_
-      cudaSetDevice(_cuda_id);
+      cudaSetDevice(get_cuda_id());
       gpuErrchk(cudaPeekAtLastError());
-      cudaMemsetAsync(destination, value, bytes, _stream);
+      cudaMemsetAsync(destination, value, bytes, get_stream());
       gpuErrchk(cudaPeekAtLastError());
 #else
       ASSERT(false, "Using CUDA in binary not built with it");
@@ -179,35 +131,12 @@ void Tile::Memset(void *destination, char value, size_t bytes) {
 
 void Tile::Memcopy(void *destination, const void *source, size_t bytes,
                    bool from_tile) {
-  switch (_arch) {
-    case CUDA_GPU_WORKER:
-#ifdef _HAS_CUDA_
-      cudaSetDevice(_cuda_id);
-      gpuErrchk(cudaPeekAtLastError());
-      if (from_tile) {
-        cudaMemcpyAsync(destination, source, bytes, cudaMemcpyDeviceToHost,
-                        _stream);
-      } else {
-        cudaMemcpyAsync(destination, source, bytes, cudaMemcpyHostToDevice,
-                        _stream);
-      }
-      gpuErrchk(cudaPeekAtLastError());
-#else
-      ASSERT(false, "Using CUDA in binary not built with it");
-#endif
-      break;
-    case CPU_WORKER:
-      // TODO(zpzim): Most of the time we don't actually have to copy
-      // memory here, we can just set a reference.
-      memcpy(destination, source, bytes);
-      break;
-  }
+  SCAMP::Memcopy(destination, source, bytes, from_tile, &_exec_info);
 }
 
 Tile::Tile(const OpInfo *info, SCAMPArchitecture arch, int cuda_id)
     : _info(info),
-      _arch(arch),
-      _cuda_id(cuda_id),
+      _exec_info(arch, cuda_id),
       _current_tile_width(0),
       _current_tile_height(0),
       _current_tile_row(0),
@@ -236,6 +165,7 @@ Tile::Tile(const OpInfo *info, SCAMPArchitecture arch, int cuda_id)
             [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
       _dg_B(alloc_mem<double>(info->max_tile_height, arch, cuda_id),
             [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
+
       _scratchpad(
           static_cast<double *>(
               alloc_mem<double>(info->max_tile_ts_size, arch, cuda_id)),
@@ -243,14 +173,9 @@ Tile::Tile(const OpInfo *info, SCAMPArchitecture arch, int cuda_id)
 
       _scratch(
           std::unique_ptr<qt_compute_helper>(new qt_compute_helper(  // NOLINT
-              info->max_tile_ts_size, info->mp_window, true, arch)))
-#ifdef _HAS_CUDA_
-      // Additional initializers for CUDA
-      ,
-      _stream(),
-      _dev_props()
-#endif
-{
+              info->max_tile_ts_size, info->mp_window, true, arch))),
+      _profile_a_tile(info->profile_type, info->max_tile_width),
+      _profile_b_tile(info->profile_type, info->max_tile_height) {
   size_t profile_size = GetProfileTypeSize(_info->profile_type);
   size_t rows_to_alloc, cols_to_alloc;
 
@@ -258,7 +183,7 @@ Tile::Tile(const OpInfo *info, SCAMPArchitecture arch, int cuda_id)
   // to allocate additional memory
   if (_info->profile_type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
     cols_to_alloc = _info->max_matches_per_tile;
-    rows_to_alloc = _info->max_tile_height;
+    rows_to_alloc = _info->max_matches_per_tile;
   } else {
     cols_to_alloc = _info->max_tile_width;
     rows_to_alloc = _info->max_tile_height;
@@ -270,56 +195,29 @@ Tile::Tile(const OpInfo *info, SCAMPArchitecture arch, int cuda_id)
   _profile_b_tile_dev[_info->profile_type] =
       alloc_mem<char>(profile_size * rows_to_alloc, arch, cuda_id);
 
-  // Allocate the tile's host memory
-  _profile_a_tile = AllocProfile(_info->profile_type, _info->max_tile_width);
-  _profile_b_tile = AllocProfile(_info->profile_type, _info->max_tile_height);
-
   // Allocate variable to track number of outputs generated by the kernel
-  _profile_dev_length = alloc_mem<unsigned long long int>(1, arch, cuda_id);
-
-  switch (_arch) {
-    case CUDA_GPU_WORKER:
-#ifdef _HAS_CUDA_
-      cudaSetDevice(_cuda_id);
-      cudaGetDeviceProperties(&_dev_props, _cuda_id);
-      cudaStreamCreate(&_stream);
-#else
-      ASSERT(false, "ERROR: CUDA used in binary not built with CUDA");
-#endif
-      break;
-    case CPU_WORKER:
-      // Add any arch-specific inits here
-      break;
-  }
+  _profile_a_dev_length = alloc_mem<unsigned long long int>(1, arch, cuda_id);
+  _profile_b_dev_length = alloc_mem<unsigned long long int>(1, arch, cuda_id);
 }
 
 Tile::~Tile() {
-  switch (_arch) {
-    case CUDA_GPU_WORKER:
-#ifdef _HAS_CUDA_
-      cudaSetDevice(_cuda_id);
-      cudaStreamDestroy(_stream);
-#else
-      ASSERT(false, "ERROR: CUDA used in binary not built with CUDA");
-#endif
-      break;
-    case CPU_WORKER:
-      // Add any arch-specific cleanup here
-      break;
-  }
   // Free any memory allocated that will not be freed automatically
   free_mem<char>(static_cast<char *>(_profile_a_tile_dev[_info->profile_type]),
-                 _arch, _cuda_id);
+                 get_arch(), get_cuda_id());
   free_mem<char>(static_cast<char *>(_profile_b_tile_dev[_info->profile_type]),
-                 _arch, _cuda_id);
-  free_mem<unsigned long long int>(_profile_dev_length, _arch, _cuda_id);
+                 get_arch(), get_cuda_id());
+  free_mem<unsigned long long int>(_profile_a_dev_length, get_arch(),
+                                   get_cuda_id());
+  free_mem<unsigned long long int>(_profile_b_dev_length, get_arch(),
+                                   get_cuda_id());
 }
 
 void Tile::Sync() {
-  switch (_arch) {
+  switch (get_arch()) {
     case CUDA_GPU_WORKER:
 #if _HAS_CUDA_
-      cudaStreamSynchronize(_stream);
+      cudaStreamSynchronize(get_stream());
+      gpuErrchk(cudaPeekAtLastError());
 #else
       ASSERT(false, "ERROR: CUDA used in binary not built with CUDA");
 #endif
@@ -335,40 +233,6 @@ void Tile::InitTimeseries(const std::vector<double> &Ta_h,
           sizeof(double) * _current_tile_width, false);
   Memcopy(_T_B_dev.get(), Tb_h.data() + _current_tile_row,
           sizeof(double) * _current_tile_height, false);
-}
-
-Profile Tile::AllocProfile(SCAMPProfileType t, uint64_t size) {
-  Profile p;
-  p.type = t;
-  switch (t) {
-    case PROFILE_TYPE_SUM_THRESH:
-      p.data.emplace_back();
-      p.data[0].double_value.resize(size, 0);
-      return p;
-    case PROFILE_TYPE_1NN:
-      p.data.emplace_back();
-      p.data[0].float_value.resize(size, std::numeric_limits<float>::lowest());
-      return p;
-    case PROFILE_TYPE_1NN_INDEX:
-      mp_entry e;
-      e.ints[1] = -1u;
-      e.floats[0] = std::numeric_limits<float>::lowest();
-      p.data.emplace_back();
-      p.data[0].uint64_value.resize(size, e.ulong);
-      return p;
-    case PROFILE_TYPE_FREQUENCY_THRESH:
-      p.data.emplace_back();
-      p.data[0].uint64_value.resize(size, 0);
-      return p;
-    case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
-      p.data.emplace_back();
-      p.data[0].match_value.resize(size);
-      return p;
-    case PROFILE_TYPE_KNN:
-    case PROFILE_TYPE_1NN_MULTIDIM:
-    default:
-      return p;
-  }
 }
 
 // Initializes the tile's local profile values based on global profiles
@@ -412,7 +276,8 @@ SCAMPError_t Tile::InitProfile(Profile *profile_a, Profile *profile_b) {
       break;
     }
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
-      Memset(_profile_dev_length, 0, sizeof(unsigned long long int));
+      Memset(_profile_a_dev_length, 0, sizeof(unsigned long long int));
+      Memset(_profile_b_dev_length, 0, sizeof(unsigned long long int));
       break;
     case PROFILE_TYPE_FREQUENCY_THRESH:
     case PROFILE_TYPE_KNN:
@@ -439,141 +304,94 @@ void Tile::InitStats(const PrecomputedInfo &a, const PrecomputedInfo &b) {
   Memcopy(_means_B.get(), b.means().data() + _current_tile_row, bytes_b, false);
 }
 
-// TODO(zpzim): move this back into SCAMP_Operation, we shouldn't have the
-// merging be functionality of the individual tile
-// Merges a local result "tile_profile" with the global matrix profile
-// "full_profile"
-void Tile::MergeTileIntoFullProfile(Profile *tile_profile, uint64_t position,
-                                    uint64_t length, Profile *full_profile,
-                                    uint64_t index_start, std::mutex &lock) {
-  // Lock the entire result vector before we merge
-  std::unique_lock<std::mutex> mlock(lock);
-  switch (_info->profile_type) {
-    case PROFILE_TYPE_SUM_THRESH:
-      elementwise_sum<double>(full_profile->data[0].double_value.data(),
-                              position, length,
-                              tile_profile->data[0].double_value.data());
-      return;
-    case PROFILE_TYPE_1NN_INDEX:
-      elementwise_max<uint64_t>(
-          full_profile->data[0].uint64_value.data(), position, length,
-          tile_profile->data[0].uint64_value.data(), index_start);
-      return;
-    case PROFILE_TYPE_1NN:
-      elementwise_max<float>(full_profile->data[0].float_value.data(), position,
-                             length, tile_profile->data[0].float_value.data());
-      return;
-    case PROFILE_TYPE_FREQUENCY_THRESH:
-      elementwise_sum<uint64_t>(full_profile->data[0].uint64_value.data(),
-                                position, length,
-                                tile_profile->data[0].uint64_value.data());
-      return;
-    case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
-      match_merge(_matches_local, &full_profile->data[0], index_start, position,
-                  _info->max_matches_per_column);
-      return;
-    case PROFILE_TYPE_KNN:
-    case PROFILE_TYPE_1NN_MULTIDIM:
-    default:
-      ASSERT(false, "FUNCTIONALITY UNIMPLEMENTED");
-      return;
+std::pair<unsigned long long int, unsigned long long int>
+Tile::get_profile_dims_from_device() {
+  std::pair<unsigned long long int, unsigned long long int> result;
+  result.first = 0;
+  result.second = 0;
+  this->Memcopy(&result.first, _profile_a_dev_length,
+                sizeof(unsigned long long int), true);
+  std::cout << "width = " << result.first << "\n";
+  std::cout << "height = " << result.second << "\n";
+  this->Memcopy(&result.second, _profile_b_dev_length,
+                sizeof(unsigned long long int), true);
+  Sync();
+  std::cout << "width = " << result.first << std::endl;
+  std::cout << "height = " << result.second << std::endl;
+  if (result.first > info()->max_matches_per_tile) {
+    if (!_info->silent_mode) {
+      std::cout << "Warning: Unable to return all matches! SCAMP found a "
+                   "total of "
+                << result.first
+                << " matches for this tile. But we could only store "
+                << _info->max_matches_per_tile
+                << " of them. Perhaps try a smaller tile size or a higher "
+                   "match threshold? "
+                << std::endl;
+    }
+    result.first = _info->max_matches_per_tile;
   }
+
+  if (result.second > info()->max_matches_per_tile) {
+    if (!_info->silent_mode) {
+      std::cout << "Warning: Unable to return all matches! SCAMP found a "
+                   "total of "
+                << result.second
+                << " matches for this tile. But we could only store "
+                << _info->max_matches_per_tile
+                << " of them. Perhaps try a smaller tile size or a higher "
+                   "match threshold? "
+                << std::endl;
+    }
+    result.second = _info->max_matches_per_tile;
+  }
+
+  return result;
 }
 
 // TODO(zpzim): move this back into SCAMP_Operation, we shouldn't have the
 // merging be functionality of the individual tile
-void Tile::MergeProfile(Profile *profile_a, std::mutex &a_lock,
-                        Profile *profile_b, std::mutex &b_lock) {
+void Tile::MergeProfile(Profile *profile_a, Profile *profile_b) {
   // Set up a copy operation back to the host
-  CopyProfileToHost(&_profile_a_tile, &_profile_a_tile_dev,
-                    _current_tile_width - _info->mp_window + 1);
+  int height, width;
+  switch (profile_a->type) {
+    case PROFILE_TYPE_1NN:
+    case PROFILE_TYPE_1NN_INDEX:
+    case PROFILE_TYPE_SUM_THRESH:
+      // We already know how many elements to copy back
+      width = _current_tile_width - _info->mp_window + 1;
+      height = _current_tile_height - _info->mp_window + 1;
+      break;
+    case PROFILE_TYPE_APPROX_ALL_NEIGHBORS: {
+      // We need to find the number of elements generated by the kernel
+      auto width_height = get_profile_dims_from_device();
+      width = width_height.first;
+      height = width_height.second;
+      break;
+    }
+    default:
+      throw(SCAMPException("Functionality Unimplemented."));
+      break;
+  }
+
+  _profile_a_tile.CopyFromDevice(&_exec_info, &_profile_a_tile_dev, width);
   if (_info->computing_rows) {
-    CopyProfileToHost(&_profile_b_tile, &_profile_b_tile_dev,
-                      _current_tile_height - _info->mp_window + 1);
+    _profile_b_tile.CopyFromDevice(&_exec_info, &_profile_b_tile_dev, height);
   }
 
   // Wait for the previous work to be done
   Sync();
 
   // Merge result
-  MergeTileIntoFullProfile(&_profile_a_tile, _current_tile_col,
-                           _current_tile_width - _info->mp_window + 1,
-                           profile_a, _current_tile_row, a_lock);
-
-  // We don't need to to merge anything else if we only have one profile
-  if (_info->profile_type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
-    return;
-  }
+  profile_a->MergeTileToProfile(&_profile_a_tile, _info, _current_tile_col,
+                                width, _current_tile_row);
 
   if (_info->computing_rows && _info->keep_rows_separate) {
-    MergeTileIntoFullProfile(&_profile_b_tile, _current_tile_row,
-                             _current_tile_height - _info->mp_window + 1,
-                             profile_b, _current_tile_col, b_lock);
+    profile_b->MergeTileToProfile(&_profile_b_tile, _info, _current_tile_row,
+                                  height, _current_tile_col);
   } else if (_info->self_join) {
-    MergeTileIntoFullProfile(&_profile_b_tile, _current_tile_row,
-                             _current_tile_height - _info->mp_window + 1,
-                             profile_a, _current_tile_col, a_lock);
-  }
-}
-
-// Copies a profile to the host
-void Tile::CopyProfileToHost(Profile *destination_profile,
-                             const DeviceProfile *device_tile_profile,
-                             uint64_t length) {
-  switch (_info->profile_type) {
-    case PROFILE_TYPE_SUM_THRESH:
-      Memcopy(destination_profile->data[0].double_value.data(),
-              device_tile_profile->at(PROFILE_TYPE_SUM_THRESH),
-              length * sizeof(double), true);
-      break;
-    case PROFILE_TYPE_1NN:
-      Memcopy(destination_profile->data[0].float_value.data(),
-              device_tile_profile->at(PROFILE_TYPE_1NN), length * sizeof(float),
-              true);
-      break;
-    case PROFILE_TYPE_1NN_INDEX:
-      Memcopy(destination_profile->data[0].uint64_value.data(),
-              device_tile_profile->at(PROFILE_TYPE_1NN_INDEX),
-              length * sizeof(uint64_t), true);
-      break;
-    case PROFILE_TYPE_APPROX_ALL_NEIGHBORS: {
-      // Find the number of elements output by kernel
-      unsigned long long int num_elements_generated = 0;
-      Memcopy(&num_elements_generated, _profile_dev_length,
-              sizeof(unsigned long long int), true);
-      // Sync to get number of elements to copy
-      Sync();
-      if (num_elements_generated > _info->max_matches_per_tile) {
-        if (!_info->silent_mode) {
-          std::cout << "Warning: Unable to return all matches! SCAMP found a "
-                       "total of "
-                    << num_elements_generated
-                    << " matches for this tile. But we could only store "
-                    << _info->max_matches_per_tile
-                    << " of them. Perhaps try a smaller tile size or a higher "
-                       "match threshold? "
-                    << std::endl;
-        }
-        num_elements_generated = _info->max_matches_per_tile;
-      }
-      if (!_info->silent_mode) {
-        std::cout << num_elements_generated << " matches found this tile."
-                  << std::endl;
-      }
-
-      // Copy only the elements generated
-      _matches_local.resize(num_elements_generated, SCAMPmatch(-2, 0, 0));
-      Memcopy(_matches_local.data(),
-              device_tile_profile->at(PROFILE_TYPE_APPROX_ALL_NEIGHBORS),
-              num_elements_generated * sizeof(SCAMPmatch), true);
-      break;
-    }
-    case PROFILE_TYPE_FREQUENCY_THRESH:
-    case PROFILE_TYPE_KNN:
-    case PROFILE_TYPE_1NN_MULTIDIM:
-    default:
-      ASSERT(false, "FUNCTIONALITY UNIMPLEMENTED");
-      break;
+    profile_a->MergeTileToProfile(&_profile_b_tile, _info, _current_tile_row,
+                                  height, _current_tile_col);
   }
 }
 
@@ -609,11 +427,12 @@ SCAMPError_t Tile::do_self_join_full() {
   }
 
   // Compute the lower triangular portion of the tile based on worker arch
-  switch (_arch) {
+  switch (get_arch()) {
     case CUDA_GPU_WORKER:
 #ifdef _HAS_CUDA_
-      error = _scratch->compute_QT(_QT_dev.get(), _T_B_dev.get(),
-                                   _T_A_dev.get(), _means_A.get(), _stream);
+      error =
+          _scratch->compute_QT(_QT_dev.get(), _T_B_dev.get(), _T_A_dev.get(),
+                               _means_A.get(), get_stream());
       if (error != SCAMP_NO_ERROR) {
         return error;
       }
@@ -646,11 +465,12 @@ SCAMPError_t Tile::do_self_join_half() {
   }
 
   // Compute the upper triangular portion of the tile based on worker arch
-  switch (_arch) {
+  switch (get_arch()) {
     case CUDA_GPU_WORKER:
 #ifdef _HAS_CUDA_
-      error = _scratch->compute_QT(_QT_dev.get(), _T_A_dev.get(),
-                                   _T_B_dev.get(), _means_B.get(), _stream);
+      error =
+          _scratch->compute_QT(_QT_dev.get(), _T_A_dev.get(), _T_B_dev.get(),
+                               _means_B.get(), get_stream());
       if (error != SCAMP_NO_ERROR) {
         return error;
       }
@@ -684,11 +504,12 @@ SCAMPError_t Tile::do_ab_join_full() {
     return SCAMP_DIM_INCOMPATIBLE;
   }
 
-  switch (_arch) {
+  switch (get_arch()) {
     case CUDA_GPU_WORKER:
 #ifdef _HAS_CUDA_
-      error = _scratch->compute_QT(_QT_dev.get(), _T_A_dev.get(),
-                                   _T_B_dev.get(), _means_B.get(), _stream);
+      error =
+          _scratch->compute_QT(_QT_dev.get(), _T_A_dev.get(), _T_B_dev.get(),
+                               _means_B.get(), get_stream());
       if (error != SCAMP_NO_ERROR) {
         return error;
       }
@@ -710,11 +531,12 @@ SCAMPError_t Tile::do_ab_join_full() {
     return error;
   }
 
-  switch (_arch) {
+  switch (get_arch()) {
     case CUDA_GPU_WORKER:
 #ifdef _HAS_CUDA_
-      error = _scratch->compute_QT(_QT_dev.get(), _T_B_dev.get(),
-                                   _T_A_dev.get(), _means_A.get(), _stream);
+      error =
+          _scratch->compute_QT(_QT_dev.get(), _T_B_dev.get(), _T_A_dev.get(),
+                               _means_A.get(), get_stream());
       if (error != SCAMP_NO_ERROR) {
         return error;
       }

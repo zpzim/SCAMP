@@ -5,7 +5,7 @@
 #include <vector>
 #include "common.h"
 
-void write_matrix(std::string mp, bool output_pearson,
+void write_matrix(const std::string &mp, bool output_pearson,
                   const std::vector<std::vector<double>> &matrix, int window);
 std::vector<std::vector<double>> reduce_all_neighbors(SCAMP::ProfileData *data,
                                                       int height, int width,
@@ -26,6 +26,6 @@ SCAMP::SCAMPProfileType ParseProfileType(const std::string &s);
 double ConvertToEuclidean(double val, int window);
 
 bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
-                        SCAMP::Profile p, bool output_pearson, int window);
+                        SCAMP::Profile &p, bool output_pearson, int window);
 
 bool InitProfileMemory(SCAMP::SCAMPArgs *args);

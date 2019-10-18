@@ -2,9 +2,196 @@
 #include "scamp_exception.h"
 
 #include <cstdlib>
+#include <cstring>
 #include <sstream>
 
 namespace SCAMP {
+
+void Memcopy(void *destination, const void *source, size_t bytes,
+             bool from_tile, const ExecInfo *info) {
+  switch (info->arch) {
+    case CUDA_GPU_WORKER:
+#ifdef _HAS_CUDA_
+      cudaSetDevice(info->cuda_id);
+      gpuErrchk(cudaPeekAtLastError());
+      if (from_tile) {
+        cudaMemcpyAsync(destination, source, bytes, cudaMemcpyDeviceToHost,
+                        info->stream);
+      } else {
+        cudaMemcpyAsync(destination, source, bytes, cudaMemcpyHostToDevice,
+                        info->stream);
+      }
+      gpuErrchk(cudaPeekAtLastError());
+#else
+      ASSERT(false, "Using CUDA in binary not built with it");
+#endif
+      break;
+    case CPU_WORKER:
+      // TODO(zpzim): Most of the time we don't actually have to copy
+      // memory here, we can just set a reference.
+      memcpy(destination, source, bytes);
+      break;
+  }
+}
+
+template <typename T>
+void elementwise_sum(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
+                     T *to_merge) {
+  for (int i = 0; i < tile_sz; ++i) {
+    mp_full[i + merge_start] += to_merge[i];
+  }
+}
+
+template <typename T>
+void elementwise_max(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
+                     T *to_merge, uint64_t index_offset) {
+  for (int i = 0; i < tile_sz; ++i) {
+    mp_entry e1, e2;
+    e1.ulong = mp_full[i + merge_start];
+    e2.ulong = to_merge[i];
+    if (e1.floats[0] < e2.floats[0]) {
+      e2.ints[1] += index_offset;
+      mp_full[i + merge_start] = e2.ulong;
+    }
+  }
+}
+
+template <typename T>
+void elementwise_max(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
+                     T *to_merge) {
+  for (int i = 0; i < tile_sz; ++i) {
+    if (mp_full[i + merge_start] < to_merge[i]) {
+      mp_full[i + merge_start] = to_merge[i];
+    }
+  }
+}
+
+void match_merge(const std::vector<SCAMPmatch> &matches, ProfileData *profile,
+                 uint64_t merge_start_row, uint64_t merge_start_col,
+                 int64_t max_matches) {
+  for (auto elem : matches) {
+    uint64_t col = elem.col + merge_start_col;
+    auto &pq = profile->match_value[col];
+    if (pq.size() == max_matches && pq.top().corr < elem.corr) {
+      pq.pop();
+      elem.col = col;
+      elem.row += merge_start_row;
+      pq.push(elem);
+    } else if (pq.size() < max_matches) {
+      elem.col = col;
+      elem.row += merge_start_row;
+      pq.push(elem);
+    }
+  }
+}
+
+void Profile::Alloc(size_t size) {
+  switch (type) {
+    case PROFILE_TYPE_SUM_THRESH:
+      data.emplace_back();
+      data[0].double_value.resize(size, 0);
+      break;
+    case PROFILE_TYPE_1NN:
+      data.emplace_back();
+      data[0].float_value.resize(size, std::numeric_limits<float>::lowest());
+      break;
+    case PROFILE_TYPE_1NN_INDEX:
+      mp_entry e;
+      e.ints[1] = -1u;
+      e.floats[0] = std::numeric_limits<float>::lowest();
+      data.emplace_back();
+      data[0].uint64_value.resize(size, e.ulong);
+      break;
+    case PROFILE_TYPE_FREQUENCY_THRESH:
+      data.emplace_back();
+      data[0].uint64_value.resize(size, 0);
+      break;
+    case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
+      data.emplace_back();
+      data[0].match_value.resize(size);
+      break;
+    case PROFILE_TYPE_KNN:
+    case PROFILE_TYPE_1NN_MULTIDIM:
+    default:
+      break;
+  }
+}
+
+// Copies a profile to the host
+void Profile::CopyFromDevice(const ExecInfo *info,
+                             const DeviceProfile *device_tile_profile,
+                             uint64_t length) {
+  switch (type) {
+    case PROFILE_TYPE_SUM_THRESH:
+      Memcopy(this->data[0].double_value.data(),
+              device_tile_profile->at(PROFILE_TYPE_SUM_THRESH),
+              length * sizeof(double), true, info);
+      break;
+    case PROFILE_TYPE_1NN:
+      Memcopy(this->data[0].float_value.data(),
+              device_tile_profile->at(PROFILE_TYPE_1NN), length * sizeof(float),
+              true, info);
+      break;
+    case PROFILE_TYPE_1NN_INDEX:
+      Memcopy(this->data[0].uint64_value.data(),
+              device_tile_profile->at(PROFILE_TYPE_1NN_INDEX),
+              length * sizeof(uint64_t), true, info);
+      break;
+    case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
+      this->data[0].match_value_unordered.resize(length);
+      Memcopy(this->data[0].match_value_unordered.data(),
+              device_tile_profile->at(PROFILE_TYPE_APPROX_ALL_NEIGHBORS),
+              length * sizeof(SCAMPmatch), true, info);
+      break;
+    case PROFILE_TYPE_FREQUENCY_THRESH:
+    case PROFILE_TYPE_KNN:
+    case PROFILE_TYPE_1NN_MULTIDIM:
+    default:
+      ASSERT(false, "FUNCTIONALITY UNIMPLEMENTED");
+      break;
+  }
+}
+
+// Merges a profile corresponding to the result of a tile into this profile
+void Profile::MergeTileToProfile(Profile *tile_profile, const OpInfo *info,
+                                 uint64_t position, uint64_t length,
+                                 uint64_t index_start) {
+  // Lock the before we merge, this function can be called by multiple threads
+  std::unique_lock<std::mutex> mlock(this->_profile_lock);
+  if (type != tile_profile->type) {
+    throw(SCAMPException("Profile Types do not match"));
+  }
+  switch (type) {
+    case PROFILE_TYPE_SUM_THRESH:
+      elementwise_sum<double>(this->data[0].double_value.data(), position,
+                              length,
+                              tile_profile->data[0].double_value.data());
+      return;
+    case PROFILE_TYPE_1NN_INDEX:
+      elementwise_max<uint64_t>(
+          this->data[0].uint64_value.data(), position, length,
+          tile_profile->data[0].uint64_value.data(), index_start);
+      return;
+    case PROFILE_TYPE_1NN:
+      elementwise_max<float>(this->data[0].float_value.data(), position, length,
+                             tile_profile->data[0].float_value.data());
+      return;
+    case PROFILE_TYPE_FREQUENCY_THRESH:
+      elementwise_sum<uint64_t>(this->data[0].uint64_value.data(), position,
+                                length,
+                                tile_profile->data[0].uint64_value.data());
+      return;
+    case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
+      match_merge(tile_profile->data[0].match_value_unordered, &this->data[0],
+                  index_start, position, info->max_matches_per_column);
+      return;
+    case PROFILE_TYPE_KNN:
+    case PROFILE_TYPE_1NN_MULTIDIM:
+    default:
+      ASSERT(false, "FUNCTIONALITY UNIMPLEMENTED");
+      return;
+  }
+}
 
 void SCAMPArgs::validate() {
   if (window < 3) {
@@ -109,7 +296,11 @@ size_t GetProfileTypeSize(SCAMPProfileType t) {
     case PROFILE_TYPE_1NN:
       return sizeof(float);
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
-      return sizeof(SCAMPmatch);
+      // return sizeof(SCAMPmatch)
+      // FIXME this is not correct. This is a temporary bandage to allow GPU
+      // kernels to operate properly. This will not correctly work with CPU
+      // code.
+      return sizeof(uint64_t);
     default:
       throw SCAMPException(
           "Error: Could not determine size of profile elements");

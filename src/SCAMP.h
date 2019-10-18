@@ -23,9 +23,6 @@ class SCAMP_Operation {
   // Result vectors
   Profile *_profile_a, *_profile_b;
 
-  // Locks for result vectors
-  std::mutex _profile_a_lock, _profile_b_lock;
-
   // Operation specific variables like maximum tile size (see common.h)
   const OpInfo _info;
 
