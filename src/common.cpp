@@ -7,6 +7,83 @@
 
 namespace SCAMP {
 
+OpInfo::OpInfo(size_t Asize, size_t Bsize, size_t window_sz,
+               size_t max_tile_size, bool selfjoin, SCAMPPrecisionType t,
+               int64_t start_row, int64_t start_col, OptionalArgs args_,
+               SCAMPProfileType profiletype, bool keep_rows, bool compute_rows,
+               bool compute_cols, bool aligned, bool silent_mode,
+               int num_workers, int64_t max_matches_per_col)
+    : full_ts_len_A(Asize),
+      full_ts_len_B(Bsize),
+      mp_window(window_sz),
+      self_join(selfjoin),
+      fp_type(t),
+      global_start_row_position(start_row),
+      global_start_col_position(start_col),
+      opt_args(args_),
+      profile_type(profiletype),
+      keep_rows_separate(keep_rows),
+      computing_rows(compute_rows),
+      computing_cols(compute_cols),
+      is_aligned(aligned),
+      silent_mode(silent_mode),
+      max_matches_per_column(max_matches_per_col) {
+  if (self_join) {
+    full_ts_len_B = full_ts_len_A;
+  }
+  auto maxSize = std::max(Asize, Bsize);
+  max_tile_ts_size = maxSize / (num_workers);
+
+  if (max_tile_ts_size > max_tile_size) {
+    max_tile_ts_size = max_tile_size;
+  } else if (max_tile_ts_size < mp_window) {
+    max_tile_ts_size = maxSize;
+  }
+
+  max_tile_width = max_tile_ts_size - mp_window + 1;
+  max_tile_height = max_tile_width;
+  // TODO(zpzim): make this a more generic parameter that is specified by
+  // the user or memory availibility
+  max_matches_per_tile =
+      (PROFILE_MEMORY_BUDGET / num_workers) / sizeof(SCAMPmatch);
+  if (!silent_mode && profile_type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
+    std::cout << "Profile memory budget is " << PROFILE_MEMORY_BUDGET
+              << " setting max matches per tile to: "
+              << max_matches_per_tile / 1000000.0 << " million. " << std::endl;
+  }
+}
+
+ExecInfo::ExecInfo(SCAMPArchitecture _arch, int _cuda_id)
+    : arch(_arch), cuda_id(_cuda_id) {
+  switch (arch) {
+    case CUDA_GPU_WORKER:
+#ifdef _HAS_CUDA_
+      cudaSetDevice(cuda_id);
+      cudaGetDeviceProperties(&dev_props, cuda_id);
+      cudaStreamCreate(&stream);
+#else
+      ASSERT(false, "Binary not built with CUDA");
+#endif
+      break;
+    case CPU_WORKER:
+      break;
+  }
+}
+
+ExecInfo::~ExecInfo() {
+  switch (arch) {
+    case CUDA_GPU_WORKER:
+#ifdef _HAS_CUDA_
+      cudaSetDevice(cuda_id);
+      cudaStreamDestroy(stream);
+#endif
+      break;
+    case CPU_WORKER:
+      // Add any arch-specific cleanup here
+      break;
+  }
+}
+
 void Memcopy(void *destination, const void *source, size_t bytes,
              bool from_tile, const ExecInfo *info) {
   switch (info->arch) {
@@ -152,11 +229,13 @@ void Profile::CopyFromDevice(const ExecInfo *info,
   }
 }
 
-// Merges a profile corresponding to the result of a tile into this profile
+// Merges a profile corresponding to the result of a tile into this
+// profile
 void Profile::MergeTileToProfile(Profile *tile_profile, const OpInfo *info,
                                  uint64_t position, uint64_t length,
                                  uint64_t index_start) {
-  // Lock the before we merge, this function can be called by multiple threads
+  // Lock the before we merge, this function can be called by multiple
+  // threads
   std::unique_lock<std::mutex> mlock(this->_profile_lock);
   if (type != tile_profile->type) {
     throw(SCAMPException("Profile Types do not match"));
@@ -202,12 +281,14 @@ void SCAMPArgs::validate() {
   }
   if (max_tile_size / 2 < window) {
     throw SCAMPException(
-        "Error: Tile length and width must be at least 2x larger than the "
+        "Error: Tile length and width must be at least 2x larger than "
+        "the "
         "window size");
   }
   if (timeseries_a.size() < window || (has_b && timeseries_b.size() < window)) {
     throw SCAMPException(
-        "Error: Input time series must be at least 'subesequence window size' "
+        "Error: Input time series must be at least 'subesequence window "
+        "size' "
         "in length");
   }
 }

@@ -125,7 +125,7 @@ class Profile {
                       const DeviceProfile *device_tile_profile,
                       uint64_t length);
   void Alloc(size_t size);
-  // void AllocUnordered(size_t size);
+
  private:
   std::mutex _profile_lock;
 };
@@ -176,35 +176,8 @@ struct ExecInfo {
   cudaStream_t stream;
   cudaDeviceProp dev_props;
 #endif
-  ExecInfo(SCAMPArchitecture _arch, int _cuda_id)
-      : arch(_arch), cuda_id(_cuda_id) {
-    switch (arch) {
-      case CUDA_GPU_WORKER:
-#ifdef _HAS_CUDA_
-        cudaSetDevice(cuda_id);
-        cudaGetDeviceProperties(&dev_props, cuda_id);
-        cudaStreamCreate(&stream);
-#else
-        ASSERT(false, "Binary not built with CUDA");
-#endif
-        break;
-      case CPU_WORKER:
-        break;
-    }
-  }
-  ~ExecInfo() {
-    switch (arch) {
-      case CUDA_GPU_WORKER:
-#ifdef _HAS_CUDA_
-        cudaSetDevice(cuda_id);
-        cudaStreamDestroy(stream);
-#endif
-        break;
-      case CPU_WORKER:
-        // Add any arch-specific cleanup here
-        break;
-    }
-  }
+  ExecInfo(SCAMPArchitecture _arch, int _cuda_id);
+  ~ExecInfo();
 };
 
 // Struct defines information about a SCAMP Operation
@@ -213,47 +186,7 @@ struct OpInfo {
          bool selfjoin, SCAMPPrecisionType t, int64_t start_row,
          int64_t start_col, OptionalArgs args_, SCAMPProfileType profiletype,
          bool keep_rows, bool compute_rows, bool compute_cols, bool aligned,
-         bool silent_mode, int num_workers, int64_t max_matches_per_col)
-      : full_ts_len_A(Asize),
-        full_ts_len_B(Bsize),
-        mp_window(window_sz),
-        self_join(selfjoin),
-        fp_type(t),
-        global_start_row_position(start_row),
-        global_start_col_position(start_col),
-        opt_args(args_),
-        profile_type(profiletype),
-        keep_rows_separate(keep_rows),
-        computing_rows(compute_rows),
-        computing_cols(compute_cols),
-        is_aligned(aligned),
-        silent_mode(silent_mode),
-        max_matches_per_column(max_matches_per_col) {
-    if (self_join) {
-      full_ts_len_B = full_ts_len_A;
-    }
-    auto maxSize = std::max(Asize, Bsize);
-    max_tile_ts_size = maxSize / (num_workers);
-
-    if (max_tile_ts_size > max_tile_size) {
-      max_tile_ts_size = max_tile_size;
-    } else if (max_tile_ts_size < mp_window) {
-      max_tile_ts_size = maxSize;
-    }
-
-    max_tile_width = max_tile_ts_size - mp_window + 1;
-    max_tile_height = max_tile_width;
-    // TODO(zpzim): make this a more generic parameter that is specified by the
-    // user or memory availibility
-    max_matches_per_tile =
-        (PROFILE_MEMORY_BUDGET / num_workers) / sizeof(SCAMPmatch);
-    if (!silent_mode && profile_type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
-      std::cout << "Profile memory budget is " << PROFILE_MEMORY_BUDGET
-                << " setting max matches per tile to: "
-                << max_matches_per_tile / 1000000.0 << " million. "
-                << std::endl;
-    }
-  }
+         bool silent_mode, int num_workers, int64_t max_matches_per_col);
 
   // Type of profile to compute
   SCAMPProfileType profile_type;
