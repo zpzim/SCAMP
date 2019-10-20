@@ -73,9 +73,15 @@ class Tile {
 #ifdef _HAS_CUDA_
   cudaStream_t get_stream() { return _exec_info.stream; }
   cudaDeviceProp get_dev_props() { return _exec_info.dev_props; }
-  int get_cuda_id() const { return _exec_info.cuda_id; }
 #endif
 
+  int get_cuda_id() const {
+#ifdef _HAS_CUDA_
+    return _exec_info.cuda_id;
+#else
+    return -1;
+#endif
+  }
   SCAMPArchitecture get_arch() const { return _exec_info.arch; }
   size_t get_tile_width() const { return _current_tile_width; }
   size_t get_tile_height() const { return _current_tile_height; }
