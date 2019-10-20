@@ -519,6 +519,12 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
                      smem.local_mp_col, smem.local_mp_row, profile_A,
                      profile_B);
 
+    if (*args.profile_a_length > args.max_matches_per_tile ||
+        *args.profile_b_length > args.max_matches_per_tile) {
+      // No more space for matches, break out of the kernel
+      break;
+    }
+
     // Update the tile position
     tile_start_col += tile_height;
     tile_start_row += tile_height;

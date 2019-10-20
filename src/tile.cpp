@@ -311,13 +311,9 @@ Tile::get_profile_dims_from_device() {
   result.second = 0;
   this->Memcopy(&result.first, _profile_a_dev_length,
                 sizeof(unsigned long long int), true);
-  std::cout << "width = " << result.first << "\n";
-  std::cout << "height = " << result.second << "\n";
   this->Memcopy(&result.second, _profile_b_dev_length,
                 sizeof(unsigned long long int), true);
   Sync();
-  std::cout << "width = " << result.first << std::endl;
-  std::cout << "height = " << result.second << std::endl;
   if (result.first > info()->max_matches_per_tile) {
     if (!_info->silent_mode) {
       std::cout << "Warning: Unable to return all matches! SCAMP found a "
@@ -345,7 +341,10 @@ Tile::get_profile_dims_from_device() {
     }
     result.second = _info->max_matches_per_tile;
   }
-
+  if (!_info->silent_mode) {
+    std::cout << "width = " << result.first << " height = " << result.second
+              << std::endl;
+  }
   return result;
 }
 

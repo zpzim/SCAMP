@@ -99,7 +99,22 @@ struct ProfileData {
 class Profile {
  public:
   Profile() : type(PROFILE_TYPE_INVALID) {}
-
+  Profile(Profile &other) {
+    std::unique_lock<std::mutex> lock(_profile_lock);
+    type = other.type;
+    data = other.data;
+  }
+  Profile(Profile &&other) {
+    std::unique_lock<std::mutex> lock(_profile_lock);
+    type = other.type;
+    data = std::move(other.data);
+  }
+  Profile &operator=(Profile &&other) {
+    std::unique_lock<std::mutex> lock(_profile_lock);
+    type = other.type;
+    data = std::move(other.data);
+    return *this;
+  }
   Profile(SCAMPProfileType t, size_t size) : type(t) { Alloc(size); }
   std::vector<ProfileData> data;
   SCAMPProfileType type;
@@ -153,6 +168,7 @@ struct OptionalArgs {
   double threshold;
 };
 
+// Defines the execution environment of a SCAMP tile
 struct ExecInfo {
   SCAMPArchitecture arch;
   int cuda_id;
