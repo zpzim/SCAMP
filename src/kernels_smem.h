@@ -8,27 +8,30 @@
 //
 //////////////////////////////////////////////////
 
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, bool COMPUTE_ROWS,
-          bool COMPUTE_COLS, int tile_width, int tile_height, int BLOCKSZ,
+template <typename DATA_TYPE, typename PROFILE_OUTPUT_TYPE,
+          typename PROFILE_DATA_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
+          int tile_width, int tile_height, int BLOCKSZ,
           SCAMPProfileType PROFILE_TYPE, typename = void>
 class InitMemStrategy : public SCAMPStrategy {
  public:
   __device__ void exec(
       SCAMPKernelInputArgs<double> &args,
       SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
-      PROFILE_DATA_TYPE *__restrict__ profile_a,
-      PROFILE_DATA_TYPE *__restrict__ profile_B, uint32_t col_start,
+      PROFILE_OUTPUT_TYPE *__restrict__ profile_a,
+      PROFILE_OUTPUT_TYPE *__restrict__ profile_B, uint32_t col_start,
       uint32_t row_start) {}
 
  protected:
   __device__ InitMemStrategy() {}
 };
 
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, bool COMPUTE_ROWS,
-          bool COMPUTE_COLS, int tile_width, int tile_height, int BLOCKSZ,
+template <typename DATA_TYPE, typename PROFILE_OUTPUT_TYPE,
+          typename PROFILE_DATA_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
+          int tile_width, int tile_height, int BLOCKSZ,
           SCAMPProfileType PROFILE_TYPE>
-class InitMemStrategy<DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
-                      tile_width, tile_height, BLOCKSZ, PROFILE_TYPE,
+class InitMemStrategy<DATA_TYPE, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE,
+                      COMPUTE_ROWS, COMPUTE_COLS, tile_width, tile_height,
+                      BLOCKSZ, PROFILE_TYPE,
                       std::enable_if_t<PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH>>
     : public SCAMPStrategy {
  public:
@@ -67,11 +70,13 @@ class InitMemStrategy<DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
   }
 };
 
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, bool COMPUTE_ROWS,
-          bool COMPUTE_COLS, int tile_width, int tile_height, int BLOCKSZ,
+template <typename DATA_TYPE, typename PROFILE_OUTPUT_TYPE,
+          typename PROFILE_DATA_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
+          int tile_width, int tile_height, int BLOCKSZ,
           SCAMPProfileType PROFILE_TYPE>
-class InitMemStrategy<DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
-                      tile_width, tile_height, BLOCKSZ, PROFILE_TYPE,
+class InitMemStrategy<DATA_TYPE, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE,
+                      COMPUTE_ROWS, COMPUTE_COLS, tile_width, tile_height,
+                      BLOCKSZ, PROFILE_TYPE,
                       std::enable_if_t<PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX ||
                                        PROFILE_TYPE == PROFILE_TYPE_1NN>>
     : public SCAMPStrategy {
@@ -80,8 +85,8 @@ class InitMemStrategy<DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
   __device__ virtual void exec(
       SCAMPKernelInputArgs<double> &args,
       SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
-      PROFILE_DATA_TYPE *__restrict__ profile_a,
-      PROFILE_DATA_TYPE *__restrict__ profile_b, uint32_t col_start,
+      PROFILE_OUTPUT_TYPE *__restrict__ profile_a,
+      PROFILE_OUTPUT_TYPE *__restrict__ profile_b, uint32_t col_start,
       uint32_t row_start) {
     int global_position = col_start + threadIdx.x;
     int local_position = threadIdx.x;
@@ -111,12 +116,13 @@ class InitMemStrategy<DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
   }
 };
 
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, bool COMPUTE_ROWS,
-          bool COMPUTE_COLS, int tile_width, int tile_height, int BLOCKSZ,
+template <typename DATA_TYPE, typename PROFILE_OUTPUT_TYPE,
+          typename PROFILE_DATA_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
+          int tile_width, int tile_height, int BLOCKSZ,
           SCAMPProfileType PROFILE_TYPE>
 class InitMemStrategy<
-    DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS, COMPUTE_COLS, tile_width,
-    tile_height, BLOCKSZ, PROFILE_TYPE,
+    DATA_TYPE, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS,
+    COMPUTE_COLS, tile_width, tile_height, BLOCKSZ, PROFILE_TYPE,
     std::enable_if_t<PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS>>
     : public SCAMPStrategy {
  public:
@@ -124,8 +130,8 @@ class InitMemStrategy<
   __device__ virtual void exec(
       SCAMPKernelInputArgs<double> &args,
       SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
-      PROFILE_DATA_TYPE *__restrict__ profile_a,
-      PROFILE_DATA_TYPE *__restrict__ profile_b, uint32_t col_start,
+      PROFILE_OUTPUT_TYPE *__restrict__ profile_a,
+      PROFILE_OUTPUT_TYPE *__restrict__ profile_b, uint32_t col_start,
       uint32_t row_start) {
     int global_position = col_start + threadIdx.x;
     int local_position = threadIdx.x;
@@ -165,9 +171,9 @@ class InitMemStrategy<
 ///////////////////////////////////////////////////////////////////
 
 // Dummy (forces compilation failure when the wrong types are used)
-template <typename PROFILE_DATA_TYPE, bool COMPUTE_COLS, bool COMPUTE_ROWS,
-          int TILE_WIDTH, int TILE_HEIGHT, int BLOCKSZ,
-          SCAMPProfileType PROFILE_TYPE>
+template <typename PROFILE_OUTPUT_TYPE, typename PROFILE_DATA_TYPE,
+          bool COMPUTE_COLS, bool COMPUTE_ROWS, int TILE_WIDTH, int TILE_HEIGHT,
+          int BLOCKSZ, SCAMPProfileType PROFILE_TYPE>
 class WriteBackStrategy : public SCAMPStrategy {
  public:
   __device__ void exec(SCAMPKernelInputArgs<double> &args,
@@ -175,17 +181,18 @@ class WriteBackStrategy : public SCAMPStrategy {
                        uint32_t n_x, uint32_t n_y,
                        PROFILE_DATA_TYPE *__restrict__ local_mp_col,
                        PROFILE_DATA_TYPE *__restrict__ local_mp_row,
-                       PROFILE_DATA_TYPE *__restrict__ profile_A,
-                       PROFILE_DATA_TYPE *__restrict__ profile_B) {}
+                       PROFILE_OUTPUT_TYPE *__restrict__ profile_A,
+                       PROFILE_OUTPUT_TYPE *__restrict__ profile_B) {}
 
  protected:
   __device__ WriteBackStrategy() {}
 };
 
-template <typename PROFILE_DATA_TYPE, bool COMPUTE_COLS, bool COMPUTE_ROWS,
-          int TILE_WIDTH, int TILE_HEIGHT, int BLOCKSZ>
-class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
-                        TILE_WIDTH, TILE_HEIGHT, BLOCKSZ,
+template <typename PROFILE_OUTPUT_TYPE, typename PROFILE_DATA_TYPE,
+          bool COMPUTE_COLS, bool COMPUTE_ROWS, int TILE_WIDTH, int TILE_HEIGHT,
+          int BLOCKSZ>
+class WriteBackStrategy<PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE, COMPUTE_COLS,
+                        COMPUTE_ROWS, TILE_WIDTH, TILE_HEIGHT, BLOCKSZ,
                         PROFILE_TYPE_SUM_THRESH> : public SCAMPStrategy {
  public:
   __device__ WriteBackStrategy() {}
@@ -194,8 +201,8 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
                        uint32_t n_x, uint32_t n_y,
                        PROFILE_DATA_TYPE *__restrict__ local_mp_col,
                        PROFILE_DATA_TYPE *__restrict__ local_mp_row,
-                       PROFILE_DATA_TYPE *__restrict__ profile_A,
-                       PROFILE_DATA_TYPE *__restrict__ profile_B) {
+                       PROFILE_OUTPUT_TYPE *__restrict__ profile_A,
+                       PROFILE_OUTPUT_TYPE *__restrict__ profile_B) {
     int global_position, local_position;
     if (COMPUTE_COLS) {
       global_position = tile_start_x + threadIdx.x;
@@ -220,11 +227,12 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
   }
 };
 
-template <typename PROFILE_DATA_TYPE, bool COMPUTE_COLS, bool COMPUTE_ROWS,
-          int TILE_WIDTH, int TILE_HEIGHT, int BLOCKSZ>
-class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
-                        TILE_WIDTH, TILE_HEIGHT, BLOCKSZ, PROFILE_TYPE_1NN>
-    : public SCAMPStrategy {
+template <typename PROFILE_OUTPUT_TYPE, typename PROFILE_DATA_TYPE,
+          bool COMPUTE_COLS, bool COMPUTE_ROWS, int TILE_WIDTH, int TILE_HEIGHT,
+          int BLOCKSZ>
+class WriteBackStrategy<PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE, COMPUTE_COLS,
+                        COMPUTE_ROWS, TILE_WIDTH, TILE_HEIGHT, BLOCKSZ,
+                        PROFILE_TYPE_1NN> : public SCAMPStrategy {
  public:
   __device__ WriteBackStrategy() {}
   __device__ void exec(SCAMPKernelInputArgs<double> &args,
@@ -232,8 +240,8 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
                        uint32_t n_x, uint32_t n_y,
                        PROFILE_DATA_TYPE *__restrict__ local_mp_col,
                        PROFILE_DATA_TYPE *__restrict__ local_mp_row,
-                       PROFILE_DATA_TYPE *__restrict__ profile_A,
-                       PROFILE_DATA_TYPE *__restrict__ profile_B) {
+                       PROFILE_OUTPUT_TYPE *__restrict__ profile_A,
+                       PROFILE_OUTPUT_TYPE *__restrict__ profile_B) {
     int global_position, local_position;
     if (COMPUTE_COLS) {
       global_position = tile_start_x + threadIdx.x;
@@ -258,10 +266,11 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
   }
 };
 
-template <typename PROFILE_DATA_TYPE, bool COMPUTE_COLS, bool COMPUTE_ROWS,
-          int TILE_WIDTH, int TILE_HEIGHT, int BLOCKSZ>
-class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
-                        TILE_WIDTH, TILE_HEIGHT, BLOCKSZ,
+template <typename PROFILE_OUTPUT_TYPE, typename PROFILE_DATA_TYPE,
+          bool COMPUTE_COLS, bool COMPUTE_ROWS, int TILE_WIDTH, int TILE_HEIGHT,
+          int BLOCKSZ>
+class WriteBackStrategy<PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE, COMPUTE_COLS,
+                        COMPUTE_ROWS, TILE_WIDTH, TILE_HEIGHT, BLOCKSZ,
                         PROFILE_TYPE_1NN_INDEX> : public SCAMPStrategy {
  public:
   __device__ WriteBackStrategy() {}
@@ -270,8 +279,8 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
                        uint32_t n_x, uint32_t n_y,
                        PROFILE_DATA_TYPE *__restrict__ local_mp_col,
                        PROFILE_DATA_TYPE *__restrict__ local_mp_row,
-                       PROFILE_DATA_TYPE *__restrict__ profile_A,
-                       PROFILE_DATA_TYPE *__restrict__ profile_B) {
+                       PROFILE_OUTPUT_TYPE *__restrict__ profile_A,
+                       PROFILE_OUTPUT_TYPE *__restrict__ profile_B) {
     int global_position, local_position;
     if (COMPUTE_COLS) {
       global_position = tile_start_x + threadIdx.x;
@@ -300,10 +309,11 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
   }
 };
 
-template <typename PROFILE_DATA_TYPE, bool COMPUTE_COLS, bool COMPUTE_ROWS,
-          int TILE_WIDTH, int TILE_HEIGHT, int BLOCKSZ>
-class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
-                        TILE_WIDTH, TILE_HEIGHT, BLOCKSZ,
+template <typename PROFILE_OUTPUT_TYPE, typename PROFILE_DATA_TYPE,
+          bool COMPUTE_COLS, bool COMPUTE_ROWS, int TILE_WIDTH, int TILE_HEIGHT,
+          int BLOCKSZ>
+class WriteBackStrategy<PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE, COMPUTE_COLS,
+                        COMPUTE_ROWS, TILE_WIDTH, TILE_HEIGHT, BLOCKSZ,
                         PROFILE_TYPE_APPROX_ALL_NEIGHBORS>
     : public SCAMPStrategy {
  public:
@@ -313,8 +323,8 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
                        uint32_t n_x, uint32_t n_y,
                        PROFILE_DATA_TYPE *__restrict__ local_mp_col,
                        PROFILE_DATA_TYPE *__restrict__ local_mp_row,
-                       PROFILE_DATA_TYPE *__restrict__ profile_A,
-                       PROFILE_DATA_TYPE *__restrict__ profile_B) {
+                       PROFILE_OUTPUT_TYPE *__restrict__ profile_A,
+                       PROFILE_OUTPUT_TYPE *__restrict__ profile_B) {
     int global_position, local_position;
     float threshold = static_cast<float>(args.opt.threshold);
     if (COMPUTE_COLS) {
@@ -323,17 +333,16 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
       while (local_position < TILE_WIDTH && global_position < n_x) {
         mp_entry e;
         e.ulong = local_mp_col[local_position];
-        // This is some hacky stuff to get All neighbors working. The kernels
-        // should be refactored in the future
         if (e.floats[0] > threshold) {
+          // Reserve space in output array
           unsigned long long int pos =
               do_atomicAdd<unsigned long long int, ATOMIC_GLOBAL>(
                   args.profile_a_length, 1);
+          // Write the match to the output
           if (pos < args.max_matches_per_tile) {
-            SCAMPmatch *profile = reinterpret_cast<SCAMPmatch *>(profile_A);
-            profile[pos].corr = e.floats[0];
-            profile[pos].row = e.ints[1];
-            profile[pos].col = global_position;
+            profile_A[pos].corr = e.floats[0];
+            profile_A[pos].row = e.ints[1];
+            profile_A[pos].col = global_position;
           }
         }
         global_position += BLOCKSZ;
@@ -347,14 +356,15 @@ class WriteBackStrategy<PROFILE_DATA_TYPE, COMPUTE_COLS, COMPUTE_ROWS,
         mp_entry e;
         e.ulong = local_mp_row[local_position];
         if (e.floats[0] > threshold) {
+          // Reserve space in output array
           unsigned long long int pos =
               do_atomicAdd<unsigned long long int, ATOMIC_GLOBAL>(
                   args.profile_b_length, 1);
+          // Write the match to the output
           if (pos < args.max_matches_per_tile) {
-            SCAMPmatch *profile = reinterpret_cast<SCAMPmatch *>(profile_B);
-            profile[pos].corr = e.floats[0];
-            profile[pos].row = e.ints[1];
-            profile[pos].col = global_position;
+            profile_B[pos].corr = e.floats[0];
+            profile_B[pos].row = e.ints[1];
+            profile_B[pos].col = global_position;
           }
         }
         global_position += BLOCKSZ;

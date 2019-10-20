@@ -296,11 +296,10 @@ size_t GetProfileTypeSize(SCAMPProfileType t) {
     case PROFILE_TYPE_1NN:
       return sizeof(float);
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
-      // return sizeof(SCAMPmatch)
-      // FIXME this is not correct. This is a temporary bandage to allow GPU
-      // kernels to operate properly. This will not correctly work with CPU
-      // code.
-      return sizeof(uint64_t);
+    case PROFILE_TYPE_KNN:
+      return sizeof(SCAMPmatch);
+    case PROFILE_TYPE_FREQUENCY_THRESH:
+    case PROFILE_TYPE_INVALID:
     default:
       throw SCAMPException(
           "Error: Could not determine size of profile elements");
