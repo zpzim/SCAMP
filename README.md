@@ -8,7 +8,8 @@
 [Configuration](https://github.com/zpzim/SCAMP#configuration) \
 [Usage](https://github.com/zpzim/SCAMP#usage) \
 [Run Using Docker](https://github.com/zpzim/SCAMP#run-using-docker) \
-[Distributed Operation](https://github.com/zpzim/SCAMP#distributed-operation)
+[Distributed Operation](https://github.com/zpzim/SCAMP#distributed-operation) \
+[Examples](https://github.com/zpzim/SCAMP#examples)
 
 ## Overview
 This is a GPU/CPU implementation of the SCAMP algorithm. SCAMP takes a time series as input and computes the matrix profile for a particular window size. You can read more at the [Matrix Profile Homepage](http://www.cs.ucr.edu/~eamonn/MatrixProfile.html)
@@ -19,6 +20,8 @@ This is a much improved framework over [GPU-STOMP](https://github.com/zpzim/STOM
  * AB joins (you can produce the matrix profile from 2 different time series)
  * Distributable (we use GCP but other cloud platforms can work) with verified scalability to billions of datapoints
  * Sum and Frequency Joins: rather than compute the nearest neighbor directly, we can compute the sum or frequency of correlations above a threshold (this better describes the frequency of an event, something not obvious from the matrix profile alone)
+ * All-neighbors Joins: rather than return only the nearest neighbor, we can return all matches above a threshold. This can be used in graph-based analytics and also to create low-res (pooled) distance matrices.
+ * Distance matrix summaries: SCAMP can return pooled summary versions of the entire distance matrix.
  * Extensible to adding optimized versions of custom join operations.
  * Can compute joins with the CPU (Only enabled for double precision and 1NN+Index joins for now, optimizations pending)
  * Handles NaN input values. The matrix profile will be computed while excluding any subsequence with a NaN value
@@ -82,8 +85,10 @@ This will generate two files: mp_columns_out and mp_columns_out_index, which con
     * One of "--double_precision, --mixed_precision, --single_precision": Changes the precision mode of SCAMP, default is double precision, mixed precision will work on many datasets but not all, single precision will work for some simple datasets, but may prove unreliable for many. See test/SampleInput/earthquake_precision_test.txt for an example of a dataset that fails in mixed/single precision. The single precision mode is about 2x faster than double precision, mixed_precision falls in the middle, but can sometimes be as slow as double precision".
     * "--gpus=\"list of device numbers to use\"": allows you to specify which gpus to use on the machine, by default we try to use all of them. The device numbers must be valid cuda devices on your system. You can chain these to add more gpus. Example: --gpus="0 1" will use gpu 0 and gpu 1 on the system.
     * "--num_cpu_workers": allows you to specify the number of cpu threads to compute with, by default we use none. For now, if you don't have gpus, we recommend setting this to the number of cores on your system for best performance. It is possible to perform hetrogeneous GPU/CPU computation using this flag, but because the CPU code isn't optimized yet, you will likely see no speedup compared to using just GPUs
+    * "--reduce_all_neighbors": reduces the output of the ALL_NEIGHBORS profile type to a matrix (a summary of the distance matrix) see Examples
 * There are more arguments that allow you even greater control over what SCAMP can do. Use --helpfull for a list of possible arguments and their descriptions.
 * cmake provides support for clang-tidy (when you build) and clang-format (using build target clang-format) to use these please make sure clang-tidy and clang-format are installed on your system
+
 
 ## Run Using Docker
 Rather than building from scratch you can run SCAMP via [nvidia-docker](https://github.com/NVIDIA/nvidia-docker) using the prebuilt [image](https://hub.docker.com/r/zpzim/scamp) on dockerhub.
@@ -133,3 +138,11 @@ kubectl cp <SCAMP server container name>:/mp_columns_out .
     * Server currently handles all work in memory and does not write intermediate files to disk. For this reason the server requires a lot of memory to operate on a large input. Eventually the server will operate mostly on files on disk rather than keep all intermediate data in memory.
 #### Sharded implementation
 * The original distributed implementation used [AWS batch](https://aws.amazon.com/batch/) and shards the time series to Amazon S3. This approach avoids the above limitations of our in-memory SCAMPserver, however our initial implementation was very limited in scope and was not extensible to other types of SCAMP workloads, so it is mostly obsolete. However, we still provide the scripts used for posterity in the aws/ directory. Though these would be strictly for inspiration, as there are AWS account side configurations required for operation that cannot be provided.
+
+## Examples
+
+### Distance Matrix Summaries using --reduce_all_neighbors
+
+![Alt text](/Readme/distance_matrix_summary.png?raw=true "Block Matrix Multiplication")
+
+You can see that various behavors in the data become apparent through the visualization of the distance matrix.
