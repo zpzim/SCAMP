@@ -88,6 +88,7 @@ struct ProfileData {
   std::vector<uint64_t> uint64_value;
   std::vector<float> float_value;
   std::vector<double> double_value;
+  std::vector<std::vector<float>> matrix_value;
   std::vector<
       std::priority_queue<SCAMPmatch, std::vector<SCAMPmatch>, compareMatch>>
       match_value;
@@ -101,23 +102,46 @@ class Profile {
   Profile() : type(PROFILE_TYPE_INVALID) {}
   Profile(Profile &other) {
     std::unique_lock<std::mutex> lock(_profile_lock);
+    matrix_height = other.matrix_height;
+    matrix_width = other.matrix_width;
+    output_matrix = other.output_matrix;
     type = other.type;
     data = other.data;
   }
   Profile(Profile &&other) {
     std::unique_lock<std::mutex> lock(_profile_lock);
+    matrix_height = other.matrix_height;
+    matrix_width = other.matrix_width;
+    output_matrix = other.output_matrix;
     type = other.type;
     data = std::move(other.data);
   }
   Profile &operator=(Profile &&other) {
     std::unique_lock<std::mutex> lock(_profile_lock);
+    matrix_height = other.matrix_height;
+    matrix_width = other.matrix_width;
+    output_matrix = other.output_matrix;
     type = other.type;
     data = std::move(other.data);
     return *this;
   }
-  Profile(SCAMPProfileType t, size_t size) : type(t) { Alloc(size); }
+  Profile(SCAMPProfileType t, size_t size, int64_t mwidth = -1,
+          int64_t mheight = -1, int64_t rrows = -1, int64_t rcols = -1)
+      : type(t),
+        matrix_width(mwidth),
+        matrix_height(mheight),
+        matrix_reduced_rows(rrows),
+        matrix_reduced_cols(rcols),
+        output_matrix(mwidth > 0 && mheight > 0) {
+    Alloc(size);
+  }
   std::vector<ProfileData> data;
   SCAMPProfileType type;
+  int64_t matrix_width;
+  int64_t matrix_height;
+  int64_t matrix_reduced_rows;
+  int64_t matrix_reduced_cols;
+  bool output_matrix;
   void MergeTileToProfile(Profile *tile_profile, const OpInfo *info,
                           uint64_t position, uint64_t length,
                           uint64_t index_start);
@@ -154,6 +178,8 @@ struct SCAMPArgs {
   bool is_aligned;
   bool silent_mode;
   int64_t max_matches_per_column;
+  int64_t matrix_height;
+  int64_t matrix_width;
 };
 
 // Struct describing kernel arguments which are non-standard

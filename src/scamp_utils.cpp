@@ -7,7 +7,7 @@
 #include "scamp_utils.h"
 
 void write_matrix(const std::string &mp, bool output_pearson,
-                  const std::vector<std::vector<double>> &matrix, int window) {
+                  const std::vector<std::vector<float>> &matrix, int window) {
   std::ofstream mp_out(mp);
   for (auto row : matrix) {
     for (auto elem : row) {
@@ -201,6 +201,10 @@ bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
       break;
     }
     case SCAMP::PROFILE_TYPE_APPROX_ALL_NEIGHBORS: {
+      if (!p.data[0].matrix_value.empty()) {
+        write_matrix(mp, output_pearson, p.data[0].matrix_value, window);
+        break;
+      }
       std::ofstream mp_out(mp);
       auto arr = p.data[0].match_value;
       for (auto &pq : arr) {

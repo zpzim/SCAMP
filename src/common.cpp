@@ -162,6 +162,29 @@ void match_merge(const std::vector<SCAMPmatch> &matches, ProfileData *profile,
   }
 }
 
+void matrix_merge(const std::vector<SCAMPmatch> &matches, ProfileData *profile,
+                  uint64_t merge_start_row, uint64_t merge_start_col,
+                  int64_t matrix_reduced_rows, int64_t matrix_reduced_cols) {
+  int matrix_rows = profile->matrix_value.size();
+  int matrix_cols = profile->matrix_value.front().size();
+  for (auto elem : matches) {
+    uint64_t col = elem.col + merge_start_col;
+    int64_t matrix_col = col / matrix_reduced_cols;
+    int64_t matrix_row = (elem.row + merge_start_row) / matrix_reduced_rows;
+    if (matrix_row >= matrix_rows || matrix_col >= matrix_cols ||
+        matrix_row < 0 || matrix_col < 0) {
+      std::ostringstream ostream;
+      ostream << "Error in matrix merge: matrix is " << matrix_rows << " by "
+              << matrix_cols << " trying to access position [" << matrix_row
+              << ", " << matrix_col << "]";
+      throw SCAMPException(ostream.str());
+    }
+    if (profile->matrix_value[matrix_row][matrix_col] < elem.corr) {
+      profile->matrix_value[matrix_row][matrix_col] = elem.corr;
+    }
+  }
+}
+
 void Profile::Alloc(size_t size) {
   switch (type) {
     case PROFILE_TYPE_SUM_THRESH:
@@ -185,7 +208,12 @@ void Profile::Alloc(size_t size) {
       break;
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
       data.emplace_back();
-      data[0].match_value.resize(size);
+      if (output_matrix) {
+        data[0].matrix_value.resize(matrix_height,
+                                    std::vector<float>(matrix_width, -1.0));
+      } else {
+        data[0].match_value.resize(size);
+      }
       break;
     case PROFILE_TYPE_KNN:
     case PROFILE_TYPE_1NN_MULTIDIM:
@@ -261,8 +289,14 @@ void Profile::MergeTileToProfile(Profile *tile_profile, const OpInfo *info,
                                 tile_profile->data[0].uint64_value.data());
       return;
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
-      match_merge(tile_profile->data[0].match_value_unordered, &this->data[0],
-                  index_start, position, info->max_matches_per_column);
+      if (output_matrix) {
+        matrix_merge(tile_profile->data[0].match_value_unordered,
+                     &this->data[0], index_start, position,
+                     this->matrix_reduced_rows, this->matrix_reduced_cols);
+      } else {
+        match_merge(tile_profile->data[0].match_value_unordered, &this->data[0],
+                    index_start, position, info->max_matches_per_column);
+      }
       return;
     case PROFILE_TYPE_KNN:
     case PROFILE_TYPE_1NN_MULTIDIM:

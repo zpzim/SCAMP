@@ -205,6 +205,22 @@ int main(int argc, char **argv) {
   args.timeseries_b = std::move(Tb_h);
   args.silent_mode = false;
   args.max_matches_per_column = FLAGS_max_matches_per_column;
+  args.profile_a.matrix_height =
+      FLAGS_reduce_all_neighbors ? FLAGS_reduced_height : -1.0;
+  args.profile_a.matrix_width =
+      FLAGS_reduce_all_neighbors ? FLAGS_reduced_width : -1.0;
+  args.profile_a.matrix_reduced_cols =
+      std::ceil(n_x / static_cast<double>(FLAGS_reduced_width));
+  args.profile_a.matrix_reduced_rows =
+      std::ceil(n_y / static_cast<double>(FLAGS_reduced_height));
+  args.profile_b.matrix_height =
+      FLAGS_reduce_all_neighbors ? FLAGS_reduced_height : -1.0;
+  args.profile_b.matrix_width =
+      FLAGS_reduce_all_neighbors ? FLAGS_reduced_width : -1.0;
+  args.profile_b.matrix_reduced_cols =
+      std::ceil(n_x / static_cast<double>(FLAGS_reduced_width));
+  args.profile_b.matrix_reduced_rows =
+      std::ceil(n_y / static_cast<double>(FLAGS_reduced_height));
 
   printf("Starting SCAMP\n");
   try {
@@ -220,22 +236,23 @@ int main(int argc, char **argv) {
     exit(1);
   }
   printf("Now writing result to files\n");
-  if (profile_type == SCAMP::PROFILE_TYPE_APPROX_ALL_NEIGHBORS &&
-      FLAGS_reduce_all_neighbors) {
-    auto result =
-        reduce_all_neighbors(&args.profile_a.data[0], n_y, n_x,
-                             FLAGS_reduced_height, FLAGS_reduced_width);
-    write_matrix(FLAGS_output_a_file_name, FLAGS_output_pearson, result,
-                 FLAGS_window);
-  } else {
-    WriteProfileToFile(FLAGS_output_a_file_name, FLAGS_output_a_index_file_name,
-                       args.profile_a, FLAGS_output_pearson, FLAGS_window);
-    if (FLAGS_keep_rows) {
-      WriteProfileToFile(FLAGS_output_b_file_name,
-                         FLAGS_output_b_index_file_name, args.profile_b,
-                         FLAGS_output_pearson, FLAGS_window);
-    }
+  /*
+    if (profile_type == SCAMP::PROFILE_TYPE_APPROX_ALL_NEIGHBORS &&
+        FLAGS_reduce_all_neighbors) {
+      auto result =
+          reduce_all_neighbors(&args.profile_a.data[0], n_y, n_x,
+                               FLAGS_reduced_height, FLAGS_reduced_width);
+      write_matrix(FLAGS_output_a_file_name, FLAGS_output_pearson, result,
+                   FLAGS_window);
+    } else {
+  */
+  WriteProfileToFile(FLAGS_output_a_file_name, FLAGS_output_a_index_file_name,
+                     args.profile_a, FLAGS_output_pearson, FLAGS_window);
+  if (FLAGS_keep_rows) {
+    WriteProfileToFile(FLAGS_output_b_file_name, FLAGS_output_b_index_file_name,
+                       args.profile_b, FLAGS_output_pearson, FLAGS_window);
   }
+  //}
   printf("Done\n");
   return 0;
 }
