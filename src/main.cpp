@@ -32,7 +32,7 @@ DEFINE_bool(reduce_all_neighbors, false,
             "reduced size");
 DEFINE_int32(reduced_height, 512, "The final height of the output matrix");
 DEFINE_int32(reduced_width, 512, "The final width of the output matrix");
-
+DEFINE_bool(print_debug_info, false, "Whether SCAMP will print debug info.");
 DEFINE_int32(num_cpu_workers, 0, "Number of CPU workers to use");
 DEFINE_bool(output_pearson, false,
             "If true SCAMP will output pearson correlation instead of "
@@ -173,7 +173,9 @@ int main(int argc, char **argv) {
 #ifdef _HAS_CUDA_
   if (devices.empty() && !FLAGS_no_gpu) {
     // Use all available devices
-    printf("using all devices\n");
+    if (FLAGS_print_debug_info) {
+      printf("using all devices\n");
+    }
     int num_dev;
     cudaGetDeviceCount(&num_dev);
     for (int i = 0; i < num_dev; ++i) {
@@ -203,7 +205,7 @@ int main(int argc, char **argv) {
   args.is_aligned = FLAGS_aligned;
   args.timeseries_a = std::move(Ta_h);
   args.timeseries_b = std::move(Tb_h);
-  args.silent_mode = false;
+  args.silent_mode = !FLAGS_print_debug_info;
   args.max_matches_per_column = FLAGS_max_matches_per_column;
   args.profile_a.matrix_height =
       FLAGS_reduce_all_neighbors ? FLAGS_reduced_height : -1.0;
@@ -221,8 +223,9 @@ int main(int argc, char **argv) {
       std::ceil(n_x / static_cast<double>(FLAGS_reduced_width));
   args.profile_b.matrix_reduced_rows =
       std::ceil(n_y / static_cast<double>(FLAGS_reduced_height));
-
-  printf("Starting SCAMP\n");
+  if (FLAGS_print_debug_info) {
+    printf("Starting SCAMP\n");
+  }
   try {
 #ifdef _DISTRIBUTED_EXECUTION_
     do_SCAMP_distributed(&args, FLAGS_hostname_port,
@@ -235,24 +238,17 @@ int main(int argc, char **argv) {
     std::cout << e.what() << "\n";
     exit(1);
   }
-  printf("Now writing result to files\n");
-  /*
-    if (profile_type == SCAMP::PROFILE_TYPE_APPROX_ALL_NEIGHBORS &&
-        FLAGS_reduce_all_neighbors) {
-      auto result =
-          reduce_all_neighbors(&args.profile_a.data[0], n_y, n_x,
-                               FLAGS_reduced_height, FLAGS_reduced_width);
-      write_matrix(FLAGS_output_a_file_name, FLAGS_output_pearson, result,
-                   FLAGS_window);
-    } else {
-  */
+  if (FLAGS_print_debug_info) {
+    printf("Now writing result to files\n");
+  }
   WriteProfileToFile(FLAGS_output_a_file_name, FLAGS_output_a_index_file_name,
                      args.profile_a, FLAGS_output_pearson, FLAGS_window);
   if (FLAGS_keep_rows) {
     WriteProfileToFile(FLAGS_output_b_file_name, FLAGS_output_b_index_file_name,
                        args.profile_b, FLAGS_output_pearson, FLAGS_window);
   }
-  //}
-  printf("Done\n");
+  if (FLAGS_print_debug_info) {
+    printf("Done\n");
+  }
   return 0;
 }
