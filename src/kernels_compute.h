@@ -145,7 +145,9 @@ __device__ inline void merge_to_column(
     unsigned int best_so_far_index[7], const OptionalArgs args) {
 #pragma unroll 4
   for (int i = 0; i < 4; ++i) {
-    best_so_far[iter + i] = max(best_so_far[iter + i], dists_to_merge[i]);
+    if (dists_to_merge[i] > best_so_far[iter + i]) {
+      best_so_far[iter + i] = dists_to_merge[i];
+    }
   }
 }
 
@@ -741,7 +743,9 @@ template <typename DATA_TYPE, typename PROFILE_DATA_TYPE,
           typename DISTANCE_TYPE>
 __device__ inline void reduce_row(
     SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_1NN> &smem, int row,
-    DISTANCE_TYPE dist_row, uint32_t idx_row) {}
+    DISTANCE_TYPE dist_row, uint32_t idx_row) {
+  fAtomicMax<ATOMIC_BLOCK>((float *)(smem.local_mp_row + row), dist_row);
+}
 
 template <typename DATA_TYPE, typename PROFILE_DATA_TYPE,
           typename DISTANCE_TYPE>
