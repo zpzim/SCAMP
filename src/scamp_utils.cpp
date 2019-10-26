@@ -22,34 +22,6 @@ void write_matrix(const std::string &mp, bool output_pearson,
   }
 }
 
-std::vector<std::vector<double>> reduce_all_neighbors(SCAMP::ProfileData *data,
-                                                      int height, int width,
-                                                      int output_height,
-                                                      int output_width) {
-  int reduced_cols = std::ceil(width / static_cast<double>(output_width));
-  int reduced_rows = std::ceil(height / static_cast<double>(output_height));
-  std::vector<std::vector<double>> result(
-      output_height, std::vector<double>(output_width, -1.0));
-  for (auto pq : data->match_value) {
-    while (!pq.empty()) {
-      SCAMP::SCAMPmatch elem = pq.top();
-      pq.pop();
-      int row = elem.row / reduced_rows;
-      int col = elem.col / reduced_cols;
-      if (row >= output_height || col >= output_height) {
-        std::cout
-            << "Warning: row: " << elem.row << " col: " << elem.col
-            << " corr: " << elem.corr
-            << " did not fit into reduced matrix, there is a bug somewhere..."
-            << std::endl;
-      } else if (result[row][col] < elem.corr) {
-        result[row][col] = elem.corr;
-      }
-    }
-  }
-  return result;
-}
-
 std::ifstream &read_value(std::ifstream &s, double &d, int count) {
   std::string line;
   double parsed;
@@ -90,13 +62,10 @@ void readFile(const std::string &filename, std::vector<double> &v) {
               << "for reading, please make sure it exists" << std::endl;
     exit(1);
   }
-  std::cout << "Reading data from " << filename << std::endl;
   double num;
   while (read_value(f, num, v.size()) && f.peek() != EOF) {
     v.push_back(num);
   }
-  std::cout << "Read " << v.size() << " values from file " << filename
-            << std::endl;
 }
 
 std::vector<int> ParseIntList(const std::string &s) {

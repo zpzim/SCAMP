@@ -43,6 +43,10 @@ std::pair<int, int> Tile::get_exclusion_for_ab_join(bool upper_tile) {
   int exclusion_upper = 0;
 
   if (!_info->is_aligned) {
+    if (upper_tile && (_info->profile_type == PROFILE_TYPE_SUM_THRESH ||
+                       _info->profile_type == PROFILE_TYPE_FREQUENCY_THRESH)) {
+      exclusion_lower += 1;
+    }
     return std::make_pair(exclusion_lower, exclusion_upper);
   }
   size_t height = get_tile_height() - _info->mp_window + 1;
