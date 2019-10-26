@@ -22,6 +22,13 @@ std::pair<int, int> Tile::get_exclusion_for_self_join(bool upper_tile) {
   int exclusion;
   if (upper_tile) {
     exclusion = get_exclusion(_info->mp_window, get_tile_row(), get_tile_col());
+    if (exclusion == 0 &&
+        (_info->profile_type == PROFILE_TYPE_SUM_THRESH ||
+         _info->profile_type == PROFILE_TYPE_FREQUENCY_THRESH)) {
+      // We need to omit the main diagonal from one tile so it doesn't get
+      // double counted
+      exclusion += 1;
+    }
     return std::make_pair(exclusion, 0);
   }
   size_t height = get_tile_height() - _info->mp_window + 1;
@@ -50,6 +57,13 @@ std::pair<int, int> Tile::get_exclusion_for_ab_join(bool upper_tile) {
   }
   if (upper_tile) {
     exclusion_lower = get_exclusion(_info->mp_window, start_row, start_col);
+    if (exclusion_lower == 0 &&
+        (_info->profile_type == PROFILE_TYPE_SUM_THRESH ||
+         _info->profile_type == PROFILE_TYPE_FREQUENCY_THRESH)) {
+      // We need to omit the main diagonal from one tile so it doesn't get
+      // double counted
+      exclusion_lower += 1;
+    }
     if (start_row > start_col) {
       exclusion_upper =
           get_exclusion(_info->mp_window, start_row, start_col + width);
