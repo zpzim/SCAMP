@@ -76,7 +76,7 @@ set(CMAKE_CXX_STANDARD 11)
 # CUDA_CONFIG
 if (CMAKE_CUDA_COMPILER)
   add_definitions("-D_HAS_CUDA_")
-  set(CMAKE_CUDA_STANDARD 14)
+  set(CMAKE_CUDA_STANDARD 11)
   find_library(CUDART_LIBRARY cudart ${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES})
   include_directories(${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   set(CUDA_SEPARABLE_COMPILATION ON)
@@ -122,10 +122,13 @@ else()
   target_link_libraries(qt_helper common)
 endif()
 
+add_library(kernel_common ${CMAKE_CURRENT_SOURCE_DIR}/src/kernel_common.cpp)
 
 if (CMAKE_CUDA_COMPILER)
+  add_library(gpu_utils ${CMAKE_CURRENT_SOURCE_DIR}/src/kernel_gpu_utils.cu)
+  target_link_libraries(gpu_utils kernel_common -lcudart_static)
   add_library(gpu_kernels ${CMAKE_CURRENT_SOURCE_DIR}/src/kernels.cu)
-  target_link_libraries(gpu_kernels common)
+  target_link_libraries(gpu_kernels gpu_utils kernel_common common)
 endif()
 
 add_library(cpu_stats ${CMAKE_CURRENT_SOURCE_DIR}/src/cpu_stats.cpp)

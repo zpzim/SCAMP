@@ -24,7 +24,6 @@ using DeviceProfile = std::unordered_map<int, void *>;
 struct OpInfo;
 struct ExecInfo;
 
-constexpr int KERNEL_TILE_HEIGHT = 200;
 constexpr int64_t GIGABYTE = 1024 * 1024 * 1024;
 constexpr int64_t PROFILE_MEMORY_BUDGET = 2 * GIGABYTE;
 

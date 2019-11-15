@@ -30,8 +30,8 @@ DEFINE_int64(max_matches_per_column, 100,
 DEFINE_bool(reduce_all_neighbors, false,
             "Whether to reduce the all neighbors graph into a matrix with a "
             "reduced size");
-DEFINE_int32(reduced_height, 512, "The final height of the output matrix");
-DEFINE_int32(reduced_width, 512, "The final width of the output matrix");
+DEFINE_int32(reduced_height, -1, "The final height of the output matrix");
+DEFINE_int32(reduced_width, -1, "The final width of the output matrix");
 DEFINE_bool(print_debug_info, false, "Whether SCAMP will print debug info.");
 DEFINE_int32(num_cpu_workers, 0, "Number of CPU workers to use");
 DEFINE_bool(output_pearson, false,
@@ -223,6 +223,8 @@ int main(int argc, char **argv) {
       std::ceil(n_x / static_cast<double>(FLAGS_reduced_width));
   args.profile_b.matrix_reduced_rows =
       std::ceil(n_y / static_cast<double>(FLAGS_reduced_height));
+  args.profile_a.output_matrix = FLAGS_reduce_all_neighbors;
+  args.profile_b.output_matrix = FLAGS_reduce_all_neighbors;
   if (FLAGS_print_debug_info) {
     printf("Starting SCAMP\n");
   }

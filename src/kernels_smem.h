@@ -8,160 +8,133 @@
 //
 //////////////////////////////////////////////////
 
-template <typename DATA_TYPE, typename PROFILE_OUTPUT_TYPE,
-          typename PROFILE_DATA_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
-          int tile_width, int tile_height, int BLOCKSZ,
-          SCAMPProfileType PROFILE_TYPE, typename = void>
-class InitMemStrategy : public SCAMPStrategy {
- public:
-  __device__ void exec(
-      SCAMPKernelInputArgs<double> &args,
-      SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
-      PROFILE_OUTPUT_TYPE *__restrict__ profile_a,
-      PROFILE_OUTPUT_TYPE *__restrict__ profile_B, uint32_t col_start,
-      uint32_t row_start) {}
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, bool COMPUTE_ROWS,
+          bool COMPUTE_COLS, int tile_width, int tile_height, int BLOCKSZ,
+          SCAMPProfileType PROFILE_TYPE>
+__device__ inline void init_smem_with_static_initializer(
+    SCAMPKernelInputArgs<double> &args,
+    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
+    uint32_t col_start, uint32_t row_start, PROFILE_DATA_TYPE initializer) {
+  int global_position = col_start + threadIdx.x;
+  int local_position = threadIdx.x;
+  while (local_position < tile_width && global_position < args.n_x) {
+    smem.dg_col[local_position] = args.dga[global_position];
+    smem.df_col[local_position] = args.dfa[global_position];
+    smem.inorm_col[local_position] = args.normsa[global_position];
+    if (COMPUTE_COLS) {
+      smem.local_mp_col[local_position] = initializer;
+    }
+    local_position += BLOCKSZ;
+    global_position += BLOCKSZ;
+  }
 
- protected:
-  __device__ InitMemStrategy() {}
+  global_position = row_start + threadIdx.x;
+  local_position = threadIdx.x;
+  while (local_position < tile_height && global_position < args.n_y) {
+    smem.dg_row[local_position] = args.dgb[global_position];
+    smem.df_row[local_position] = args.dfb[global_position];
+    smem.inorm_row[local_position] = args.normsb[global_position];
+    if (COMPUTE_ROWS) {
+      smem.local_mp_row[local_position] = initializer;
+    }
+    local_position += BLOCKSZ;
+    global_position += BLOCKSZ;
+  }
+}
+
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, bool COMPUTE_ROWS,
+          bool COMPUTE_COLS, int tile_width, int tile_height, int BLOCKSZ,
+          SCAMPProfileType PROFILE_TYPE>
+__device__ inline void init_smem_with_dynamic_initializer(
+    SCAMPKernelInputArgs<double> &args,
+    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
+    PROFILE_DATA_TYPE *initializer_col, PROFILE_DATA_TYPE *initializer_row,
+    uint32_t col_start, uint32_t row_start) {
+  int global_position = col_start + threadIdx.x;
+  int local_position = threadIdx.x;
+  while (local_position < tile_width && global_position < args.n_x) {
+    smem.dg_col[local_position] = args.dga[global_position];
+    smem.df_col[local_position] = args.dfa[global_position];
+    smem.inorm_col[local_position] = args.normsa[global_position];
+    if (COMPUTE_COLS) {
+      smem.local_mp_col[local_position] = initializer_col[global_position];
+    }
+    local_position += BLOCKSZ;
+    global_position += BLOCKSZ;
+  }
+
+  global_position = row_start + threadIdx.x;
+  local_position = threadIdx.x;
+  while (local_position < tile_height && global_position < args.n_y) {
+    smem.dg_row[local_position] = args.dgb[global_position];
+    smem.df_row[local_position] = args.dfb[global_position];
+    smem.inorm_row[local_position] = args.normsb[global_position];
+    if (COMPUTE_ROWS) {
+      smem.local_mp_row[local_position] = initializer_row[global_position];
+    }
+    local_position += BLOCKSZ;
+    global_position += BLOCKSZ;
+  }
+}
+
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE,
+          typename PROFILE_OUTPUT_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
+          int tile_width, int tile_height, int BLOCKSZ>
+__device__ void init_smem(
+    SCAMPKernelInputArgs<double> &args,
+    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_1NN> &smem,
+    PROFILE_OUTPUT_TYPE *profile_a, PROFILE_OUTPUT_TYPE *profile_b,
+    uint32_t col_start, uint32_t row_start) {
+  init_smem_with_dynamic_initializer<DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS,
+                                     COMPUTE_COLS, tile_width, tile_height,
+                                     BLOCKSZ, PROFILE_TYPE_1NN>(
+      args, smem, profile_a, profile_b, col_start, row_start);
 };
 
-template <typename DATA_TYPE, typename PROFILE_OUTPUT_TYPE,
-          typename PROFILE_DATA_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
-          int tile_width, int tile_height, int BLOCKSZ,
-          SCAMPProfileType PROFILE_TYPE>
-class InitMemStrategy<DATA_TYPE, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE,
-                      COMPUTE_ROWS, COMPUTE_COLS, tile_width, tile_height,
-                      BLOCKSZ, PROFILE_TYPE,
-                      std::enable_if_t<PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH>>
-    : public SCAMPStrategy {
- public:
-  __device__ InitMemStrategy() {}
-  __device__ void exec(
-      SCAMPKernelInputArgs<double> &args,
-      SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
-      PROFILE_DATA_TYPE *__restrict__ profile_a,
-      PROFILE_DATA_TYPE *__restrict__ profile_B, uint32_t col_start,
-      uint32_t row_start) {
-    int global_position = col_start + threadIdx.x;
-    int local_position = threadIdx.x;
-    while (local_position < tile_width && global_position < args.n_x) {
-      smem.dg_col[local_position] = args.dga[global_position];
-      smem.df_col[local_position] = args.dfa[global_position];
-      smem.inorm_col[local_position] = args.normsa[global_position];
-      if (COMPUTE_COLS) {
-        smem.local_mp_col[local_position] = 0.0;
-      }
-      local_position += BLOCKSZ;
-      global_position += BLOCKSZ;
-    }
-
-    global_position = row_start + threadIdx.x;
-    local_position = threadIdx.x;
-    while (local_position < tile_height && global_position < args.n_y) {
-      smem.dg_row[local_position] = args.dgb[global_position];
-      smem.df_row[local_position] = args.dfb[global_position];
-      smem.inorm_row[local_position] = args.normsb[global_position];
-      if (COMPUTE_ROWS) {
-        smem.local_mp_row[local_position] = 0.0;
-      }
-      local_position += BLOCKSZ;
-      global_position += BLOCKSZ;
-    }
-  }
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE,
+          typename PROFILE_OUTPUT_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
+          int tile_width, int tile_height, int BLOCKSZ>
+__device__ void init_smem(
+    SCAMPKernelInputArgs<double> &args,
+    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_1NN_INDEX> &smem,
+    PROFILE_OUTPUT_TYPE *profile_a, PROFILE_OUTPUT_TYPE *profile_b,
+    uint32_t col_start, uint32_t row_start) {
+  init_smem_with_dynamic_initializer<DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS,
+                                     COMPUTE_COLS, tile_width, tile_height,
+                                     BLOCKSZ, PROFILE_TYPE_1NN_INDEX>(
+      args, smem, profile_a, profile_b, col_start, row_start);
 };
 
-template <typename DATA_TYPE, typename PROFILE_OUTPUT_TYPE,
-          typename PROFILE_DATA_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
-          int tile_width, int tile_height, int BLOCKSZ,
-          SCAMPProfileType PROFILE_TYPE>
-class InitMemStrategy<DATA_TYPE, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE,
-                      COMPUTE_ROWS, COMPUTE_COLS, tile_width, tile_height,
-                      BLOCKSZ, PROFILE_TYPE,
-                      std::enable_if_t<PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX ||
-                                       PROFILE_TYPE == PROFILE_TYPE_1NN>>
-    : public SCAMPStrategy {
- public:
-  __device__ InitMemStrategy() {}
-  __device__ virtual void exec(
-      SCAMPKernelInputArgs<double> &args,
-      SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
-      PROFILE_OUTPUT_TYPE *__restrict__ profile_a,
-      PROFILE_OUTPUT_TYPE *__restrict__ profile_b, uint32_t col_start,
-      uint32_t row_start) {
-    int global_position = col_start + threadIdx.x;
-    int local_position = threadIdx.x;
-    while (local_position < tile_width && global_position < args.n_x) {
-      smem.dg_col[local_position] = args.dga[global_position];
-      smem.df_col[local_position] = args.dfa[global_position];
-      smem.inorm_col[local_position] = args.normsa[global_position];
-      if (COMPUTE_COLS) {
-        smem.local_mp_col[local_position] = profile_a[global_position];
-      }
-      local_position += BLOCKSZ;
-      global_position += BLOCKSZ;
-    }
-
-    global_position = row_start + threadIdx.x;
-    local_position = threadIdx.x;
-    while (local_position < tile_height && global_position < args.n_y) {
-      smem.dg_row[local_position] = args.dgb[global_position];
-      smem.df_row[local_position] = args.dfb[global_position];
-      smem.inorm_row[local_position] = args.normsb[global_position];
-      if (COMPUTE_ROWS) {
-        smem.local_mp_row[local_position] = profile_b[global_position];
-      }
-      local_position += BLOCKSZ;
-      global_position += BLOCKSZ;
-    }
-  }
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE,
+          typename PROFILE_OUTPUT_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
+          int tile_width, int tile_height, int BLOCKSZ>
+__device__ void init_smem(
+    SCAMPKernelInputArgs<double> &args,
+    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_SUM_THRESH> &smem,
+    PROFILE_OUTPUT_TYPE *profile_a, PROFILE_OUTPUT_TYPE *profile_b,
+    uint32_t col_start, uint32_t row_start) {
+  init_smem_with_static_initializer<DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS,
+                                    COMPUTE_COLS, tile_width, tile_height,
+                                    BLOCKSZ, PROFILE_TYPE_SUM_THRESH>(
+      args, smem, col_start, row_start, 0.0);
 };
 
-template <typename DATA_TYPE, typename PROFILE_OUTPUT_TYPE,
-          typename PROFILE_DATA_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
-          int tile_width, int tile_height, int BLOCKSZ,
-          SCAMPProfileType PROFILE_TYPE>
-class InitMemStrategy<
-    DATA_TYPE, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS,
-    COMPUTE_COLS, tile_width, tile_height, BLOCKSZ, PROFILE_TYPE,
-    std::enable_if_t<PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS>>
-    : public SCAMPStrategy {
- public:
-  __device__ InitMemStrategy() {}
-  __device__ virtual void exec(
-      SCAMPKernelInputArgs<double> &args,
-      SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
-      PROFILE_OUTPUT_TYPE *__restrict__ profile_a,
-      PROFILE_OUTPUT_TYPE *__restrict__ profile_b, uint32_t col_start,
-      uint32_t row_start) {
-    int global_position = col_start + threadIdx.x;
-    int local_position = threadIdx.x;
-    mp_entry e;
-    e.floats[0] = static_cast<float>(args.opt.threshold);
-    e.ints[1] = 0;
-    while (local_position < tile_width && global_position < args.n_x) {
-      smem.dg_col[local_position] = args.dga[global_position];
-      smem.df_col[local_position] = args.dfa[global_position];
-      if (COMPUTE_COLS) {
-        smem.local_mp_col[local_position] = e.ulong;
-      }
-      smem.inorm_col[local_position] = args.normsa[global_position];
-      local_position += BLOCKSZ;
-      global_position += BLOCKSZ;
-    }
-
-    global_position = row_start + threadIdx.x;
-    local_position = threadIdx.x;
-    while (local_position < tile_height && global_position < args.n_y) {
-      smem.dg_row[local_position] = args.dgb[global_position];
-      smem.df_row[local_position] = args.dfb[global_position];
-      if (COMPUTE_ROWS) {
-        smem.local_mp_row[local_position] = e.ulong;
-      }
-      smem.inorm_row[local_position] = args.normsb[global_position];
-      local_position += BLOCKSZ;
-      global_position += BLOCKSZ;
-    }
-  }
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE,
+          typename PROFILE_OUTPUT_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
+          int tile_width, int tile_height, int BLOCKSZ>
+__device__ void init_smem(SCAMPKernelInputArgs<double> &args,
+                          SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE,
+                                    PROFILE_TYPE_APPROX_ALL_NEIGHBORS> &smem,
+                          PROFILE_OUTPUT_TYPE *profile_a,
+                          PROFILE_OUTPUT_TYPE *profile_b, uint32_t col_start,
+                          uint32_t row_start) {
+  mp_entry e;
+  e.floats[0] = static_cast<float>(args.opt.threshold);
+  e.ints[1] = 0;
+  init_smem_with_static_initializer<DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS,
+                                    COMPUTE_COLS, tile_width, tile_height,
+                                    BLOCKSZ, PROFILE_TYPE_APPROX_ALL_NEIGHBORS>(
+      args, smem, col_start, row_start, e.ulong);
 };
 
 ///////////////////////////////////////////////////////////////////

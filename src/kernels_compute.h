@@ -47,8 +47,9 @@ __device__ inline void update_row(
   uint32_t idx;
   DISTANCE_TYPE d = max4_index<DISTANCE_TYPE>(
       dist[0], dist[1], dist[2], dist[3], info.global_col + iter, idx);
-  MPatomicMax_check((uint64_t *)(smem.local_mp_row + info.local_row + iter), d,
-                    idx, curr_mp_row_val);
+  MPatomicMax_check<ATOMIC_BLOCK>(
+      (uint64_t *)(smem.local_mp_row + info.local_row + iter), d, idx,
+      curr_mp_row_val);
 }
 
 // UPDATE_ROW when PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX
@@ -62,8 +63,9 @@ __device__ inline void update_row(
   uint32_t idx;
   DISTANCE_TYPE d = max4_index<DISTANCE_TYPE>(
       dist[0], dist[1], dist[2], dist[3], info.global_col + iter, idx);
-  MPatomicMax_check((uint64_t *)(smem.local_mp_row + info.local_row + iter), d,
-                    idx, curr_mp_row_val);
+  MPatomicMax_check<ATOMIC_BLOCK>(
+      (uint64_t *)(smem.local_mp_row + info.local_row + iter), d, idx,
+      curr_mp_row_val);
 }
 
 // UPDATE_ROW when PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH
@@ -112,7 +114,8 @@ __device__ inline void update_row(
 }
 */
 
-//////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////
 // MERGE_TO_COLUMN:
 // C: 0 1 2 3 4 5 6
 // R0 X X X X
@@ -133,7 +136,7 @@ __device__ inline void update_row(
 // 'dists_to_merge', with the corresponding 'best_so_far' values, and storing
 // the result in 'best_so_far'
 // ...
-//////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////
 
 // MERGE_TO_COLUMN when PROFILE_TYPE == PROFILE_TYPE_1NN
 template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
@@ -221,6 +224,151 @@ storing the result in 'best_so_far[iter+i]'
 }
 */
 
+///////////////////////////////////////////////////////////////////
+// UPDATE_COLS:
+// C: 0 1 2 3 4 5 6
+// R0 X X X X
+// R1   X X X X
+// R2     X X X X
+// R3       X X X X
+// This function takes the thread-local best so far values for each column
+// (0,1,2,3,4,5,and 6) and merges them with the shared-memory MP for each
+//////////////////////////////////////////////////////////////////
+
+// UPDATE COLS where PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
+          typename DISTANCE_TYPE>
+__device__ inline void update_cols(
+    SCAMPThreadInfo<ACCUM_TYPE> info,
+    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_1NN_INDEX> smem,
+    DISTANCE_TYPE distc[7], unsigned int idxc[7]) {
+  int c = info.local_col >> 2;
+  ulonglong4 mp_col_check1, mp_col_check2;
+  float mp_col_check[7];
+
+  // Load the best-so-far values 4 at a time to reduce shared memory
+  // transactions We are preloading these values to recuce the number of atomic
+  // operations in MPatomicMax_check this is a 'test-and-test-and-set' strategy
+  mp_col_check1 = reinterpret_cast<ulonglong4 *>(smem.local_mp_col)[c];
+  mp_col_check2 = reinterpret_cast<ulonglong4 *>(smem.local_mp_col)[c + 1];
+
+  // Rename to array layout for loop
+  mp_entry e;
+  e.ulong = mp_col_check1.x;
+  mp_col_check[0] = e.floats[0];
+  e.ulong = mp_col_check1.y;
+  mp_col_check[1] = e.floats[0];
+  e.ulong = mp_col_check1.z;
+  mp_col_check[2] = e.floats[0];
+  e.ulong = mp_col_check1.w;
+  mp_col_check[3] = e.floats[0];
+  e.ulong = mp_col_check2.x;
+  mp_col_check[4] = e.floats[0];
+  e.ulong = mp_col_check2.y;
+  mp_col_check[5] = e.floats[0];
+  e.ulong = mp_col_check2.z;
+  mp_col_check[6] = e.floats[0];
+
+// Check the best-so-far column and update distance/index if necessary
+#pragma unroll 7
+  for (int i = 0; i < 7; ++i) {
+    MPatomicMax_check<ATOMIC_BLOCK>(smem.local_mp_col + info.local_col + i,
+                                    distc[i], idxc[i], mp_col_check[i]);
+  }
+}
+
+// UPDATE COLS where PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS
+//
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
+          typename DISTANCE_TYPE>
+__device__ inline void update_cols(
+    SCAMPThreadInfo<ACCUM_TYPE> info,
+    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_APPROX_ALL_NEIGHBORS>
+        smem,
+    DISTANCE_TYPE distc[7], unsigned int idxc[7]) {
+  int c = info.local_col >> 2;
+  ulonglong4 mp_col_check1, mp_col_check2;
+  float mp_col_check[7];
+
+  // Load the best-so-far values 4 at a time to reduce shared memory
+  // transactions We are preloading these values to recuce the number of atomic
+  // operations in MPatomicMax_check this is a 'test-and-test-and-set' strategy
+  mp_col_check1 = reinterpret_cast<ulonglong4 *>(smem.local_mp_col)[c];
+  mp_col_check2 = reinterpret_cast<ulonglong4 *>(smem.local_mp_col)[c + 1];
+
+  // Rename to array layout for loop
+  mp_entry e;
+  e.ulong = mp_col_check1.x;
+  mp_col_check[0] = e.floats[0];
+  e.ulong = mp_col_check1.y;
+  mp_col_check[1] = e.floats[0];
+  e.ulong = mp_col_check1.z;
+  mp_col_check[2] = e.floats[0];
+  e.ulong = mp_col_check1.w;
+  mp_col_check[3] = e.floats[0];
+  e.ulong = mp_col_check2.x;
+  mp_col_check[4] = e.floats[0];
+  e.ulong = mp_col_check2.y;
+  mp_col_check[5] = e.floats[0];
+  e.ulong = mp_col_check2.z;
+  mp_col_check[6] = e.floats[0];
+
+// Check the best-so-far column and update distance/index if necessary
+#pragma unroll 7
+  for (int i = 0; i < 7; ++i) {
+    MPatomicMax_check<ATOMIC_BLOCK>(smem.local_mp_col + info.local_col + i,
+                                    distc[i], idxc[i], mp_col_check[i]);
+  }
+}
+
+// UPDATE_COLS where PROFILE_TYPE == PROFILE_TYPE_1NN
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
+          typename DISTANCE_TYPE>
+__device__ inline void update_cols(
+    SCAMPThreadInfo<ACCUM_TYPE> info,
+    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_1NN> smem,
+    DISTANCE_TYPE distc[7], unsigned int idxc[7]) {
+  int c = info.local_col >> 2;
+  float4 mp_col_check1, mp_col_check2;
+  float mp_col_check[7];
+
+  // Load the best-so-far values 4 at a time to reduce latency
+  mp_col_check1 = reinterpret_cast<float4 *>(smem.local_mp_col)[c];
+  mp_col_check2 = reinterpret_cast<float4 *>(smem.local_mp_col)[c + 1];
+
+  // Rename to array layout for loop
+  mp_col_check[0] = mp_col_check1.x;
+  mp_col_check[1] = mp_col_check1.y;
+  mp_col_check[2] = mp_col_check1.z;
+  mp_col_check[3] = mp_col_check1.w;
+  mp_col_check[4] = mp_col_check2.x;
+  mp_col_check[5] = mp_col_check2.y;
+  mp_col_check[6] = mp_col_check2.z;
+
+// Check the best-so-far column and update distance if necessary
+#pragma unroll 7
+  for (int i = 0; i < 7; ++i) {
+    fAtomicMax_check<ATOMIC_BLOCK>(smem.local_mp_col + info.local_col + i,
+                                   distc[i], mp_col_check[i]);
+  }
+}
+
+// UPDATE COLS where PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
+          typename DISTANCE_TYPE>
+__device__ inline void update_cols(
+    SCAMPThreadInfo<ACCUM_TYPE> info,
+    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_SUM_THRESH> smem,
+    DISTANCE_TYPE distc[7], unsigned int idxc[7]) {
+// Add the current sum that this thread has computed to the shared sum across
+// the entire thread block
+#pragma unroll 7
+  for (int i = 0; i < 7; ++i) {
+    do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_BLOCK>(
+        smem.local_mp_col + info.local_col + i, distc[i]);
+  }
+}
+
 /////////////////////////////////////////////////////
 // DO_ROW:
 // C: 0 1 2 3 4 5 6
@@ -277,172 +425,9 @@ __device__ inline FORCE_INLINE void do_row(
   }
 }
 
-///////////////////////////////////////////////////////////////////
-// UPDATE_COLS:
-// C: 0 1 2 3 4 5 6
-// R0 X X X X
-// R1   X X X X
-// R2     X X X X
-// R3       X X X X
-// This function takes the thread-local best so far values for each column
-// (0,1,2,3,4,5,and 6) and merges them with the shared-memory MP for each
-//////////////////////////////////////////////////////////////////
-
-// UPDATE COLS where PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
-          typename DISTANCE_TYPE>
-__device__ inline void update_cols(
-    SCAMPThreadInfo<ACCUM_TYPE> info,
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_1NN_INDEX> smem,
-    DISTANCE_TYPE distc[7], unsigned int idxc[7]) {
-  int c = info.local_col >> 2;
-  ulonglong4 mp_col_check1, mp_col_check2;
-  float mp_col_check[7];
-
-  // Load the best-so-far values 4 at a time to reduce shared memory
-  // transactions We are preloading these values to recuce the number of atomic
-  // operations in MPatomicMax_check this is a 'test-and-test-and-set' strategy
-  mp_col_check1 = reinterpret_cast<ulonglong4 *>(smem.local_mp_col)[c];
-  mp_col_check2 = reinterpret_cast<ulonglong4 *>(smem.local_mp_col)[c + 1];
-
-  // Rename to array layout for loop
-  mp_entry e;
-  e.ulong = mp_col_check1.x;
-  mp_col_check[0] = e.floats[0];
-  e.ulong = mp_col_check1.y;
-  mp_col_check[1] = e.floats[0];
-  e.ulong = mp_col_check1.z;
-  mp_col_check[2] = e.floats[0];
-  e.ulong = mp_col_check1.w;
-  mp_col_check[3] = e.floats[0];
-  e.ulong = mp_col_check2.x;
-  mp_col_check[4] = e.floats[0];
-  e.ulong = mp_col_check2.y;
-  mp_col_check[5] = e.floats[0];
-  e.ulong = mp_col_check2.z;
-  mp_col_check[6] = e.floats[0];
-
-// Check the best-so-far column and update distance/index if necessary
-#pragma unroll 7
-  for (int i = 0; i < 7; ++i) {
-    MPatomicMax_check(smem.local_mp_col + info.local_col + i, distc[i], idxc[i],
-                      mp_col_check[i]);
-  }
-}
-
-// UPDATE COLS where PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
-          typename DISTANCE_TYPE>
-__device__ inline void update_cols(
-    SCAMPThreadInfo<ACCUM_TYPE> info,
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_APPROX_ALL_NEIGHBORS>
-        smem,
-    DISTANCE_TYPE distc[7], unsigned int idxc[7]) {
-  int c = info.local_col >> 2;
-  ulonglong4 mp_col_check1, mp_col_check2;
-  float mp_col_check[7];
-
-  // Load the best-so-far values 4 at a time to reduce shared memory
-  // transactions We are preloading these values to recuce the number of atomic
-  // operations in MPatomicMax_check this is a 'test-and-test-and-set' strategy
-  mp_col_check1 = reinterpret_cast<ulonglong4 *>(smem.local_mp_col)[c];
-  mp_col_check2 = reinterpret_cast<ulonglong4 *>(smem.local_mp_col)[c + 1];
-
-  // Rename to array layout for loop
-  mp_entry e;
-  e.ulong = mp_col_check1.x;
-  mp_col_check[0] = e.floats[0];
-  e.ulong = mp_col_check1.y;
-  mp_col_check[1] = e.floats[0];
-  e.ulong = mp_col_check1.z;
-  mp_col_check[2] = e.floats[0];
-  e.ulong = mp_col_check1.w;
-  mp_col_check[3] = e.floats[0];
-  e.ulong = mp_col_check2.x;
-  mp_col_check[4] = e.floats[0];
-  e.ulong = mp_col_check2.y;
-  mp_col_check[5] = e.floats[0];
-  e.ulong = mp_col_check2.z;
-  mp_col_check[6] = e.floats[0];
-
-// Check the best-so-far column and update distance/index if necessary
-#pragma unroll 7
-  for (int i = 0; i < 7; ++i) {
-    MPatomicMax_check(smem.local_mp_col + info.local_col + i, distc[i], idxc[i],
-                      mp_col_check[i]);
-  }
-}
-
-// UPDATE_COLS where PROFILE_TYPE == PROFILE_TYPE_1NN
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
-          typename DISTANCE_TYPE>
-__device__ inline void update_cols(
-    SCAMPThreadInfo<ACCUM_TYPE> info,
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_1NN> smem,
-    DISTANCE_TYPE distc[7], unsigned int idxc[7]) {
-  int c = info.local_col >> 2;
-  float4 mp_col_check1, mp_col_check2;
-  float mp_col_check[7];
-
-  // Load the best-so-far values 4 at a time to reduce latency
-  mp_col_check1 = reinterpret_cast<float4 *>(smem.local_mp_col)[c];
-  mp_col_check2 = reinterpret_cast<float4 *>(smem.local_mp_col)[c + 1];
-
-  // Rename to array layout for loop
-  mp_col_check[0] = mp_col_check1.x;
-  mp_col_check[1] = mp_col_check1.y;
-  mp_col_check[2] = mp_col_check1.z;
-  mp_col_check[3] = mp_col_check1.w;
-  mp_col_check[4] = mp_col_check2.x;
-  mp_col_check[5] = mp_col_check2.y;
-  mp_col_check[6] = mp_col_check2.z;
-
-// Check the best-so-far column and update distance if necessary
-#pragma unroll 7
-  for (int i = 0; i < 7; ++i) {
-    fAtomicMax_check<ATOMIC_BLOCK>(smem.local_mp_col + info.local_col + i,
-                                   distc[i], mp_col_check[i]);
-  }
-}
-
-// UPDATE COLS where PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
-          typename DISTANCE_TYPE>
-__device__ inline void update_cols(
-    SCAMPThreadInfo<ACCUM_TYPE> info,
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_SUM_THRESH> smem,
-    DISTANCE_TYPE distc[7], unsigned int idxc[7]) {
-// Add the current sum that this thread has computed to the shared sum across
-// the entire thread block
-#pragma unroll 7
-  for (int i = 0; i < 7; ++i) {
-    do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_BLOCK>(
-        smem.local_mp_col + info.local_col + i, distc[i]);
-  }
-}
-
-// Outputs an 'initial' distance value based on the type of profile being
-// computed
-template <typename DISTANCE_TYPE, SCAMPProfileType type>
-__device__ inline constexpr DISTANCE_TYPE init_dist() {
-  switch (type) {
-    case PROFILE_TYPE_KNN:
-    case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
-    case PROFILE_TYPE_1NN_INDEX:
-    case PROFILE_TYPE_1NN:
-      // Smallest value possible is -1 so set to -2
-      return static_cast<DISTANCE_TYPE>(-2);
-    case PROFILE_TYPE_SUM_THRESH:
-    case PROFILE_TYPE_FREQUENCY_THRESH:
-    default:
-      // We must set to 0 so we get an accurate sum
-      return static_cast<DISTANCE_TYPE>(0);
-  }
-}
-
 ///////////////////////////////////////////////////////////////////////////////
 // OPTIMIZED CODE PATH:
-// do_unrolled_row4 is the optimized matrix profile code path which computes
+// do_iteration_fast is the optimized matrix profile code path which computes
 // one row of work for a single thread. It is specialized for each profile type
 // that is computed.
 // This function computes a 4x4 block of the distance matrix by calling
@@ -470,177 +455,147 @@ __device__ inline constexpr DISTANCE_TYPE init_dist() {
 template <typename DATA_TYPE, typename VEC2_DATA_TYPE, typename VEC4_DATA_TYPE,
           typename ACCUM_TYPE, typename PROFILE_DATA_TYPE,
           typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
-          SCAMPProfileType PROFILE_TYPE, typename = void>
-class DoIterationStrategy : public SCAMPStrategy {
- public:
-  __device__ inline void exec(
-      SCAMPThreadInfo<ACCUM_TYPE> &info,
-      SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
-      OptionalArgs &args) {}
-
- protected:
-  __device__ DoIterationStrategy() {}
-};
-
-template <typename DATA_TYPE, typename VEC2_DATA_TYPE, typename VEC4_DATA_TYPE,
-          typename ACCUM_TYPE, typename PROFILE_DATA_TYPE,
-          typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
           SCAMPProfileType PROFILE_TYPE>
-class DoIterationStrategy<
-    DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE, PROFILE_DATA_TYPE,
-    DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE,
-    std::enable_if_t<PROFILE_TYPE == PROFILE_TYPE_1NN ||
-                     PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX ||
-                     PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH ||
-                     PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS>>
-    : public SCAMPStrategy {
- public:
-  __device__ DoIterationStrategy() {}
-  __device__ void exec(
-      SCAMPThreadInfo<ACCUM_TYPE> &info,
-      SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
-      OptionalArgs &args) {
-    // Load row values 4 at a time, load column values 4 at a time
-    int r = info.local_row >> 2;
-    int c = info.local_col >> 2;
+void __device__
+do_iteration_fast(SCAMPThreadInfo<ACCUM_TYPE> &info,
+                  SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
+                  OptionalArgs &args) {
+  // Load row values 4 at a time, load column values 4 at a time
+  int r = info.local_row >> 2;
+  int c = info.local_col >> 2;
 
-    // Arrays to store thread local variables
-    DATA_TYPE dfc[7], dgc[7], inormc[7];
-    DATA_TYPE dgr[4], dfr[4], inormr[4];
-    float mp_row_check[4];
-    DISTANCE_TYPE init = init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
-    DISTANCE_TYPE distc[7] = {init, init, init, init, init, init, init};
-    unsigned int idxc[7];
+  // Arrays to store thread local variables, 7 columns, 4 rows
+  DATA_TYPE dfc[7], dgc[7], inormc[7];
+  DATA_TYPE dgr[4], dfr[4], inormr[4];
+  float mp_row_check[4];
+  DISTANCE_TYPE init = init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
+  DISTANCE_TYPE distc[7] = {init, init, init, init, init, init, init};
+  unsigned int idxc[7];
 
-    // Preload the shared memory values we will use into registers using
-    // vectorized loads
-    VEC4_DATA_TYPE dfc_temp =
-        reinterpret_cast<VEC4_DATA_TYPE *>(smem.df_col)[c];
-    VEC4_DATA_TYPE dgc_temp =
-        reinterpret_cast<VEC4_DATA_TYPE *>(smem.dg_col)[c];
-    VEC4_DATA_TYPE inormc_temp =
-        (reinterpret_cast<VEC4_DATA_TYPE *>(smem.inorm_col)[c]);
+  // Preload the shared memory values we will use into registers using
+  // vectorized loads
+  VEC4_DATA_TYPE dfc_temp = reinterpret_cast<VEC4_DATA_TYPE *>(smem.df_col)[c];
+  VEC4_DATA_TYPE dgc_temp = reinterpret_cast<VEC4_DATA_TYPE *>(smem.dg_col)[c];
+  VEC4_DATA_TYPE inormc_temp =
+      (reinterpret_cast<VEC4_DATA_TYPE *>(smem.inorm_col)[c]);
 
-    // Rename to array structure
-    dfc[0] = dfc_temp.x;
-    dfc[1] = dfc_temp.y;
-    dfc[2] = dfc_temp.z;
-    dfc[3] = dfc_temp.w;
-    dgc[0] = dgc_temp.x;
-    dgc[1] = dgc_temp.y;
-    dgc[2] = dgc_temp.z;
-    dgc[3] = dgc_temp.w;
-    inormc[0] = inormc_temp.x;
-    inormc[1] = inormc_temp.y;
-    inormc[2] = inormc_temp.z;
-    inormc[3] = inormc_temp.w;
+  // Rename to array structure for ease of use
+  dfc[0] = dfc_temp.x;
+  dfc[1] = dfc_temp.y;
+  dfc[2] = dfc_temp.z;
+  dfc[3] = dfc_temp.w;
+  dgc[0] = dgc_temp.x;
+  dgc[1] = dgc_temp.y;
+  dgc[2] = dgc_temp.z;
+  dgc[3] = dgc_temp.w;
+  inormc[0] = inormc_temp.x;
+  inormc[1] = inormc_temp.y;
+  inormc[2] = inormc_temp.z;
+  inormc[3] = inormc_temp.w;
 
-    // Preload the shared memory values we will use into registers using
-    // vectorized loads
-    dfc_temp = reinterpret_cast<VEC4_DATA_TYPE *>(smem.df_col)[c + 1];
-    dgc_temp = reinterpret_cast<VEC4_DATA_TYPE *>(smem.dg_col)[c + 1];
-    inormc_temp = reinterpret_cast<VEC4_DATA_TYPE *>(smem.inorm_col)[c + 1];
+  // Preload the shared memory values we will use into registers using
+  // vectorized loads
+  dfc_temp = reinterpret_cast<VEC4_DATA_TYPE *>(smem.df_col)[c + 1];
+  dgc_temp = reinterpret_cast<VEC4_DATA_TYPE *>(smem.dg_col)[c + 1];
+  inormc_temp = reinterpret_cast<VEC4_DATA_TYPE *>(smem.inorm_col)[c + 1];
 
-    // Rename to array structure
-    dfc[4] = dfc_temp.x;
-    dfc[5] = dfc_temp.y;
-    dfc[6] = dfc_temp.z;
-    dgc[4] = dgc_temp.x;
-    dgc[5] = dgc_temp.y;
-    dgc[6] = dgc_temp.z;
-    inormc[4] = inormc_temp.x;
-    inormc[5] = inormc_temp.y;
-    inormc[6] = inormc_temp.z;
+  // Rename to array structure for ease of use
+  dfc[4] = dfc_temp.x;
+  dfc[5] = dfc_temp.y;
+  dfc[6] = dfc_temp.z;
+  dgc[4] = dgc_temp.x;
+  dgc[5] = dgc_temp.y;
+  dgc[6] = dgc_temp.z;
+  inormc[4] = inormc_temp.x;
+  inormc[5] = inormc_temp.y;
+  inormc[6] = inormc_temp.z;
 
-    // Preload the shared memory values we will use into registers using
-    // vectorized loads
-    VEC4_DATA_TYPE dgr_temp =
-        reinterpret_cast<VEC4_DATA_TYPE *>(smem.dg_row)[r];
-    VEC4_DATA_TYPE dfr_temp =
-        reinterpret_cast<VEC4_DATA_TYPE *>(smem.df_row)[r];
-    VEC4_DATA_TYPE inormr_temp =
-        reinterpret_cast<VEC4_DATA_TYPE *>(smem.inorm_row)[r];
+  // Preload the shared memory values we will use into registers using
+  // vectorized loads
+  VEC4_DATA_TYPE dgr_temp = reinterpret_cast<VEC4_DATA_TYPE *>(smem.dg_row)[r];
+  VEC4_DATA_TYPE dfr_temp = reinterpret_cast<VEC4_DATA_TYPE *>(smem.df_row)[r];
+  VEC4_DATA_TYPE inormr_temp =
+      reinterpret_cast<VEC4_DATA_TYPE *>(smem.inorm_row)[r];
 
-    // Rename to array structure
-    dfr[0] = dfr_temp.x;
-    dfr[1] = dfr_temp.y;
-    dfr[2] = dfr_temp.z;
-    dfr[3] = dfr_temp.w;
-    dgr[0] = dgr_temp.x;
-    dgr[1] = dgr_temp.y;
-    dgr[2] = dgr_temp.z;
-    dgr[3] = dgr_temp.w;
-    inormr[0] = inormr_temp.x;
-    inormr[1] = inormr_temp.y;
-    inormr[2] = inormr_temp.z;
-    inormr[3] = inormr_temp.w;
+  // Rename to array structure
+  dfr[0] = dfr_temp.x;
+  dfr[1] = dfr_temp.y;
+  dfr[2] = dfr_temp.z;
+  dfr[3] = dfr_temp.w;
+  dgr[0] = dgr_temp.x;
+  dgr[1] = dgr_temp.y;
+  dgr[2] = dgr_temp.z;
+  dgr[3] = dgr_temp.w;
+  inormr[0] = inormr_temp.x;
+  inormr[1] = inormr_temp.y;
+  inormr[2] = inormr_temp.z;
+  inormr[3] = inormr_temp.w;
 
-    // For NN profiles we need to do a vectorized load to pull the best-so-far
-    // values from cache
-    if (COMPUTE_ROWS) {
-      switch (PROFILE_TYPE) {
-        case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
-        case PROFILE_TYPE_1NN_INDEX: {
-          ulonglong4 mp_row_check_temp;
-          mp_row_check_temp =
-              reinterpret_cast<ulonglong4 *>(smem.local_mp_row)[r];
-          mp_entry e;
-          e.ulong = mp_row_check_temp.x;
-          mp_row_check[0] = e.floats[0];
-          e.ulong = mp_row_check_temp.y;
-          mp_row_check[1] = e.floats[0];
-          e.ulong = mp_row_check_temp.z;
-          mp_row_check[2] = e.floats[0];
-          e.ulong = mp_row_check_temp.w;
-          mp_row_check[3] = e.floats[0];
-          break;
-        }
-        case PROFILE_TYPE_1NN: {
-          float4 mp_row_check_temp;
-          mp_row_check_temp = reinterpret_cast<float4 *>(smem.local_mp_row)[r];
-          mp_row_check[0] = mp_row_check_temp.x;
-          mp_row_check[1] = mp_row_check_temp.y;
-          mp_row_check[2] = mp_row_check_temp.z;
-          mp_row_check[3] = mp_row_check_temp.w;
-          break;
-        }
-        case PROFILE_TYPE_SUM_THRESH:
-        default:
-          break;
+  // For NN profiles we need to do a vectorized load to pull the best-so-far
+  // values from cache
+  if (COMPUTE_ROWS) {
+    switch (PROFILE_TYPE) {
+      case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
+      case PROFILE_TYPE_1NN_INDEX: {
+        ulonglong4 mp_row_check_temp;
+        mp_row_check_temp =
+            reinterpret_cast<ulonglong4 *>(smem.local_mp_row)[r];
+        mp_entry e;
+        e.ulong = mp_row_check_temp.x;
+        mp_row_check[0] = e.floats[0];
+        e.ulong = mp_row_check_temp.y;
+        mp_row_check[1] = e.floats[0];
+        e.ulong = mp_row_check_temp.z;
+        mp_row_check[2] = e.floats[0];
+        e.ulong = mp_row_check_temp.w;
+        mp_row_check[3] = e.floats[0];
+        break;
       }
+      case PROFILE_TYPE_1NN: {
+        float4 mp_row_check_temp;
+        mp_row_check_temp = reinterpret_cast<float4 *>(smem.local_mp_row)[r];
+        mp_row_check[0] = mp_row_check_temp.x;
+        mp_row_check[1] = mp_row_check_temp.y;
+        mp_row_check[2] = mp_row_check_temp.z;
+        mp_row_check[3] = mp_row_check_temp.w;
+        break;
+      }
+      case PROFILE_TYPE_SUM_THRESH:
+      default:
+        break;
     }
-
-    // Generate and coalesce distances into profile
-    do_row<0, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-           COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE>(
-        info, distc, inormc, dfc, dgc, inormr, dfr, dgr, mp_row_check, idxc,
-        smem, args);
-    do_row<1, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-           COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE>(
-        info, distc, inormc, dfc, dgc, inormr, dfr, dgr, mp_row_check, idxc,
-        smem, args);
-    do_row<2, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-           COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE>(
-        info, distc, inormc, dfc, dgc, inormr, dfr, dgr, mp_row_check, idxc,
-        smem, args);
-    do_row<3, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-           COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE>(
-        info, distc, inormc, dfc, dgc, inormr, dfr, dgr, mp_row_check, idxc,
-        smem, args);
-
-    // Update the column wise matrix profile with the best-so-far
-    if (COMPUTE_COLS) {
-      update_cols<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE>(
-          info, smem, distc, idxc);
-    }
-
-    // Advance counters
-    info.local_col += DIAGS_PER_THREAD;
-    info.local_row += DIAGS_PER_THREAD;
-    info.global_col += DIAGS_PER_THREAD;
-    info.global_row += DIAGS_PER_THREAD;
   }
-};
+
+  // Generate and coalesce distances into profile
+  do_row<0, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+         COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE>(
+      info, distc, inormc, dfc, dgc, inormr, dfr, dgr, mp_row_check, idxc, smem,
+      args);
+  do_row<1, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+         COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE>(
+      info, distc, inormc, dfc, dgc, inormr, dfr, dgr, mp_row_check, idxc, smem,
+      args);
+  do_row<2, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+         COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE>(
+      info, distc, inormc, dfc, dgc, inormr, dfr, dgr, mp_row_check, idxc, smem,
+      args);
+  do_row<3, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+         COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE>(
+      info, distc, inormc, dfc, dgc, inormr, dfr, dgr, mp_row_check, idxc, smem,
+      args);
+
+  // Update the column wise matrix profile with the best-so-far
+  if (COMPUTE_COLS) {
+    update_cols<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE>(
+        info, smem, distc, idxc);
+  }
+
+  // Advance counters
+  info.local_col += DIAGS_PER_THREAD;
+  info.local_row += DIAGS_PER_THREAD;
+  info.global_col += DIAGS_PER_THREAD;
+  info.global_row += DIAGS_PER_THREAD;
+}
 
 /////////////////////////////////////////////////////////////////////////
 //  EDGE COMPUTATION
