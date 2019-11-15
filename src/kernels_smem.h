@@ -143,206 +143,157 @@ __device__ void init_smem(SCAMPKernelInputArgs<double> &args,
 //
 ///////////////////////////////////////////////////////////////////
 
-// Dummy (forces compilation failure when the wrong types are used)
-template <typename PROFILE_OUTPUT_TYPE, typename PROFILE_DATA_TYPE,
-          bool COMPUTE_COLS, bool COMPUTE_ROWS, int TILE_WIDTH, int TILE_HEIGHT,
-          int BLOCKSZ, SCAMPProfileType PROFILE_TYPE>
-class WriteBackStrategy : public SCAMPStrategy {
- public:
-  __device__ void exec(SCAMPKernelInputArgs<double> &args,
-                       uint32_t tile_start_x, uint32_t tile_start_y,
-                       uint32_t n_x, uint32_t n_y,
-                       PROFILE_DATA_TYPE *__restrict__ local_mp_col,
-                       PROFILE_DATA_TYPE *__restrict__ local_mp_row,
-                       PROFILE_OUTPUT_TYPE *__restrict__ profile_A,
-                       PROFILE_OUTPUT_TYPE *__restrict__ profile_B) {}
-
- protected:
-  __device__ WriteBackStrategy() {}
-};
-
-template <typename PROFILE_OUTPUT_TYPE, typename PROFILE_DATA_TYPE,
-          bool COMPUTE_COLS, bool COMPUTE_ROWS, int TILE_WIDTH, int TILE_HEIGHT,
-          int BLOCKSZ>
-class WriteBackStrategy<PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE, COMPUTE_COLS,
-                        COMPUTE_ROWS, TILE_WIDTH, TILE_HEIGHT, BLOCKSZ,
-                        PROFILE_TYPE_SUM_THRESH> : public SCAMPStrategy {
- public:
-  __device__ WriteBackStrategy() {}
-  __device__ void exec(SCAMPKernelInputArgs<double> &args,
-                       uint32_t tile_start_x, uint32_t tile_start_y,
-                       uint32_t n_x, uint32_t n_y,
-                       PROFILE_DATA_TYPE *__restrict__ local_mp_col,
-                       PROFILE_DATA_TYPE *__restrict__ local_mp_row,
-                       PROFILE_OUTPUT_TYPE *__restrict__ profile_A,
-                       PROFILE_OUTPUT_TYPE *__restrict__ profile_B) {
-    int global_position, local_position;
-    if (COMPUTE_COLS) {
-      global_position = tile_start_x + threadIdx.x;
-      local_position = threadIdx.x;
-      while (local_position < TILE_WIDTH && global_position < n_x) {
-        do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_GLOBAL>(
-            profile_A + global_position, local_mp_col[local_position]);
-        global_position += BLOCKSZ;
-        local_position += BLOCKSZ;
-      }
-    }
-    if (COMPUTE_ROWS) {
-      global_position = tile_start_y + threadIdx.x;
-      local_position = threadIdx.x;
-      while (local_position < TILE_HEIGHT && global_position < n_y) {
-        do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_GLOBAL>(
-            profile_B + global_position, local_mp_row[local_position]);
-        global_position += BLOCKSZ;
-        local_position += BLOCKSZ;
-      }
+template <typename DATA_TYPE, typename PROFILE_OUTPUT_TYPE,
+          typename PROFILE_DATA_TYPE, bool COMPUTE_COLS, bool COMPUTE_ROWS,
+          int TILE_WIDTH, int TILE_HEIGHT, int BLOCKSZ>
+__device__ void write_back(
+    SCAMPKernelInputArgs<double> &args,
+    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_SUM_THRESH> &smem,
+    uint32_t tile_start_x, uint32_t tile_start_y, uint32_t n_x, uint32_t n_y,
+    PROFILE_OUTPUT_TYPE *profile_A, PROFILE_OUTPUT_TYPE *profile_B) {
+  int global_position, local_position;
+  if (COMPUTE_COLS) {
+    global_position = tile_start_x + threadIdx.x;
+    local_position = threadIdx.x;
+    while (local_position < TILE_WIDTH && global_position < n_x) {
+      do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_GLOBAL>(
+          profile_A + global_position, smem.local_mp_col[local_position]);
+      global_position += BLOCKSZ;
+      local_position += BLOCKSZ;
     }
   }
-};
-
-template <typename PROFILE_OUTPUT_TYPE, typename PROFILE_DATA_TYPE,
-          bool COMPUTE_COLS, bool COMPUTE_ROWS, int TILE_WIDTH, int TILE_HEIGHT,
-          int BLOCKSZ>
-class WriteBackStrategy<PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE, COMPUTE_COLS,
-                        COMPUTE_ROWS, TILE_WIDTH, TILE_HEIGHT, BLOCKSZ,
-                        PROFILE_TYPE_1NN> : public SCAMPStrategy {
- public:
-  __device__ WriteBackStrategy() {}
-  __device__ void exec(SCAMPKernelInputArgs<double> &args,
-                       uint32_t tile_start_x, uint32_t tile_start_y,
-                       uint32_t n_x, uint32_t n_y,
-                       PROFILE_DATA_TYPE *__restrict__ local_mp_col,
-                       PROFILE_DATA_TYPE *__restrict__ local_mp_row,
-                       PROFILE_OUTPUT_TYPE *__restrict__ profile_A,
-                       PROFILE_OUTPUT_TYPE *__restrict__ profile_B) {
-    int global_position, local_position;
-    if (COMPUTE_COLS) {
-      global_position = tile_start_x + threadIdx.x;
-      local_position = threadIdx.x;
-      while (local_position < TILE_WIDTH && global_position < n_x) {
-        fAtomicMax<ATOMIC_GLOBAL>(profile_A + global_position,
-                                  local_mp_col[local_position]);
-        global_position += BLOCKSZ;
-        local_position += BLOCKSZ;
-      }
-    }
-    if (COMPUTE_ROWS) {
-      global_position = tile_start_y + threadIdx.x;
-      local_position = threadIdx.x;
-      while (local_position < TILE_HEIGHT && global_position < n_y) {
-        fAtomicMax<ATOMIC_GLOBAL>(profile_B + global_position,
-                                  local_mp_row[local_position]);
-        global_position += BLOCKSZ;
-        local_position += BLOCKSZ;
-      }
+  if (COMPUTE_ROWS) {
+    global_position = tile_start_y + threadIdx.x;
+    local_position = threadIdx.x;
+    while (local_position < TILE_HEIGHT && global_position < n_y) {
+      do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_GLOBAL>(
+          profile_B + global_position, smem.local_mp_row[local_position]);
+      global_position += BLOCKSZ;
+      local_position += BLOCKSZ;
     }
   }
-};
+}
 
-template <typename PROFILE_OUTPUT_TYPE, typename PROFILE_DATA_TYPE,
-          bool COMPUTE_COLS, bool COMPUTE_ROWS, int TILE_WIDTH, int TILE_HEIGHT,
-          int BLOCKSZ>
-class WriteBackStrategy<PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE, COMPUTE_COLS,
-                        COMPUTE_ROWS, TILE_WIDTH, TILE_HEIGHT, BLOCKSZ,
-                        PROFILE_TYPE_1NN_INDEX> : public SCAMPStrategy {
- public:
-  __device__ WriteBackStrategy() {}
-  __device__ void exec(SCAMPKernelInputArgs<double> &args,
-                       uint32_t tile_start_x, uint32_t tile_start_y,
-                       uint32_t n_x, uint32_t n_y,
-                       PROFILE_DATA_TYPE *__restrict__ local_mp_col,
-                       PROFILE_DATA_TYPE *__restrict__ local_mp_row,
-                       PROFILE_OUTPUT_TYPE *__restrict__ profile_A,
-                       PROFILE_OUTPUT_TYPE *__restrict__ profile_B) {
-    int global_position, local_position;
-    if (COMPUTE_COLS) {
-      global_position = tile_start_x + threadIdx.x;
-      local_position = threadIdx.x;
-      while (local_position < TILE_WIDTH && global_position < n_x) {
-        mp_entry e;
-        e.ulong = local_mp_col[local_position];
-        MPatomicMax<ATOMIC_GLOBAL>(profile_A + global_position, e.floats[0],
-                                   e.ints[1]);
-        global_position += BLOCKSZ;
-        local_position += BLOCKSZ;
-      }
-    }
-    if (COMPUTE_ROWS) {
-      global_position = tile_start_y + threadIdx.x;
-      local_position = threadIdx.x;
-      while (local_position < TILE_HEIGHT && global_position < n_y) {
-        mp_entry e;
-        e.ulong = local_mp_row[local_position];
-        MPatomicMax<ATOMIC_GLOBAL>(profile_B + global_position, e.floats[0],
-                                   e.ints[1]);
-        global_position += BLOCKSZ;
-        local_position += BLOCKSZ;
-      }
+template <typename DATA_TYPE, typename PROFILE_OUTPUT_TYPE,
+          typename PROFILE_DATA_TYPE, bool COMPUTE_COLS, bool COMPUTE_ROWS,
+          int TILE_WIDTH, int TILE_HEIGHT, int BLOCKSZ>
+__device__ void write_back(
+    SCAMPKernelInputArgs<double> &args,
+    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_1NN> &smem,
+    uint32_t tile_start_x, uint32_t tile_start_y, uint32_t n_x, uint32_t n_y,
+    PROFILE_OUTPUT_TYPE *profile_A, PROFILE_OUTPUT_TYPE *profile_B) {
+  int global_position, local_position;
+  if (COMPUTE_COLS) {
+    global_position = tile_start_x + threadIdx.x;
+    local_position = threadIdx.x;
+    while (local_position < TILE_WIDTH && global_position < n_x) {
+      fAtomicMax<ATOMIC_GLOBAL>(profile_A + global_position,
+                                smem.local_mp_col[local_position]);
+      global_position += BLOCKSZ;
+      local_position += BLOCKSZ;
     }
   }
-};
+  if (COMPUTE_ROWS) {
+    global_position = tile_start_y + threadIdx.x;
+    local_position = threadIdx.x;
+    while (local_position < TILE_HEIGHT && global_position < n_y) {
+      fAtomicMax<ATOMIC_GLOBAL>(profile_B + global_position,
+                                smem.local_mp_row[local_position]);
+      global_position += BLOCKSZ;
+      local_position += BLOCKSZ;
+    }
+  }
+}
 
-template <typename PROFILE_OUTPUT_TYPE, typename PROFILE_DATA_TYPE,
-          bool COMPUTE_COLS, bool COMPUTE_ROWS, int TILE_WIDTH, int TILE_HEIGHT,
-          int BLOCKSZ>
-class WriteBackStrategy<PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE, COMPUTE_COLS,
-                        COMPUTE_ROWS, TILE_WIDTH, TILE_HEIGHT, BLOCKSZ,
-                        PROFILE_TYPE_APPROX_ALL_NEIGHBORS>
-    : public SCAMPStrategy {
- public:
-  __device__ WriteBackStrategy() {}
-  __device__ void exec(SCAMPKernelInputArgs<double> &args,
-                       uint32_t tile_start_x, uint32_t tile_start_y,
-                       uint32_t n_x, uint32_t n_y,
-                       PROFILE_DATA_TYPE *__restrict__ local_mp_col,
-                       PROFILE_DATA_TYPE *__restrict__ local_mp_row,
-                       PROFILE_OUTPUT_TYPE *__restrict__ profile_A,
-                       PROFILE_OUTPUT_TYPE *__restrict__ profile_B) {
-    int global_position, local_position;
-    float threshold = static_cast<float>(args.opt.threshold);
-    if (COMPUTE_COLS) {
-      global_position = tile_start_x + threadIdx.x;
-      local_position = threadIdx.x;
-      while (local_position < TILE_WIDTH && global_position < n_x) {
-        mp_entry e;
-        e.ulong = local_mp_col[local_position];
-        if (e.floats[0] > threshold) {
-          // Reserve space in output array
-          unsigned long long int pos =
-              do_atomicAdd<unsigned long long int, ATOMIC_GLOBAL>(
-                  args.profile_a_length, 1);
-          // Write the match to the output
-          if (pos < args.max_matches_per_tile) {
-            profile_A[pos].corr = e.floats[0];
-            profile_A[pos].row = e.ints[1];
-            profile_A[pos].col = global_position;
-          }
+template <typename DATA_TYPE, typename PROFILE_OUTPUT_TYPE,
+          typename PROFILE_DATA_TYPE, bool COMPUTE_COLS, bool COMPUTE_ROWS,
+          int TILE_WIDTH, int TILE_HEIGHT, int BLOCKSZ>
+__device__ void write_back(
+    SCAMPKernelInputArgs<double> &args,
+    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_1NN_INDEX> &smem,
+    uint32_t tile_start_x, uint32_t tile_start_y, uint32_t n_x, uint32_t n_y,
+    PROFILE_OUTPUT_TYPE *profile_A, PROFILE_OUTPUT_TYPE *profile_B) {
+  int global_position, local_position;
+  if (COMPUTE_COLS) {
+    global_position = tile_start_x + threadIdx.x;
+    local_position = threadIdx.x;
+    while (local_position < TILE_WIDTH && global_position < n_x) {
+      mp_entry e;
+      e.ulong = smem.local_mp_col[local_position];
+      MPatomicMax<ATOMIC_GLOBAL>(profile_A + global_position, e.floats[0],
+                                 e.ints[1]);
+      global_position += BLOCKSZ;
+      local_position += BLOCKSZ;
+    }
+  }
+  if (COMPUTE_ROWS) {
+    global_position = tile_start_y + threadIdx.x;
+    local_position = threadIdx.x;
+    while (local_position < TILE_HEIGHT && global_position < n_y) {
+      mp_entry e;
+      e.ulong = smem.local_mp_row[local_position];
+      MPatomicMax<ATOMIC_GLOBAL>(profile_B + global_position, e.floats[0],
+                                 e.ints[1]);
+      global_position += BLOCKSZ;
+      local_position += BLOCKSZ;
+    }
+  }
+}
+
+template <typename DATA_TYPE, typename PROFILE_OUTPUT_TYPE,
+          typename PROFILE_DATA_TYPE, bool COMPUTE_COLS, bool COMPUTE_ROWS,
+          int TILE_WIDTH, int TILE_HEIGHT, int BLOCKSZ>
+__device__ void write_back(SCAMPKernelInputArgs<double> &args,
+                           SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE,
+                                     PROFILE_TYPE_APPROX_ALL_NEIGHBORS> &smem,
+                           uint32_t tile_start_x, uint32_t tile_start_y,
+                           uint32_t n_x, uint32_t n_y,
+                           PROFILE_OUTPUT_TYPE *profile_A,
+                           PROFILE_OUTPUT_TYPE *profile_B) {
+  int global_position, local_position;
+  float threshold = static_cast<float>(args.opt.threshold);
+  if (COMPUTE_COLS) {
+    global_position = tile_start_x + threadIdx.x;
+    local_position = threadIdx.x;
+    while (local_position < TILE_WIDTH && global_position < n_x) {
+      mp_entry e;
+      e.ulong = smem.local_mp_col[local_position];
+      if (e.floats[0] > threshold) {
+        // Reserve space in output array
+        unsigned long long int pos =
+            do_atomicAdd<unsigned long long int, ATOMIC_GLOBAL>(
+                args.profile_a_length, 1);
+        // Write the match to the output
+        if (pos < args.max_matches_per_tile) {
+          profile_A[pos].corr = e.floats[0];
+          profile_A[pos].row = e.ints[1];
+          profile_A[pos].col = global_position;
         }
-        global_position += BLOCKSZ;
-        local_position += BLOCKSZ;
       }
-    }
-    if (COMPUTE_ROWS) {
-      global_position = tile_start_y + threadIdx.x;
-      local_position = threadIdx.x;
-      while (local_position < TILE_HEIGHT && global_position < n_y) {
-        mp_entry e;
-        e.ulong = local_mp_row[local_position];
-        if (e.floats[0] > threshold) {
-          // Reserve space in output array
-          unsigned long long int pos =
-              do_atomicAdd<unsigned long long int, ATOMIC_GLOBAL>(
-                  args.profile_b_length, 1);
-          // Write the match to the output
-          if (pos < args.max_matches_per_tile) {
-            profile_B[pos].corr = e.floats[0];
-            profile_B[pos].row = e.ints[1];
-            profile_B[pos].col = global_position;
-          }
-        }
-        global_position += BLOCKSZ;
-        local_position += BLOCKSZ;
-      }
+      global_position += BLOCKSZ;
+      local_position += BLOCKSZ;
     }
   }
-};
+  if (COMPUTE_ROWS) {
+    global_position = tile_start_y + threadIdx.x;
+    local_position = threadIdx.x;
+    while (local_position < TILE_HEIGHT && global_position < n_y) {
+      mp_entry e;
+      e.ulong = smem.local_mp_row[local_position];
+      if (e.floats[0] > threshold) {
+        // Reserve space in output array
+        unsigned long long int pos =
+            do_atomicAdd<unsigned long long int, ATOMIC_GLOBAL>(
+                args.profile_b_length, 1);
+        // Write the match to the output
+        if (pos < args.max_matches_per_tile) {
+          profile_B[pos].corr = e.floats[0];
+          profile_B[pos].row = e.ints[1];
+          profile_B[pos].col = global_position;
+        }
+      }
+      global_position += BLOCKSZ;
+      local_position += BLOCKSZ;
+    }
+  }
+}

@@ -6,49 +6,13 @@
 
 namespace SCAMP {
 
-class SCAMPStrategy {
- public:
-};
-
 /////////////////////////////////////////////////////////////////////////////////////
-//     THESE HEADERS DEFINE VARIOUS COMPUTE STRATEGIES USED TO COMPUTE VARIOUS
+//     THESE HEADERS DEFINE COMPUTE STRATEGIES USED TO COMPUTE VARIOUS
 //     PROFILE TYPES
 ///////////////////////////////////////////////////////////////////////////////////
 
 #include "kernels_compute.h"
 #include "kernels_smem.h"
-
-/////////////////////////////////////////////////////////////////////////////////////
-//
-//  SCAMP TACTIC DESCRIBES STRATEGY FOR WHAT OPS TO EXECUTE IN THE KERNEL
-//
-/////////////////////////////////////////////////////////////////////////////////////
-
-template <typename DATA_TYPE, typename VEC2_DATA_TYPE, typename VEC4_DATA_TYPE,
-          typename PROFILE_OUTPUT_TYPE, typename PROFILE_DATA_TYPE,
-          typename ACCUM_TYPE, typename DISTANCE_TYPE, bool COMPUTE_ROWS,
-          bool COMPUTE_COLS, int TILE_WIDTH, int TILE_HEIGHT, int BLOCKSZ,
-          SCAMPProfileType PROFILE_TYPE>
-class SCAMPTactic {
- public:
-  __device__ SCAMPTactic() {}
-  __device__ inline void WriteBack(
-      SCAMPKernelInputArgs<double> &args, uint32_t tile_start_x,
-      uint32_t tile_start_y, uint32_t n_x, uint32_t n_y,
-      PROFILE_DATA_TYPE *__restrict__ local_mp_col,
-      PROFILE_DATA_TYPE *__restrict__ local_mp_row,
-      PROFILE_OUTPUT_TYPE *__restrict__ profile_A,
-      PROFILE_OUTPUT_TYPE *__restrict__ profile_B) {
-    _do_writeback.exec(args, tile_start_x, tile_start_y, n_x, n_y, local_mp_col,
-                       local_mp_row, profile_A, profile_B);
-  }
-
- private:
-  WriteBackStrategy<PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE, COMPUTE_COLS,
-                    COMPUTE_ROWS, TILE_WIDTH, TILE_HEIGHT, BLOCKSZ,
-                    PROFILE_TYPE>
-      _do_writeback;
-};
 
 // Computes the matrix profile given the sliding dot products for the first
 // query and the precomputed data statisics
@@ -61,10 +25,7 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
     do_tile(SCAMPKernelInputArgs<double> args, PROFILE_OUTPUT_TYPE *profile_A,
             PROFILE_OUTPUT_TYPE *profile_B) {
   constexpr int tile_width = tile_height + BLOCKSZ * DIAGS_PER_THREAD;
-  SCAMPTactic<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, PROFILE_OUTPUT_TYPE,
-              PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE, COMPUTE_ROWS,
-              COMPUTE_COLS, tile_width, tile_height, BLOCKSZ, PROFILE_TYPE>
-      tactic;
+
   SCAMPThreadInfo<ACCUM_TYPE> thread_info;
 
   extern __shared__ char smem_raw[];
@@ -168,9 +129,10 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
     __syncthreads();
 
     // Write back our best-so-far computed for this tile to global memory
-    tactic.WriteBack(args, tile_start_col, tile_start_row, args.n_x, args.n_y,
-                     smem.local_mp_col, smem.local_mp_row, profile_A,
-                     profile_B);
+    write_back<DATA_TYPE, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE, COMPUTE_COLS,
+               COMPUTE_ROWS, tile_width, tile_height, BLOCKSZ>(
+        args, smem, tile_start_col, tile_start_row, args.n_x, args.n_y,
+        profile_A, profile_B);
 
     if (*args.profile_a_length > args.max_matches_per_tile ||
         *args.profile_b_length > args.max_matches_per_tile) {
