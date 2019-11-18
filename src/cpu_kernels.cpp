@@ -1,45 +1,75 @@
 #include "cpu_kernels.h"
 #include <array>
 #include <vector>
+#include "kernel_common.h"
 namespace SCAMP {
 
 // this is hard coded for now. It needs to be a power of 2
 // It may be desirable to make this larger, since the compiler is generally
 // unable to fold everything into register names with either int or long long
 // based indexing.
-constexpr int unrollWid{32};
+constexpr int unrollWid{256};
 
 // set here for now. Could be set by cmake depending on what is supported. AVX
 // and AVX2 benefit from at least 32 particularly if masked movement
 // instructions are generated for the reduction steps.
 constexpr int simdByteLen{32};
 
-template <bool computing_rows, bool computing_cols>
-void partialcross_kern(double* __restrict cov, double* __restrict mpa,
-                       int* __restrict mpia, double* __restrict mpb,
-                       int* __restrict mpib, const double* __restrict dfa,
-                       const double* __restrict dga,
-                       const double* __restrict invna,
-                       const double* __restrict dfb,
-                       const double* __restrict dgb,
-                       const double* __restrict invnb, const int amx,
-                       const int bmx, const int amin, const int upper_excl) {
-  for (int ia = amin; ia < amx - upper_excl; ia += unrollWid) {
-    int rowIters = std::min(amx - ia, bmx);
-    int fullRowIters = std::max(0, std::min(amx - ia - unrollWid + 1, bmx));
+template <SCAMPProfileType PROFILE_TYPE>
+inline void update_mp(double *mp, double corr, int row, int col,
+                      double thresh) {
+  if (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
+    mp[col] = corr > thresh ? mp[col] + corr : mp[col];
+  } else {
+    ASSERT(false, "No Implementation provided for updating MP in CPU KERNEL");
+  }
+}
+
+template <SCAMPProfileType PROFILE_TYPE>
+inline void update_mp(mp_entry *mp, double corr, int row, int col,
+                      double thresh) {
+  if (PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX) {
+    if (corr > mp[col].floats[0]) {
+      mp[col].floats[0] = corr;
+      mp[col].ints[1] = row;
+    }
+  } else {
+    ASSERT(false, "No Implementation provided for updating MP in CPU KERNEL");
+  }
+}
+
+template <SCAMPProfileType PROFILE_TYPE>
+inline void update_mp(float *mp, double corr, int row, int col, double thresh) {
+  if (PROFILE_TYPE == PROFILE_TYPE_1NN) {
+    mp[col] = mp[col] >= corr ? mp[col] : corr;
+  } else {
+    ASSERT(false, "No Implementation provided for updating MP in CPU KERNEL");
+  }
+}
+
+template <typename DIST_TYPE, typename PROFILE_DATA_TYPE,
+          SCAMPProfileType PROFILE_TYPE, bool computing_rows,
+          bool computing_cols>
+void do_tile(SCAMPKernelInputArgs<double> &args,
+             PROFILE_DATA_TYPE *__restrict profile_A,
+             PROFILE_DATA_TYPE *__restrict profile_B) {
+  DIST_TYPE initializer = init_dist<DIST_TYPE, PROFILE_TYPE>();
+  for (int ia = args.exclusion_lower; ia < args.n_x - args.exclusion_upper;
+       ia += unrollWid) {
+    int rowIters = std::min(args.n_x - ia, args.n_y);
+    int fullRowIters =
+        std::max(0, std::min(args.n_x - ia - unrollWid + 1, args.n_y));
     for (int ib = 0; ib < fullRowIters; ib++) {
-      alignas(simdByteLen) std::array<double, unrollWid> corr;
+      alignas(simdByteLen) std::array<DIST_TYPE, unrollWid> corr;
       for (int diag = 0; diag < unrollWid; diag++) {
-        double correlation = cov[ia + diag] * invna[ia + diag + ib] * invnb[ib];
-        corr[diag] = std::isfinite(correlation) ? correlation : -2.0;
+        DIST_TYPE correlation =
+            args.cov[ia + diag] * args.normsa[ia + diag + ib] * args.normsb[ib];
+        corr[diag] = std::isfinite(correlation) ? correlation : initializer;
       }
       if (computing_cols) {
         for (int diag = 0; diag < unrollWid; diag++) {
-          mpia[ia + diag + ib] =
-              mpa[ia + diag + ib] >= corr[diag] ? mpia[ia + diag + ib] : ib;
-          mpa[ia + diag + ib] = mpa[ia + diag + ib] >= corr[diag]
-                                    ? mpa[ia + diag + ib]
-                                    : corr[diag];
+          update_mp<PROFILE_TYPE>(profile_A, corr[diag], ib, ia + diag + ib,
+                                  args.opt.threshold);
         }
       }
       if (computing_rows) {
@@ -61,269 +91,145 @@ void partialcross_kern(double* __restrict cov, double* __restrict mpa,
         for (int i = unrollWid / 4; i > 0; i /= 2) {
           horizontal_reduction(i);
         }
-        mpib[ib] = mpb[ib] >= corr[0] ? mpib[ib] : corrIdx[0] + ia + ib;
-        mpb[ib] = mpb[ib] >= corr[0] ? mpb[ib] : corr[0];
+        update_mp<PROFILE_TYPE>(profile_B, corr[0], corrIdx[0] + ia + ib, ib,
+                                args.opt.threshold);
       }
       for (int diag = 0; diag < unrollWid; diag++) {
-        cov[ia + diag] += dfa[ia + diag + ib] * dgb[ib];
-        cov[ia + diag] += dfb[ib] * dga[ia + diag + ib];
+        args.cov[ia + diag] += args.dfa[ia + diag + ib] * args.dgb[ib];
+        args.cov[ia + diag] += args.dfb[ib] * args.dga[ia + diag + ib];
       }
     }
     for (int ib = fullRowIters; ib < rowIters; ib++) {
-      int diagmax =
-          std::min(std::min(amx - ia - upper_excl, amx - ia - ib), unrollWid);
+      int diagmax = std::min(
+          std::min(args.n_x - ia - args.exclusion_upper, args.n_x - ia - ib),
+          unrollWid);
       for (int diag = 0; diag < diagmax; diag++) {
-        double corr = cov[ia + diag] * invna[ia + diag + ib] * invnb[ib];
-        corr = std::isfinite(corr) ? corr : -2.0;
+        DIST_TYPE corr =
+            args.cov[ia + diag] * args.normsa[ia + diag + ib] * args.normsb[ib];
+        corr = std::isfinite(corr) ? corr : initializer;
         if (computing_cols) {
-          if (mpa[ia + diag + ib] < corr) {
-            mpa[ia + diag + ib] = corr;
-            mpia[ia + diag + ib] = ib;
-          }
+          update_mp<PROFILE_TYPE>(profile_A, corr, ib, ia + diag + ib,
+                                  args.opt.threshold);
         }
         if (computing_rows) {
-          if (mpb[ib] < corr) {
-            mpb[ib] = corr;
-            mpib[ib] = ia + diag + ib;
-          }
+          update_mp<PROFILE_TYPE>(profile_B, corr, ia + diag + ib, ib,
+                                  args.opt.threshold);
         }
       }
       for (int diag = 0; diag < diagmax; diag++) {
-        cov[ia + diag] += dfa[ia + diag + ib] * dgb[ib];
-        cov[ia + diag] += dga[ia + diag + ib] * dfb[ib];
+        args.cov[ia + diag] += args.dfa[ia + diag + ib] * args.dgb[ib];
+        args.cov[ia + diag] += args.dga[ia + diag + ib] * args.dfb[ib];
       }
     }
   }
 }
-/*
-// Kernel for computing matrix profiles on the CPU
-// Reference Implementation
-template <bool computing_rows, bool computing_cols>
-void partialcross_kern(
-    double* __restrict cov, double* __restrict mpa, int* __restrict mpia,
-    double* __restrict mpb, int* __restrict mpib, const double* __restrict dfa,
-    const double* __restrict dga, const double* __restrict invna,
-    const double* __restrict dfb, const double* __restrict dgb,
-    const double* __restrict invnb, const int amx, const int bmx,
-    const int amin, const int upper_excl) {
-  for (int ia = amin; ia < amx - upper_excl + 1; ia++) {
-    int mx = std::min(amx - ia, bmx);
-    for (int ib = 0; ib < mx; ib++) {
-      double cr = cov[ia] * invna[ib + ia] * invnb[ib];
-      if (computing_cols) {
-        if (cr > mpa[ib + ia]) {
-          mpa[ib + ia] = cr;
-          mpia[ib + ia] = ib;
-        }
-      }
-      if (computing_rows) {
-        if (cr > mpb[ib]) {
-          mpb[ib] = cr;
-          mpib[ib] = ib + ia;
-        }
-      }
-      cov[ia] += dfa[ib + ia] * dgb[ib];
-      cov[ia] += dfb[ib] * dga[ib + ia];
+
+template <typename DIST_TYPE, typename PROFILE_OUTPUT_TYPE,
+          SCAMPProfileType PROFILE_TYPE>
+SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> &args,
+                          PROFILE_OUTPUT_TYPE *profile_A,
+                          PROFILE_OUTPUT_TYPE *profile_B,
+                          SCAMPPrecisionType fp_type, bool computing_rows,
+                          bool computing_cols) {
+  if (computing_rows && computing_cols) {
+    constexpr bool COMPUTE_COLS = true;
+    constexpr bool COMPUTE_ROWS = true;
+    switch (fp_type) {
+      case PRECISION_DOUBLE:
+        do_tile<DIST_TYPE, PROFILE_OUTPUT_TYPE, PROFILE_TYPE, COMPUTE_ROWS,
+                COMPUTE_COLS>(args, profile_A, profile_B);
+        break;
+      case PRECISION_MIXED:
+      case PRECISION_SINGLE:
+      default:
+        return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
+    }
+  } else if (computing_cols) {
+    constexpr bool COMPUTE_COLS = true;
+    constexpr bool COMPUTE_ROWS = false;
+    switch (fp_type) {
+      case PRECISION_DOUBLE:
+        do_tile<DIST_TYPE, PROFILE_OUTPUT_TYPE, PROFILE_TYPE, COMPUTE_ROWS,
+                COMPUTE_COLS>(args, profile_A, profile_B);
+        break;
+      case PRECISION_MIXED:
+      case PRECISION_SINGLE:
+      default:
+        return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
+    }
+  } else if (computing_rows) {
+    constexpr bool COMPUTE_COLS = false;
+    constexpr bool COMPUTE_ROWS = true;
+    switch (fp_type) {
+      case PRECISION_DOUBLE:
+        do_tile<DIST_TYPE, PROFILE_OUTPUT_TYPE, PROFILE_TYPE, COMPUTE_ROWS,
+                COMPUTE_COLS>(args, profile_A, profile_B);
+        break;
+      case PRECISION_MIXED:
+      case PRECISION_SINGLE:
+      default:
+        return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
     }
   }
-}
-*/
-void split_profile(std::vector<double>* mp, std::vector<int32_t>* mpi,
-                   const uint64_t* profile, int len) {
-  mp_entry e;
-  for (int i = 0; i < len; ++i) {
-    e.ulong = profile[i];
-    mp->at(i) = static_cast<double>(e.floats[0]);
-    mpi->at(i) = e.ints[1];
-  }
-}
-
-void combine_profile(const std::vector<double>& mp,
-                     const std::vector<int32_t>& mpi, uint64_t* profile,
-                     int len) {
-  mp_entry e;
-  for (int i = 0; i < len; ++i) {
-    e.floats[0] = static_cast<float>(mp[i]);
-    e.ints[1] = mpi[i];
-    profile[i] = e.ulong;
-  }
-}
-
-// Self join on the upper triangular portion of the tile
-SCAMPError_t cpu_kernel_self_join_upper(Tile* t) {
-  if (t->info()->profile_type != PROFILE_TYPE_1NN_INDEX) {
-    return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
-  }
-  if (t->info()->fp_type != PRECISION_DOUBLE) {
-    return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
-  }
-
-  size_t height = t->get_tile_height() - t->info()->mp_window + 1;
-  size_t width = t->get_tile_width() - t->info()->mp_window + 1;
-
-  // TODO(zpzim): we should allocate these vectors in the tile constructor
-  // We are taking some amount of perfomance penalty for allocating them here
-  std::vector<double> mpa(width), mpb(height);
-  std::vector<int32_t> mpia(width), mpib(height);
-
-  // TODO(zpzim): These splits should be done during the InitProfile method in
-  // tile.cpp
-  split_profile(&mpa, &mpia,
-                reinterpret_cast<uint64_t*>(t->profile_a()),  // NOLINT
-                width);
-  split_profile(&mpb, &mpib,
-                reinterpret_cast<uint64_t*>(t->profile_b()),  // NOLINT
-                height);
-
-  std::pair<int, int> exclusion = t->get_exclusion_for_self_join(true);
-  partialcross_kern<true, true>(t->QT(), mpa.data(), mpia.data(), mpb.data(),
-                                mpib.data(), t->dfa(), t->dga(), t->normsa(),
-                                t->dfb(), t->dgb(), t->normsb(), width, height,
-                                exclusion.first, exclusion.second);
-  // TODO(zpzim): These combines should be done in the CopyProfileToHost method
-  // in tile.cpp
-  combine_profile(mpa, mpia,
-                  reinterpret_cast<uint64_t*>(t->profile_a()),  // NOLINT
-                  width);
-  combine_profile(mpb, mpib,
-                  reinterpret_cast<uint64_t*>(t->profile_b()),  // NOLINT
-                  height);
   return SCAMP_NO_ERROR;
 }
 
-// Self join on the lower triangular portion of the tile
-SCAMPError_t cpu_kernel_self_join_lower(Tile* t) {
-  if (t->info()->profile_type != PROFILE_TYPE_1NN_INDEX) {
-    return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
+SCAMPError_t compute_cpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
+                                              Tile *t, void *profile_a,
+                                              void *profile_b, bool do_rows,
+                                              bool do_cols) {
+  int exclusion_total = args.exclusion_lower + args.exclusion_upper;
+  if (exclusion_total < args.n_x) {
+    switch (t->info()->profile_type) {
+      case PROFILE_TYPE_SUM_THRESH:
+        return LaunchDoTile<double, double, PROFILE_TYPE_SUM_THRESH>(
+            args, reinterpret_cast<double *>(profile_a),
+            reinterpret_cast<double *>(profile_b), t->info()->fp_type, do_rows,
+            do_cols);
+      case PROFILE_TYPE_1NN_INDEX:
+        return LaunchDoTile<float, mp_entry, PROFILE_TYPE_1NN_INDEX>(
+            args, reinterpret_cast<mp_entry *>(profile_a),
+            reinterpret_cast<mp_entry *>(profile_b), t->info()->fp_type,
+            do_rows, do_cols);
+      case PROFILE_TYPE_1NN:
+        return LaunchDoTile<float, float, PROFILE_TYPE_1NN>(
+            args, reinterpret_cast<float *>(profile_a),
+            reinterpret_cast<float *>(profile_b), t->info()->fp_type, do_rows,
+            do_cols);
+      case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
+      default:
+        return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
+    }
   }
-  if (t->info()->fp_type != PRECISION_DOUBLE) {
-    return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
-  }
-
-  size_t height = t->get_tile_height() - t->info()->mp_window + 1;
-  size_t width = t->get_tile_width() - t->info()->mp_window + 1;
-
-  // TODO(zpzim): we should allocate these vectors in the tile constructor
-  // We are taking some amount of perfomance penalty for allocating them here
-  std::vector<double> mpa(width), mpb(height);
-  std::vector<int32_t> mpia(width), mpib(height);
-
-  // TODO(zpzim): These splits should be done during the InitProfile method in
-  // tile.cpp
-  split_profile(&mpa, &mpia,
-                reinterpret_cast<uint64_t*>(t->profile_a()),  // NOLINT
-                width);
-  split_profile(&mpb, &mpib,
-                reinterpret_cast<uint64_t*>(t->profile_b()),  // NOLINT
-                height);
-
-  std::pair<int, int> exclusion = t->get_exclusion_for_self_join(false);
-  partialcross_kern<true, true>(t->QT(), mpb.data(), mpib.data(), mpa.data(),
-                                mpia.data(), t->dfb(), t->dgb(), t->normsb(),
-                                t->dfa(), t->dga(), t->normsa(), height, width,
-                                exclusion.first, exclusion.second);
-  // TODO(zpzim): These combines should be done in the CopyProfileToHost method
-  // in tile.cpp
-  combine_profile(mpa, mpia,
-                  reinterpret_cast<uint64_t*>(t->profile_a()),  // NOLINT
-                  width);
-  combine_profile(mpb, mpib,
-                  reinterpret_cast<uint64_t*>(t->profile_b()),  // NOLINT
-                  height);
   return SCAMP_NO_ERROR;
 }
-SCAMPError_t cpu_kernel_ab_join_upper(Tile* t) {
-  if (t->info()->profile_type != PROFILE_TYPE_1NN_INDEX) {
-    return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
-  }
-  if (t->info()->fp_type != PRECISION_DOUBLE) {
-    return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
-  }
 
-  size_t height = t->get_tile_height() - t->info()->mp_window + 1;
-  size_t width = t->get_tile_width() - t->info()->mp_window + 1;
-
-  // TODO(zpzim): we should allocate these vectors in the tile constructor
-  // We are taking some amount of perfomance penalty for allocating them here
-  std::vector<double> mpa(width), mpb(height);
-  std::vector<int32_t> mpia(width), mpib(height);
-
-  // TODO(zpzim): These splits should be done during the InitProfile method in
-  // tile.cpp
-  split_profile(&mpa, &mpia,
-                reinterpret_cast<uint64_t*>(t->profile_a()),  // NOLINT
-                width);
-  split_profile(&mpb, &mpib,
-                reinterpret_cast<uint64_t*>(t->profile_b()),  // NOLINT
-                height);
-
-  std::pair<int, int> exclusion_pair = t->get_exclusion_for_ab_join(true);
-  if (t->info()->computing_rows) {
-    partialcross_kern<true, true>(
-        t->QT(), mpa.data(), mpia.data(), mpb.data(), mpib.data(), t->dfa(),
-        t->dga(), t->normsa(), t->dfb(), t->dgb(), t->normsb(), width, height,
-        exclusion_pair.first, exclusion_pair.second);
-  } else {
-    partialcross_kern<false, true>(
-        t->QT(), mpa.data(), mpia.data(), mpb.data(), mpib.data(), t->dfa(),
-        t->dga(), t->normsa(), t->dfb(), t->dgb(), t->normsb(), width, height,
-        exclusion_pair.first, exclusion_pair.second);
-  }
-  // TODO(zpzim): These combines should be done in the CopyProfileToHost method
-  // in tile.cpp
-  combine_profile(mpa, mpia,
-                  reinterpret_cast<uint64_t*>(t->profile_a()),  // NOLINT
-                  width);
-  combine_profile(mpb, mpib,
-                  reinterpret_cast<uint64_t*>(t->profile_b()),  // NOLINT
-                  height);
-  return SCAMP_NO_ERROR;
+SCAMPError_t cpu_kernel_self_join_upper(Tile *t) {
+  SCAMPKernelInputArgs<double> tile_args(t, false, false);
+  return compute_cpu_resources_and_launch(
+      tile_args, t, t->profile_a(), t->profile_b(), t->info()->computing_rows,
+      t->info()->computing_cols);
 }
-SCAMPError_t cpu_kernel_ab_join_lower(Tile* t) {
-  if (t->info()->profile_type != PROFILE_TYPE_1NN_INDEX) {
-    return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
-  }
-  if (t->info()->fp_type != PRECISION_DOUBLE) {
-    return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
-  }
 
-  size_t height = t->get_tile_height() - t->info()->mp_window + 1;
-  size_t width = t->get_tile_width() - t->info()->mp_window + 1;
-
-  // TODO(zpzim): we should allocate these vectors in the tile constructor
-  // We are taking some amount of perfomance penalty for allocating them here
-  std::vector<double> mpa(width), mpb(height);
-  std::vector<int32_t> mpia(width), mpib(height);
-
-  // TODO(zpzim): These splits should be done during the InitProfile method in
-  // tile.cpp
-  split_profile(&mpa, &mpia,
-                reinterpret_cast<uint64_t*>(t->profile_a()),  // NOLINT
-                width);
-  split_profile(&mpb, &mpib,
-                reinterpret_cast<uint64_t*>(t->profile_b()),  // NOLINT
-                height);
-  std::pair<int, int> exclusion_pair = t->get_exclusion_for_ab_join(false);
-
-  if (t->info()->computing_rows) {
-    partialcross_kern<true, true>(
-        t->QT(), mpb.data(), mpib.data(), mpa.data(), mpia.data(), t->dfb(),
-        t->dgb(), t->normsb(), t->dfa(), t->dga(), t->normsa(), height, width,
-        exclusion_pair.first, exclusion_pair.second);
-  } else {
-    partialcross_kern<true, false>(
-        t->QT(), mpb.data(), mpib.data(), mpa.data(), mpia.data(), t->dfb(),
-        t->dgb(), t->normsb(), t->dfa(), t->dga(), t->normsa(), height, width,
-        exclusion_pair.first, exclusion_pair.second);
-  }
-  // TODO(zpzim): These combines should be done in the CopyProfileToHost method
-  // in tile.cpp
-  combine_profile(mpa, mpia,
-                  reinterpret_cast<uint64_t*>(t->profile_a()),  // NOLINT
-                  width);
-  combine_profile(mpb, mpib,
-                  reinterpret_cast<uint64_t*>(t->profile_b()),  // NOLINT
-                  height);
-  return SCAMP_NO_ERROR;
+SCAMPError_t cpu_kernel_self_join_lower(Tile *t) {
+  SCAMPKernelInputArgs<double> tile_args(t, true, false);
+  return compute_cpu_resources_and_launch(
+      tile_args, t, t->profile_b(), t->profile_a(), t->info()->computing_cols,
+      t->info()->computing_rows);
 }
+
+SCAMPError_t cpu_kernel_ab_join_upper(Tile *t) {
+  SCAMPKernelInputArgs<double> tile_args(t, false, true);
+  return compute_cpu_resources_and_launch(
+      tile_args, t, t->profile_a(), t->profile_b(), t->info()->computing_rows,
+      t->info()->computing_cols);
+}
+
+SCAMPError_t cpu_kernel_ab_join_lower(Tile *t) {
+  SCAMPKernelInputArgs<double> tile_args(t, true, true);
+  return compute_cpu_resources_and_launch(
+      tile_args, t, t->profile_b(), t->profile_a(), t->info()->computing_cols,
+      t->info()->computing_rows);
+}
+
 };  // namespace SCAMP
