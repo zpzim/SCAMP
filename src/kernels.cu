@@ -37,7 +37,8 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
       args.opt.num_extra_operands);
 
   // Find the starting diagonal of the distance matrix
-  const unsigned int start_diag = (threadIdx.x * DIAGS_PER_THREAD) +
+  const unsigned int start_diag = args.exclusion_lower +
+                                  (threadIdx.x * DIAGS_PER_THREAD) +
                                   blockIdx.x * (blockDim.x * DIAGS_PER_THREAD);
 
   // This is the index of the meta-diagonal that this thread block will work on
@@ -100,7 +101,7 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
     // the last tile in every thread-block will take the slower path (bottom)
     if (tile_start_col + tile_width < args.n_x &&
         tile_start_row + tile_height < args.n_y &&
-        start_diag + DIAGS_PER_THREAD - 1 < num_diags) {
+        start_diag + DIAGS_PER_THREAD <= num_diags) {
       // Fast Path
       while (thread_info.local_row < tile_height) {
         do_iteration_fast<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
