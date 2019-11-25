@@ -36,8 +36,16 @@ OpInfo::OpInfo(size_t Asize, size_t Bsize, size_t window_sz,
 
   if (max_tile_ts_size > max_tile_size) {
     max_tile_ts_size = max_tile_size;
-  } else if (max_tile_ts_size < mp_window) {
-    max_tile_ts_size = maxSize;
+  }
+
+  // Prevents our tiles from becoming pathalogically small
+  // Tiles should not be smaller than the exclusion zone (mp_window / 4)
+  // otherwise the tiling becomes unnecessarially complex
+
+  const int SMALLEST_ALLOWED_TILE_DIM = mp_window;
+
+  if (max_tile_ts_size < SMALLEST_ALLOWED_TILE_DIM + mp_window) {
+    max_tile_ts_size = SMALLEST_ALLOWED_TILE_DIM + mp_window;
   }
 
   max_tile_width = max_tile_ts_size - mp_window + 1;
