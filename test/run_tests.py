@@ -10,7 +10,7 @@ executable = sys.argv[1]
 outfile = sys.argv[2]
 extra_opts = sys.argv[3]
 
-window_sizes_to_test = [7, 100, 500]
+window_sizes_to_test = [i for i in range(5,150,3)] + [500]
 tile_sizes_to_test = [1024, 2048, 4096]
 input_sizes_to_test = [20, 100, 250, 500, 1000, 1500, 4000, 8000]
 #matrix_sizes_to_test = [1, 4, 8, 16, 32]
@@ -52,9 +52,14 @@ def compare_index(valid, check):
     print('Output Shapes do not match')
     return False
   
-  incorrect = np.count_nonzero(valid - check + 1) 
+  incorrect = np.count_nonzero(valid != check)
   ratio = incorrect / len(valid) 
-  return ratio < index_match_ratio
+  is_valid = ratio < index_match_ratio
+  #if not is_valid:
+  #  print(valid)
+  #  print(check)
+  #  print('\n')
+  return is_valid
 
 def compare_vectors(valid, check, eps):
   if np.any(valid.shape != check.shape):
@@ -63,6 +68,11 @@ def compare_vectors(valid, check, eps):
     
   diff = np.abs(valid - check)
   is_valid = np.max(diff) < eps
+  #if not is_valid:
+  #  print(diff[diff > eps])
+  #  print(valid[diff > eps])
+  #  print(check[diff > eps])
+  #  print('\n')
   return is_valid
 
 def compare_matrix(valid, check):

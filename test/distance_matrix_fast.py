@@ -140,11 +140,11 @@ def distance_matrix_simple(a,b, m):
     
 
 def reduce_1nn_index(dm):
+    corr = np.amax(dm, axis=0)
     idxs = np.argmax(dm, axis=0)
-    corrs = np.zeros((len(idxs),))
-    for i, idx in enumerate(idxs):
-        corrs[i] = dm[idx, i]
-    return corrs.reshape((corrs.shape[0],1)), idxs.reshape((idxs.shape[0],1))
+    idxs += 1
+    idxs[corr == -2] = -1
+    return corr.reshape((corr.shape[0],1)), idxs.reshape((idxs.shape[0],1))
 
 def reduce_1nn(dm):
     corrs = np.amax(dm, axis=0)
