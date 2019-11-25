@@ -29,7 +29,7 @@ std::pair<int, int> Tile::get_exclusion_for_self_join(bool upper_tile) {
   }
   if (upper_tile) {
     exclusion = get_exclusion(_info->mp_window, get_tile_row(), get_tile_col());
-    return std::make_pair(exclusion, extra_exclusion);
+    return std::make_pair(exclusion, 0);
   }
   size_t height = get_tile_height() - _info->mp_window + 1;
   exclusion =
