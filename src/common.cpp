@@ -201,12 +201,12 @@ void Profile::Alloc(size_t size) {
       break;
     case PROFILE_TYPE_1NN:
       data.emplace_back();
-      data[0].float_value.resize(size, std::numeric_limits<float>::lowest());
+      data[0].float_value.resize(size, -2.0);
       break;
     case PROFILE_TYPE_1NN_INDEX:
       mp_entry e;
       e.ints[1] = -1u;
-      e.floats[0] = std::numeric_limits<float>::lowest();
+      e.floats[0] = -2.0;
       data.emplace_back();
       data[0].uint64_value.resize(size, e.ulong);
       break;
@@ -218,7 +218,7 @@ void Profile::Alloc(size_t size) {
       data.emplace_back();
       if (output_matrix) {
         data[0].matrix_value.resize(matrix_height,
-                                    std::vector<float>(matrix_width, -1.0));
+                                    std::vector<float>(matrix_width, -2.0));
       } else {
         data[0].match_value.resize(size);
       }

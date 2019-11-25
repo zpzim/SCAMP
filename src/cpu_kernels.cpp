@@ -110,6 +110,7 @@ void do_tile(SCAMPKernelInputArgs<double> &args,
     int rowIters = std::min(args.n_x - tile_diag, args.n_y);
 
     // Determine how many optimized iterations we can do before the slow case
+    int fullRowIters;
     if (tile_diag + unrollWid >= num_diags) {
       fullRowIters = 0;
     } else {
