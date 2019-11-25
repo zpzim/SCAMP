@@ -135,7 +135,7 @@ add_library(cpu_stats ${CMAKE_CURRENT_SOURCE_DIR}/src/cpu_stats.cpp)
 target_link_libraries(cpu_stats common)
 
 add_library(cpu_kernels ${CMAKE_CURRENT_SOURCE_DIR}/src/cpu_kernels.cpp)
-target_link_libraries(cpu_kernels common)
+target_link_libraries(cpu_kernels kernel_common common)
 
 add_library(tile ${CMAKE_CURRENT_SOURCE_DIR}/src/tile.cpp)
 

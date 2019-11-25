@@ -289,4 +289,23 @@ __device__ inline float fAtomicMax_check(float *addr, float value,
   return fAtomicMax<type>(addr, value);
 }
 
+// Outputs an 'initial' distance value based on the type of profile being
+// computed
+template <typename DISTANCE_TYPE, SCAMPProfileType type>
+__device__ inline DISTANCE_TYPE init_dist() {
+  switch (type) {
+    case PROFILE_TYPE_KNN:
+    case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
+    case PROFILE_TYPE_1NN_INDEX:
+    case PROFILE_TYPE_1NN:
+      // Smallest value possible is -1 so set to -2
+      return static_cast<DISTANCE_TYPE>(-2);
+    case PROFILE_TYPE_SUM_THRESH:
+    case PROFILE_TYPE_FREQUENCY_THRESH:
+    default:
+      // We must set to 0 so we get an accurate sum
+      return static_cast<DISTANCE_TYPE>(0);
+  }
+}
+
 }  // namespace SCAMP
