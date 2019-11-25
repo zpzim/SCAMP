@@ -47,6 +47,54 @@ inline void update_mp(float *mp, double corr, int row, int col, double thresh) {
   }
 }
 
+template <typename DATA_TYPE, SCAMPProfileType type>
+inline void reduce_row(std::array<DATA_TYPE, unrollWid> &corr,
+                       std::array<int, unrollWid / 2> &corrIdx, double thresh) {
+  switch (type) {
+    case PROFILE_TYPE_1NN_INDEX: {
+      for (int i = 0; i < unrollWid / 2; i++) {
+        corrIdx[i] = corr[i] >= corr[i + unrollWid / 2] ? i : i + unrollWid / 2;
+        corr[i] = corr[i] >= corr[i + unrollWid / 2] ? corr[i]
+                                                     : corr[i + unrollWid / 2];
+      }
+      auto horizontal_reduction = [&corr, &corrIdx](int offset) {
+        for (int i = 0; i < offset; i++) {
+          corrIdx[i] =
+              corr[i] >= corr[i + offset] ? corrIdx[i] : corrIdx[i + offset];
+          corr[i] = corr[i] >= corr[i + offset] ? corr[i] : corr[i + offset];
+        }
+      };
+      for (int i = unrollWid / 4; i > 0; i /= 2) {
+        horizontal_reduction(i);
+      }
+      break;
+    }
+    case PROFILE_TYPE_1NN: {
+      auto horizontal_reduction = [&corr](int offset) {
+        for (int i = 0; i < offset; i++) {
+          corr[i] = corr[i] >= corr[i + offset] ? corr[i] : corr[i + offset];
+        }
+      };
+      for (int i = unrollWid / 2; i > 0; i /= 2) {
+        horizontal_reduction(i);
+      }
+      break;
+    }
+    case PROFILE_TYPE_SUM_THRESH: {
+      DATA_TYPE sum = 0;
+      for (int i = 0; i < unrollWid; i++) {
+        if (corr[i] > thresh) {
+          sum += corr[i];
+        }
+      }
+      corr[0] = sum;
+      break;
+    }
+    default:
+      break;
+  }
+}  // namespace SCAMP
+
 template <typename DIST_TYPE, typename PROFILE_DATA_TYPE,
           SCAMPProfileType PROFILE_TYPE, bool computing_rows,
           bool computing_cols>
@@ -54,71 +102,77 @@ void do_tile(SCAMPKernelInputArgs<double> &args,
              PROFILE_DATA_TYPE *__restrict profile_A,
              PROFILE_DATA_TYPE *__restrict profile_B) {
   DIST_TYPE initializer = init_dist<DIST_TYPE, PROFILE_TYPE>();
-  for (int ia = args.exclusion_lower; ia < args.n_x - args.exclusion_upper;
-       ia += unrollWid) {
-    int rowIters = std::min(args.n_x - ia, args.n_y);
-    int fullRowIters =
-        std::max(0, std::min(args.n_x - ia - unrollWid + 1, args.n_y));
-    for (int ib = 0; ib < fullRowIters; ib++) {
+  int num_diags = args.n_x - args.exclusion_upper + 1;
+  for (int tile_diag = args.exclusion_lower; tile_diag < num_diags;
+       tile_diag += unrollWid) {
+    // Determine the maximum number of iterations for this tile (includes slow
+    // case)
+    int rowIters = std::min(args.n_x - tile_diag, args.n_y);
+
+    // Determine how many optimized iterations we can do before the slow case
+    if (tile_diag + unrollWid >= num_diags) {
+      fullRowIters = 0;
+    } else {
+      fullRowIters =
+          std::max(0, std::min(args.n_x - tile_diag - unrollWid + 1, args.n_y));
+    }
+
+    // Fast, Unrolled, Autovectorized Case
+    for (int row = 0; row < fullRowIters; row++) {
       alignas(simdByteLen) std::array<DIST_TYPE, unrollWid> corr;
-      for (int diag = 0; diag < unrollWid; diag++) {
+      for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
+        int curr_diag = tile_diag + local_diag;
+        int col = curr_diag + row;
         DIST_TYPE correlation =
-            args.cov[ia + diag] * args.normsa[ia + diag + ib] * args.normsb[ib];
-        corr[diag] = std::isfinite(correlation) ? correlation : initializer;
+            args.cov[curr_diag] * args.normsa[col] * args.normsb[row];
+        corr[local_diag] =
+            std::isfinite(correlation) ? correlation : initializer;
       }
       if (computing_cols) {
-        for (int diag = 0; diag < unrollWid; diag++) {
-          update_mp<PROFILE_TYPE>(profile_A, corr[diag], ib, ia + diag + ib,
+        for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
+          int curr_diag = tile_diag + local_diag;
+          int col = curr_diag + row;
+          update_mp<PROFILE_TYPE>(profile_A, corr[local_diag], row, col,
                                   args.opt.threshold);
         }
       }
       if (computing_rows) {
         std::array<int, unrollWid / 2> corrIdx;
-        for (int i = 0; i < unrollWid / 2; i++) {
-          corrIdx[i] =
-              corr[i] >= corr[i + unrollWid / 2] ? i : i + unrollWid / 2;
-          corr[i] = corr[i] >= corr[i + unrollWid / 2]
-                        ? corr[i]
-                        : corr[i + unrollWid / 2];
-        }
-        auto horizontal_reduction = [&corr, &corrIdx](int offset) {
-          for (int i = 0; i < offset; i++) {
-            corrIdx[i] =
-                corr[i] >= corr[i + offset] ? corrIdx[i] : corrIdx[i + offset];
-            corr[i] = corr[i] >= corr[i + offset] ? corr[i] : corr[i + offset];
-          }
-        };
-        for (int i = unrollWid / 4; i > 0; i /= 2) {
-          horizontal_reduction(i);
-        }
-        update_mp<PROFILE_TYPE>(profile_B, corr[0], corrIdx[0] + ia + ib, ib,
+        reduce_row<DIST_TYPE, PROFILE_TYPE>(corr, corrIdx, args.opt.threshold);
+        update_mp<PROFILE_TYPE>(profile_B, corr[0],
+                                corrIdx[0] + tile_diag + row, row,
                                 args.opt.threshold);
       }
-      for (int diag = 0; diag < unrollWid; diag++) {
-        args.cov[ia + diag] += args.dfa[ia + diag + ib] * args.dgb[ib];
-        args.cov[ia + diag] += args.dfb[ib] * args.dga[ia + diag + ib];
+      for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
+        int curr_diag = tile_diag + local_diag;
+        int col = curr_diag + row;
+        args.cov[curr_diag] += args.dfa[col] * args.dgb[row];
+        args.cov[curr_diag] += args.dfb[row] * args.dga[col];
       }
     }
-    for (int ib = fullRowIters; ib < rowIters; ib++) {
+
+    // Slow Case
+    for (int row = fullRowIters; row < rowIters; row++) {
       int diagmax = std::min(
-          std::min(args.n_x - ia - args.exclusion_upper, args.n_x - ia - ib),
-          unrollWid);
-      for (int diag = 0; diag < diagmax; diag++) {
-        DIST_TYPE corr =
-            args.cov[ia + diag] * args.normsa[ia + diag + ib] * args.normsb[ib];
+          std::min(args.n_x - args.exclusion_upper + 1, args.n_x - row),
+          tile_diag + unrollWid);
+      for (int diag = tile_diag; diag < diagmax; diag++) {
+        int col = diag + row;
+        DIST_TYPE corr = args.cov[diag] * args.normsa[col] * args.normsb[row];
         corr = std::isfinite(corr) ? corr : initializer;
         if (computing_cols) {
-          update_mp<PROFILE_TYPE>(profile_A, corr, ib, ia + diag + ib,
+          update_mp<PROFILE_TYPE>(profile_A, corr, row, col,
                                   args.opt.threshold);
         }
         if (computing_rows) {
-          update_mp<PROFILE_TYPE>(profile_B, corr, ia + diag + ib, ib,
+          update_mp<PROFILE_TYPE>(profile_B, corr, col, row,
                                   args.opt.threshold);
         }
       }
-      for (int diag = 0; diag < diagmax; diag++) {
-        args.cov[ia + diag] += args.dfa[ia + diag + ib] * args.dgb[ib];
-        args.cov[ia + diag] += args.dga[ia + diag + ib] * args.dfb[ib];
+      for (int diag = tile_diag; diag < diagmax; diag++) {
+        int col = diag + row;
+        args.cov[diag] += args.dfa[col] * args.dgb[row];
+        args.cov[diag] += args.dga[col] * args.dfb[row];
       }
     }
   }
