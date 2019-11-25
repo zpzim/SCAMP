@@ -20,21 +20,21 @@ static int get_exclusion(uint64_t window_size, int64_t start_row,
 
 std::pair<int, int> Tile::get_exclusion_for_self_join(bool upper_tile) {
   int exclusion;
+  int extra_exclusion = 0;
+  if (_info->profile_type == PROFILE_TYPE_SUM_THRESH ||
+      _info->profile_type == PROFILE_TYPE_FREQUENCY_THRESH) {
+    // We need to omit the main diagonal from one tile so it doesn't get
+    // double counted
+    extra_exclusion = 1;
+  }
   if (upper_tile) {
     exclusion = get_exclusion(_info->mp_window, get_tile_row(), get_tile_col());
-    if (exclusion == 0 &&
-        (_info->profile_type == PROFILE_TYPE_SUM_THRESH ||
-         _info->profile_type == PROFILE_TYPE_FREQUENCY_THRESH)) {
-      // We need to omit the main diagonal from one tile so it doesn't get
-      // double counted
-      exclusion += 1;
-    }
-    return std::make_pair(exclusion, 0);
+    return std::make_pair(exclusion, extra_exclusion);
   }
   size_t height = get_tile_height() - _info->mp_window + 1;
   exclusion =
       get_exclusion(_info->mp_window, get_tile_col(), get_tile_row() + height);
-  return std::make_pair(0, exclusion);
+  return std::make_pair(extra_exclusion, exclusion);
 }
 
 // Gets the exclusion zone for a particular tile (logic for ab joins)
