@@ -148,8 +148,8 @@ endif()
 
 add_library(scamp_utils ${CMAKE_CURRENT_SOURCE_DIR}/src/scamp_utils.cpp)
 
-add_library(scamp ${CMAKE_CURRENT_SOURCE_DIR}/src/SCAMP.cpp)
-target_link_libraries(scamp -lpthread tile cpu_stats common qt_helper)
+add_library(scamp_op ${CMAKE_CURRENT_SOURCE_DIR}/src/SCAMP.cpp)
+target_link_libraries(scamp_op -lpthread tile cpu_stats common qt_helper)
 
 
 if (CMAKE_CUDA_COMPILER)
@@ -160,7 +160,7 @@ endif()
 
 # Add clang tidy rules
 if(CLANG_TIDY_EXE)
-  set(MAIN_LIBS common scamp qt_helper tile scamp_utils cpu_kernels cpu_stats)
+  set(MAIN_LIBS common scamp_op qt_helper tile scamp_utils cpu_kernels cpu_stats)
   foreach(lib ${MAIN_LIBS})
     set_target_properties(
       "${lib}" PROPERTIES
@@ -228,7 +228,7 @@ if(NOT TARGET gflags)
 endif()
 
 if (CMAKE_CUDA_COMPILER)
-  target_link_libraries(SCAMP -lcudart_static gflags common scamp scamp_utils)
+  target_link_libraries(SCAMP -lcudart_static gflags common scamp_op scamp_utils)
 else()
-  target_link_libraries(SCAMP gflags common scamp scamp_utils)
+  target_link_libraries(SCAMP gflags common scamp_op scamp_utils)
 endif() 
