@@ -38,36 +38,64 @@ std::pair<int, int> Tile::get_exclusion_for_self_join(bool upper_tile) {
 }
 
 // Gets the exclusion zone for a particular tile (logic for ab joins)
+// AB-joins only need exclusion zones when they are part of a join where
+// the inputs are aligned or part of a larger self-join.
+// We use the member 'is_aligned' to represent this state.
 std::pair<int, int> Tile::get_exclusion_for_ab_join(bool upper_tile) {
   int exclusion_lower = 0;
   int exclusion_upper = 0;
 
-  if (!_info->is_aligned) {
-    if (upper_tile && (_info->profile_type == PROFILE_TYPE_SUM_THRESH ||
-                       _info->profile_type == PROFILE_TYPE_FREQUENCY_THRESH)) {
-      exclusion_lower += 1;
-    }
-    return std::make_pair(exclusion_lower, exclusion_upper);
+  int alternative_exclusion_lower = 0;
+  // We need to omit the main diagonal from bordering subtiles in cases where
+  // the join operator incorporates all values into the result to prevent
+  // double counting of the main diagonal.
+  if (upper_tile && (_info->profile_type == PROFILE_TYPE_SUM_THRESH ||
+                     _info->profile_type == PROFILE_TYPE_FREQUENCY_THRESH)) {
+    alternative_exclusion_lower += 1;
   }
+
+  // If the global join is not 'aligned' most of this function is unnecessary
+  if (!_info->is_aligned) {
+    return std::make_pair(
+        std::max(exclusion_lower, alternative_exclusion_lower),
+        exclusion_upper);
+  }
+
   size_t height = get_tile_height() - _info->mp_window + 1;
   size_t width = get_tile_width() - _info->mp_window + 1;
+  int64_t start_col = get_tile_col();
+  int64_t start_row = get_tile_row();
 
-  int start_col = get_tile_col();
-  int start_row = get_tile_row();
+  // For distributed joins, we need to find the global position in the join
+  // to determine the exclusion zone
   if (_info->global_start_col_position >= 0 &&
       _info->global_start_row_position >= 0) {
     start_col += _info->global_start_col_position;
     start_row += _info->global_start_row_position;
   }
+
   if (upper_tile) {
+    // If we are an upper tile, we need to account for regions marked with a Y
+    // in the diagram below:
+    //            start_col
+    //               |
+    //               |
+    //               V
+    //
+    // start_row --> Y X X X X Y Y <----top
+    //                 Y X X X X Y
+    //                   Y X X X X
+    //                     Y X X X
+    //                  ^    Y X X
+    //                  |      Y X
+    //               bottom      Y
+
+    // On the main diagonal (bottom) we can have a trivial match in the case
+    // that this AB join is part of a larger self-join.
     exclusion_lower = get_exclusion(_info->mp_window, start_row, start_col);
-    if (exclusion_lower == 0 &&
-        (_info->profile_type == PROFILE_TYPE_SUM_THRESH ||
-         _info->profile_type == PROFILE_TYPE_FREQUENCY_THRESH)) {
-      // We need to omit the main diagonal from one tile so it doesn't get
-      // double counted
-      exclusion_lower += 1;
-    }
+
+    // The top of the tile may need to be excluded if this tile is below
+    // the main diagonal (start_row > start_col)
     if (start_row > start_col) {
       exclusion_upper =
           get_exclusion(_info->mp_window, start_row, start_col + width);
@@ -75,15 +103,38 @@ std::pair<int, int> Tile::get_exclusion_for_ab_join(bool upper_tile) {
       exclusion_upper = 0;
     }
   } else {
+    // If we are a lower tile, we need to account for regions marked with a Y
+    // in the diagram below:
+    //           start_col
+    //               |
+    //               |
+    //               V
+    //
+    // start_row --> Y
+    //               X Y
+    //               X X Y
+    //               X X X Y <----top
+    //               X X X X Y
+    //               Y X X X X Y
+    // bottom -----> Y Y X X X X Y
+    // IMPORTANT NOTE: This tile is executed TRANSPOSED AS AN UPPER TILE
+    // MEANING THE INPUTS INCLUDING THE EXCLUSION RANGES ARE REVERSED!!!
+
+    // On the main diagonal (top) we can have a trivial match in the case
+    // that this AB join is part of a larger self-join.
     exclusion_lower = get_exclusion(_info->mp_window, start_col, start_row);
-    if (start_row >= start_col) {
-      exclusion_upper = 0;
-    } else {
+
+    // The bottom of the tile may need to be excluded if this tile is above
+    // the main diagonal (start_row <= start_col)
+    if (start_row <= start_col) {
       exclusion_upper =
           get_exclusion(_info->mp_window, start_col, start_row + height);
+    } else {
+      exclusion_upper = 0;
     }
   }
-  return std::make_pair(exclusion_lower, exclusion_upper);
+  return std::make_pair(std::max(exclusion_lower, alternative_exclusion_lower),
+                        exclusion_upper);
 }
 
 // Allocator for tile memory which can reside on the host or cuda devices

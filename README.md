@@ -23,7 +23,7 @@ This is a much improved framework over [GPU-STOMP](https://github.com/zpzim/STOM
  * All-neighbors Joins: rather than return only the nearest neighbor, we can return all matches above a threshold. This can be used in graph-based analytics and also to create low-res (pooled) distance matrices.
  * Distance matrix summaries: SCAMP can return pooled summary versions of the entire distance matrix.
  * Extensible to adding optimized versions of custom join operations.
- * Can compute joins with the CPU (Only enabled for double precision and 1NN+Index joins for now, optimizations pending)
+ * Can compute joins with the CPU (Only enabled for double precision and does not support all-neighbors joins or distance matrix summaries yet)
  * Handles NaN input values. The matrix profile will be computed while excluding any subsequence with a NaN value
  
 ## Environment
@@ -143,6 +143,6 @@ kubectl cp <SCAMP server container name>:/mp_columns_out .
 
 ### Distance Matrix Summaries using --reduce_all_neighbors
 
-![Alt text](/Readme/distance_matrix_summary.png?raw=true "Block Matrix Multiplication")
+![Alt text](/Readme/distance_matrix_summary.png?raw=true "Distance Matrix Summary")
 
 You can see that various behavors in the data become apparent through the visualization of the distance matrix.
