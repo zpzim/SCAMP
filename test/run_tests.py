@@ -3,19 +3,54 @@ from distance_matrix_fast import *
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+import argparse
+
+
+extra_opts = ''
+outfile = '/dev/null'
+window_sizes_to_test = [5, 7, 11, 13, 25, 33, 40, 55, 78, 92, 100, 143, 189, 243, 339, 500]
+tile_sizes_to_test = [1024, 2048, 4096]
+input_sizes_to_test = [20, 100, 250, 500, 1000, 1500, 4000, 8000]
+matrix_sizes_to_test = []
+thresholds_to_test = [0.0, 0.5]
+
 np.set_printoptions(edgeitems=30, linewidth=100000)
 np.random.seed(13)
 
-executable = sys.argv[1]
-outfile = sys.argv[2]
-extra_opts = sys.argv[3]
+parser = argparse.ArgumentParser()
+parser.add_argument('--executable', help='SCAMP executable to test', required=True)
+parser.add_argument('--output_file', help='File for test std output')
+parser.add_argument('--extra_args', help='Extra arguments to be passed to each test invocation')
+parser.add_argument('--window_sizes', type=int, nargs='+')
+parser.add_argument('--tile_sizes', type=int, nargs='+')
+parser.add_argument('--input_sizes', type=int, nargs='+')
+parser.add_argument('--matrix_sizes', type=int, nargs='+')
+parser.add_argument('--thresholds', type=float, nargs='+')
+args = parser.parse_args()
 
-window_sizes_to_test = [i for i in range(5,150,3)] + [500]
-tile_sizes_to_test = [1024, 2048, 4096]
-input_sizes_to_test = [20, 100, 250, 500, 1000, 1500, 4000, 8000]
-#matrix_sizes_to_test = [1, 4, 8, 16, 32]
-matrix_sizes_to_test = []
-thresholds_to_test = [0.0, 0.5]
+executable = args.executable
+if args.output_file is not None:
+  outfile = args.output_file
+
+if args.extra_args is not None:
+  extra_opts = args.extra_args
+
+if args.window_sizes is not None:
+  window_sizes_to_test = args.window_sizes
+
+if args.tile_sizes is not None:
+  tile_sizes_to_test = args.tile_sizes
+
+if args.input_sizes is not None:
+  input_sizes_to_test = args.input_sizes
+
+if args.matrix_sizes is not None:
+  matrix_sizes_to_test = args.matrix_sizes
+
+if args.thresholds is not None:
+  thresholds_to_test = args.thresholds
+
+
 
 index_match_ratio = 0.001
 matrix_match_ratio = 0.001

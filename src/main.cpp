@@ -26,7 +26,7 @@ DEFINE_string(hostname_port, "localhost:30078",
 #endif
 DEFINE_int64(max_matches_per_column, 100,
              "Maximum number of neighbors to generate for any subsequence "
-             "(used for ALL_NEIGBORS profiles).");
+             "(used for ALL_NEIGHBORS profiles).");
 DEFINE_bool(reduce_all_neighbors, false,
             "Whether to reduce the all neighbors graph into a matrix with a "
             "reduced size");
@@ -40,7 +40,7 @@ DEFINE_bool(output_pearson, false,
 DEFINE_bool(
     no_gpu, false,
     "If true SCAMP will not use any GPUs to compute the matrix profile");
-DEFINE_int32(max_tile_size, 1 << 20, "Maximum tile size SCAMP will use");
+DEFINE_int32(max_tile_size, 1 << 17, "Maximum tile size SCAMP will use");
 DEFINE_int32(window, -1, "Length of subsequences to search for");
 DEFINE_double(
     threshold, std::nan("NaN"),
