@@ -23,9 +23,6 @@ class SCAMP_Operation {
   // Result vectors
   Profile *_profile_a, *_profile_b;
 
-  // Locks for result vectors
-  std::mutex _profile_a_lock, _profile_b_lock;
-
   // Operation specific variables like maximum tile size (see common.h)
   const OpInfo _info;
 
@@ -61,10 +58,12 @@ class SCAMP_Operation {
                   int64_t start_col, OptionalArgs args_,
                   SCAMPProfileType profile_type, Profile *pA, Profile *pB,
                   bool keep_rows, bool compute_rows, bool compute_cols,
-                  bool is_aligned, bool silent_mode, int num_threads)
+                  bool is_aligned, bool silent_mode, int num_threads,
+                  int64_t max_matches_per_col)
       : _info(Asize, Bsize, window_sz, max_tile_size, selfjoin, t, start_row,
               start_col, args_, profile_type, keep_rows, compute_rows,
-              compute_cols, is_aligned, silent_mode, dev.size() + num_threads),
+              compute_cols, is_aligned, silent_mode, dev.size() + num_threads,
+              max_matches_per_col),
         _completed_tiles(0),
         _profile_a(pA),
         _profile_b(pB),

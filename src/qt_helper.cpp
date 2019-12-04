@@ -1,9 +1,12 @@
 #ifdef _HAS_CUDA_
 #include <cuda_runtime.h>
 #include <cufft.h>
+#endif
+
+#include "qt_helper.h"
+#ifdef _HAS_CUDA_
 #include "qt_kernels.h"
 #endif
-#include "qt_helper.h"
 
 namespace SCAMP {
 

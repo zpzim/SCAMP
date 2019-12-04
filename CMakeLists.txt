@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
 include(CheckLanguage)
 # ----------------------------------------------------------------------------------------
 #                              ===== Project Setup =====
-project(SCAMP LANGUAGES CXX)
+project(SCAMPmain LANGUAGES CXX)
 set(VERSION_MAJOR 1)
 set(VERSION_MINOR 1)
 
@@ -63,6 +63,9 @@ set(
   src/*.h
   src/*.cpp
   src/*.cu
+  kubernetes/*.cc
+  kubernetes/*.cpp
+  kubernetes/*.h
   )
 
 # ----------------------------------------------------------------------------------------
@@ -73,7 +76,7 @@ set(CMAKE_CXX_STANDARD 11)
 # CUDA_CONFIG
 if (CMAKE_CUDA_COMPILER)
   add_definitions("-D_HAS_CUDA_")
-  set(CMAKE_CUDA_STANDARD 14)
+  set(CMAKE_CUDA_STANDARD 11)
   find_library(CUDART_LIBRARY cudart ${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES})
   include_directories(${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   set(CUDA_SEPARABLE_COMPILATION ON)
@@ -89,51 +92,52 @@ if (CMAKE_CUDA_COMPILER)
 endif()
 
 # optimize in release
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native -O3")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -funroll-loops -march=native -O3")
 
 # build debug with sanitizer
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=address -fno-omit-frame-pointer")
 
 if(${COMPILER_ID} MATCHES "GNU") # gcc specific flags
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -funroll-loops")
     add_definitions("-Wextra -Wpedantic")
 elseif(${COMPILER_ID} MATCHES "clang") # clang specific flags
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -ffp-contract=fast")
     add_definitions("-Weverything")
 endif()
 
 # ----------------------------------------------------------------------------------------
 #                              ===== Build targets =====
 
-add_subdirectory(gflags)
-
-add_library(common src/common.cpp)
+add_library(common ${CMAKE_CURRENT_SOURCE_DIR}/src/common.cpp)
 
 if (CMAKE_CUDA_COMPILER) 
   target_link_libraries(common -lcudart_static)
 endif()
 
-add_library(qt_helper src/qt_helper.cpp)
+add_library(qt_helper ${CMAKE_CURRENT_SOURCE_DIR}/src/qt_helper.cpp)
 
 if (CMAKE_CUDA_COMPILER)
-  add_library(qt_kernels src/qt_kernels.cu)
+  add_library(qt_kernels ${CMAKE_CURRENT_SOURCE_DIR}/src/qt_kernels.cu)
   target_link_libraries(qt_helper -lcufft qt_kernels common)
 else()
   target_link_libraries(qt_helper common)
 endif()
 
+add_library(kernel_common ${CMAKE_CURRENT_SOURCE_DIR}/src/kernel_common.cpp)
 
 if (CMAKE_CUDA_COMPILER)
-  add_library(gpu_kernels src/kernels.cu)
-  target_link_libraries(gpu_kernels common)
+  add_library(gpu_utils ${CMAKE_CURRENT_SOURCE_DIR}/src/kernel_gpu_utils.cu)
+  target_link_libraries(gpu_utils kernel_common -lcudart_static)
+  add_library(gpu_kernels ${CMAKE_CURRENT_SOURCE_DIR}/src/kernels.cu)
+  target_link_libraries(gpu_kernels gpu_utils kernel_common common)
 endif()
 
-add_library(cpu_stats src/cpu_stats.cpp)
+add_library(cpu_stats ${CMAKE_CURRENT_SOURCE_DIR}/src/cpu_stats.cpp)
 target_link_libraries(cpu_stats common)
 
-add_library(cpu_kernels src/cpu_kernels.cpp)
-target_link_libraries(cpu_kernels common)
+add_library(cpu_kernels ${CMAKE_CURRENT_SOURCE_DIR}/src/cpu_kernels.cpp)
+target_link_libraries(cpu_kernels kernel_common common)
 
-add_library(tile src/tile.cpp)
+add_library(tile ${CMAKE_CURRENT_SOURCE_DIR}/src/tile.cpp)
 
 
 if (CMAKE_CUDA_COMPILER)
@@ -142,9 +146,11 @@ else()
   target_link_libraries(tile common cpu_kernels qt_helper)
 endif()
 
-add_library(scamp src/SCAMP.cpp)
+add_library(scamp_utils ${CMAKE_CURRENT_SOURCE_DIR}/src/scamp_utils.cpp)
 
-target_link_libraries(scamp -lpthread tile cpu_stats common qt_helper)
+add_library(scamp_op ${CMAKE_CURRENT_SOURCE_DIR}/src/SCAMP.cpp)
+target_link_libraries(scamp_op -lpthread tile cpu_stats common qt_helper)
+
 
 if (CMAKE_CUDA_COMPILER)
   set_target_properties(gpu_kernels PROPERTIES
@@ -152,23 +158,22 @@ if (CMAKE_CUDA_COMPILER)
   )
 endif()
 
+# Add clang tidy rules
 if(CLANG_TIDY_EXE)
-  set_target_properties(
-    common PROPERTIES
-    CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
-  )
-  set_target_properties(
-    scamp PROPERTIES
-    CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
-  )
-  set_target_properties(
-    qt_helper PROPERTIES
-    CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
-  )
-  set_target_properties(
-    tile PROPERTIES
-    CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
-  )
+  set(MAIN_LIBS common scamp_op qt_helper tile scamp_utils cpu_kernels cpu_stats)
+  foreach(lib ${MAIN_LIBS})
+    set_target_properties(
+      "${lib}" PROPERTIES
+      CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
+    )
+  endforeach(lib)
+  if (CMAKE_CUDA_COMPILER)
+    set_target_properties(
+      gpu_kernels PROPERTIES
+      CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
+    )
+  endif()
+
 endif()
 
 function(prepend var prefix)
@@ -190,9 +195,40 @@ if(CLANG_FORMAT_EXE)
   )
 endif()
 
-add_executable(SCAMP src/main.cpp)
+
+add_executable(SCAMP ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
+
+
+if (BUILD_CLIENT_SERVER)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/grpc EXCLUDE_FROM_ALL)
+  message(STATUS "Using gRPC via add_subdirectory.")
+  
+  # After using add_subdirectory, we can now use the grpc targets directly from
+  # this build.
+  set(_PROTOBUF_LIBPROTOBUF libprotobuf)
+  set(_PROTOBUF_PROTOC $<TARGET_FILE:protoc>)
+  set(_GRPC_GRPCPP_UNSECURE grpc++_unsecure)
+  set(_GRPC_GRPCPP grpc++)
+  set(_GRPC_GRPC grpc)
+  set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:grpc_cpp_plugin>)
+
+  # Add include directories we will use later
+  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/grpc/include/) 
+  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/grpc/third_party/gflags/include/)
+  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/grpc/third_party/protobuf/src/)
+
+  # Build scamp client and scamp server
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/kubernetes)
+
+endif()
+
+if(NOT TARGET gflags)
+  add_subdirectory(gflags)
+  include_directories(gflags/include/)
+endif()
+
 if (CMAKE_CUDA_COMPILER)
-  target_link_libraries(SCAMP -lcudart_static gflags common scamp)
+  target_link_libraries(SCAMP -lcudart_static gflags common scamp_op scamp_utils)
 else()
-  target_link_libraries(SCAMP gflags common scamp)
+  target_link_libraries(SCAMP gflags common scamp_op scamp_utils)
 endif() 

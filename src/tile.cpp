@@ -1,4 +1,5 @@
 #include "tile.h"
+#include <algorithm>
 #include <functional>
 #ifdef _HAS_CUDA_
 #include "kernels.h"
@@ -6,38 +7,6 @@
 #include "cpu_kernels.h"
 
 namespace SCAMP {
-
-template <typename T>
-void elementwise_sum(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
-                     T *to_merge) {
-  for (int i = 0; i < tile_sz; ++i) {
-    mp_full[i + merge_start] += to_merge[i];
-  }
-}
-
-template <typename T>
-void elementwise_max(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
-                     T *to_merge, uint64_t index_offset) {
-  for (int i = 0; i < tile_sz; ++i) {
-    mp_entry e1, e2;
-    e1.ulong = mp_full[i + merge_start];
-    e2.ulong = to_merge[i];
-    if (e1.floats[0] < e2.floats[0]) {
-      e2.ints[1] += index_offset;
-      mp_full[i + merge_start] = e2.ulong;
-    }
-  }
-}
-
-template <typename T>
-void elementwise_max(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
-                     T *to_merge) {
-  for (int i = 0; i < tile_sz; ++i) {
-    if (mp_full[i + merge_start] < to_merge[i]) {
-      mp_full[i + merge_start] = to_merge[i];
-    }
-  }
-}
 
 // Gets the exclusion zone for a particular tile (helper_function)
 static int get_exclusion(uint64_t window_size, int64_t start_row,
@@ -51,6 +20,13 @@ static int get_exclusion(uint64_t window_size, int64_t start_row,
 
 std::pair<int, int> Tile::get_exclusion_for_self_join(bool upper_tile) {
   int exclusion;
+  int extra_exclusion = 0;
+  if (_info->profile_type == PROFILE_TYPE_SUM_THRESH ||
+      _info->profile_type == PROFILE_TYPE_FREQUENCY_THRESH) {
+    // We need to omit the main diagonal from one tile so it doesn't get
+    // double counted
+    extra_exclusion = 1;
+  }
   if (upper_tile) {
     exclusion = get_exclusion(_info->mp_window, get_tile_row(), get_tile_col());
     return std::make_pair(exclusion, 0);
@@ -58,29 +34,68 @@ std::pair<int, int> Tile::get_exclusion_for_self_join(bool upper_tile) {
   size_t height = get_tile_height() - _info->mp_window + 1;
   exclusion =
       get_exclusion(_info->mp_window, get_tile_col(), get_tile_row() + height);
-  return std::make_pair(0, exclusion);
+  return std::make_pair(extra_exclusion, exclusion);
 }
 
 // Gets the exclusion zone for a particular tile (logic for ab joins)
+// AB-joins only need exclusion zones when they are part of a join where
+// the inputs are aligned or part of a larger self-join.
+// We use the member 'is_aligned' to represent this state.
 std::pair<int, int> Tile::get_exclusion_for_ab_join(bool upper_tile) {
   int exclusion_lower = 0;
   int exclusion_upper = 0;
 
-  if (!_info->is_aligned) {
-    return std::make_pair(exclusion_lower, exclusion_upper);
+  int alternative_exclusion_lower = 0;
+  // We need to omit the main diagonal from bordering subtiles in cases where
+  // the join operator incorporates all values into the result to prevent
+  // double counting of the main diagonal.
+  if (upper_tile && (_info->profile_type == PROFILE_TYPE_SUM_THRESH ||
+                     _info->profile_type == PROFILE_TYPE_FREQUENCY_THRESH)) {
+    alternative_exclusion_lower += 1;
   }
+
+  // If the global join is not 'aligned' most of this function is unnecessary
+  if (!_info->is_aligned) {
+    return std::make_pair(
+        std::max(exclusion_lower, alternative_exclusion_lower),
+        exclusion_upper);
+  }
+
   size_t height = get_tile_height() - _info->mp_window + 1;
   size_t width = get_tile_width() - _info->mp_window + 1;
+  int64_t start_col = get_tile_col();
+  int64_t start_row = get_tile_row();
 
-  int start_col = get_tile_col();
-  int start_row = get_tile_row();
+  // For distributed joins, we need to find the global position in the join
+  // to determine the exclusion zone
   if (_info->global_start_col_position >= 0 &&
       _info->global_start_row_position >= 0) {
     start_col += _info->global_start_col_position;
     start_row += _info->global_start_row_position;
   }
+
   if (upper_tile) {
+    // If we are an upper tile, we need to account for regions marked with a Y
+    // in the diagram below:
+    //            start_col
+    //               |
+    //               |
+    //               V
+    //
+    // start_row --> Y X X X X Y Y <----top
+    //                 Y X X X X Y
+    //                   Y X X X X
+    //                     Y X X X
+    //                  ^    Y X X
+    //                  |      Y X
+    //               bottom      Y
+
+    // On the main diagonal (bottom) we can have a trivial match in the case
+    // that this AB join is part of a larger self-join.
     exclusion_lower = get_exclusion(_info->mp_window, start_row, start_col);
+
+    // The top of the tile may need to be excluded if this tile is below
+    // the main diagonal (start_row > start_col)
     if (start_row > start_col) {
       exclusion_upper =
           get_exclusion(_info->mp_window, start_row, start_col + width);
@@ -88,15 +103,38 @@ std::pair<int, int> Tile::get_exclusion_for_ab_join(bool upper_tile) {
       exclusion_upper = 0;
     }
   } else {
+    // If we are a lower tile, we need to account for regions marked with a Y
+    // in the diagram below:
+    //           start_col
+    //               |
+    //               |
+    //               V
+    //
+    // start_row --> Y
+    //               X Y
+    //               X X Y
+    //               X X X Y <----top
+    //               X X X X Y
+    //               Y X X X X Y
+    // bottom -----> Y Y X X X X Y
+    // IMPORTANT NOTE: This tile is executed TRANSPOSED AS AN UPPER TILE
+    // MEANING THE INPUTS INCLUDING THE EXCLUSION RANGES ARE REVERSED!!!
+
+    // On the main diagonal (top) we can have a trivial match in the case
+    // that this AB join is part of a larger self-join.
     exclusion_lower = get_exclusion(_info->mp_window, start_col, start_row);
-    if (start_row >= start_col) {
-      exclusion_upper = 0;
-    } else {
+
+    // The bottom of the tile may need to be excluded if this tile is above
+    // the main diagonal (start_row <= start_col)
+    if (start_row <= start_col) {
       exclusion_upper =
           get_exclusion(_info->mp_window, start_col, start_row + height);
+    } else {
+      exclusion_upper = 0;
     }
   }
-  return std::make_pair(exclusion_lower, exclusion_upper);
+  return std::make_pair(std::max(exclusion_lower, alternative_exclusion_lower),
+                        exclusion_upper);
 }
 
 // Allocator for tile memory which can reside on the host or cuda devices
@@ -106,6 +144,7 @@ T *alloc_mem(size_t count, SCAMPArchitecture arch, int deviceid) {
     case CUDA_GPU_WORKER: {
 #ifdef _HAS_CUDA_
       cudaSetDevice(deviceid);
+      gpuErrchk(cudaPeekAtLastError());
       size_t bytes = count * sizeof(T);
       T *ptr;
       cudaMalloc(&ptr, bytes);
@@ -128,7 +167,9 @@ void free_mem(T *ptr, SCAMPArchitecture arch, int deviceid) {
     case CUDA_GPU_WORKER:
 #ifdef _HAS_CUDA_
       cudaSetDevice(deviceid);
+      gpuErrchk(cudaPeekAtLastError());
       cudaFree(ptr);
+      gpuErrchk(cudaPeekAtLastError());
 #else
       ASSERT(false, "Using CUDA in binary not built with it");
 #endif
@@ -140,12 +181,12 @@ void free_mem(T *ptr, SCAMPArchitecture arch, int deviceid) {
 }
 
 void Tile::Memset(void *destination, char value, size_t bytes) {
-  switch (_arch) {
+  switch (get_arch()) {
     case CUDA_GPU_WORKER:
 #ifdef _HAS_CUDA_
-      cudaSetDevice(_cuda_id);
+      cudaSetDevice(get_cuda_id());
       gpuErrchk(cudaPeekAtLastError());
-      cudaMemsetAsync(destination, value, bytes, _stream);
+      cudaMemsetAsync(destination, value, bytes, get_stream());
       gpuErrchk(cudaPeekAtLastError());
 #else
       ASSERT(false, "Using CUDA in binary not built with it");
@@ -159,41 +200,19 @@ void Tile::Memset(void *destination, char value, size_t bytes) {
 
 void Tile::Memcopy(void *destination, const void *source, size_t bytes,
                    bool from_tile) {
-  switch (_arch) {
-    case CUDA_GPU_WORKER:
-#ifdef _HAS_CUDA_
-      cudaSetDevice(_cuda_id);
-      gpuErrchk(cudaPeekAtLastError());
-      if (from_tile) {
-        cudaMemcpyAsync(destination, source, bytes, cudaMemcpyDeviceToHost,
-                        _stream);
-      } else {
-        cudaMemcpyAsync(destination, source, bytes, cudaMemcpyHostToDevice,
-                        _stream);
-      }
-      gpuErrchk(cudaPeekAtLastError());
-#else
-      ASSERT(false, "Using CUDA in binary not built with it");
-#endif
-      break;
-    case CPU_WORKER:
-      // TODO(zpzim): Most of the time we don't actually have to copy
-      // memory here, we can just set a reference.
-      memcpy(destination, source, bytes);
-      break;
-  }
+  SCAMP::Memcopy(destination, source, bytes, from_tile, &_exec_info);
 }
 
 Tile::Tile(const OpInfo *info, SCAMPArchitecture arch, int cuda_id)
     : _info(info),
-      _arch(arch),
-      _cuda_id(cuda_id),
+      _exec_info(arch, cuda_id),
       _current_tile_width(0),
       _current_tile_height(0),
       _current_tile_row(0),
       _current_tile_col(0),
-      // Allocate memory based on architecture
+      // Allocate memory for tile based on architecture
       _T_A_dev(alloc_mem<double>(info->max_tile_ts_size, arch, cuda_id),
+               // Lambda deallocator
                [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
       _T_B_dev(alloc_mem<double>(info->max_tile_ts_size, arch, cuda_id),
                [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
@@ -215,69 +234,59 @@ Tile::Tile(const OpInfo *info, SCAMPArchitecture arch, int cuda_id)
             [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
       _dg_B(alloc_mem<double>(info->max_tile_height, arch, cuda_id),
             [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
+
       _scratchpad(
           static_cast<double *>(
               alloc_mem<double>(info->max_tile_ts_size, arch, cuda_id)),
           [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
 
-      _scratch(std::unique_ptr<qt_compute_helper>(new qt_compute_helper(
-          info->max_tile_ts_size, info->mp_window, true, arch)))
-#ifdef _HAS_CUDA_
-      ,
-      _stream(),
-      _dev_props()
-#endif
-{
+      _scratch(
+          std::unique_ptr<qt_compute_helper>(new qt_compute_helper(  // NOLINT
+              info->max_tile_ts_size, info->mp_window, true, arch))),
+      _profile_a_tile(info->profile_type, info->max_tile_width),
+      _profile_b_tile(info->profile_type, info->max_tile_height) {
   size_t profile_size = GetProfileTypeSize(_info->profile_type);
-  _profile_a_tile_dev[_info->profile_type] =
-      alloc_mem<char>(profile_size * _info->max_tile_width, arch, cuda_id);
-  _profile_b_tile_dev[_info->profile_type] =
-      alloc_mem<char>(profile_size * _info->max_tile_height, arch, cuda_id);
+  size_t rows_to_alloc, cols_to_alloc;
 
-  _profile_a_tile = AllocProfile(_info->profile_type, _info->max_tile_height);
-  _profile_b_tile = AllocProfile(_info->profile_type, _info->max_tile_width);
-
-  switch (_arch) {
-    case CUDA_GPU_WORKER:
-#ifdef _HAS_CUDA_
-      cudaSetDevice(_cuda_id);
-      cudaGetDeviceProperties(&_dev_props, _cuda_id);
-      cudaStreamCreate(&_stream);
-#else
-      ASSERT(false, "ERROR: CUDA used in binary not built with CUDA");
-#endif
-      break;
-    case CPU_WORKER:
-      // Add any arch-specific inits here
-      break;
+  // For profile types where we can have more than one match per tile we need
+  // to allocate additional memory
+  if (_info->profile_type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
+    cols_to_alloc = _info->max_matches_per_tile;
+    rows_to_alloc = _info->max_matches_per_tile;
+  } else {
+    cols_to_alloc = _info->max_tile_width;
+    rows_to_alloc = _info->max_tile_height;
   }
+
+  // Allocate the tile's device memory
+  _profile_a_tile_dev[_info->profile_type] =
+      alloc_mem<char>(profile_size * cols_to_alloc, arch, cuda_id);
+  _profile_b_tile_dev[_info->profile_type] =
+      alloc_mem<char>(profile_size * rows_to_alloc, arch, cuda_id);
+
+  // Allocate variable to track number of outputs generated by the kernel
+  _profile_a_dev_length = alloc_mem<unsigned long long int>(1, arch, cuda_id);
+  _profile_b_dev_length = alloc_mem<unsigned long long int>(1, arch, cuda_id);
 }
 
 Tile::~Tile() {
-  switch (_arch) {
-    case CUDA_GPU_WORKER:
-#ifdef _HAS_CUDA_
-      cudaSetDevice(_cuda_id);
-      cudaStreamDestroy(_stream);
-#else
-      ASSERT(false, "ERROR: CUDA used in binary not built with CUDA");
-#endif
-      break;
-    case CPU_WORKER:
-      // Add any arch-specific cleanup here
-      break;
-  }
+  // Free any memory allocated that will not be freed automatically
   free_mem<char>(static_cast<char *>(_profile_a_tile_dev[_info->profile_type]),
-                 _arch, _cuda_id);
+                 get_arch(), get_cuda_id());
   free_mem<char>(static_cast<char *>(_profile_b_tile_dev[_info->profile_type]),
-                 _arch, _cuda_id);
+                 get_arch(), get_cuda_id());
+  free_mem<unsigned long long int>(_profile_a_dev_length, get_arch(),
+                                   get_cuda_id());
+  free_mem<unsigned long long int>(_profile_b_dev_length, get_arch(),
+                                   get_cuda_id());
 }
 
 void Tile::Sync() {
-  switch (_arch) {
+  switch (get_arch()) {
     case CUDA_GPU_WORKER:
 #if _HAS_CUDA_
-      cudaStreamSynchronize(_stream);
+      cudaStreamSynchronize(get_stream());
+      gpuErrchk(cudaPeekAtLastError());
 #else
       ASSERT(false, "ERROR: CUDA used in binary not built with CUDA");
 #endif
@@ -293,36 +302,6 @@ void Tile::InitTimeseries(const std::vector<double> &Ta_h,
           sizeof(double) * _current_tile_width, false);
   Memcopy(_T_B_dev.get(), Tb_h.data() + _current_tile_row,
           sizeof(double) * _current_tile_height, false);
-}
-
-Profile Tile::AllocProfile(SCAMPProfileType t, uint64_t size) {
-  Profile p;
-  p.type = t;
-  switch (t) {
-    case PROFILE_TYPE_SUM_THRESH:
-      p.data.emplace_back();
-      p.data[0].double_value.resize(size, 0);
-      return p;
-    case PROFILE_TYPE_1NN:
-      p.data.emplace_back();
-      p.data[0].float_value.resize(size, std::numeric_limits<float>::lowest());
-      return p;
-    case PROFILE_TYPE_1NN_INDEX:
-      mp_entry e;
-      e.ints[1] = -1u;
-      e.floats[0] = std::numeric_limits<float>::lowest();
-      p.data.emplace_back();
-      p.data[0].uint64_value.resize(size, e.ulong);
-      return p;
-    case PROFILE_TYPE_FREQUENCY_THRESH:
-      p.data.emplace_back();
-      p.data[0].uint64_value.resize(size, 0);
-      return p;
-    case PROFILE_TYPE_KNN:
-    case PROFILE_TYPE_1NN_MULTIDIM:
-    default:
-      return p;
-  }
 }
 
 // Initializes the tile's local profile values based on global profiles
@@ -365,6 +344,10 @@ SCAMPError_t Tile::InitProfile(Profile *profile_a, Profile *profile_b) {
       }
       break;
     }
+    case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
+      Memset(_profile_a_dev_length, 0, sizeof(unsigned long long int));
+      Memset(_profile_b_dev_length, 0, sizeof(unsigned long long int));
+      break;
     case PROFILE_TYPE_FREQUENCY_THRESH:
     case PROFILE_TYPE_KNN:
     case PROFILE_TYPE_1NN_MULTIDIM:
@@ -390,102 +373,93 @@ void Tile::InitStats(const PrecomputedInfo &a, const PrecomputedInfo &b) {
   Memcopy(_means_B.get(), b.means().data() + _current_tile_row, bytes_b, false);
 }
 
-// TODO(zpzim): move this back into SCAMP_Operation, we shouldn't have the
-// merging be functionality of the individual tile
-// Merges a local result "tile_profile" with the global matrix profile
-// "full_profile"
-void Tile::MergeTileIntoFullProfile(Profile *tile_profile, uint64_t position,
-                                    uint64_t length, Profile *full_profile,
-                                    uint64_t index_start, std::mutex &lock) {
-  // Lock the entire result vector before we merge
-  // TODO(zpzim): we don't have to do this, we only need to lock the specific
-  // "tile row" or "tile_column" that we are updating
-  std::unique_lock<std::mutex> mlock(lock);
-  switch (_info->profile_type) {
-    case PROFILE_TYPE_SUM_THRESH:
-      elementwise_sum<double>(full_profile->data[0].double_value.data(),
-                              position, length,
-                              tile_profile->data[0].double_value.data());
-      return;
-    case PROFILE_TYPE_1NN_INDEX:
-      elementwise_max<uint64_t>(
-          full_profile->data[0].uint64_value.data(), position, length,
-          tile_profile->data[0].uint64_value.data(), index_start);
-      return;
-    case PROFILE_TYPE_1NN:
-      elementwise_max<float>(full_profile->data[0].float_value.data(), position,
-                             length, tile_profile->data[0].float_value.data());
-      return;
-    case PROFILE_TYPE_FREQUENCY_THRESH:
-      elementwise_sum<uint64_t>(full_profile->data[0].uint64_value.data(),
-                                position, length,
-                                tile_profile->data[0].uint64_value.data());
-      return;
-    case PROFILE_TYPE_KNN:
-    case PROFILE_TYPE_1NN_MULTIDIM:
-    default:
-      ASSERT(false, "FUNCTIONALITY UNIMPLEMENTED");
-      return;
+std::pair<unsigned long long int, unsigned long long int>
+Tile::get_profile_dims_from_device() {
+  std::pair<unsigned long long int, unsigned long long int> result;
+  result.first = 0;
+  result.second = 0;
+  this->Memcopy(&result.first, _profile_a_dev_length,
+                sizeof(unsigned long long int), true);
+  this->Memcopy(&result.second, _profile_b_dev_length,
+                sizeof(unsigned long long int), true);
+  Sync();
+  if (result.first > info()->max_matches_per_tile) {
+    if (!_info->silent_mode) {
+      std::cout << "Warning: Unable to return all matches! SCAMP found a "
+                   "total of "
+                << result.first
+                << " matches for this tile. But we could only store "
+                << _info->max_matches_per_tile
+                << " of them. Perhaps try a smaller tile size or a higher "
+                   "match threshold? "
+                << std::endl;
+    }
+    result.first = _info->max_matches_per_tile;
   }
+
+  if (result.second > info()->max_matches_per_tile) {
+    if (!_info->silent_mode) {
+      std::cout << "Warning: Unable to return all matches! SCAMP found a "
+                   "total of "
+                << result.second
+                << " matches for this tile. But we could only store "
+                << _info->max_matches_per_tile
+                << " of them. Perhaps try a smaller tile size or a higher "
+                   "match threshold? "
+                << std::endl;
+    }
+    result.second = _info->max_matches_per_tile;
+  }
+  if (!_info->silent_mode) {
+    std::cout << "width = " << result.first << " height = " << result.second
+              << std::endl;
+  }
+  return result;
 }
 
 // TODO(zpzim): move this back into SCAMP_Operation, we shouldn't have the
 // merging be functionality of the individual tile
-void Tile::MergeProfile(Profile *profile_a, std::mutex &a_lock,
-                        Profile *profile_b, std::mutex &b_lock) {
+void Tile::MergeProfile(Profile *profile_a, Profile *profile_b) {
   // Set up a copy operation back to the host
-  CopyProfileToHost(&_profile_a_tile, &_profile_a_tile_dev,
-                    _current_tile_width - _info->mp_window + 1);
+  int height, width;
+  switch (profile_a->type) {
+    case PROFILE_TYPE_1NN:
+    case PROFILE_TYPE_1NN_INDEX:
+    case PROFILE_TYPE_SUM_THRESH:
+      // We already know how many elements to copy back
+      width = _current_tile_width - _info->mp_window + 1;
+      height = _current_tile_height - _info->mp_window + 1;
+      break;
+    case PROFILE_TYPE_APPROX_ALL_NEIGHBORS: {
+      // We need to find the number of elements generated by the kernel
+      auto width_height = get_profile_dims_from_device();
+      width = width_height.first;
+      height = width_height.second;
+      break;
+    }
+    default:
+      throw(SCAMPException("Functionality Unimplemented."));
+      break;
+  }
+
+  _profile_a_tile.CopyFromDevice(&_exec_info, &_profile_a_tile_dev, width);
   if (_info->computing_rows) {
-    CopyProfileToHost(&_profile_b_tile, &_profile_b_tile_dev,
-                      _current_tile_height - _info->mp_window + 1);
+    _profile_b_tile.CopyFromDevice(&_exec_info, &_profile_b_tile_dev, height);
   }
 
   // Wait for the previous work to be done
   Sync();
 
   // Merge result
-  MergeTileIntoFullProfile(&_profile_a_tile, _current_tile_col,
-                           _current_tile_width - _info->mp_window + 1,
-                           profile_a, _current_tile_row, a_lock);
+  profile_a->MergeTileToProfile(&_profile_a_tile, _info, _current_tile_col,
+                                width, _current_tile_row);
 
   if (_info->computing_rows && _info->keep_rows_separate) {
-    MergeTileIntoFullProfile(&_profile_b_tile, _current_tile_row,
-                             _current_tile_height - _info->mp_window + 1,
-                             profile_b, _current_tile_col, b_lock);
+    profile_b->MergeTileToProfile(&_profile_b_tile, _info, _current_tile_row,
+                                  height, _current_tile_col);
   } else if (_info->self_join) {
-    MergeTileIntoFullProfile(&_profile_b_tile, _current_tile_row,
-                             _current_tile_height - _info->mp_window + 1,
-                             profile_a, _current_tile_col, a_lock);
-  }
-}
-
-// Copies a profile to the host
-void Tile::CopyProfileToHost(Profile *destination_profile,
-                             const DeviceProfile *device_tile_profile,
-                             uint64_t length) {
-  switch (_info->profile_type) {
-    case PROFILE_TYPE_SUM_THRESH:
-      Memcopy(destination_profile->data[0].double_value.data(),
-              device_tile_profile->at(PROFILE_TYPE_SUM_THRESH),
-              length * sizeof(double), true);
-      break;
-    case PROFILE_TYPE_1NN:
-      Memcopy(destination_profile->data[0].float_value.data(),
-              device_tile_profile->at(PROFILE_TYPE_1NN), length * sizeof(float),
-              true);
-      break;
-    case PROFILE_TYPE_1NN_INDEX:
-      Memcopy(destination_profile->data[0].uint64_value.data(),
-              device_tile_profile->at(PROFILE_TYPE_1NN_INDEX),
-              length * sizeof(uint64_t), true);
-      break;
-    case PROFILE_TYPE_FREQUENCY_THRESH:
-    case PROFILE_TYPE_KNN:
-    case PROFILE_TYPE_1NN_MULTIDIM:
-    default:
-      ASSERT(false, "FUNCTIONALITY UNIMPLEMENTED");
-      break;
+    profile_a->MergeTileToProfile(&_profile_b_tile, _info, _current_tile_row,
+                                  height, _current_tile_col);
   }
 }
 
@@ -514,16 +488,19 @@ SCAMPError_t Tile::execute(SCAMPTileType t) {
 SCAMPError_t Tile::do_self_join_full() {
   SCAMPError_t error = SCAMP_NO_ERROR;
 
+  // Compute the upper triangular portion of the tile
   error = do_self_join_half();
   if (error != SCAMP_NO_ERROR) {
     return error;
   }
 
-  switch (_arch) {
+  // Compute the lower triangular portion of the tile based on worker arch
+  switch (get_arch()) {
     case CUDA_GPU_WORKER:
 #ifdef _HAS_CUDA_
-      error = _scratch->compute_QT(_QT_dev.get(), _T_B_dev.get(),
-                                   _T_A_dev.get(), _means_A.get(), _stream);
+      error =
+          _scratch->compute_QT(_QT_dev.get(), _T_B_dev.get(), _T_A_dev.get(),
+                               _means_A.get(), get_stream());
       if (error != SCAMP_NO_ERROR) {
         return error;
       }
@@ -555,11 +532,13 @@ SCAMPError_t Tile::do_self_join_half() {
     return SCAMP_DIM_INCOMPATIBLE;
   }
 
-  switch (_arch) {
+  // Compute the upper triangular portion of the tile based on worker arch
+  switch (get_arch()) {
     case CUDA_GPU_WORKER:
 #ifdef _HAS_CUDA_
-      error = _scratch->compute_QT(_QT_dev.get(), _T_A_dev.get(),
-                                   _T_B_dev.get(), _means_B.get(), _stream);
+      error =
+          _scratch->compute_QT(_QT_dev.get(), _T_A_dev.get(), _T_B_dev.get(),
+                               _means_B.get(), get_stream());
       if (error != SCAMP_NO_ERROR) {
         return error;
       }
@@ -593,11 +572,12 @@ SCAMPError_t Tile::do_ab_join_full() {
     return SCAMP_DIM_INCOMPATIBLE;
   }
 
-  switch (_arch) {
+  switch (get_arch()) {
     case CUDA_GPU_WORKER:
 #ifdef _HAS_CUDA_
-      error = _scratch->compute_QT(_QT_dev.get(), _T_A_dev.get(),
-                                   _T_B_dev.get(), _means_B.get(), _stream);
+      error =
+          _scratch->compute_QT(_QT_dev.get(), _T_A_dev.get(), _T_B_dev.get(),
+                               _means_B.get(), get_stream());
       if (error != SCAMP_NO_ERROR) {
         return error;
       }
@@ -619,11 +599,12 @@ SCAMPError_t Tile::do_ab_join_full() {
     return error;
   }
 
-  switch (_arch) {
+  switch (get_arch()) {
     case CUDA_GPU_WORKER:
 #ifdef _HAS_CUDA_
-      error = _scratch->compute_QT(_QT_dev.get(), _T_B_dev.get(),
-                                   _T_A_dev.get(), _means_A.get(), _stream);
+      error =
+          _scratch->compute_QT(_QT_dev.get(), _T_B_dev.get(), _T_A_dev.get(),
+                               _means_A.get(), get_stream());
       if (error != SCAMP_NO_ERROR) {
         return error;
       }

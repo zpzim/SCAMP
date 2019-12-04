@@ -15,8 +15,17 @@
 #include <queue>
 #include <sstream>
 #include <unordered_map>
+#include "scamp_exception.h"
 
 namespace SCAMP {
+
+using DeviceProfile = std::unordered_map<int, void *>;
+
+struct OpInfo;
+struct ExecInfo;
+
+constexpr int64_t GIGABYTE = 1024 * 1024 * 1024;
+constexpr int64_t PROFILE_MEMORY_BUDGET = 2 * GIGABYTE;
 
 // Types of matrix profile to compute
 enum SCAMPProfileType {
@@ -27,6 +36,7 @@ enum SCAMPProfileType {
   PROFILE_TYPE_KNN = 4,
   PROFILE_TYPE_1NN_MULTIDIM = 5,
   PROFILE_TYPE_1NN = 6,
+  PROFILE_TYPE_APPROX_ALL_NEIGHBORS = 7,
 };
 
 // Precision modes
@@ -35,6 +45,13 @@ enum SCAMPPrecisionType {
   PRECISION_SINGLE = 1,
   PRECISION_MIXED = 2,
   PRECISION_DOUBLE = 3,
+};
+
+// Enum describing worker architecture, used to switch on architecture specific
+// code
+enum SCAMPArchitecture {
+  CPU_WORKER,
+  CUDA_GPU_WORKER,
 };
 
 // For computing the 1NN Matrix profile and index on the GPU, we store both the
@@ -46,24 +63,101 @@ typedef union {
   uint64_t ulong;        // for atomic update
 } mp_entry;
 
+struct SCAMPmatch {
+  SCAMPmatch() : corr(-2), row(0), col(0) {}
+  SCAMPmatch(float d, uint32_t r, uint32_t c) : corr(d), row(r), col(c) {}
+  float corr;
+  uint32_t row;
+  uint32_t col;
+};
+
+class compareMatch {
+ public:
+  bool operator()(const SCAMPmatch &x1, const SCAMPmatch &x2) {
+    return x1.corr > x2.corr;
+  }
+};
+
+void Memcopy(void *destination, const void *source, size_t bytes,
+             bool from_tile, const ExecInfo *info);
+
 struct ProfileData {
   // Only one of these should be set at once
   std::vector<uint32_t> uint32_value;
   std::vector<uint64_t> uint64_value;
   std::vector<float> float_value;
   std::vector<double> double_value;
+  std::vector<std::vector<float>> matrix_value;
+  std::vector<
+      std::priority_queue<SCAMPmatch, std::vector<SCAMPmatch>, compareMatch>>
+      match_value;
+  // Unordered version of match_value
+  std::vector<SCAMPmatch> match_value_unordered;
 };
 
 // Stores information about a matrix profile
-struct Profile {
+class Profile {
+ public:
+  Profile() : type(PROFILE_TYPE_INVALID) {}
+  Profile(Profile &other) {
+    std::unique_lock<std::mutex> lock(_profile_lock);
+    matrix_height = other.matrix_height;
+    matrix_width = other.matrix_width;
+    output_matrix = other.output_matrix;
+    type = other.type;
+    data = other.data;
+  }
+  Profile(Profile &&other) {
+    std::unique_lock<std::mutex> lock(_profile_lock);
+    matrix_height = other.matrix_height;
+    matrix_width = other.matrix_width;
+    output_matrix = other.output_matrix;
+    type = other.type;
+    data = std::move(other.data);
+  }
+  Profile &operator=(Profile &&other) {
+    std::unique_lock<std::mutex> lock(_profile_lock);
+    matrix_height = other.matrix_height;
+    matrix_width = other.matrix_width;
+    output_matrix = other.output_matrix;
+    type = other.type;
+    data = std::move(other.data);
+    return *this;
+  }
+  Profile(SCAMPProfileType t, size_t size, int64_t mwidth = -1,
+          int64_t mheight = -1, int64_t rrows = -1, int64_t rcols = -1)
+      : type(t),
+        matrix_width(mwidth),
+        matrix_height(mheight),
+        matrix_reduced_rows(rrows),
+        matrix_reduced_cols(rcols),
+        output_matrix(mwidth > 0 && mheight > 0) {
+    Alloc(size);
+  }
   std::vector<ProfileData> data;
   SCAMPProfileType type;
+  int64_t matrix_width;
+  int64_t matrix_height;
+  int64_t matrix_reduced_rows;
+  int64_t matrix_reduced_cols;
+  bool output_matrix;
+  void MergeTileToProfile(Profile *tile_profile, const OpInfo *info,
+                          uint64_t position, uint64_t length,
+                          uint64_t index_start);
+  void CopyFromDevice(const ExecInfo *info,
+                      const DeviceProfile *device_tile_profile,
+                      uint64_t length);
+  void Alloc(size_t size);
+
+ private:
+  std::mutex _profile_lock;
 };
 
 // Arguments for a SCAMP operation
 // This is an external user's interface to the SCAMP library
 struct SCAMPArgs {
   void validate();
+  void print();
 
   std::vector<double> timeseries_a;
   std::vector<double> timeseries_b;
@@ -82,6 +176,9 @@ struct SCAMPArgs {
   bool keep_rows_separate;
   bool is_aligned;
   bool silent_mode;
+  int64_t max_matches_per_column;
+  int64_t matrix_height;
+  int64_t matrix_width;
 };
 
 // Struct describing kernel arguments which are non-standard
@@ -96,42 +193,25 @@ struct OptionalArgs {
   double threshold;
 };
 
+// Defines the execution environment of a SCAMP tile
+struct ExecInfo {
+  SCAMPArchitecture arch;
+  int cuda_id;
+#ifdef _HAS_CUDA_
+  cudaStream_t stream;
+  cudaDeviceProp dev_props;
+#endif
+  ExecInfo(SCAMPArchitecture _arch, int _cuda_id);
+  ~ExecInfo();
+};
+
 // Struct defines information about a SCAMP Operation
 struct OpInfo {
   OpInfo(size_t Asize, size_t Bsize, size_t window_sz, size_t max_tile_size,
          bool selfjoin, SCAMPPrecisionType t, int64_t start_row,
          int64_t start_col, OptionalArgs args_, SCAMPProfileType profiletype,
          bool keep_rows, bool compute_rows, bool compute_cols, bool aligned,
-         bool silent_mode, int num_workers)
-      : full_ts_len_A(Asize),
-        full_ts_len_B(Bsize),
-        mp_window(window_sz),
-        self_join(selfjoin),
-        fp_type(t),
-        global_start_row_position(start_row),
-        global_start_col_position(start_col),
-        opt_args(args_),
-        profile_type(profiletype),
-        keep_rows_separate(keep_rows),
-        computing_rows(compute_rows),
-        computing_cols(compute_cols),
-        is_aligned(aligned),
-        silent_mode(silent_mode) {
-    if (self_join) {
-      full_ts_len_B = full_ts_len_A;
-    }
-    auto maxSize = std::max(Asize, Bsize);
-    max_tile_ts_size = maxSize / (num_workers);
-
-    if (max_tile_ts_size > max_tile_size) {
-      max_tile_ts_size = max_tile_size;
-    } else if (max_tile_ts_size < mp_window) {
-      max_tile_ts_size = maxSize;
-    }
-
-    max_tile_width = max_tile_ts_size - mp_window + 1;
-    max_tile_height = max_tile_width;
-  }
+         bool silent_mode, int num_workers, int64_t max_matches_per_col);
 
   // Type of profile to compute
   SCAMPProfileType profile_type;
@@ -173,6 +253,10 @@ struct OpInfo {
   bool keep_rows_separate;
   // Run without printing any message by standard output
   bool silent_mode;
+  // Max matches per column for ALL_NEIGHBORS profile type
+  int64_t max_matches_per_column;
+  // Max matches per tile for ALL_NEIGHBORS profile type
+  int64_t max_matches_per_tile;
 };
 
 // Struct containing the precomputed statistics for an input time series
@@ -247,19 +331,11 @@ class ThreadSafeQueue {
   std::condition_variable cond_;
 };
 
-using DeviceProfile = std::unordered_map<int, void *>;
-
 // Returns the size in bytes of a the matrix profile element for a particular MP
 // type
 size_t GetProfileTypeSize(SCAMPProfileType t);
 
-// Enum describing worker architecture, used to switch on architecture specific
-// code
-enum SCAMPArchitecture {
-  CPU_WORKER,
-  CUDA_GPU_WORKER,
-};
-
+// Enum describing different types of SCAMP errors
 enum SCAMPError_t {
   SCAMP_NO_ERROR,
   SCAMP_FUNCTIONALITY_UNIMPLEMENTED,
@@ -270,6 +346,10 @@ enum SCAMPError_t {
   SCAMP_DIM_INCOMPATIBLE
 };
 
+// Returns the string associated with a SCAMPError_t
+std::string getSCAMPErrorString(SCAMPError_t err);
+
+// Enum describing different tile execution configurations for SCAMP
 enum SCAMPTileType {
   SELF_JOIN_FULL_TILE,
   SELF_JOIN_UPPER_TRIANGULAR,
