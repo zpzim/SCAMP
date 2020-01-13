@@ -1,0 +1,5 @@
+global-include CMakeLists.txt
+
+graft src
+graft python
+

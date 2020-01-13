@@ -66,6 +66,7 @@ set(
   kubernetes/*.cc
   kubernetes/*.cpp
   kubernetes/*.h
+  python/*.cpp
   )
 
 # ----------------------------------------------------------------------------------------
@@ -80,7 +81,7 @@ if (CMAKE_CUDA_COMPILER)
   find_library(CUDART_LIBRARY cudart ${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES})
   include_directories(${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   set(CUDA_SEPARABLE_COMPILATION ON)
-  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr -lineinfo")
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler=-fPIC --expt-relaxed-constexpr -lineinfo")
   set(CMAKE_CUDA_FLAGS_RELEASE "${CMAKE_CUDA_FLAGS_RELEASE}")
   set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_60,code=sm_70")
   set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_61,code=sm_61")
@@ -92,7 +93,7 @@ if (CMAKE_CUDA_COMPILER)
 endif()
 
 # optimize in release
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -funroll-loops -march=native -O3")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fPIC -funroll-loops -march=native -O3")
 
 # build debug with sanitizer
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=address -fno-omit-frame-pointer")
@@ -106,6 +107,9 @@ endif()
 
 # ----------------------------------------------------------------------------------------
 #                              ===== Build targets =====
+
+add_subdirectory(pybind11)
+
 
 add_library(common ${CMAKE_CURRENT_SOURCE_DIR}/src/common.cpp)
 
@@ -158,6 +162,54 @@ if (CMAKE_CUDA_COMPILER)
   )
 endif()
 
+# C++/CUDA executable
+add_executable(SCAMP ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
+
+# Python module
+add_library(pySCAMP SHARED python/SCAMP_python.cpp)
+set_target_properties(pySCAMP PROPERTIES 
+    CXX_VISIBILITY_PRESET "hidden"
+    INTERPROCEDURAL_OPTIMIZATION TRUE
+    PREFIX "${PYTHON_MODULE_PREFIX}"
+    SUFFIX "${PYTHON_MODULE_EXTENSION}"
+)
+target_link_libraries(pySCAMP PRIVATE scamp_op scamp_utils common)
+target_link_libraries(pySCAMP PRIVATE pybind11::module)
+
+if (BUILD_CLIENT_SERVER)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/grpc EXCLUDE_FROM_ALL)
+  message(STATUS "Using gRPC via add_subdirectory.")
+  
+  # After using add_subdirectory, we can now use the grpc targets directly from
+  # this build.
+  set(_PROTOBUF_LIBPROTOBUF libprotobuf)
+  set(_PROTOBUF_PROTOC $<TARGET_FILE:protoc>)
+  set(_GRPC_GRPCPP_UNSECURE grpc++_unsecure)
+  set(_GRPC_GRPCPP grpc++)
+  set(_GRPC_GRPC grpc)
+  set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:grpc_cpp_plugin>)
+
+  # Add include directories we will use later
+  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/grpc/include/) 
+  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/grpc/third_party/gflags/include/)
+  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/grpc/third_party/protobuf/src/)
+
+  # Build scamp client and scamp server
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/kubernetes)
+
+endif()
+
+if(NOT TARGET gflags)
+  add_subdirectory(gflags)
+  include_directories(gflags/include/)
+endif()
+
+if (CMAKE_CUDA_COMPILER)
+  target_link_libraries(SCAMP -lcudart_static gflags common scamp_op scamp_utils)
+else()
+  target_link_libraries(SCAMP gflags common scamp_op scamp_utils)
+endif() 
+
 # Add clang tidy rules
 if(CLANG_TIDY_EXE)
   set(MAIN_LIBS common scamp_op qt_helper tile scamp_utils cpu_kernels cpu_stats)
@@ -194,41 +246,3 @@ if(CLANG_FORMAT_EXE)
     COMMAND ${CLANG_FORMAT_EXE} -i -style=file ${FILES_TO_FORMAT}
   )
 endif()
-
-
-add_executable(SCAMP ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
-
-
-if (BUILD_CLIENT_SERVER)
-  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/grpc EXCLUDE_FROM_ALL)
-  message(STATUS "Using gRPC via add_subdirectory.")
-  
-  # After using add_subdirectory, we can now use the grpc targets directly from
-  # this build.
-  set(_PROTOBUF_LIBPROTOBUF libprotobuf)
-  set(_PROTOBUF_PROTOC $<TARGET_FILE:protoc>)
-  set(_GRPC_GRPCPP_UNSECURE grpc++_unsecure)
-  set(_GRPC_GRPCPP grpc++)
-  set(_GRPC_GRPC grpc)
-  set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:grpc_cpp_plugin>)
-
-  # Add include directories we will use later
-  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/grpc/include/) 
-  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/grpc/third_party/gflags/include/)
-  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/grpc/third_party/protobuf/src/)
-
-  # Build scamp client and scamp server
-  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/kubernetes)
-
-endif()
-
-if(NOT TARGET gflags)
-  add_subdirectory(gflags)
-  include_directories(gflags/include/)
-endif()
-
-if (CMAKE_CUDA_COMPILER)
-  target_link_libraries(SCAMP -lcudart_static gflags common scamp_op scamp_utils)
-else()
-  target_link_libraries(SCAMP gflags common scamp_op scamp_utils)
-endif() 
