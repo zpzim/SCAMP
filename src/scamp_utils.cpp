@@ -121,6 +121,14 @@ double ConvertToEuclidean(double val, int window) {
   return std::sqrt(std::max(2.0 * window * (1.0 - val), 0.0));
 }
 
+double ConvertToPearson(double val) {
+  // If there was no match return NAN else val is already a Pearson Correlation
+  if (val < -1) {
+    return NAN;
+  }
+  return val;
+}
+
 bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
                         SCAMP::Profile &p, bool output_pearson, int window) {
   switch (p.type) {
@@ -132,7 +140,8 @@ bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
         SCAMP::mp_entry e;
         e.ulong = elem;
         if (output_pearson) {
-          mp_out << std::setprecision(10) << e.floats[0] << std::endl;
+          mp_out << std::setprecision(10) << ConvertToPearson(e.floats[0])
+                 << std::endl;
         } else {
           mp_out << std::setprecision(10)
                  << ConvertToEuclidean(e.floats[0], window) << std::endl;
@@ -153,7 +162,8 @@ bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
       auto arr = p.data[0].float_value;
       for (const float elem : arr) {
         if (output_pearson) {
-          mp_out << std::setprecision(10) << elem << std::endl;
+          mp_out << std::setprecision(10) << ConvertToPearson(elem)
+                 << std::endl;
         } else {
           mp_out << std::setprecision(10) << ConvertToEuclidean(elem, window)
                  << std::endl;
@@ -185,7 +195,8 @@ bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
         for (auto &elem : elems) {
           if (output_pearson) {
             mp_out << elem.col << " " << elem.row << " "
-                   << std::setprecision(10) << elem.corr << std::endl;
+                   << std::setprecision(10) << ConvertToPearson(elem.corr)
+                   << std::endl;
           } else {
             mp_out << elem.col << " " << elem.row << " "
                    << std::setprecision(10)
