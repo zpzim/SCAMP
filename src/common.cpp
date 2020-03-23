@@ -52,8 +52,18 @@ OpInfo::OpInfo(size_t Asize, size_t Bsize, size_t window_sz,
   max_tile_height = max_tile_width;
   // TODO(zpzim): make this a more generic parameter that is specified by
   // the user or memory availibility
-  max_matches_per_tile =
+  constexpr int64_t GIGABYTE = 1024 * 1024 * 1024;
+  constexpr int64_t PROFILE_MEMORY_BUDGET = 0.5 * GIGABYTE;
+
+  int64_t normative_match_budget_per_tile =
       (PROFILE_MEMORY_BUDGET / num_workers) / sizeof(SCAMPmatch);
+
+  max_matches_per_tile = max_matches_per_column * max_tile_width;
+
+  if (normative_match_budget_per_tile > max_matches_per_tile) {
+    max_matches_per_tile = normative_match_budget_per_tile;
+  }
+
   if (!silent_mode && profile_type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
     std::cout << "Profile memory budget is " << PROFILE_MEMORY_BUDGET
               << " setting max matches per tile to: "
@@ -151,34 +161,92 @@ void elementwise_max(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
   }
 }
 
-void match_merge(const std::vector<SCAMPmatch> &matches, ProfileData *profile,
-                 uint64_t merge_start_row, uint64_t merge_start_col,
-                 int64_t max_matches) {
-  for (auto elem : matches) {
-    uint64_t col = elem.col + merge_start_col;
-    auto &pq = profile->match_value[col];
-    if (pq.size() == max_matches && pq.top().corr < elem.corr) {
-      pq.pop();
-      elem.col = col;
-      elem.row += merge_start_row;
-      pq.push(elem);
-    } else if (pq.size() < max_matches) {
-      elem.col = col;
-      elem.row += merge_start_row;
-      pq.push(elem);
+// Updates the adaptive thresholds of a tile in the case that there was an
+// overflow. This is very similar logic to match_merge, except it does not
+// add any elements to the top K lists and only updates the thresholds.
+void Profile::threshold_merge(const std::vector<SCAMPmatch> &matches,
+                              uint64_t merge_start_row,
+                              uint64_t merge_start_col, int64_t max_matches) {
+  if (matches.empty()) {
+    return;
+  }
+
+  int i = 0;
+  while (i < matches.size()) {
+    uint64_t curr_col = matches[i].col;
+    int count = 1;
+    // Count how many results we have for the current column.
+    while (i + count < matches.size() && matches[i + count].col == curr_col) {
+      ++count;
     }
+    // If we have more than max_matches we can update the threshold with the
+    // smallest value.
+    if (count - 1 > max_matches && thresholds[curr_col + merge_start_col] <
+                                       matches[i + max_matches].corr) {
+      thresholds[curr_col + merge_start_col] = matches[i + max_matches].corr;
+    }
+    i += count;
   }
 }
 
-void matrix_merge(const std::vector<SCAMPmatch> &matches, ProfileData *profile,
-                  uint64_t merge_start_row, uint64_t merge_start_col,
-                  int64_t matrix_reduced_rows, int64_t matrix_reduced_cols) {
-  int matrix_rows = profile->matrix_value.size();
-  int matrix_cols = profile->matrix_value.front().size();
+// Merges the elements in matches into the top K values in the current
+// profile. Matches must be properly sorted first by column in ascending
+// order, then by correlation in descending order.
+void Profile::match_merge(const std::vector<SCAMPmatch> &matches,
+                          uint64_t merge_start_row, uint64_t merge_start_col,
+                          int64_t max_matches) {
+  if (matches.empty()) {
+    return;
+  }
+
+  int i = 0;
+  while (i < matches.size()) {
+    uint64_t curr_col = matches[i].col;
+    auto &pq = this->data.front().match_value[curr_col + merge_start_col];
+    uint64_t count = 0;
+    float old_val;
+    bool update_possible = false;
+    // Loop over the initial values that might need to go into the top K
+    while (i + count < matches.size() && matches[i + count].col == curr_col &&
+           count < max_matches) {
+      auto &match = matches[i + count];
+      // If the match is not better than the bottom of the top K, break out.
+      if (pq.size() == max_matches && match.corr <= pq.top().corr) {
+        break;
+      }
+      // If we have found K values we need to make some space for the new one.
+      if (pq.size() == max_matches) {
+        update_possible = true;
+        old_val = pq.top().corr;
+        pq.pop();
+      }
+      pq.emplace(match.corr, match.row + merge_start_row,
+                 match.col + merge_start_col);
+      ++count;
+    }
+
+    // Skip the rest of the values for this column, they aren't useful.
+    while (i + count < matches.size() && matches[i + count].col == curr_col) {
+      ++count;
+    }
+    // If we ever updated the top K we can update the threshold.
+    if (update_possible) {
+      this->thresholds[curr_col + merge_start_col] = old_val;
+    }
+    i += count;
+  }
+}
+
+// Merges elements in matches into a reduced distance matrix summary.
+void Profile::matrix_merge(const std::vector<SCAMPmatch> &matches,
+                           uint64_t merge_start_row, uint64_t merge_start_col) {
+  int matrix_rows = this->data.front().matrix_value.size();
+  int matrix_cols = this->data.front().matrix_value.front().size();
   for (auto elem : matches) {
     uint64_t col = elem.col + merge_start_col;
-    int64_t matrix_col = col / matrix_reduced_cols;
-    int64_t matrix_row = (elem.row + merge_start_row) / matrix_reduced_rows;
+    int64_t matrix_col = col / this->matrix_reduced_cols;
+    int64_t matrix_row =
+        (elem.row + merge_start_row) / this->matrix_reduced_rows;
     if (matrix_row >= matrix_rows || matrix_col >= matrix_cols ||
         matrix_row < 0 || matrix_col < 0) {
       std::ostringstream ostream;
@@ -187,8 +255,8 @@ void matrix_merge(const std::vector<SCAMPmatch> &matches, ProfileData *profile,
               << ", " << matrix_col << "]";
       throw SCAMPException(ostream.str());
     }
-    if (profile->matrix_value[matrix_row][matrix_col] < elem.corr) {
-      profile->matrix_value[matrix_row][matrix_col] = elem.corr;
+    if (this->data.front().matrix_value[matrix_row][matrix_col] < elem.corr) {
+      this->data.front().matrix_value[matrix_row][matrix_col] = elem.corr;
     }
   }
 }
@@ -222,6 +290,7 @@ void Profile::Alloc(size_t size) {
       } else {
         data[0].match_value.resize(size);
       }
+      thresholds.resize(size, default_thresh);
       break;
     case PROFILE_TYPE_KNN:
     case PROFILE_TYPE_1NN_MULTIDIM:
@@ -270,9 +339,13 @@ void Profile::CopyFromDevice(const ExecInfo *info,
 void Profile::MergeTileToProfile(Profile *tile_profile, const OpInfo *info,
                                  uint64_t position, uint64_t length,
                                  uint64_t index_start) {
+  // Check if we overflowed
+  bool overflowed = length >= info->max_matches_per_tile;
+
   // Lock the before we merge, this function can be called by multiple
   // threads
   std::unique_lock<std::mutex> mlock(this->_profile_lock);
+
   if (type != tile_profile->type) {
     throw(SCAMPException("Profile Types do not match"));
   }
@@ -298,12 +371,16 @@ void Profile::MergeTileToProfile(Profile *tile_profile, const OpInfo *info,
       return;
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
       if (output_matrix) {
-        matrix_merge(tile_profile->data[0].match_value_unordered,
-                     &this->data[0], index_start, position,
-                     this->matrix_reduced_rows, this->matrix_reduced_cols);
+        matrix_merge(tile_profile->data[0].match_value_unordered, index_start,
+                     position);
       } else {
-        match_merge(tile_profile->data[0].match_value_unordered, &this->data[0],
-                    index_start, position, info->max_matches_per_column);
+        if (overflowed) {
+          threshold_merge(tile_profile->data[0].match_value_unordered,
+                          index_start, position, info->max_matches_per_column);
+        } else {
+          match_merge(tile_profile->data[0].match_value_unordered, index_start,
+                      position, info->max_matches_per_column);
+        }
       }
       return;
     case PROFILE_TYPE_KNN:

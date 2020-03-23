@@ -1,3 +1,6 @@
+#include <thrust/device_ptr.h>
+#include <thrust/execution_policy.h>
+#include <thrust/sort.h>
 #include <unordered_map>
 #include "defines.h"
 #include "kernel_common.h"
@@ -327,4 +330,10 @@ SCAMPError_t gpu_kernel_ab_join_lower(Tile *t) {
       tile_args, t, t->profile_b(), t->profile_a(), t->info()->computing_cols,
       t->info()->computing_rows);
 }
+
+void match_gpu_sort(SCAMPmatch *matches, int64_t len, cudaStream_t stream) {
+  thrust::device_ptr<SCAMPmatch> ptr = thrust::device_pointer_cast(matches);
+  thrust::sort(thrust::cuda::par.on(stream), ptr, ptr + len);
+}
+
 }  // namespace SCAMP

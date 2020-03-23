@@ -17,15 +17,18 @@
 #include <unordered_map>
 #include "scamp_exception.h"
 
+#ifdef _HAS_CUDA_
+#define HOST_DEVICE_FUNCTION __host__ __device__
+#else
+#define HOST_DEVICE_FUNCTION
+#endif
+
 namespace SCAMP {
 
 using DeviceProfile = std::unordered_map<int, void *>;
 
 struct OpInfo;
 struct ExecInfo;
-
-constexpr int64_t GIGABYTE = 1024 * 1024 * 1024;
-constexpr int64_t PROFILE_MEMORY_BUDGET = 2 * GIGABYTE;
 
 // Types of matrix profile to compute
 enum SCAMPProfileType {
@@ -64,8 +67,15 @@ typedef union {
 } mp_entry;
 
 struct SCAMPmatch {
-  SCAMPmatch() : corr(-2), row(0), col(0) {}
-  SCAMPmatch(float d, uint32_t r, uint32_t c) : corr(d), row(r), col(c) {}
+  HOST_DEVICE_FUNCTION SCAMPmatch() : corr(-2), row(0), col(0) {}
+  HOST_DEVICE_FUNCTION SCAMPmatch(float d, uint32_t r, uint32_t c)
+      : corr(d), row(r), col(c) {}
+  HOST_DEVICE_FUNCTION bool operator<(const SCAMPmatch &other) const {
+    if (col == other.col) {
+      return corr > other.corr;
+    }
+    return col < other.col;
+  }
   float corr;
   uint32_t row;
   uint32_t col;
@@ -101,6 +111,7 @@ class Profile {
   Profile() : type(PROFILE_TYPE_INVALID) {}
   Profile(Profile &other) {
     std::unique_lock<std::mutex> lock(_profile_lock);
+    default_thresh = other.default_thresh;
     matrix_height = other.matrix_height;
     matrix_width = other.matrix_width;
     output_matrix = other.output_matrix;
@@ -109,6 +120,7 @@ class Profile {
   }
   Profile(Profile &&other) {
     std::unique_lock<std::mutex> lock(_profile_lock);
+    default_thresh = other.default_thresh;
     matrix_height = other.matrix_height;
     matrix_width = other.matrix_width;
     output_matrix = other.output_matrix;
@@ -117,6 +129,7 @@ class Profile {
   }
   Profile &operator=(Profile &&other) {
     std::unique_lock<std::mutex> lock(_profile_lock);
+    default_thresh = other.default_thresh;
     matrix_height = other.matrix_height;
     matrix_width = other.matrix_width;
     output_matrix = other.output_matrix;
@@ -124,9 +137,11 @@ class Profile {
     data = std::move(other.data);
     return *this;
   }
-  Profile(SCAMPProfileType t, size_t size, int64_t mwidth = -1,
-          int64_t mheight = -1, int64_t rrows = -1, int64_t rcols = -1)
+  Profile(SCAMPProfileType t, size_t size, float thresh_init = 0,
+          int64_t mwidth = -1, int64_t mheight = -1, int64_t rrows = -1,
+          int64_t rcols = -1)
       : type(t),
+        default_thresh(thresh_init),
         matrix_width(mwidth),
         matrix_height(mheight),
         matrix_reduced_rows(rrows),
@@ -135,11 +150,13 @@ class Profile {
     Alloc(size);
   }
   std::vector<ProfileData> data;
+  std::vector<float> thresholds;
   SCAMPProfileType type;
   int64_t matrix_width;
   int64_t matrix_height;
   int64_t matrix_reduced_rows;
   int64_t matrix_reduced_cols;
+  float default_thresh;
   bool output_matrix;
   void MergeTileToProfile(Profile *tile_profile, const OpInfo *info,
                           uint64_t position, uint64_t length,
@@ -150,6 +167,14 @@ class Profile {
   void Alloc(size_t size);
 
  private:
+  void threshold_merge(const std::vector<SCAMPmatch> &matches,
+                       uint64_t merge_start_row, uint64_t merge_start_col,
+                       int64_t max_matches);
+  void match_merge(const std::vector<SCAMPmatch> &matches,
+                   uint64_t merge_start_row, uint64_t merge_start_col,
+                   int64_t max_matches);
+  void matrix_merge(const std::vector<SCAMPmatch> &matches,
+                    uint64_t merge_start_row, uint64_t merge_start_col);
   std::mutex _profile_lock;
 };
 

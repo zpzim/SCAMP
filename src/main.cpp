@@ -215,6 +215,8 @@ int main(int argc, char **argv) {
       std::ceil(n_x / static_cast<double>(FLAGS_reduced_width));
   args.profile_a.matrix_reduced_rows =
       std::ceil(n_y / static_cast<double>(FLAGS_reduced_height));
+  args.profile_a.default_thresh = args.distance_threshold;
+
   args.profile_b.matrix_height =
       FLAGS_reduce_all_neighbors ? FLAGS_reduced_height : -1.0;
   args.profile_b.matrix_width =
@@ -223,6 +225,7 @@ int main(int argc, char **argv) {
       std::ceil(n_x / static_cast<double>(FLAGS_reduced_width));
   args.profile_b.matrix_reduced_rows =
       std::ceil(n_y / static_cast<double>(FLAGS_reduced_height));
+  args.profile_b.default_thresh = args.distance_threshold;
   args.profile_a.output_matrix = FLAGS_reduce_all_neighbors;
   args.profile_b.output_matrix = FLAGS_reduce_all_neighbors;
   if (FLAGS_print_debug_info) {
