@@ -9,6 +9,7 @@
 [Usage](https://github.com/zpzim/SCAMP#usage) \
 [Run Using Docker](https://github.com/zpzim/SCAMP#run-using-docker) \
 [Distributed Operation](https://github.com/zpzim/SCAMP#distributed-operation) \
+[Profile Types](https://github.com/zpzim/SCAMP#profile-types) \
 [Examples](https://github.com/zpzim/SCAMP#examples)
 
 ## Overview
@@ -89,7 +90,6 @@ This will generate two files: mp_columns_out and mp_columns_out_index, which con
 * There are more arguments that allow you even greater control over what SCAMP can do. Use --helpfull for a list of possible arguments and their descriptions.
 * cmake provides support for clang-tidy (when you build) and clang-format (using build target clang-format) to use these please make sure clang-tidy and clang-format are installed on your system
 
-
 ## Run Using Docker
 Rather than building from scratch you can run SCAMP via [nvidia-docker](https://github.com/NVIDIA/nvidia-docker) using the prebuilt [image](https://hub.docker.com/r/zpzim/scamp) on dockerhub.
 
@@ -140,9 +140,17 @@ kubectl cp <SCAMP server container name>:/mp_columns_out .
 #### Sharded implementation
 * The original distributed implementation used [AWS batch](https://aws.amazon.com/batch/) and shards the time series to Amazon S3. This approach avoids the above limitations of our in-memory SCAMPserver, however our initial implementation was very limited in scope and was not extensible to other types of SCAMP workloads, so it is mostly obsolete. However, we still provide the scripts used for posterity in the aws/ directory. Though these would be strictly for inspiration, as there are AWS account side configurations required for operation that cannot be provided.
 
+## Profile Types
+* 1NN_INDEX: This is the default profile type, it will produce the nearest neighbor distance/correlation of every subsequence as well as the index of the nearest neighbor
+* 1NN: This is a slightly faster version of the default profile type, but it only returns the nearest neighbor distance/correlation not the index of the nearest neighbor
+* SUM_THRESH: Rather than finding the nearest neighbor, this profile type will compute the sum of the correlations above the specified threshold (--threshold) for each subsequence. This is like a frequency histogram of correlations.
+* ALL_NEIGHBORS: This returns the approximate K (--max_matches_per_column) nearest neighbors and their correlations/indexes for each subsequence. A threshold (--threshold) can be used to accelerate the computation by ignoring matches below the threshold. Supported on GPU only currently. This can also be used to produce distance matrix summaries using --reduce_all_neighbors, --reduced_height and --reduced_width. See the example below
+
+All of the above profiles support AB joins
+
 ## Examples
 
-### Distance Matrix Summaries using --reduce_all_neighbors
+### Distance Matrix Summaries using --reduce_all_neighbors --reduced_height --reduced_width
 
 ![Alt text](/Readme/distance_matrix_summary.png?raw=true "Distance Matrix Summary")
 

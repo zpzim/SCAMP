@@ -24,7 +24,7 @@ DEFINE_int64(distributed_tile_size, 4000000,
 DEFINE_string(hostname_port, "localhost:30078",
               "Hostname:Port of SCAMP server to perform distributed work");
 #endif
-DEFINE_int64(max_matches_per_column, 100,
+DEFINE_int64(max_matches_per_column, 5,
              "Maximum number of neighbors to generate for any subsequence "
              "(used for ALL_NEIGHBORS profiles).");
 DEFINE_bool(reduce_all_neighbors, false,
@@ -43,7 +43,7 @@ DEFINE_bool(
 DEFINE_int32(max_tile_size, 1 << 17, "Maximum tile size SCAMP will use");
 DEFINE_int32(window, -1, "Length of subsequences to search for");
 DEFINE_double(
-    threshold, std::nan("NaN"),
+    threshold, 0,
     "Distance threshold for frequency and sum calculations, we will only count "
     "events with a Pearson correlation above this threshold.");
 DEFINE_string(

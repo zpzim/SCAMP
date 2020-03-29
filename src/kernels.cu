@@ -269,7 +269,6 @@ SCAMPError_t compute_gpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
     std::cout << "Launching " << num_blocks << " thread blocks of size "
               << blocksz << " with a total of " << smem
               << " bytes of shared memory per block." << std::endl;
-    args.Print();
   }
   if (exclusion_total < args.n_x) {
     switch (t->info()->profile_type) {
