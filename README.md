@@ -43,14 +43,14 @@ SCAMP is extremely fast, especially on Tesla series GPUs. I belive this reposito
 
 The included performance tests showcase SCAMP's performance up to an input size of 16M datapoints; however, as we have shown in our publications SCAMP is scalable to hundreds of millions of datapoints and even billions of datapoints with the right hardware.
 
-![Alt text](/Readme/SCAMP_Profile_Performance_Comparison.svg?raw=true "GPU SCAMP Profiles Performance")
+![Alt text](/Readme/SCAMP_Profile_Performance_Comparison.png?raw=true "GPU SCAMP Profiles Performance")
 In the figure above we show the runtime in seconds for SCAMP's various profile types (self-join) on 2 P100 GPUs.
 
 
-![Alt text](/Readme/KNN.svg?raw=true "GPU KNN Profiles Performance with different values of K")
+![Alt text](/Readme/KNN.png?raw=true "GPU KNN Profiles Performance with different values of K")
 In the figure above we show the runtime in seconds for SCAMP's approximate KNN (--profile_type=ALL_NEIGHBORS) matrix profile, while varying K and the input size on 2 P100 GPUs. You can see that SCAMP maintains good performance relative to the baseline 1NN_INDEX matrix profile up to at least K=20, which should be sufficient for almost all practioners. All measurements were made with random data with the initial threshold set to 0 correlation (close to the worst case for KNN).
 
-![Alt text](/Readme/other_methods.svg?raw=true "Performance of SCAMP on GPU compared to other methods to compute the matrix profile on GPU")
+![Alt text](/Readme/other_methods.png?raw=true "Performance of SCAMP on GPU compared to other methods to compute the matrix profile on GPU")
 The above figure illustrates SCAMP's performance versus [STUMPY](https://github.com/TDAmeritrade/stumpy) which is a popular matrix profile implementation. As can be seen above SCAMP on 2x P100 GPUs much faster than STUMPY, when STUMPY is running on 16x V100 GPUs, which are about ~2x more powerful than P100s individually. This is several orders of magnitude of difference in processing power.
 
  
