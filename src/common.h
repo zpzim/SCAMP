@@ -168,8 +168,7 @@ class Profile {
 
  private:
   void threshold_merge(const std::vector<SCAMPmatch> &matches,
-                       uint64_t merge_start_row, uint64_t merge_start_col,
-                       int64_t max_matches);
+                       uint64_t merge_start_col, int64_t max_matches);
   void match_merge(const std::vector<SCAMPmatch> &matches,
                    uint64_t merge_start_row, uint64_t merge_start_col,
                    int64_t max_matches);

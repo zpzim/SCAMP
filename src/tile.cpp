@@ -436,8 +436,11 @@ std::pair<int64_t, int64_t> Tile::get_profile_dims_from_device() {
 
 void Tile::SortMatches(SCAMPmatch *matches, uint64_t len) {
 #ifdef _HAS_CUDA_
-  match_gpu_sort(matches, len, get_stream());
+  if (_exec_info.arch == CUDA_GPU_WORKER) {
+    return match_gpu_sort(matches, len, get_stream());
+  }
 #endif
+  ASSERT(false, "Sorting ALL_NEIGHBORS profiles is supported only on GPUs");
 }
 
 // TODO(zpzim): move this back into SCAMP_Operation, we shouldn't have the
@@ -474,7 +477,12 @@ bool Tile::MergeProfile(Profile *profile_a, Profile *profile_b) {
     height = _info->max_matches_per_tile;
   }
 
-  if (_info->profile_type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
+  bool output_matrix = profile_a->output_matrix || profile_b->output_matrix;
+
+  // We only need to sort the results for KNN matrix profiles (not distance
+  // matrix summaries)
+  if (_info->profile_type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS &&
+      !output_matrix) {
     // Sort the resulting array
     SortMatches(reinterpret_cast<SCAMPmatch *>(
                     _profile_a_tile_dev.at(_info->profile_type)),

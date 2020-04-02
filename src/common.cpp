@@ -7,6 +7,12 @@
 
 namespace SCAMP {
 
+static constexpr int64_t GIGABYTE = 1024 * 1024 * 1024;
+
+// TODO(zpzim): make this a more generic parameter that is specified by
+// the user or memory availibility
+static constexpr int64_t PROFILE_MEMORY_BUDGET = 0.5 * GIGABYTE;
+
 OpInfo::OpInfo(size_t Asize, size_t Bsize, size_t window_sz,
                size_t max_tile_size, bool selfjoin, SCAMPPrecisionType t,
                int64_t start_row, int64_t start_col, OptionalArgs args_,
@@ -41,7 +47,6 @@ OpInfo::OpInfo(size_t Asize, size_t Bsize, size_t window_sz,
   // Prevents our tiles from becoming pathalogically small
   // Tiles should not be smaller than the exclusion zone (mp_window / 4)
   // otherwise the tiling becomes unnecessarially complex
-
   const int SMALLEST_ALLOWED_TILE_DIM = mp_window;
 
   if (max_tile_ts_size < SMALLEST_ALLOWED_TILE_DIM + mp_window) {
@@ -50,10 +55,6 @@ OpInfo::OpInfo(size_t Asize, size_t Bsize, size_t window_sz,
 
   max_tile_width = max_tile_ts_size - mp_window + 1;
   max_tile_height = max_tile_width;
-  // TODO(zpzim): make this a more generic parameter that is specified by
-  // the user or memory availibility
-  constexpr int64_t GIGABYTE = 1024 * 1024 * 1024;
-  constexpr int64_t PROFILE_MEMORY_BUDGET = 0.5 * GIGABYTE;
 
   int64_t normative_match_budget_per_tile =
       (PROFILE_MEMORY_BUDGET / num_workers) / sizeof(SCAMPmatch);
@@ -64,10 +65,16 @@ OpInfo::OpInfo(size_t Asize, size_t Bsize, size_t window_sz,
     max_matches_per_tile = normative_match_budget_per_tile;
   }
 
+  int64_t worker_memory_budget = max_matches_per_tile * sizeof(SCAMPmatch) * 2;
+
   if (!silent_mode && profile_type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
-    std::cout << "Profile memory budget is " << PROFILE_MEMORY_BUDGET
-              << " setting max matches per tile to: "
-              << max_matches_per_tile / 1000000.0 << " million. " << std::endl;
+    std::cout << "Have to allocate space for " << max_matches_per_tile
+              << " matches per tile, which will require on the order of "
+              << worker_memory_budget / static_cast<double>(GIGABYTE)
+              << " GB of memory per worker.";
+    std::cout << "If this amount of memory is too large we may run out of "
+                 "memory on the system/GPUs, if this happens try reducing "
+                 "max_matches_per_column to a smaller value.";
   }
 }
 
@@ -165,7 +172,6 @@ void elementwise_max(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
 // overflow. This is very similar logic to match_merge, except it does not
 // add any elements to the top K lists and only updates the thresholds.
 void Profile::threshold_merge(const std::vector<SCAMPmatch> &matches,
-                              uint64_t merge_start_row,
                               uint64_t merge_start_col, int64_t max_matches) {
   if (matches.empty()) {
     return;
@@ -375,8 +381,8 @@ void Profile::MergeTileToProfile(Profile *tile_profile, const OpInfo *info,
                      position);
       } else {
         if (overflowed) {
-          threshold_merge(tile_profile->data[0].match_value_unordered,
-                          index_start, position, info->max_matches_per_column);
+          threshold_merge(tile_profile->data[0].match_value_unordered, position,
+                          info->max_matches_per_column);
         } else {
           match_merge(tile_profile->data[0].match_value_unordered, index_start,
                       position, info->max_matches_per_column);
