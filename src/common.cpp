@@ -9,6 +9,7 @@ namespace SCAMP {
 
 static constexpr int64_t GIGABYTE = 1024 * 1024 * 1024;
 
+static constexpr int64_t MEMORY_SAVINGS_FACTOR = 200;
 // TODO(zpzim): make this a more generic parameter that is specified by
 // the user or memory availibility
 static constexpr int64_t PROFILE_MEMORY_BUDGET = 0.5 * GIGABYTE;
@@ -18,7 +19,7 @@ OpInfo::OpInfo(size_t Asize, size_t Bsize, size_t window_sz,
                int64_t start_row, int64_t start_col, OptionalArgs args_,
                SCAMPProfileType profiletype, bool keep_rows, bool compute_rows,
                bool compute_cols, bool aligned, bool silent_mode,
-               int num_workers, int64_t max_matches_per_col)
+               int num_workers, int64_t max_matches_per_col, bool output_matrix)
     : full_ts_len_A(Asize),
       full_ts_len_B(Bsize),
       mp_window(window_sz),
@@ -33,7 +34,8 @@ OpInfo::OpInfo(size_t Asize, size_t Bsize, size_t window_sz,
       computing_cols(compute_cols),
       is_aligned(aligned),
       silent_mode(silent_mode),
-      max_matches_per_column(max_matches_per_col) {
+      max_matches_per_column(max_matches_per_col),
+      matrix_mode(output_matrix) {
   if (self_join) {
     full_ts_len_B = full_ts_len_A;
   }
@@ -63,6 +65,12 @@ OpInfo::OpInfo(size_t Asize, size_t Bsize, size_t window_sz,
 
   if (normative_match_budget_per_tile > max_matches_per_tile) {
     max_matches_per_tile = normative_match_budget_per_tile;
+  }
+
+  if (matrix_mode) {
+    max_matches_per_column = INT_MAX;
+    max_matches_per_tile =
+        (max_tile_width * max_tile_height) / MEMORY_SAVINGS_FACTOR;
   }
 
   int64_t worker_memory_budget = max_matches_per_tile * sizeof(SCAMPmatch) * 2;
