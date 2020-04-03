@@ -128,13 +128,35 @@ __device__ void init_smem(SCAMPKernelInputArgs<double> &args,
                           PROFILE_OUTPUT_TYPE *profile_a,
                           PROFILE_OUTPUT_TYPE *profile_b, uint32_t col_start,
                           uint32_t row_start) {
-  mp_entry e;
-  e.floats[0] = static_cast<float>(args.opt.threshold);
-  e.ints[1] = 0;
-  init_smem_with_static_initializer<DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS,
-                                    COMPUTE_COLS, tile_width, tile_height,
-                                    BLOCKSZ, PROFILE_TYPE_APPROX_ALL_NEIGHBORS>(
-      args, smem, col_start, row_start, e.ulong);
+  int global_position = col_start + threadIdx.x;
+  int local_position = threadIdx.x;
+  mp_entry initializer;
+  initializer.ints[1] = 0;
+  while (local_position < tile_width && global_position < args.n_x) {
+    smem.dg_col[local_position] = args.dga[global_position];
+    smem.df_col[local_position] = args.dfa[global_position];
+    smem.inorm_col[local_position] = args.normsa[global_position];
+    if (COMPUTE_COLS) {
+      initializer.floats[0] = args.thresholds_a[global_position];
+      smem.local_mp_col[local_position] = initializer.ulong;
+    }
+    local_position += BLOCKSZ;
+    global_position += BLOCKSZ;
+  }
+
+  global_position = row_start + threadIdx.x;
+  local_position = threadIdx.x;
+  while (local_position < tile_height && global_position < args.n_y) {
+    smem.dg_row[local_position] = args.dgb[global_position];
+    smem.df_row[local_position] = args.dfb[global_position];
+    smem.inorm_row[local_position] = args.normsb[global_position];
+    if (COMPUTE_ROWS) {
+      initializer.floats[0] = args.thresholds_b[global_position];
+      smem.local_mp_row[local_position] = initializer.ulong;
+    }
+    local_position += BLOCKSZ;
+    global_position += BLOCKSZ;
+  }
 };
 
 ///////////////////////////////////////////////////////////////////
@@ -251,14 +273,13 @@ __device__ void write_back(SCAMPKernelInputArgs<double> &args,
                            PROFILE_OUTPUT_TYPE *profile_A,
                            PROFILE_OUTPUT_TYPE *profile_B) {
   int global_position, local_position;
-  float threshold = static_cast<float>(args.opt.threshold);
   if (COMPUTE_COLS) {
     global_position = tile_start_x + threadIdx.x;
     local_position = threadIdx.x;
     while (local_position < TILE_WIDTH && global_position < n_x) {
       mp_entry e;
       e.ulong = smem.local_mp_col[local_position];
-      if (e.floats[0] > threshold) {
+      if (e.floats[0] > args.thresholds_a[global_position]) {
         // Reserve space in output array
         unsigned long long int pos =
             do_atomicAdd<unsigned long long int, ATOMIC_GLOBAL>(
@@ -280,7 +301,7 @@ __device__ void write_back(SCAMPKernelInputArgs<double> &args,
     while (local_position < TILE_HEIGHT && global_position < n_y) {
       mp_entry e;
       e.ulong = smem.local_mp_row[local_position];
-      if (e.floats[0] > threshold) {
+      if (e.floats[0] > args.thresholds_b[global_position]) {
         // Reserve space in output array
         unsigned long long int pos =
             do_atomicAdd<unsigned long long int, ATOMIC_GLOBAL>(

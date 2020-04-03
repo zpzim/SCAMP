@@ -234,6 +234,12 @@ Tile::Tile(const OpInfo *info, SCAMPArchitecture arch, int cuda_id)
             [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
       _dg_B(alloc_mem<double>(info->max_tile_height, arch, cuda_id),
             [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
+      _thresholds_A(
+          alloc_mem<float>(info->max_tile_width, arch, cuda_id),
+          [=](float *p) { return free_mem<float>(p, arch, cuda_id); }),
+      _thresholds_B(
+          alloc_mem<float>(info->max_tile_height, arch, cuda_id),
+          [=](float *p) { return free_mem<float>(p, arch, cuda_id); }),
 
       _scratchpad(
           static_cast<double *>(
@@ -347,6 +353,18 @@ SCAMPError_t Tile::InitProfile(Profile *profile_a, Profile *profile_b) {
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
       Memset(_profile_a_dev_length, 0, sizeof(unsigned long long int));
       Memset(_profile_b_dev_length, 0, sizeof(unsigned long long int));
+      Memcopy(_thresholds_A.get(),
+              profile_a->thresholds.data() + _current_tile_col,
+              sizeof(float) * width, false);
+      if (_info->self_join) {
+        Memcopy(_thresholds_B.get(),
+                profile_a->thresholds.data() + _current_tile_row,
+                sizeof(float) * height, false);
+      } else if (_info->computing_rows && _info->keep_rows_separate) {
+        Memcopy(_thresholds_B.get(),
+                profile_b->thresholds.data() + _current_tile_row,
+                sizeof(float) * height, false);
+      }
       break;
     case PROFILE_TYPE_FREQUENCY_THRESH:
     case PROFILE_TYPE_KNN:
@@ -373,9 +391,8 @@ void Tile::InitStats(const PrecomputedInfo &a, const PrecomputedInfo &b) {
   Memcopy(_means_B.get(), b.means().data() + _current_tile_row, bytes_b, false);
 }
 
-std::pair<unsigned long long int, unsigned long long int>
-Tile::get_profile_dims_from_device() {
-  std::pair<unsigned long long int, unsigned long long int> result;
+std::pair<int64_t, int64_t> Tile::get_profile_dims_from_device() {
+  std::pair<int64_t, int64_t> result;
   result.first = 0;
   result.second = 0;
   this->Memcopy(&result.first, _profile_a_dev_length,
@@ -394,7 +411,7 @@ Tile::get_profile_dims_from_device() {
                    "match threshold? "
                 << std::endl;
     }
-    result.first = _info->max_matches_per_tile;
+    result.first = -1;
   }
 
   if (result.second > info()->max_matches_per_tile) {
@@ -408,7 +425,7 @@ Tile::get_profile_dims_from_device() {
                    "match threshold? "
                 << std::endl;
     }
-    result.second = _info->max_matches_per_tile;
+    result.second = -1;
   }
   if (!_info->silent_mode) {
     std::cout << "width = " << result.first << " height = " << result.second
@@ -417,12 +434,21 @@ Tile::get_profile_dims_from_device() {
   return result;
 }
 
+void Tile::SortMatches(SCAMPmatch *matches, uint64_t len) {
+#ifdef _HAS_CUDA_
+  if (_exec_info.arch == CUDA_GPU_WORKER) {
+    return match_gpu_sort(matches, len, get_stream());
+  }
+#endif
+  ASSERT(false, "Sorting ALL_NEIGHBORS profiles is supported only on GPUs");
+}
+
 // TODO(zpzim): move this back into SCAMP_Operation, we shouldn't have the
 // merging be functionality of the individual tile
-void Tile::MergeProfile(Profile *profile_a, Profile *profile_b) {
+bool Tile::MergeProfile(Profile *profile_a, Profile *profile_b) {
   // Set up a copy operation back to the host
   int height, width;
-  switch (profile_a->type) {
+  switch (_info->profile_type) {
     case PROFILE_TYPE_1NN:
     case PROFILE_TYPE_1NN_INDEX:
     case PROFILE_TYPE_SUM_THRESH:
@@ -442,6 +468,32 @@ void Tile::MergeProfile(Profile *profile_a, Profile *profile_b) {
       break;
   }
 
+  bool overflowed = width < 0 || height < 0;
+
+  if (width < 0) {
+    width = _info->max_matches_per_tile;
+  }
+  if (height < 0) {
+    height = _info->max_matches_per_tile;
+  }
+
+  bool output_matrix = profile_a->output_matrix || profile_b->output_matrix;
+
+  // We only need to sort the results for KNN matrix profiles (not distance
+  // matrix summaries)
+  if (_info->profile_type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS &&
+      !output_matrix) {
+    // Sort the resulting array
+    SortMatches(reinterpret_cast<SCAMPmatch *>(
+                    _profile_a_tile_dev.at(_info->profile_type)),
+                width);
+    if (_info->computing_rows) {
+      SortMatches(reinterpret_cast<SCAMPmatch *>(
+                      _profile_b_tile_dev.at(_info->profile_type)),
+                  height);
+    }
+  }
+
   _profile_a_tile.CopyFromDevice(&_exec_info, &_profile_a_tile_dev, width);
   if (_info->computing_rows) {
     _profile_b_tile.CopyFromDevice(&_exec_info, &_profile_b_tile_dev, height);
@@ -454,13 +506,15 @@ void Tile::MergeProfile(Profile *profile_a, Profile *profile_b) {
   profile_a->MergeTileToProfile(&_profile_a_tile, _info, _current_tile_col,
                                 width, _current_tile_row);
 
-  if (_info->computing_rows && _info->keep_rows_separate) {
-    profile_b->MergeTileToProfile(&_profile_b_tile, _info, _current_tile_row,
-                                  height, _current_tile_col);
-  } else if (_info->self_join) {
+  if (_info->self_join && _info->computing_rows) {
     profile_a->MergeTileToProfile(&_profile_b_tile, _info, _current_tile_row,
                                   height, _current_tile_col);
+  } else if (_info->computing_rows && _info->keep_rows_separate) {
+    profile_b->MergeTileToProfile(&_profile_b_tile, _info, _current_tile_row,
+                                  height, _current_tile_col);
   }
+
+  return !overflowed;
 }
 
 SCAMPError_t Tile::execute(SCAMPTileType t) {

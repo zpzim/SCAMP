@@ -24,7 +24,7 @@ DEFINE_int64(distributed_tile_size, 4000000,
 DEFINE_string(hostname_port, "localhost:30078",
               "Hostname:Port of SCAMP server to perform distributed work");
 #endif
-DEFINE_int64(max_matches_per_column, 100,
+DEFINE_int64(max_matches_per_column, 5,
              "Maximum number of neighbors to generate for any subsequence "
              "(used for ALL_NEIGHBORS profiles).");
 DEFINE_bool(reduce_all_neighbors, false,
@@ -43,7 +43,7 @@ DEFINE_bool(
 DEFINE_int32(max_tile_size, 1 << 17, "Maximum tile size SCAMP will use");
 DEFINE_int32(window, -1, "Length of subsequences to search for");
 DEFINE_double(
-    threshold, std::nan("NaN"),
+    threshold, 0,
     "Distance threshold for frequency and sum calculations, we will only count "
     "events with a Pearson correlation above this threshold.");
 DEFINE_string(
@@ -215,6 +215,8 @@ int main(int argc, char **argv) {
       std::ceil(n_x / static_cast<double>(FLAGS_reduced_width));
   args.profile_a.matrix_reduced_rows =
       std::ceil(n_y / static_cast<double>(FLAGS_reduced_height));
+  args.profile_a.default_thresh = args.distance_threshold;
+
   args.profile_b.matrix_height =
       FLAGS_reduce_all_neighbors ? FLAGS_reduced_height : -1.0;
   args.profile_b.matrix_width =
@@ -223,6 +225,7 @@ int main(int argc, char **argv) {
       std::ceil(n_x / static_cast<double>(FLAGS_reduced_width));
   args.profile_b.matrix_reduced_rows =
       std::ceil(n_y / static_cast<double>(FLAGS_reduced_height));
+  args.profile_b.default_thresh = args.distance_threshold;
   args.profile_a.output_matrix = FLAGS_reduce_all_neighbors;
   args.profile_b.output_matrix = FLAGS_reduce_all_neighbors;
   if (FLAGS_print_debug_info) {

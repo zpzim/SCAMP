@@ -1,3 +1,6 @@
+#include <thrust/device_ptr.h>
+#include <thrust/execution_policy.h>
+#include <thrust/sort.h>
 #include <unordered_map>
 #include "defines.h"
 #include "kernel_common.h"
@@ -266,7 +269,6 @@ SCAMPError_t compute_gpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
     std::cout << "Launching " << num_blocks << " thread blocks of size "
               << blocksz << " with a total of " << smem
               << " bytes of shared memory per block." << std::endl;
-    args.Print();
   }
   if (exclusion_total < args.n_x) {
     switch (t->info()->profile_type) {
@@ -327,4 +329,10 @@ SCAMPError_t gpu_kernel_ab_join_lower(Tile *t) {
       tile_args, t, t->profile_b(), t->profile_a(), t->info()->computing_cols,
       t->info()->computing_rows);
 }
+
+void match_gpu_sort(SCAMPmatch *matches, int64_t len, cudaStream_t stream) {
+  thrust::device_ptr<SCAMPmatch> ptr = thrust::device_pointer_cast(matches);
+  thrust::sort(thrust::cuda::par.on(stream), ptr, ptr + len);
+}
+
 }  // namespace SCAMP

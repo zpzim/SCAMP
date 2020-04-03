@@ -124,29 +124,31 @@ void SCAMP_Operation::do_work(const std::vector<double> &timeseries_a,
     //  we will be using from the global arrays.
     tile.InitTimeseries(timeseries_a, timeseries_b);
     tile.InitStats(_precompA, _precompB);
-    // Copy the portion of the best-so-far profile
-    // we will be using.
-    tile.InitProfile(_profile_a, _profile_b);
-    SCAMPError_t err;
-    if (_info.self_join) {
-      if (t.first == t.second) {
-        // Partial tile on diagonal
-        err = tile.execute(SELF_JOIN_UPPER_TRIANGULAR);
+    bool done = false;
+    while (!done) {
+      // Copy the portion of the best-so-far profile
+      // we will be using.
+      tile.InitProfile(_profile_a, _profile_b);
+      SCAMPError_t err;
+      if (_info.self_join) {
+        if (t.first == t.second) {
+          // Partial tile on diagonal
+          err = tile.execute(SELF_JOIN_UPPER_TRIANGULAR);
+        } else {
+          // Full Tile
+          err = tile.execute(SELF_JOIN_FULL_TILE);
+        }
       } else {
-        // Full Tile
-        err = tile.execute(SELF_JOIN_FULL_TILE);
+        // AB-join
+        err = tile.execute(AB_FULL_JOIN_FULL_TILE);
       }
-    } else {
-      // AB-join
-      err = tile.execute(AB_FULL_JOIN_FULL_TILE);
+      if (err != SCAMP_NO_ERROR) {
+        throw SCAMPException("ERROR " + getSCAMPErrorString(err) +
+                             " executing tile");
+      }
+      // Merge join result
+      done = tile.MergeProfile(_profile_a, _profile_b);
     }
-    if (err != SCAMP_NO_ERROR) {
-      throw SCAMPException("ERROR " + getSCAMPErrorString(err) +
-                           " executing tile");
-    }
-    // Merge join result
-    tile.MergeProfile(_profile_a, _profile_b);
-
     // Update our counter with a lock
     std::unique_lock<std::mutex> lock(_counter_lock);
     _completed_tiles++;
