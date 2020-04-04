@@ -47,7 +47,7 @@ SCAMP::SCAMPArgs GetDefaultSCAMPArgs() {
   return args;
 }
 
-std::tuple<std::vector<float>, std::vector<int>> SCAMP_AB(
+std::tuple<std::vector<float>, std::vector<int>> scamp(
     const std::vector<double>& a, const std::vector<double>& b, int m) {
   SCAMP::SCAMPArgs args = GetDefaultSCAMPArgs();
   args.timeseries_a = a;
@@ -66,7 +66,7 @@ std::tuple<std::vector<float>, std::vector<int>> SCAMP_AB(
   return std::make_tuple(NN, index);
 }
 
-std::tuple<std::vector<float>, std::vector<int>> SCAMP_SELF(
+std::tuple<std::vector<float>, std::vector<int>> scamp(
     const std::vector<double>& a, int m) {
   SCAMP::SCAMPArgs args = GetDefaultSCAMPArgs();
   args.timeseries_a = a;
@@ -86,6 +86,9 @@ std::tuple<std::vector<float>, std::vector<int>> SCAMP_SELF(
 
 namespace py = pybind11;
 
+std::tuple<std::vector<float>, std::vector<int>> (*self_join_1NN_INDEX)(const std::vector<double>&, int)  = &scamp;  
+std::tuple<std::vector<float>, std::vector<int>> (*ab_join_1NN_INDEX)(const std::vector<double>&, const std::vector<double>&, int)  = &scamp;  
+
 PYBIND11_MODULE(pySCAMP, m) {
   m.doc() = R"pbdoc(
         SCAMP: SCAlable Matrix Profile
@@ -97,12 +100,35 @@ PYBIND11_MODULE(pySCAMP, m) {
            SCAMP_SELF
     )pbdoc";
 
-  m.def("SCAMP_AB", &SCAMP_AB, R"pbdoc(
+
+  m.def("scamp", self_join_1NN_INDEX, R"pbdoc(
+        Returns the self-join matrix profile of a time series (in Pearson Correlation)
+    )pbdoc");
+
+  m.def("scamp", ab_join_1NN_INDEX, R"pbdoc(
         Returns the ab-join matrix profile of 2 time series (in Pearson Correlation)
     )pbdoc");
 
-  m.def("SCAMP_SELF", &SCAMP_SELF, R"pbdoc(
-        Returns the self-join of 2 time series (in Pearson Correlation)
+  m.attr("__version__") = "dev";
+}
+
+PYBIND11_MODULE(pySCAMPcpu, m) {
+  m.doc() = R"pbdoc(
+        SCAMP: SCAlable Matrix Profile
+        -------------------------------
+        .. currentmodule:: scamp
+        .. autosummary::
+           :toctree: _generate
+           SCAMP_AB
+           SCAMP_SELF
+    )pbdoc";
+
+  m.def("scamp", self_join_1NN_INDEX, R"pbdoc(
+        Returns the self-join matrix profile of a time series (in Pearson Correlation)
+    )pbdoc");
+  
+  m.def("scamp", ab_join_1NN_INDEX, R"pbdoc(
+        Returns the ab-join matrix profile of 2 time series (in Pearson Correlation)
   )pbdoc");
 
   m.attr("__version__") = "dev";

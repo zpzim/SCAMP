@@ -23,14 +23,15 @@ class CMakeBuild(build_ext):
                                ", ".join(e.name for e in self.extensions))
 
         cmake_version = LooseVersion(re.search(r'version\s*([\d.]+)', out.decode()).group(1))
-        if cmake_version < LooseVersion('3.8.0'):
-            raise RuntimeError("CMake >= 3.8.0 is required")
+        if cmake_version < LooseVersion('3.12.0'):
+            raise RuntimeError("CMake >= 3.12.0 is required")
 
         try:
             out = subprocess.check_output(['nvcc', '--version'])
         except OSError:
-            print('WARNING: CUDA was not found on the system, SCAMP will be built without CUDA. Please verify nvcc can be found in your PATH')
+           print('CUDA was not found on the system, to build with CUDA, verify nvcc can be found in the PATH')
         
+        print(out)
 
         for ext in self.extensions:
             self.build_extension(ext)
@@ -46,6 +47,8 @@ class CMakeBuild(build_ext):
         # Pile all .so in one place and use $ORIGIN as RPATH
         cmake_args += ["-DCMAKE_BUILD_WITH_INSTALL_RPATH=TRUE"]
         cmake_args += ["-DCMAKE_INSTALL_RPATH={}".format("$ORIGIN")]
+        cmake_args += ["-DBUILD_PYTHON_MODULE=TRUE"]
+        cmake_args += ["-DBUILD_CPU_ONLY_PACKAGE=TRUE"]
 
         if platform.system() == "Windows":
             cmake_args += ['-DCMAKE_LIBRARY_OUTPUT_DIRECTORY_{}={}'.format(build_type.upper(), extdir)]
@@ -70,12 +73,13 @@ class CMakeBuild(build_ext):
 
 setup(
     name='pySCAMP',
-    version=1.0,
+    version=0.2,
     author='Zachary Zimmerman',
     author_email='zpzimmerman@gmail.com',
     description='SCAlable Matrix Profile',
     long_description=open("README.md").read(),
-    ext_modules=[CMakeExtension('pySCAMP')],
+    long_description_content_type='text/markdown',
+    ext_modules=[CMakeExtension('pySCAMP'), CMakeExtension('pySCAMPcpu')],
     packages=find_packages(),
     cmdclass=dict(build_ext=CMakeBuild),
     url="https://github.com/zpzim/SCAMP",

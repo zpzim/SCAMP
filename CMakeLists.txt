@@ -76,7 +76,6 @@ set(CMAKE_CXX_STANDARD 11)
 
 # CUDA_CONFIG
 if (CMAKE_CUDA_COMPILER)
-  add_definitions("-D_HAS_CUDA_")
   set(CMAKE_CUDA_STANDARD 11)
   find_library(CUDART_LIBRARY cudart ${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES})
   include_directories(${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
@@ -108,8 +107,9 @@ endif()
 # ----------------------------------------------------------------------------------------
 #                              ===== Build targets =====
 
-add_subdirectory(pybind11)
-
+if (BUILD_PYTHON_MODULE)
+  add_subdirectory(pybind11)
+endif()
 
 add_library(common ${CMAKE_CURRENT_SOURCE_DIR}/src/common.cpp)
 
@@ -165,7 +165,25 @@ endif()
 # C++/CUDA executable
 add_executable(SCAMP ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
 
+if (CMAKE_CUDA_COMPILER)
+  target_compile_definitions(common PUBLIC -D_HAS_CUDA_)
+  target_compile_definitions(qt_helper PUBLIC -D_HAS_CUDA_)
+  target_compile_definitions(qt_kernels PUBLIC -D_HAS_CUDA_)
+  target_compile_definitions(kernel_common PUBLIC -D_HAS_CUDA_)
+  target_compile_definitions(gpu_utils PUBLIC -D_HAS_CUDA_)
+  target_compile_definitions(gpu_kernels PUBLIC -D_HAS_CUDA_)
+  target_compile_definitions(cpu_stats PUBLIC -D_HAS_CUDA_)
+  target_compile_definitions(cpu_kernels PUBLIC -D_HAS_CUDA_)
+  target_compile_definitions(tile PUBLIC -D_HAS_CUDA_)
+  target_compile_definitions(scamp_utils PUBLIC -D_HAS_CUDA_)
+  target_compile_definitions(scamp_op PUBLIC -D_HAS_CUDA_)
+  target_compile_definitions(gpu_kernels PUBLIC -D_HAS_CUDA_)
+  target_compile_definitions(SCAMP PUBLIC -D_HAS_CUDA_)
+endif()
+
+
 # Python module
+if (BUILD_PYTHON_MODULE)
 add_library(pySCAMP SHARED python/SCAMP_python.cpp)
 set_target_properties(pySCAMP PROPERTIES 
     CXX_VISIBILITY_PRESET "hidden"
@@ -175,6 +193,39 @@ set_target_properties(pySCAMP PROPERTIES
 )
 target_link_libraries(pySCAMP PRIVATE scamp_op scamp_utils common)
 target_link_libraries(pySCAMP PRIVATE pybind11::module)
+endif()
+
+# Build CPU-only package
+if (BUILD_CPU_ONLY_PACKAGE)
+  add_library(common_cpu ${CMAKE_CURRENT_SOURCE_DIR}/src/common.cpp)
+  add_library(qt_helper_cpu ${CMAKE_CURRENT_SOURCE_DIR}/src/qt_helper.cpp)
+  target_link_libraries(qt_helper_cpu common_cpu)
+  add_library(kernel_common_cpu ${CMAKE_CURRENT_SOURCE_DIR}/src/kernel_common.cpp)
+  add_library(cpu_stats_cpu ${CMAKE_CURRENT_SOURCE_DIR}/src/cpu_stats.cpp)
+  target_link_libraries(cpu_stats_cpu common_cpu)
+  add_library(cpu_kernels_cpu ${CMAKE_CURRENT_SOURCE_DIR}/src/cpu_kernels.cpp)
+  target_link_libraries(cpu_kernels_cpu kernel_common_cpu common_cpu)
+  add_library(tile_cpu ${CMAKE_CURRENT_SOURCE_DIR}/src/tile.cpp)
+  target_link_libraries(tile_cpu common_cpu cpu_kernels_cpu qt_helper_cpu)
+  add_library(scamp_utils_cpu ${CMAKE_CURRENT_SOURCE_DIR}/src/scamp_utils.cpp)
+
+  add_library(scamp_op_cpu ${CMAKE_CURRENT_SOURCE_DIR}/src/SCAMP.cpp)
+  target_link_libraries(scamp_op_cpu -lpthread tile_cpu cpu_stats_cpu common_cpu qt_helper_cpu)
+  if (BUILD_PYTHON_MODULE)
+  add_library(pySCAMPcpu SHARED python/SCAMP_python.cpp)
+  set_target_properties(pySCAMPcpu PROPERTIES 
+    CXX_VISIBILITY_PRESET "hidden"
+    INTERPROCEDURAL_OPTIMIZATION TRUE
+    PREFIX "${PYTHON_MODULE_PREFIX}"
+    SUFFIX "${PYTHON_MODULE_EXTENSION}"
+  )
+  target_link_libraries(pySCAMPcpu PRIVATE scamp_op_cpu scamp_utils_cpu common_cpu)
+  target_link_libraries(pySCAMPcpu PRIVATE pybind11::module)
+  endif()
+endif()
+
+
+
 
 if (BUILD_CLIENT_SERVER)
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/grpc EXCLUDE_FROM_ALL)
