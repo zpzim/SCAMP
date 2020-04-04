@@ -477,7 +477,6 @@ bool Tile::MergeProfile(Profile *profile_a, Profile *profile_b) {
     height = _info->max_matches_per_tile;
   }
 
-
   // We only need to sort the results for KNN matrix profiles (not distance
   // matrix summaries)
   if (_info->profile_type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS &&
