@@ -477,12 +477,10 @@ bool Tile::MergeProfile(Profile *profile_a, Profile *profile_b) {
     height = _info->max_matches_per_tile;
   }
 
-  bool output_matrix = profile_a->output_matrix || profile_b->output_matrix;
-
   // We only need to sort the results for KNN matrix profiles (not distance
   // matrix summaries)
   if (_info->profile_type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS &&
-      !output_matrix) {
+      !_info->matrix_mode) {
     // Sort the resulting array
     SortMatches(reinterpret_cast<SCAMPmatch *>(
                     _profile_a_tile_dev.at(_info->profile_type)),

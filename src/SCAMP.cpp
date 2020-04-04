@@ -250,7 +250,7 @@ void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
       args->profile_type, &args->profile_a, &args->profile_b,
       args->keep_rows_separate, args->computing_rows, args->computing_columns,
       args->is_aligned, args->silent_mode, num_threads,
-      args->max_matches_per_column);
+      args->max_matches_per_column, args->matrix_mode);
 
   if (!args->silent_mode) {
     std::cout << "SCAMP Operation constructed" << std::endl;

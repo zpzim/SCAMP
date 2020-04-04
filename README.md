@@ -34,7 +34,7 @@ SCAMP can compute various types of matrix profiles:
 * 1NN_INDEX: This is the default profile type and the normal definition of matrix profile, it will produce the nearest neighbor distance/correlation of every subsequence as well as the index of the nearest neighbor
 * 1NN: This is a slightly faster version of the default profile type, but it only returns the nearest neighbor distance/correlation not the index of the nearest neighbor
 * SUM_THRESH: Rather than finding the nearest neighbor, this profile type will compute the sum of the correlations above the specified threshold (--threshold) for each subsequence. This is like a frequency histogram of correlations.
-* ALL_NEIGHBORS: This returns the approximate K (--max_matches_per_column) nearest neighbors and their correlations/indexes for each subsequence. A threshold (--threshold) can be used to accelerate the computation by ignoring matches below the threshold. Supported on GPU only currently. This can also be used to produce distance matrix summaries using --reduce_all_neighbors, --reduced_height and --reduced_width. See the example below
+* ALL_NEIGHBORS: [EXPERIMENTAL GPU ONLY, DISTRIBUTED UNSUPPORTED] This returns the approximate K (--max_matches_per_column) nearest neighbors and their correlations/indexes for each subsequence. A threshold (--threshold) can be used to accelerate the computation by ignoring matches below the threshold. This can also be used to produce distance matrix summaries (signifigantly slower and uses more memory currently) using --reduce_all_neighbors, --reduced_height and --reduced_width. See the example below.
 
 All of the above profiles support AB joins
 
@@ -175,3 +175,9 @@ kubectl cp <SCAMP server container name>:/mp_columns_out .
 ![Alt text](/Readme/distance_matrix_summary.png?raw=true "Distance Matrix Summary")
 
 You can see that various behavors in the data become apparent through the visualization of the distance matrix.
+
+## References
+If you use SCAMP in your work, please reference the following paper:
+~~~
+Zimmerman, Zachary, et al. "Matrix Profile XIV: Scaling Time Series Motif Discovery with GPUs to Break a Quintillion Pairwise Comparisons a Day and Beyond." Proceedings of the ACM Symposium on Cloud Computing. 2019.
+~~~

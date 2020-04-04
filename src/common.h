@@ -203,6 +203,7 @@ struct SCAMPArgs {
   int64_t max_matches_per_column;
   int64_t matrix_height;
   int64_t matrix_width;
+  bool matrix_mode;
 };
 
 // Struct describing kernel arguments which are non-standard
@@ -235,7 +236,8 @@ struct OpInfo {
          bool selfjoin, SCAMPPrecisionType t, int64_t start_row,
          int64_t start_col, OptionalArgs args_, SCAMPProfileType profiletype,
          bool keep_rows, bool compute_rows, bool compute_cols, bool aligned,
-         bool silent_mode, int num_workers, int64_t max_matches_per_col);
+         bool silent_mode, int num_workers, int64_t max_matches_per_col,
+         bool output_matrix);
 
   // Type of profile to compute
   SCAMPProfileType profile_type;
@@ -281,6 +283,8 @@ struct OpInfo {
   int64_t max_matches_per_column;
   // Max matches per tile for ALL_NEIGHBORS profile type
   int64_t max_matches_per_tile;
+  // Matrix reduction mode for ALL_NEIGHBORS profiles type
+  bool matrix_mode;
 };
 
 // Struct containing the precomputed statistics for an input time series
