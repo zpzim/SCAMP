@@ -3,6 +3,7 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <sstream>
 
 namespace SCAMP {
@@ -68,7 +69,7 @@ OpInfo::OpInfo(size_t Asize, size_t Bsize, size_t window_sz,
   }
 
   if (matrix_mode) {
-    max_matches_per_column = INT_MAX;
+    max_matches_per_column = std::numeric_limits<int64_t>::max();
     max_matches_per_tile =
         (max_tile_width * max_tile_height) / MEMORY_SAVINGS_FACTOR;
   }
