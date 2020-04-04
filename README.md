@@ -175,3 +175,9 @@ kubectl cp <SCAMP server container name>:/mp_columns_out .
 ![Alt text](/Readme/distance_matrix_summary.png?raw=true "Distance Matrix Summary")
 
 You can see that various behavors in the data become apparent through the visualization of the distance matrix.
+
+## References
+If you use SCAMP in your work, please reference the following paper:
+~~~
+Zimmerman, Zachary, et al. "Matrix Profile XIV: Scaling Time Series Motif Discovery with GPUs to Break a Quintillion Pairwise Comparisons a Day and Beyond." Proceedings of the ACM Symposium on Cloud Computing. 2019.
+~~~
