@@ -100,6 +100,9 @@ void SCAMP_Operation::do_work(const std::vector<double> &timeseries_a,
                               const int device_id) {
   // Init working memory and op/tile specific variables
   Tile tile(info, arch, device_id);
+  if (!NeedsIntermittentReset(_info.profile_type)) {
+    tile.InitProfile(_profile_a, _profile_b);
+  }
   while (!_work_queue.empty()) {
     std::pair<int, int> t = _work_queue.pop();
     if (t.first == -1 && t.second == -1) {
@@ -128,7 +131,9 @@ void SCAMP_Operation::do_work(const std::vector<double> &timeseries_a,
     while (!done) {
       // Copy the portion of the best-so-far profile
       // we will be using.
-      tile.InitProfile(_profile_a, _profile_b);
+      if (NeedsIntermittentReset(_info.profile_type)) {
+        tile.InitProfile(_profile_a, _profile_b);
+      }
       SCAMPError_t err;
       if (_info.self_join) {
         if (t.first == t.second) {
@@ -147,11 +152,18 @@ void SCAMP_Operation::do_work(const std::vector<double> &timeseries_a,
                              " executing tile");
       }
       // Merge join result
-      done = tile.MergeProfile(_profile_a, _profile_b);
+      if (NeedsIntermittentMerge(_info.profile_type)) {
+        done = tile.MergeProfile(_profile_a, _profile_b);
+      } else {
+        done = true;
+      }
     }
     // Update our counter with a lock
     std::unique_lock<std::mutex> lock(_counter_lock);
     _completed_tiles++;
+  }
+  if (!NeedsIntermittentMerge(_info.profile_type)) {
+    tile.MergeProfile(_profile_a, _profile_b);
   }
 }
 
@@ -250,7 +262,7 @@ void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
       args->profile_type, &args->profile_a, &args->profile_b,
       args->keep_rows_separate, args->computing_rows, args->computing_columns,
       args->is_aligned, args->silent_mode, num_threads,
-      args->max_matches_per_column, args->matrix_mode);
+      args->max_matches_per_column, args->matrix_height, args->matrix_width);
 
   if (!args->silent_mode) {
     std::cout << "SCAMP Operation constructed" << std::endl;

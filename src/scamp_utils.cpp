@@ -110,6 +110,9 @@ SCAMP::SCAMPProfileType ParseProfileType(const std::string &s) {
   if (s == "ALL_NEIGHBORS") {
     return SCAMP::PROFILE_TYPE_APPROX_ALL_NEIGHBORS;
   }
+  if (s == "MATRIX_SUMMARY") {
+    return SCAMP::PROFILE_TYPE_MATRIX_SUMMARY;
+  }
   return SCAMP::PROFILE_TYPE_INVALID;
 }
 
@@ -170,10 +173,6 @@ bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
       break;
     }
     case SCAMP::PROFILE_TYPE_APPROX_ALL_NEIGHBORS: {
-      if (!p.data[0].matrix_value.empty()) {
-        write_matrix(mp, output_pearson, p.data[0].matrix_value, window);
-        break;
-      }
       std::ofstream mp_out(mp);
       auto arr = p.data[0].match_value;
       for (auto &pq : arr) {
@@ -195,6 +194,9 @@ bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
       }
       break;
     }
+    case SCAMP::PROFILE_TYPE_MATRIX_SUMMARY: {
+      write_matrix(mp, output_pearson, p.data[0].matrix_value, window);
+    }
     default:
       break;
   }
@@ -212,12 +214,10 @@ bool InitProfileMemory(SCAMP::SCAMPArgs *args) {
     return false;
   }
 
-  std::cout << profile_a_size << " " << profile_b_size << std::endl;
-
-  args->profile_a.Alloc(profile_a_size);
+  args->profile_a.Alloc(profile_a_size, args->matrix_height, args->matrix_width, args->distance_threshold);
 
   if (args->keep_rows_separate) {
-    args->profile_b.Alloc(profile_b_size);
+    args->profile_b.Alloc(profile_b_size, args->matrix_height, args->matrix_width, args->distance_threshold);
   }
   return true;
 }

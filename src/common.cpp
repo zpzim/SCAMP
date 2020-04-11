@@ -11,6 +11,19 @@ namespace SCAMP {
 static constexpr int64_t GIGABYTE = 1024 * 1024 * 1024;
 
 static constexpr int64_t MEMORY_SAVINGS_FACTOR = 200;
+
+bool NeedsSort(SCAMPProfileType type) {
+  return type != PROFILE_TYPE_APPROX_ALL_NEIGHBORS;
+}
+
+bool NeedsIntermittentMerge(SCAMPProfileType type) {
+  return type != PROFILE_TYPE_MATRIX_SUMMARY;
+}
+
+bool NeedsIntermittentReset(SCAMPProfileType type) {
+  return type != PROFILE_TYPE_MATRIX_SUMMARY;
+}
+
 // TODO(zpzim): make this a more generic parameter that is specified by
 // the user or memory availibility
 static constexpr int64_t PROFILE_MEMORY_BUDGET = 0.5 * GIGABYTE;
@@ -20,7 +33,7 @@ OpInfo::OpInfo(size_t Asize, size_t Bsize, size_t window_sz,
                int64_t start_row, int64_t start_col, OptionalArgs args_,
                SCAMPProfileType profiletype, bool keep_rows, bool compute_rows,
                bool compute_cols, bool aligned, bool silent_mode,
-               int num_workers, int64_t max_matches_per_col, bool output_matrix)
+               int num_workers, int64_t max_matches_per_col, int64_t mheight, int64_t mwidth)
     : full_ts_len_A(Asize),
       full_ts_len_B(Bsize),
       mp_window(window_sz),
@@ -36,12 +49,15 @@ OpInfo::OpInfo(size_t Asize, size_t Bsize, size_t window_sz,
       is_aligned(aligned),
       silent_mode(silent_mode),
       max_matches_per_column(max_matches_per_col),
-      matrix_mode(output_matrix) {
+      matrix_height(mheight),
+      matrix_width(mwidth) {
   if (self_join) {
     full_ts_len_B = full_ts_len_A;
   }
   auto maxSize = std::max(Asize, Bsize);
   max_tile_ts_size = maxSize / (num_workers);
+  cols_per_cell = std::ceil((Asize - mp_window + 1) / static_cast<double>(matrix_width));
+  rows_per_cell = std::ceil((Bsize - mp_window + 1) / static_cast<double>(matrix_height));
 
   if (max_tile_ts_size > max_tile_size) {
     max_tile_ts_size = max_tile_size;
@@ -66,12 +82,6 @@ OpInfo::OpInfo(size_t Asize, size_t Bsize, size_t window_sz,
 
   if (normative_match_budget_per_tile > max_matches_per_tile) {
     max_matches_per_tile = normative_match_budget_per_tile;
-  }
-
-  if (matrix_mode) {
-    max_matches_per_column = std::numeric_limits<int64_t>::max();
-    max_matches_per_tile =
-        (max_tile_width * max_tile_height) / MEMORY_SAVINGS_FACTOR;
   }
 
   int64_t worker_memory_budget = max_matches_per_tile * sizeof(SCAMPmatch) * 2;
@@ -253,30 +263,15 @@ void Profile::match_merge(const std::vector<SCAMPmatch> &matches,
 }
 
 // Merges elements in matches into a reduced distance matrix summary.
-void Profile::matrix_merge(const std::vector<SCAMPmatch> &matches,
-                           uint64_t merge_start_row, uint64_t merge_start_col) {
-  int matrix_rows = this->data.front().matrix_value.size();
-  int matrix_cols = this->data.front().matrix_value.front().size();
-  for (auto elem : matches) {
-    uint64_t col = elem.col + merge_start_col;
-    int64_t matrix_col = col / this->matrix_reduced_cols;
-    int64_t matrix_row =
-        (elem.row + merge_start_row) / this->matrix_reduced_rows;
-    if (matrix_row >= matrix_rows || matrix_col >= matrix_cols ||
-        matrix_row < 0 || matrix_col < 0) {
-      std::ostringstream ostream;
-      ostream << "Error in matrix merge: matrix is " << matrix_rows << " by "
-              << matrix_cols << " trying to access position [" << matrix_row
-              << ", " << matrix_col << "]";
-      throw SCAMPException(ostream.str());
-    }
-    if (this->data.front().matrix_value[matrix_row][matrix_col] < elem.corr) {
-      this->data.front().matrix_value[matrix_row][matrix_col] = elem.corr;
+void Profile::matrix_merge(const std::vector<float> &values) {
+  for (int i = 0; i <  values.size(); ++i) {
+    if (this->data[0].float_value[i] < values[i]) {
+      this->data[0].float_value[i] = values[i];
     }
   }
 }
 
-void Profile::Alloc(size_t size) {
+void Profile::Alloc(size_t size, int64_t matrix_height, int64_t matrix_width, float default_thresh) {
   switch (type) {
     case PROFILE_TYPE_SUM_THRESH:
       data.emplace_back();
@@ -299,13 +294,14 @@ void Profile::Alloc(size_t size) {
       break;
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
       data.emplace_back();
-      if (output_matrix) {
-        data[0].matrix_value.resize(matrix_height,
-                                    std::vector<float>(matrix_width, -2.0));
-      } else {
-        data[0].match_value.resize(size);
-      }
+      data[0].match_value.resize(size);
       thresholds.resize(size, default_thresh);
+      break;
+    case PROFILE_TYPE_MATRIX_SUMMARY:
+      data.emplace_back();
+      std::cout << "Hello Allocating: " << matrix_height << " " << matrix_width << std::endl;
+      data[0].float_value.resize(matrix_height * matrix_width, -2.0);
+      std::cout << "Allocated" << std::endl;
       break;
     case PROFILE_TYPE_KNN:
     case PROFILE_TYPE_1NN_MULTIDIM:
@@ -315,30 +311,33 @@ void Profile::Alloc(size_t size) {
 }
 
 // Copies a profile to the host
-void Profile::CopyFromDevice(const ExecInfo *info,
+void Profile::CopyFromDevice(const OpInfo *info, const ExecInfo *exec_info,
                              const DeviceProfile *device_tile_profile,
                              uint64_t length) {
   switch (type) {
     case PROFILE_TYPE_SUM_THRESH:
       Memcopy(this->data[0].double_value.data(),
               device_tile_profile->at(PROFILE_TYPE_SUM_THRESH),
-              length * sizeof(double), true, info);
+              length * sizeof(double), true, exec_info);
       break;
     case PROFILE_TYPE_1NN:
       Memcopy(this->data[0].float_value.data(),
               device_tile_profile->at(PROFILE_TYPE_1NN), length * sizeof(float),
-              true, info);
+              true, exec_info);
       break;
     case PROFILE_TYPE_1NN_INDEX:
       Memcopy(this->data[0].uint64_value.data(),
               device_tile_profile->at(PROFILE_TYPE_1NN_INDEX),
-              length * sizeof(uint64_t), true, info);
+              length * sizeof(uint64_t), true, exec_info);
       break;
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
       this->data[0].match_value_unordered.resize(length);
       Memcopy(this->data[0].match_value_unordered.data(),
               device_tile_profile->at(PROFILE_TYPE_APPROX_ALL_NEIGHBORS),
-              length * sizeof(SCAMPmatch), true, info);
+              length * sizeof(SCAMPmatch), true, exec_info);
+      break;
+    case PROFILE_TYPE_MATRIX_SUMMARY:
+      Memcopy(this->data[0].float_value.data(), device_tile_profile->at(PROFILE_TYPE_MATRIX_SUMMARY), info->matrix_width * info->matrix_height * sizeof(float), true, exec_info);
       break;
     case PROFILE_TYPE_FREQUENCY_THRESH:
     case PROFILE_TYPE_KNN:
@@ -385,18 +384,16 @@ void Profile::MergeTileToProfile(Profile *tile_profile, const OpInfo *info,
                                 tile_profile->data[0].uint64_value.data());
       return;
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
-      if (output_matrix) {
-        matrix_merge(tile_profile->data[0].match_value_unordered, index_start,
-                     position);
+      if (overflowed) {
+        threshold_merge(tile_profile->data[0].match_value_unordered, position,
+                        info->max_matches_per_column);
       } else {
-        if (overflowed) {
-          threshold_merge(tile_profile->data[0].match_value_unordered, position,
-                          info->max_matches_per_column);
-        } else {
-          match_merge(tile_profile->data[0].match_value_unordered, index_start,
-                      position, info->max_matches_per_column);
-        }
+        match_merge(tile_profile->data[0].match_value_unordered, index_start,
+                    position, info->max_matches_per_column);
       }
+      return;
+    case PROFILE_TYPE_MATRIX_SUMMARY:
+      matrix_merge(tile_profile->data[0].float_value);
       return;
     case PROFILE_TYPE_KNN:
     case PROFILE_TYPE_1NN_MULTIDIM:
@@ -445,6 +442,8 @@ std::string GetProfileTypeString(SCAMPProfileType t) {
       return "PROFILE_TYPE_1NN_MULTIDIM";
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
       return "PROFILE_TYPE_APPROX_ALL_NEIGHBORS";
+    case PROFILE_TYPE_MATRIX_SUMMARY:
+      return "PROFILE_TYPE_MATRIX_SUMMARY";
   }
 }
 
@@ -509,6 +508,7 @@ size_t GetProfileTypeSize(SCAMPProfileType t) {
     case PROFILE_TYPE_1NN_INDEX:
       return sizeof(uint64_t);
     case PROFILE_TYPE_1NN:
+    case PROFILE_TYPE_MATRIX_SUMMARY:
       return sizeof(float);
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
     case PROFILE_TYPE_KNN:

@@ -26,6 +26,13 @@ struct SCAMPKernelInputArgs {
   int32_t n_y;
   int32_t exclusion_lower;
   int32_t exclusion_upper;
+  int32_t matrix_width;
+  int32_t matrix_height;
+  int32_t rows_per_cell;
+  int32_t cols_per_cell;
+  int64_t global_start_col;
+  int64_t global_start_row;
+  
   OptionalArgs opt;
   void Print();
 };

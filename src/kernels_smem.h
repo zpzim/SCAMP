@@ -89,7 +89,7 @@ __device__ void init_smem(
                                      COMPUTE_COLS, tile_width, tile_height,
                                      BLOCKSZ, PROFILE_TYPE_1NN>(
       args, smem, profile_a, profile_b, col_start, row_start);
-};
+}
 
 template <typename DATA_TYPE, typename PROFILE_DATA_TYPE,
           typename PROFILE_OUTPUT_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
@@ -103,7 +103,7 @@ __device__ void init_smem(
                                      COMPUTE_COLS, tile_width, tile_height,
                                      BLOCKSZ, PROFILE_TYPE_1NN_INDEX>(
       args, smem, profile_a, profile_b, col_start, row_start);
-};
+}
 
 template <typename DATA_TYPE, typename PROFILE_DATA_TYPE,
           typename PROFILE_OUTPUT_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
@@ -117,7 +117,46 @@ __device__ void init_smem(
                                     COMPUTE_COLS, tile_width, tile_height,
                                     BLOCKSZ, PROFILE_TYPE_SUM_THRESH>(
       args, smem, col_start, row_start, 0.0);
-};
+}
+
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE,
+          typename PROFILE_OUTPUT_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
+          int tile_width, int tile_height, int BLOCKSZ>
+__device__ void init_smem(
+    SCAMPKernelInputArgs<double> &args,
+    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_MATRIX_SUMMARY> &smem,
+    PROFILE_OUTPUT_TYPE *profile_a, PROFILE_OUTPUT_TYPE *profile_b,
+    uint32_t col_start, uint32_t row_start) {
+  int global_position = col_start + threadIdx.x;
+  int local_position = threadIdx.x;
+  mp_entry initializer;
+  initializer.ints[1] = 0;
+  while (local_position < tile_width && global_position < args.n_x) {
+    smem.dg_col[local_position] = args.dga[global_position];
+    smem.df_col[local_position] = args.dfa[global_position];
+    smem.inorm_col[local_position] = args.normsa[global_position];
+    if (COMPUTE_COLS) {
+      initializer.floats[0] = -2.0;
+      smem.local_mp_col[local_position] = initializer.ulong;
+    }
+    local_position += BLOCKSZ;
+    global_position += BLOCKSZ;
+  }
+
+  global_position = row_start + threadIdx.x;
+  local_position = threadIdx.x;
+  while (local_position < tile_height && global_position < args.n_y) {
+    smem.dg_row[local_position] = args.dgb[global_position];
+    smem.df_row[local_position] = args.dfb[global_position];
+    smem.inorm_row[local_position] = args.normsb[global_position];
+    if (COMPUTE_ROWS) {
+      initializer.floats[0] = -2.0;
+      smem.local_mp_row[local_position] = initializer.ulong;
+    }
+    local_position += BLOCKSZ;
+    global_position += BLOCKSZ;
+  }
+}
 
 template <typename DATA_TYPE, typename PROFILE_DATA_TYPE,
           typename PROFILE_OUTPUT_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
@@ -157,7 +196,7 @@ __device__ void init_smem(SCAMPKernelInputArgs<double> &args,
     local_position += BLOCKSZ;
     global_position += BLOCKSZ;
   }
-};
+}
 
 ///////////////////////////////////////////////////////////////////
 //
@@ -256,6 +295,43 @@ __device__ void write_back(
       e.ulong = smem.local_mp_row[local_position];
       MPatomicMax<ATOMIC_GLOBAL>(profile_B + global_position, e.floats[0],
                                  e.ints[1]);
+      global_position += BLOCKSZ;
+      local_position += BLOCKSZ;
+    }
+  }
+}
+
+template <typename DATA_TYPE, typename PROFILE_OUTPUT_TYPE,
+          typename PROFILE_DATA_TYPE, bool COMPUTE_COLS, bool COMPUTE_ROWS,
+          int TILE_WIDTH, int TILE_HEIGHT, int BLOCKSZ>
+__device__ void write_back(
+    SCAMPKernelInputArgs<double> &args,
+    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_MATRIX_SUMMARY> &smem,
+    uint32_t tile_start_x, uint32_t tile_start_y, uint32_t n_x, uint32_t n_y,
+    PROFILE_OUTPUT_TYPE *profile_A, PROFILE_OUTPUT_TYPE *profile_B) {
+  int global_position, local_position;
+  if (COMPUTE_COLS) {
+    global_position = tile_start_x + threadIdx.x;
+    local_position = threadIdx.x;
+    while (local_position < TILE_WIDTH && global_position < n_x) {
+      mp_entry e;
+      e.ulong = smem.local_mp_col[local_position];
+      int mcol = (global_position + args.global_start_col) / args.cols_per_cell;
+      int mrow = (e.ints[1] + args.global_start_row) / args.rows_per_cell;
+      fAtomicMax<ATOMIC_GLOBAL>(profile_A + (mrow * args.matrix_width + mcol) , e.floats[0]);
+      global_position += BLOCKSZ;
+      local_position += BLOCKSZ;
+    }
+  }
+  if (COMPUTE_ROWS) {
+    global_position = tile_start_y + threadIdx.x;
+    local_position = threadIdx.x;
+    while (local_position < TILE_HEIGHT && global_position < n_y) {
+      mp_entry e;
+      e.ulong = smem.local_mp_row[local_position];
+      int mrow = (global_position + args.global_start_row) / args.rows_per_cell;
+      int mcol = (e.ints[1] + args.global_start_col) / args.cols_per_cell;
+      fAtomicMax<ATOMIC_GLOBAL>(profile_A + (mrow * args.matrix_width + mcol) , e.floats[0]);
       global_position += BLOCKSZ;
       local_position += BLOCKSZ;
     }

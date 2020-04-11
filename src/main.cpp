@@ -207,28 +207,8 @@ int main(int argc, char **argv) {
   args.timeseries_b = std::move(Tb_h);
   args.silent_mode = !FLAGS_print_debug_info;
   args.max_matches_per_column = FLAGS_max_matches_per_column;
-  args.profile_a.matrix_height =
-      FLAGS_reduce_all_neighbors ? FLAGS_reduced_height : -1.0;
-  args.profile_a.matrix_width =
-      FLAGS_reduce_all_neighbors ? FLAGS_reduced_width : -1.0;
-  args.profile_a.matrix_reduced_cols =
-      std::ceil(n_x / static_cast<double>(FLAGS_reduced_width));
-  args.profile_a.matrix_reduced_rows =
-      std::ceil(n_y / static_cast<double>(FLAGS_reduced_height));
-  args.profile_a.default_thresh = args.distance_threshold;
-
-  args.profile_b.matrix_height =
-      FLAGS_reduce_all_neighbors ? FLAGS_reduced_height : -1.0;
-  args.profile_b.matrix_width =
-      FLAGS_reduce_all_neighbors ? FLAGS_reduced_width : -1.0;
-  args.profile_b.matrix_reduced_cols =
-      std::ceil(n_x / static_cast<double>(FLAGS_reduced_width));
-  args.profile_b.matrix_reduced_rows =
-      std::ceil(n_y / static_cast<double>(FLAGS_reduced_height));
-  args.profile_b.default_thresh = args.distance_threshold;
-  args.profile_a.output_matrix = FLAGS_reduce_all_neighbors;
-  args.profile_b.output_matrix = FLAGS_reduce_all_neighbors;
-  args.matrix_mode = FLAGS_reduce_all_neighbors;
+  args.matrix_height = FLAGS_reduced_height;
+  args.matrix_width = FLAGS_reduced_width;
   if (FLAGS_print_debug_info) {
     printf("Starting SCAMP\n");
   }
