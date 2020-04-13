@@ -103,6 +103,7 @@ void SCAMP_Operation::do_work(const std::vector<double> &timeseries_a,
   if (!NeedsIntermittentReset(_info.profile_type)) {
     tile.InitProfile(_profile_a, _profile_b);
   }
+  std::cout << "Initialized Profile." << std::endl;
   while (!_work_queue.empty()) {
     std::pair<int, int> t = _work_queue.pop();
     if (t.first == -1 && t.second == -1) {

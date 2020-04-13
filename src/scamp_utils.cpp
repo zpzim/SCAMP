@@ -7,19 +7,23 @@
 #include "scamp_utils.h"
 
 void write_matrix(const std::string &mp, bool output_pearson,
-                  const std::vector<std::vector<float>> &matrix, int window) {
+                  const std::vector<float> &matrix, int window, int matrix_width, int matrix_height) {
   std::ofstream mp_out(mp);
-  for (auto row : matrix) {
-    for (auto elem : row) {
-      if (output_pearson) {
-        mp_out << std::setprecision(10) << elem << " ";
-      } else {
-        mp_out << std::setprecision(10) << ConvertToEuclidean(elem, window)
-               << " ";
-      }
+  int count = 0;
+  for (int i = 0; i < matrix.size(); ++i) {
+    if (count == matrix_width) {
+      count = 0;
+      mp_out << std::endl;
     }
-    mp_out << std::endl;
+    if (output_pearson) {
+        mp_out << std::setprecision(10) << matrix[i] << " ";
+    } else {
+      mp_out << std::setprecision(10) << ConvertToEuclidean(matrix[i], window)
+             << " ";
+    }
+    count++;
   }
+  mp_out << std::endl;
 }
 
 std::ifstream &read_value(std::ifstream &s, double &d, int count) {
@@ -125,7 +129,7 @@ double ConvertToEuclidean(double val, int window) {
 }
 
 bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
-                        SCAMP::Profile &p, bool output_pearson, int window) {
+                        SCAMP::Profile &p, bool output_pearson, int window, int matrix_width, int matrix_height) {
   switch (p.type) {
     case SCAMP::PROFILE_TYPE_1NN_INDEX: {
       std::ofstream mp_out(mp);
@@ -195,7 +199,7 @@ bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
       break;
     }
     case SCAMP::PROFILE_TYPE_MATRIX_SUMMARY: {
-      write_matrix(mp, output_pearson, p.data[0].matrix_value, window);
+      write_matrix(mp, output_pearson, p.data[0].float_value, window, matrix_width, matrix_height);
     }
     default:
       break;

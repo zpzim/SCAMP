@@ -249,8 +249,8 @@ Tile::Tile(const OpInfo *info, SCAMPArchitecture arch, int cuda_id)
       _scratch(
           std::unique_ptr<qt_compute_helper>(new qt_compute_helper(  // NOLINT
               info->max_tile_ts_size, info->mp_window, true, arch))),
-      _profile_a_tile(info->profile_type, info->max_tile_width),
-      _profile_b_tile(info->profile_type, info->max_tile_height) {
+      _profile_a_tile(info->profile_type, info->max_tile_width, info->opt_args.threshold, info->matrix_width, info->matrix_height),
+      _profile_b_tile(info->profile_type, info->max_tile_width, info->opt_args.threshold, info->matrix_width, info->matrix_height) {
   size_t profile_size = GetProfileTypeSize(_info->profile_type);
   size_t rows_to_alloc, cols_to_alloc;
 
@@ -261,7 +261,7 @@ Tile::Tile(const OpInfo *info, SCAMPArchitecture arch, int cuda_id)
     rows_to_alloc = _info->max_matches_per_tile;
   } else if (_info->profile_type == PROFILE_TYPE_MATRIX_SUMMARY) {
     cols_to_alloc = _info->matrix_height * _info->matrix_width; 
-    rows_to_alloc = 0;
+    rows_to_alloc = _info->matrix_height * _info->matrix_width;
   } else {
     cols_to_alloc = _info->max_tile_width;
     rows_to_alloc = _info->max_tile_height;
@@ -372,7 +372,7 @@ SCAMPError_t Tile::InitProfile(Profile *profile_a, Profile *profile_b) {
     case PROFILE_TYPE_MATRIX_SUMMARY: {
       const float *pA_ptr = profile_a->data[0].float_value.data();
       Memcopy(_profile_a_tile_dev.at(type), pA_ptr + profile_a->data[0].float_value.size(),
-              sizeof(float) * width, false);
+              sizeof(float) * profile_a->data[0].float_value.size(), false);
       break;  
     }
     case PROFILE_TYPE_FREQUENCY_THRESH:

@@ -134,8 +134,7 @@ class Profile {
     return *this;
   }
   Profile(SCAMPProfileType t, size_t size, float thresh_init = 0,
-          int64_t mwidth = -1, int64_t mheight = -1, int64_t rrows = -1,
-          int64_t rcols = -1)
+          int64_t mwidth = -1, int64_t mheight = -1)
       : type(t) {
     Alloc(size, mheight, mwidth, thresh_init);
   }

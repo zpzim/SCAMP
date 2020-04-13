@@ -13,7 +13,7 @@ static constexpr int64_t GIGABYTE = 1024 * 1024 * 1024;
 static constexpr int64_t MEMORY_SAVINGS_FACTOR = 200;
 
 bool NeedsSort(SCAMPProfileType type) {
-  return type != PROFILE_TYPE_APPROX_ALL_NEIGHBORS;
+  return type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS;
 }
 
 bool NeedsIntermittentMerge(SCAMPProfileType type) {

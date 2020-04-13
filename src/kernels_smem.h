@@ -318,6 +318,9 @@ __device__ void write_back(
       e.ulong = smem.local_mp_col[local_position];
       int mcol = (global_position + args.global_start_col) / args.cols_per_cell;
       int mrow = (e.ints[1] + args.global_start_row) / args.rows_per_cell;
+      //if (blockIdx.x == 0 && threadIdx.x == 0) { 
+      //  printf("Computing Cols: col %d, row %d\n", mcol, mrow);
+      //}
       fAtomicMax<ATOMIC_GLOBAL>(profile_A + (mrow * args.matrix_width + mcol) , e.floats[0]);
       global_position += BLOCKSZ;
       local_position += BLOCKSZ;
@@ -331,6 +334,9 @@ __device__ void write_back(
       e.ulong = smem.local_mp_row[local_position];
       int mrow = (global_position + args.global_start_row) / args.rows_per_cell;
       int mcol = (e.ints[1] + args.global_start_col) / args.cols_per_cell;
+      //if (blockIdx.x == 0 && threadIdx.x == 0) {
+      //  printf("Computing Rows: col %d, row %d\n", mcol, mrow);
+      //}
       fAtomicMax<ATOMIC_GLOBAL>(profile_A + (mrow * args.matrix_width + mcol) , e.floats[0]);
       global_position += BLOCKSZ;
       local_position += BLOCKSZ;
