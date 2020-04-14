@@ -26,6 +26,7 @@ SCAMP::SCAMPProfileType ParseProfileType(const std::string &s);
 double ConvertToEuclidean(double val, int window);
 
 bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
-                        SCAMP::Profile &p, bool output_pearson, int window, int matrix_width, int matrix_height);
+                        SCAMP::Profile &p, bool output_pearson, int window,
+                        int matrix_width, int matrix_height);
 
 bool InitProfileMemory(SCAMP::SCAMPArgs *args);

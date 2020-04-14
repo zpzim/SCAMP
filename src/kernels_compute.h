@@ -57,8 +57,7 @@ template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
           typename ACCUM_TYPE, typename DISTANCE_TYPE>
 __device__ inline void update_row(
     const SCAMPThreadInfo<ACCUM_TYPE> info,
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_MATRIX_SUMMARY>
-        smem,
+    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_MATRIX_SUMMARY> smem,
     const DISTANCE_TYPE dist[4], const float curr_mp_row_val,
     const OptionalArgs args) {
   uint32_t idx;
@@ -68,8 +67,6 @@ __device__ inline void update_row(
       (uint64_t *)(smem.local_mp_row + info.local_row + iter), d, idx,
       curr_mp_row_val);
 }
-
-
 
 // UPDATE_ROW when PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX
 template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
@@ -195,7 +192,8 @@ template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
           typename ACCUM_TYPE, typename DISTANCE_TYPE>
 __device__ inline void merge_to_column(
     const SCAMPThreadInfo<ACCUM_TYPE> info,
-    const SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_MATRIX_SUMMARY> smem,
+    const SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_MATRIX_SUMMARY>
+        smem,
     DISTANCE_TYPE best_so_far[7], const DISTANCE_TYPE dists_to_merge[4],
     unsigned int best_so_far_index[7], const OptionalArgs args) {
 #pragma unroll 4
@@ -271,7 +269,6 @@ storing the result in 'best_so_far[iter+i]'
 // (0,1,2,3,4,5,and 6) and merges them with the shared-memory MP for each
 //////////////////////////////////////////////////////////////////
 
-
 template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
           typename DISTANCE_TYPE, SCAMPProfileType PROFILE_TYPE>
 __device__ inline void update_cols_std(
@@ -314,7 +311,6 @@ __device__ inline void update_cols_std(
   }
 }
 
-
 // UPDATE COLS where PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX
 template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
           typename DISTANCE_TYPE>
@@ -322,7 +318,8 @@ __device__ inline void update_cols(
     SCAMPThreadInfo<ACCUM_TYPE> info,
     SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_1NN_INDEX> smem,
     DISTANCE_TYPE distc[7], unsigned int idxc[7]) {
-  update_cols_std<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE, PROFILE_TYPE_1NN_INDEX>(info, smem, distc, idxc);
+  update_cols_std<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+                  PROFILE_TYPE_1NN_INDEX>(info, smem, distc, idxc);
 }
 
 // UPDATE COLS where PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY
@@ -332,7 +329,8 @@ __device__ inline void update_cols(
     SCAMPThreadInfo<ACCUM_TYPE> info,
     SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_MATRIX_SUMMARY> smem,
     DISTANCE_TYPE distc[7], unsigned int idxc[7]) {
-  update_cols_std<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE, PROFILE_TYPE_MATRIX_SUMMARY>(info, smem, distc, idxc);
+  update_cols_std<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+                  PROFILE_TYPE_MATRIX_SUMMARY>(info, smem, distc, idxc);
 }
 
 // UPDATE COLS where PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS
@@ -343,11 +341,9 @@ __device__ inline void update_cols(
     SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_APPROX_ALL_NEIGHBORS>
         smem,
     DISTANCE_TYPE distc[7], unsigned int idxc[7]) {
-  update_cols_std<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE, PROFILE_TYPE_APPROX_ALL_NEIGHBORS>(info, smem, distc, idxc);
+  update_cols_std<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+                  PROFILE_TYPE_APPROX_ALL_NEIGHBORS>(info, smem, distc, idxc);
 }
-
-
-
 
 // UPDATE_COLS where PROFILE_TYPE == PROFILE_TYPE_1NN
 template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
@@ -630,7 +626,6 @@ do_iteration_fast(SCAMPThreadInfo<ACCUM_TYPE> &info,
 //  EDGE COMPUTATION
 //////////////////////////////////////////////////////////////////////
 
-
 template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
           typename ACCUM_TYPE, typename DISTANCE_TYPE, bool COMPUTE_ROWS,
           bool COMPUTE_COLS, SCAMPProfileType PROFILE_TYPE>
@@ -653,7 +648,6 @@ __device__ inline void reduce_edge_std(
     }
   }
 }
-
 
 template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
           typename ACCUM_TYPE, typename DISTANCE_TYPE, bool COMPUTE_ROWS,
@@ -682,7 +676,9 @@ __device__ inline void reduce_edge(
     SCAMPThreadInfo<ACCUM_TYPE> &info, DISTANCE_TYPE dist[4],
     DISTANCE_TYPE &dist_row, uint32_t &idx_row, int diag, int num_diags, int n,
     OptionalArgs &args) {
-  reduce_edge_std<iter, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE_1NN_INDEX>(smem, info, dist, dist_row, idx_row, diag, num_diags, n, args);
+  reduce_edge_std<iter, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+                  COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE_1NN_INDEX>(
+      smem, info, dist, dist_row, idx_row, diag, num_diags, n, args);
 }
 
 template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
@@ -693,7 +689,9 @@ __device__ inline void reduce_edge(
     SCAMPThreadInfo<ACCUM_TYPE> &info, DISTANCE_TYPE dist[4],
     DISTANCE_TYPE &dist_row, uint32_t &idx_row, int diag, int num_diags, int n,
     OptionalArgs &args) {
-  reduce_edge_std<iter, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE_MATRIX_SUMMARY>(smem, info, dist, dist_row, idx_row, diag, num_diags, n, args);
+  reduce_edge_std<iter, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+                  COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE_MATRIX_SUMMARY>(
+      smem, info, dist, dist_row, idx_row, diag, num_diags, n, args);
 }
 
 template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
@@ -705,9 +703,11 @@ __device__ inline void reduce_edge(
     SCAMPThreadInfo<ACCUM_TYPE> &info, DISTANCE_TYPE dist[4],
     DISTANCE_TYPE &dist_row, uint32_t &idx_row, int diag, int num_diags, int n,
     OptionalArgs &args) {
-  reduce_edge_std<iter, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE_APPROX_ALL_NEIGHBORS>(smem, info, dist, dist_row, idx_row, diag, num_diags, n, args);
+  reduce_edge_std<iter, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+                  COMPUTE_ROWS, COMPUTE_COLS,
+                  PROFILE_TYPE_APPROX_ALL_NEIGHBORS>(
+      smem, info, dist, dist_row, idx_row, diag, num_diags, n, args);
 }
-
 
 template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
           typename ACCUM_TYPE, typename DISTANCE_TYPE, bool COMPUTE_ROWS,

@@ -97,8 +97,6 @@ class compareMatch {
 void Memcopy(void *destination, const void *source, size_t bytes,
              bool from_tile, const ExecInfo *info);
 
-
-
 struct ProfileData {
   // Only one of these should be set at once
   std::vector<uint32_t> uint32_value;
@@ -147,7 +145,8 @@ class Profile {
   void CopyFromDevice(const OpInfo *info, const ExecInfo *exec_info,
                       const DeviceProfile *device_tile_profile,
                       uint64_t length);
-  void Alloc(size_t size, int64_t matrix_height, int64_t matrix_width, float default_thresh);
+  void Alloc(size_t size, int64_t matrix_height, int64_t matrix_width,
+             float default_thresh);
 
  private:
   void threshold_merge(const std::vector<SCAMPmatch> &matches,
@@ -218,7 +217,8 @@ struct OpInfo {
          bool selfjoin, SCAMPPrecisionType t, int64_t start_row,
          int64_t start_col, OptionalArgs args_, SCAMPProfileType profiletype,
          bool keep_rows, bool compute_rows, bool compute_cols, bool aligned,
-         bool silent_mode, int num_workers, int64_t max_matches_per_col, int64_t mheight, int64_t mwidth);
+         bool silent_mode, int num_workers, int64_t max_matches_per_col,
+         int64_t mheight, int64_t mwidth);
 
   // Type of profile to compute
   SCAMPProfileType profile_type;

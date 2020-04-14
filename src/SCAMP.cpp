@@ -103,7 +103,6 @@ void SCAMP_Operation::do_work(const std::vector<double> &timeseries_a,
   if (!NeedsIntermittentReset(_info.profile_type)) {
     tile.InitProfile(_profile_a, _profile_b);
   }
-  std::cout << "Initialized Profile." << std::endl;
   while (!_work_queue.empty()) {
     std::pair<int, int> t = _work_queue.pop();
     if (t.first == -1 && t.second == -1) {
@@ -254,11 +253,11 @@ void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
   if (!args->silent_mode) {
     std::cout << "Building SCAMP Operation from args" << std::endl;
   }
+
   // Construct operation
   SCAMP_Operation op(
       args->timeseries_a.size(), args->timeseries_b.size(), args->window,
       args->max_tile_size, devices, !args->has_b, args->precision_type,
-      args->computing_columns && args->computing_rows,
       args->distributed_start_row, args->distributed_start_col, _opt_args,
       args->profile_type, &args->profile_a, &args->profile_b,
       args->keep_rows_separate, args->computing_rows, args->computing_columns,

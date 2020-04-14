@@ -296,7 +296,8 @@ SCAMPError_t compute_gpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
             reinterpret_cast<SCAMPmatch *>(profile_b), t->info()->fp_type,
             do_rows, do_cols, blocksz, num_blocks, smem, t->get_stream());
       case PROFILE_TYPE_MATRIX_SUMMARY:
-        return LaunchDoTile<float, uint64_t, float, PROFILE_TYPE_MATRIX_SUMMARY, BLOCKSPERSM>(
+        return LaunchDoTile<float, uint64_t, float, PROFILE_TYPE_MATRIX_SUMMARY,
+                            BLOCKSPERSM>(
             args, reinterpret_cast<float *>(profile_a),
             reinterpret_cast<float *>(profile_b), t->info()->fp_type, do_rows,
             do_cols, blocksz, num_blocks, smem, t->get_stream());

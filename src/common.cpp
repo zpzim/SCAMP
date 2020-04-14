@@ -33,7 +33,8 @@ OpInfo::OpInfo(size_t Asize, size_t Bsize, size_t window_sz,
                int64_t start_row, int64_t start_col, OptionalArgs args_,
                SCAMPProfileType profiletype, bool keep_rows, bool compute_rows,
                bool compute_cols, bool aligned, bool silent_mode,
-               int num_workers, int64_t max_matches_per_col, int64_t mheight, int64_t mwidth)
+               int num_workers, int64_t max_matches_per_col, int64_t mheight,
+               int64_t mwidth)
     : full_ts_len_A(Asize),
       full_ts_len_B(Bsize),
       mp_window(window_sz),
@@ -56,8 +57,6 @@ OpInfo::OpInfo(size_t Asize, size_t Bsize, size_t window_sz,
   }
   auto maxSize = std::max(Asize, Bsize);
   max_tile_ts_size = maxSize / (num_workers);
-  cols_per_cell = std::ceil((Asize - mp_window + 1) / static_cast<double>(matrix_width));
-  rows_per_cell = std::ceil((Bsize - mp_window + 1) / static_cast<double>(matrix_height));
 
   if (max_tile_ts_size > max_tile_size) {
     max_tile_ts_size = max_tile_size;
@@ -94,6 +93,16 @@ OpInfo::OpInfo(size_t Asize, size_t Bsize, size_t window_sz,
     std::cout << "If this amount of memory is too large we may run out of "
                  "memory on the system/GPUs, if this happens try reducing "
                  "max_matches_per_column to a smaller value.";
+  }
+
+  // Matrix summaries only need to reduce along the columns.
+  if (profile_type == PROFILE_TYPE_MATRIX_SUMMARY) {
+    computing_rows = false;
+    keep_rows_separate = false;
+    cols_per_cell = std::ceil((full_ts_len_A - mp_window + 1) /
+                              static_cast<double>(matrix_width));
+    rows_per_cell = std::ceil((full_ts_len_B - mp_window + 1) /
+                              static_cast<double>(matrix_height));
   }
 }
 
@@ -264,14 +273,15 @@ void Profile::match_merge(const std::vector<SCAMPmatch> &matches,
 
 // Merges elements in matches into a reduced distance matrix summary.
 void Profile::matrix_merge(const std::vector<float> &values) {
-  for (int i = 0; i <  values.size(); ++i) {
+  for (int i = 0; i < values.size(); ++i) {
     if (this->data[0].float_value[i] < values[i]) {
       this->data[0].float_value[i] = values[i];
     }
   }
 }
 
-void Profile::Alloc(size_t size, int64_t matrix_height, int64_t matrix_width, float default_thresh) {
+void Profile::Alloc(size_t size, int64_t matrix_height, int64_t matrix_width,
+                    float default_thresh) {
   switch (type) {
     case PROFILE_TYPE_SUM_THRESH:
       data.emplace_back();
@@ -299,9 +309,7 @@ void Profile::Alloc(size_t size, int64_t matrix_height, int64_t matrix_width, fl
       break;
     case PROFILE_TYPE_MATRIX_SUMMARY:
       data.emplace_back();
-      std::cout << "Hello Allocating: " << matrix_height << " " << matrix_width << std::endl;
       data[0].float_value.resize(matrix_height * matrix_width, -2.0);
-      std::cout << "Allocated" << std::endl;
       break;
     case PROFILE_TYPE_KNN:
     case PROFILE_TYPE_1NN_MULTIDIM:
@@ -337,7 +345,10 @@ void Profile::CopyFromDevice(const OpInfo *info, const ExecInfo *exec_info,
               length * sizeof(SCAMPmatch), true, exec_info);
       break;
     case PROFILE_TYPE_MATRIX_SUMMARY:
-      Memcopy(this->data[0].float_value.data(), device_tile_profile->at(PROFILE_TYPE_MATRIX_SUMMARY), info->matrix_width * info->matrix_height * sizeof(float), true, exec_info);
+      Memcopy(this->data[0].float_value.data(),
+              device_tile_profile->at(PROFILE_TYPE_MATRIX_SUMMARY),
+              info->matrix_width * info->matrix_height * sizeof(float), true,
+              exec_info);
       break;
     case PROFILE_TYPE_FREQUENCY_THRESH:
     case PROFILE_TYPE_KNN:

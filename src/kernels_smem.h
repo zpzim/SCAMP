@@ -136,6 +136,7 @@ __device__ void init_smem(
     smem.df_col[local_position] = args.dfa[global_position];
     smem.inorm_col[local_position] = args.normsa[global_position];
     if (COMPUTE_COLS) {
+      // TODO(zpzim): we can be smarter than this when picking the intial value
       initializer.floats[0] = -2.0;
       smem.local_mp_col[local_position] = initializer.ulong;
     }
@@ -316,12 +317,10 @@ __device__ void write_back(
     while (local_position < TILE_WIDTH && global_position < n_x) {
       mp_entry e;
       e.ulong = smem.local_mp_col[local_position];
-      int mcol = (global_position + args.global_start_col) / args.cols_per_cell;
-      int mrow = (e.ints[1] + args.global_start_row) / args.rows_per_cell;
-      //if (blockIdx.x == 0 && threadIdx.x == 0) { 
-      //  printf("Computing Cols: col %d, row %d\n", mcol, mrow);
-      //}
-      fAtomicMax<ATOMIC_GLOBAL>(profile_A + (mrow * args.matrix_width + mcol) , e.floats[0]);
+      int col = (global_position + args.global_start_col) / args.cols_per_cell;
+      int row = (e.ints[1] + args.global_start_row) / args.rows_per_cell;
+      fAtomicMax<ATOMIC_GLOBAL>(profile_A + (row * args.matrix_width + col),
+                                e.floats[0]);
       global_position += BLOCKSZ;
       local_position += BLOCKSZ;
     }
@@ -332,12 +331,13 @@ __device__ void write_back(
     while (local_position < TILE_HEIGHT && global_position < n_y) {
       mp_entry e;
       e.ulong = smem.local_mp_row[local_position];
-      int mrow = (global_position + args.global_start_row) / args.rows_per_cell;
-      int mcol = (e.ints[1] + args.global_start_col) / args.cols_per_cell;
-      //if (blockIdx.x == 0 && threadIdx.x == 0) {
-      //  printf("Computing Rows: col %d, row %d\n", mcol, mrow);
-      //}
-      fAtomicMax<ATOMIC_GLOBAL>(profile_A + (mrow * args.matrix_width + mcol) , e.floats[0]);
+      // In the matrix summary profile type, the only time we compute on rows in
+      // in the transposed configuration, we can keep the col/row calculation the
+      // same as above.
+      int col = (global_position + args.global_start_col) / args.cols_per_cell;
+      int row = (e.ints[1] + args.global_start_row) / args.rows_per_cell;
+      fAtomicMax<ATOMIC_GLOBAL>(profile_B + (row * args.matrix_width + col),
+                                e.floats[0]);
       global_position += BLOCKSZ;
       local_position += BLOCKSZ;
     }

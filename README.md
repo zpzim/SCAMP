@@ -31,10 +31,11 @@ This is a much improved framework over [GPU-STOMP](https://github.com/zpzim/STOM
 ## Profile Types
 SCAMP can compute various types of matrix profiles:
 
-* 1NN_INDEX: This is the default profile type and the normal definition of matrix profile, it will produce the nearest neighbor distance/correlation of every subsequence as well as the index of the nearest neighbor
-* 1NN: This is a slightly faster version of the default profile type, but it only returns the nearest neighbor distance/correlation not the index of the nearest neighbor
-* SUM_THRESH: Rather than finding the nearest neighbor, this profile type will compute the sum of the correlations above the specified threshold (--threshold) for each subsequence. This is like a frequency histogram of correlations.
-* ALL_NEIGHBORS: [EXPERIMENTAL GPU ONLY, DISTRIBUTED UNSUPPORTED] This returns the approximate K (--max_matches_per_column) nearest neighbors and their correlations/indexes for each subsequence. A threshold (--threshold) can be used to accelerate the computation by ignoring matches below the threshold. This can also be used to produce distance matrix summaries (signifigantly slower and uses more memory currently) using --reduce_all_neighbors, --reduced_height and --reduced_width. See the example below.
+* --profile_type=1NN_INDEX: This is the default profile type and the normal definition of matrix profile, it will produce the nearest neighbor distance/correlation of every subsequence as well as the index of the nearest neighbor
+* --profile_type=1NN: This is a slightly faster version of the default profile type, but it only returns the nearest neighbor distance/correlation not the index of the nearest neighbor
+* --profile_type=SUM_THRESH: Rather than finding the nearest neighbor, this profile type will compute the sum of the correlations above the specified threshold (--threshold) for each subsequence. This is like a frequency histogram of correlations.
+* --profile_type=ALL_NEIGHBORS: [EXPERIMENTAL, GPU ONLY, DISTRIBUTED UNSUPPORTED] This returns the approximate K (--max_matches_per_column) nearest neighbors and their correlations/indexes for each subsequence. A threshold (--threshold) can be used to accelerate the computation by ignoring matches below the threshold. This is an approximation, because the output may miss results which are too close together (up to ~1000 datapoints apart). The results will be provided in the output file where each row is a tuple of (subsequence index, match index, correlation/distance)
+* --profile_type=MATRIX_SUMMARY: [EXPERIMENTAL, GPU ONLY, DISTRIBUTED UNSUPPORTED] This returns a max-pooled summary (see example below) of the distance matrix using the specified summary matrix height (--reduced_height) and width (--reduced_width). There are limits to the resolution of the output. The output matrix height and width must be approximately 1000x smaller than the input size, otherwise you can get patchy results. Also the entire output matrix must be small enough to fit in your system/GPU's memory. 
 
 All of the above profiles support AB joins
 
@@ -170,7 +171,7 @@ kubectl cp <SCAMP server container name>:/mp_columns_out .
 
 ## Examples
 
-### Distance Matrix Summaries using --reduce_all_neighbors --reduced_height --reduced_width
+### Distance Matrix Summaries using --profile_type=MATRIX_SUMMARY --reduced_height=h --reduced_width=w
 
 ![Alt text](/Readme/distance_matrix_summary.png?raw=true "Distance Matrix Summary")
 

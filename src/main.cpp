@@ -228,10 +228,12 @@ int main(int argc, char **argv) {
     printf("Now writing result to files\n");
   }
   WriteProfileToFile(FLAGS_output_a_file_name, FLAGS_output_a_index_file_name,
-                     args.profile_a, FLAGS_output_pearson, FLAGS_window, FLAGS_reduced_width, FLAGS_reduced_height);
+                     args.profile_a, FLAGS_output_pearson, FLAGS_window,
+                     FLAGS_reduced_width, FLAGS_reduced_height);
   if (FLAGS_keep_rows) {
     WriteProfileToFile(FLAGS_output_b_file_name, FLAGS_output_b_index_file_name,
-                       args.profile_b, FLAGS_output_pearson, FLAGS_window, FLAGS_reduced_width, FLAGS_reduced_height);
+                       args.profile_b, FLAGS_output_pearson, FLAGS_window,
+                       FLAGS_reduced_width, FLAGS_reduced_height);
   }
   if (FLAGS_print_debug_info) {
     printf("Done\n");
