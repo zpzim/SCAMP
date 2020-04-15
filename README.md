@@ -21,9 +21,8 @@ This is a much improved framework over [GPU-STOMP](https://github.com/zpzim/STOM
  * fp32 version should get good performance on GeForce cards
  * AB joins (you can produce the matrix profile from 2 different time series)
  * Distributable (we use GCP but other cloud platforms can work) with verified scalability to billions of datapoints
- * Sum and Frequency Joins: rather than compute the nearest neighbor directly, we can compute the sum or frequency of correlations above a threshold (this better describes the frequency of an event, something not obvious from the matrix profile alone)
- * All-neighbors Joins: rather than return only the nearest neighbor, we can return all matches above a threshold. This can be used in graph-based analytics and also to create low-res (pooled) distance matrices.
- * Distance matrix summaries: SCAMP can return pooled summary versions of the entire distance matrix.
+ * More types of matrix profiles! See Below!
+ * Extremely Efficient Implementation
  * Extensible to adding optimized versions of custom join operations.
  * Can compute joins with the CPU (Only enabled for double precision and does not support all-neighbors joins or distance matrix summaries yet)
  * Handles NaN input values. The matrix profile will be computed while excluding any subsequence with a NaN value
@@ -57,7 +56,7 @@ The above figure illustrates SCAMP's performance versus [STUMPY](https://github.
  
 ## Environment
 This base project requires:
- * Currently builds under Ubuntu/Fedora Linux using gcc/clang and nvcc (if CUDA is available) with cmake (3.8+ for cuda support), this version is not available directly from all package managers so you may need to install it manually from [here](https://cmake.org/download/)
+ * Currently builds under Mac/Linux using gcc/clang and nvcc (if CUDA is available) with cmake (3.8+ for cuda support), this version is not available directly from all package managers so you may need to install it manually from [here](https://cmake.org/download/)
  * Optional, but highly recommended: At least version 9.0 of the CUDA toolkit available [here](https://developer.nvidia.com/cuda-toolkit) and an NVIDIA GPU with CUDA (compute capability 3.0+) support. You can find a list of CUDA compatible GPUs [here](https://developer.nvidia.com/cuda-gpus)
  * Optional: Version 6.0 of clang (for clang-tidy and clang-format)
  * Currently Supports Kepler-Volta, but Turing and beyond will likely work as well, just add the -gencode flag for your specific architecture in CMakeLists.txt 
