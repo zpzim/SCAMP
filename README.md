@@ -7,6 +7,7 @@
 [Profile Types](https://github.com/zpzim/SCAMP#profile-types) \
 [Performance](https://github.com/zpzim/SCAMP#performance) \
 [Environment](https://github.com/zpzim/SCAMP#environment) \
+[Python Module](https://github.com/zpzim/SCAMP#python-module) \
 [Configuration](https://github.com/zpzim/SCAMP#configuration) \
 [Usage](https://github.com/zpzim/SCAMP#usage) \
 [Run Using Docker](https://github.com/zpzim/SCAMP#run-using-docker) \
@@ -56,7 +57,7 @@ The above figure illustrates SCAMP's performance versus [STUMPY](https://github.
  
 ## Environment
 This base project requires:
- * Currently builds under Ubuntu/Fedora Linux using gcc/clang and nvcc (if CUDA is available) with cmake (3.8+ for cuda support), this version is not available directly from all package managers so you may need to install it manually from [here](https://cmake.org/download/)
+ * Currently builds under Windows/Mac/Linux using msvc/gcc/clang and nvcc (if CUDA is available) with cmake (3.8+ for cuda support), this version is not available directly from all package managers so you may need to install it manually from [here](https://cmake.org/download/)
  * Optional, but highly recommended: At least version 9.0 of the CUDA toolkit available [here](https://developer.nvidia.com/cuda-toolkit) and an NVIDIA GPU with CUDA (compute capability 3.0+) support. You can find a list of CUDA compatible GPUs [here](https://developer.nvidia.com/cuda-gpus)
  * Optional: Version 6.0 of clang (for clang-tidy and clang-format)
  * Currently Supports Kepler-Volta, but Turing and beyond will likely work as well, just add the -gencode flag for your specific architecture in CMakeLists.txt 
@@ -74,6 +75,30 @@ CentOS:
   yum install cmake3
   # Install cuda via the link above
 ~~~~
+
+## Python module
+A source distribution for a python module using pybind11 is available on pypi.org to install run:
+~~~
+pip install pySCAMP
+~~~
+
+then you can use SCAMP in Python as follows:
+~~~
+import pySCAMPcpu as mp_cpu # Only uses cpu 
+
+import pySCAMP as mp # Uses GPU if available and CUDA was available during the build
+
+# Self join
+profile, index = mp.scamp(a, sublen)
+# AB join
+profile, index = mp.scamp(a, b, sublen)
+# KNN
+knn = mp.knn(a,sublen, k)
+# KNN with threshold
+knn = mp.knn(a, sublen, k, threshold)
+~~~
+
+This is a new feature and still has some kinks to work out. If you have problems building the module please submit an issue on github. I don't have access to all build environments so help in addressing these issues is appreciated.
 
 ## Configuration
 If you need to specify a specific compiler or cuda toolkit if you have multiple installed, you can use the following defines. By default cmake will look for cuda at the /usr/local/cuda symlink on linux
