@@ -212,8 +212,6 @@ bool InitProfileMemory(SCAMP::SCAMPArgs *args) {
     return false;
   }
 
-  std::cout << profile_a_size << " " << profile_b_size << std::endl;
-
   args->profile_a.Alloc(profile_a_size);
 
   if (args->keep_rows_separate) {
