@@ -192,14 +192,15 @@ endif()
 
 # Python module
 if (BUILD_PYTHON_MODULE)
-add_library(pySCAMP SHARED python/SCAMP_python.cpp)
-set_target_properties(pySCAMP PROPERTIES 
+  add_library(pySCAMP MODULE python/SCAMP_python.cpp)
+  set_target_properties(pySCAMP PROPERTIES 
+    INTERPROCEDURAL_OPTIMIZATION TRUE
     CXX_VISIBILITY_PRESET "hidden"
     PREFIX "${PYTHON_MODULE_PREFIX}"
     SUFFIX "${PYTHON_MODULE_EXTENSION}"
-)
-target_link_libraries(pySCAMP PRIVATE scamp_op scamp_utils common)
-target_link_libraries(pySCAMP PRIVATE pybind11::module)
+  )
+  target_link_libraries(pySCAMP PRIVATE scamp_op scamp_utils common)
+  target_link_libraries(pySCAMP PRIVATE pybind11::module)
 endif()
 
 # Build CPU-only package
@@ -219,14 +220,15 @@ if (BUILD_CPU_ONLY_PACKAGE)
   add_library(scamp_op_cpu ${CMAKE_CURRENT_SOURCE_DIR}/src/SCAMP.cpp)
   target_link_libraries(scamp_op_cpu Threads::Threads tile_cpu cpu_stats_cpu common_cpu qt_helper_cpu)
   if (BUILD_PYTHON_MODULE)
-  add_library(pySCAMPcpu SHARED python/SCAMP_python.cpp)
-  set_target_properties(pySCAMPcpu PROPERTIES 
-    CXX_VISIBILITY_PRESET "hidden"
-    PREFIX "${PYTHON_MODULE_PREFIX}"
-    SUFFIX "${PYTHON_MODULE_EXTENSION}"
-  )
-  target_link_libraries(pySCAMPcpu PRIVATE scamp_op_cpu scamp_utils_cpu common_cpu)
-  target_link_libraries(pySCAMPcpu PRIVATE pybind11::module)
+    add_library(pySCAMPcpu MODULE python/SCAMP_python.cpp)
+    set_target_properties(pySCAMPcpu PROPERTIES 
+      INTERPROCEDURAL_OPTIMIZATION TRUE
+      CXX_VISIBILITY_PRESET "hidden"
+      PREFIX "${PYTHON_MODULE_PREFIX}"
+      SUFFIX "${PYTHON_MODULE_EXTENSION}"
+    )
+    target_link_libraries(pySCAMPcpu PRIVATE scamp_op_cpu scamp_utils_cpu common_cpu)
+    target_link_libraries(pySCAMPcpu PRIVATE pybind11::module)
   endif()
 endif()
 

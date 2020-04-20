@@ -73,7 +73,7 @@ class CMakeBuild(build_ext):
 
 setup(
     name='pySCAMP',
-    version=0.1,
+    version='0.1.1',
     author='Zachary Zimmerman',
     author_email='zpzimmerman@gmail.com',
     description='SCAlable Matrix Profile',
