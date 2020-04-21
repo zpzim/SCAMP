@@ -105,7 +105,7 @@ jobs:
     osx_image: xcode9.4
     language: shell
     install:
-      - wget http://developer.download.nvidia.com/compute/cuda/10.2/Prod/local_installers/cuda_10.2.89_mac.dmg 
+      - wget -q http://developer.download.nvidia.com/compute/cuda/10.2/Prod/local_installers/cuda_10.2.89_mac.dmg 
       - hdiutil mount cuda_10.2.89_mac.dmg
       - sudo /Volumes/CUDAMacOSXInstaller/CUDAMacOSXInstaller.app/Contents/MacOS/CUDAMacOSXInstaller --no-window --accept-eula --install-package=cuda-toolkit
     script:
@@ -121,20 +121,24 @@ jobs:
     name: Windows Build
     os: windows
     language: cpp
+    before_install:
+      - choco install golang
     script:
       - set -e
       - mkdir build && cd build
       - cmake ..
       - cmake --build . --config Release
       - rm -rf *
+      # Build client/server
       - cmake -DBUILD_CLIENT_SERVER=1 ..
       - cmake --build . --config Release
 
   - stage: "Build Checks"
     name: Windows pip build
     os: windows
-    language: python
-    python: 3.7
+    before_install:
+      - choco install python --version 3.8.0
+      - export PATH="/c/Python38:/c/Python38/Scripts:$PATH"
     script:
       - set -e
       - pip install .
@@ -144,7 +148,7 @@ jobs:
     name: Mac pip build
     os: osx
     language: python
-    python: 3.7
+    python: 3.8
     script:
       - set -e
       - pip install .
@@ -154,7 +158,7 @@ jobs:
     name: Linux pip build
     os: linux
     language: python
-    python: 3.7
+    python: 3.8
     script:
       - set -e
       - pip install .
