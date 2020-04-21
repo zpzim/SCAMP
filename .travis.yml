@@ -13,7 +13,6 @@ jobs:
       - sudo service docker restart
       - sleep 5
       - sudo docker pull fedora:27
-      - git submodule update --init --recursive
     script:
       - travis/setup_fedora_tests.sh 27
 
@@ -38,7 +37,6 @@ jobs:
       - rm $CUDA_REPO_PKG
       - sudo apt-get -y update
       - sudo apt-get install -y cuda
-      - git submodule update --init --recursive
       - sudo ln -s /usr/local/cuda-10.0/ /usr/local/cuda
     script: 
       - set -e
@@ -46,19 +44,19 @@ jobs:
       - mkdir build && cd build
       # Build with clang
       - cmake -D FORCE_CUDA=1 -D CMAKE_CXX_COMPILER=clang++ ..
-      - make -j4
+      - make -j2
       - rm -rf *
       # Build with gcc
       - cmake -D FORCE_CUDA=1 -D CMAKE_CXX_COMPILER=g++ ..
-      - make -j4
+      - make -j2
       - rm -rf *
       # Build with Default compiler
       - cmake -D FORCE_CUDA=1 ..
-      - make -j4
+      - make -j2
       - rm -rf *
       # Build client/server
       - cmake -DFORCE_CUDA=1 -DCMAKE_CXX_COMPILER=g++ -DBUILD_CLIENT_SERVER=1 ..
-      - make -j4
+      - make -j2
 
   - stage: "Build Checks"
     name: "Ubuntu Build"
@@ -73,22 +71,20 @@ jobs:
     compiler: clang++-6.0
     before_install:
       - sudo apt-get install make g++
-    install:  
-      - git submodule update --init --recursive
     script: 
       - set -e
       - mkdir build && cd build
       # Build with clang
       - cmake -D CMAKE_CXX_COMPILER=clang++ ..
-      - make -j4
+      - make -j2
       - rm -rf *
       # Build with gcc
       - cmake -D CMAKE_CXX_COMPILER=g++ ..
-      - make -j4
+      - make -j2
       - rm -rf *
       # Build with Default compiler
       - cmake ..
-      - make -j4
+      - make -j2
     
   - stage: "Build Checks"
     name: "Ubuntu Client/Server Build"
@@ -96,15 +92,76 @@ jobs:
     dist: xenial
     before_install:
       - sudo apt-get install make g++
-    install:  
-      - git submodule update --init --recursive
     script: 
       - set -e
       - mkdir build && cd build
       # Build with gcc
-      - cmake -DBUILD_CLIENT_SERVER=1 -D CMAKE_CXX_COMPILER=g++ ..
-      - make -j4
-   
+      - cmake -DBUILD_CLIENT_SERVER=1 -DCMAKE_CXX_COMPILER=g++ ..
+      - make -j2
+
+  - stage: "Build Checks"
+      name: Mac CUDA Build
+      os: osx
+      osx_image: xcode9.4
+      language: shell
+      install:
+        - python -m pip install twine cibuildwheel==1.1.0     
+        - pip install twine wheel setuptools
+        - pip install -U twine wheel setuptools
+        - wget http://developer.download.nvidia.com/compute/cuda/10.2/Prod/local_installers/cuda_10.2.89_mac.dmg 
+        - hdiutil mount cuda_10.2.89_mac.dmg
+        - sudo /Volumes/CUDAMacOSXInstaller/CUDAMacOSXInstaller.app/Contents/MacOS/CUDAMacOSXInstaller --no-window --accept-eula --install-package=cuda-toolkit
+      script:
+        - set -e
+        - mkdir build && cd build
+        - cmake ..
+        - make -j2
+        - rm -rf *
+        - cmake -DBUILD_CLIENT_SERVER=1 ..
+        - make -j2
+
+  - stage: "Build Checks"
+    name: Windows Build
+    os: windows
+    language: cpp
+    script:
+      - set -e
+      - mkdir build && cd build
+      - cmake ..
+      - cmake --build . --config Release
+      - rm -rf *
+      - cmake -DBUILD_CLIENT_SERVER=1 ..
+      - cmake --build . --config Release
+
+  - stage: "Build Checks"
+    name: Windows pip build
+    os: windows
+    language: python
+    python: 3.7
+    script:
+      - set -e
+      - pip install .
+      - echo 'import pySCAMP' | python
+  
+  - stage: "Build Checks"
+    name: Mac pip build
+    os: osx
+    language: python
+    python: 3.7
+    script:
+      - set -e
+      - pip install .
+      - echo 'import pySCAMP' | python
+
+  - stage: "Build Checks"
+    name: Linux pip build
+    os: linux
+    language: python
+    script:
+      - set -e
+      - pip install .
+      - echo 'import pySCAMP' | python
+
   - stage: "Build Checks"
     name: "Style Check"
     os: linux
