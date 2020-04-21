@@ -192,48 +192,16 @@ endif()
 
 # Python module
 if (BUILD_PYTHON_MODULE)
-  add_library(pySCAMP MODULE python/SCAMP_python.cpp)
-  set_target_properties(pySCAMP PROPERTIES 
+  add_library(pyscamp MODULE python/SCAMP_python.cpp)
+  set_target_properties(pyscamp PROPERTIES 
     INTERPROCEDURAL_OPTIMIZATION TRUE
     CXX_VISIBILITY_PRESET "hidden"
     PREFIX "${PYTHON_MODULE_PREFIX}"
     SUFFIX "${PYTHON_MODULE_EXTENSION}"
   )
-  target_link_libraries(pySCAMP PRIVATE scamp_op scamp_utils common)
-  target_link_libraries(pySCAMP PRIVATE pybind11::module)
+  target_link_libraries(pyscamp PRIVATE scamp_op scamp_utils common)
+  target_link_libraries(pyscamp PRIVATE pybind11::module)
 endif()
-
-# Build CPU-only package
-if (BUILD_CPU_ONLY_PACKAGE)
-  add_library(common_cpu ${CMAKE_CURRENT_SOURCE_DIR}/src/common.cpp)
-  add_library(qt_helper_cpu ${CMAKE_CURRENT_SOURCE_DIR}/src/qt_helper.cpp)
-  target_link_libraries(qt_helper_cpu common_cpu)
-  add_library(kernel_common_cpu ${CMAKE_CURRENT_SOURCE_DIR}/src/kernel_common.cpp)
-  add_library(cpu_stats_cpu ${CMAKE_CURRENT_SOURCE_DIR}/src/cpu_stats.cpp)
-  target_link_libraries(cpu_stats_cpu common_cpu)
-  add_library(cpu_kernels_cpu ${CMAKE_CURRENT_SOURCE_DIR}/src/cpu_kernels.cpp)
-  target_link_libraries(cpu_kernels_cpu kernel_common_cpu common_cpu)
-  add_library(tile_cpu ${CMAKE_CURRENT_SOURCE_DIR}/src/tile.cpp)
-  target_link_libraries(tile_cpu common_cpu cpu_kernels_cpu qt_helper_cpu)
-  add_library(scamp_utils_cpu ${CMAKE_CURRENT_SOURCE_DIR}/src/scamp_utils.cpp)
-
-  add_library(scamp_op_cpu ${CMAKE_CURRENT_SOURCE_DIR}/src/SCAMP.cpp)
-  target_link_libraries(scamp_op_cpu Threads::Threads tile_cpu cpu_stats_cpu common_cpu qt_helper_cpu)
-  if (BUILD_PYTHON_MODULE)
-    add_library(pySCAMPcpu MODULE python/SCAMP_python.cpp)
-    set_target_properties(pySCAMPcpu PROPERTIES 
-      INTERPROCEDURAL_OPTIMIZATION TRUE
-      CXX_VISIBILITY_PRESET "hidden"
-      PREFIX "${PYTHON_MODULE_PREFIX}"
-      SUFFIX "${PYTHON_MODULE_EXTENSION}"
-    )
-    target_link_libraries(pySCAMPcpu PRIVATE scamp_op_cpu scamp_utils_cpu common_cpu)
-    target_link_libraries(pySCAMPcpu PRIVATE pybind11::module)
-  endif()
-endif()
-
-
-
 
 if (BUILD_CLIENT_SERVER)
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/grpc EXCLUDE_FROM_ALL)

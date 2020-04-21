@@ -48,7 +48,6 @@ class CMakeBuild(build_ext):
         cmake_args += ["-DCMAKE_BUILD_WITH_INSTALL_RPATH=TRUE"]
         cmake_args += ["-DCMAKE_INSTALL_RPATH={}".format("$ORIGIN")]
         cmake_args += ["-DBUILD_PYTHON_MODULE=TRUE"]
-        cmake_args += ["-DBUILD_CPU_ONLY_PACKAGE=TRUE"]
 
         if platform.system() == "Windows":
             cmake_args += ['-DCMAKE_LIBRARY_OUTPUT_DIRECTORY_{}={}'.format(build_type.upper(), extdir)]
@@ -79,7 +78,7 @@ setup(
     description='SCAlable Matrix Profile',
     long_description=open("README.md").read(),
     long_description_content_type='text/markdown',
-    ext_modules=[CMakeExtension('pySCAMP'), CMakeExtension('pySCAMPcpu')],
+    ext_modules=[CMakeExtension('pyscamp')],
     packages=find_packages(),
     cmdclass=dict(build_ext=CMakeBuild),
     url="https://github.com/zpzim/SCAMP",

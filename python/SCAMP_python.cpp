@@ -155,7 +155,7 @@ std::vector<std::tuple<int64_t, int64_t, float>> (*self_join_KNN)(const std::vec
 std::vector<std::tuple<int64_t, int64_t, float>> (*ab_join_KNN_thresh)(const std::vector<double>&, const std::vector<double>&, int, int, double)  = &scamp_knn;  
 std::vector<std::tuple<int64_t, int64_t, float>> (*ab_join_KNN)(const std::vector<double>&, const std::vector<double>&, int, int)  = &scamp_knn;  
 
-PYBIND11_MODULE(pySCAMP, m) {
+PYBIND11_MODULE(pyscamp, m) {
   m.doc() = R"pbdoc(
         SCAMP: SCAlable Matrix Profile
         -------------------------------
@@ -186,28 +186,6 @@ PYBIND11_MODULE(pySCAMP, m) {
   
   m.def("scamp_knn", ab_join_KNN_thresh, R"pbdoc(
         For each subsequence in time series A, returns its K nearest neighbors in time series B, ignoring matches below 'threshold' correlation)pbdoc");
-
-  m.attr("__version__") = "dev";
-}
-
-PYBIND11_MODULE(pySCAMPcpu, m) {
-  m.doc() = R"pbdoc(
-        SCAMP: SCAlable Matrix Profile
-        -------------------------------
-        .. currentmodule:: scamp
-        .. autosummary::
-           :toctree: _generate
-           SCAMP_AB
-           SCAMP_SELF
-    )pbdoc";
-
-  m.def("scamp", self_join_1NN_INDEX, R"pbdoc(
-        Returns the self-join matrix profile of a time series (in Pearson Correlation)
-    )pbdoc");
-  
-  m.def("scamp", ab_join_1NN_INDEX, R"pbdoc(
-        Returns the ab-join matrix profile of 2 time series (in Pearson Correlation)
-  )pbdoc");
 
   m.attr("__version__") = "dev";
 }

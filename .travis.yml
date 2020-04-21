@@ -120,18 +120,18 @@ jobs:
     name: Windows Build
     os: windows
     language: cpp
-    before_install:
-      - choco install golang
-      - export PATH="/c/Users/travis/go/bin:$PATH"
+    #before_install:
+      #- choco install golang
+      #- export PATH="/c/Users/travis/go/bin:$PATH"
     script:
       - set -e
       - mkdir build && cd build
       - cmake ..
       - cmake --build . --config Release
-      - rm -rf *
+      #- rm -rf *
       # Build client/server
-      - cmake -DBUILD_CLIENT_SERVER=1 ..
-      - cmake --build . --config Release
+      #- cmake -DBUILD_CLIENT_SERVER=1 ..
+      #- cmake --build . --config Release
 
   - stage: "Build Checks"
     name: Windows pip build
