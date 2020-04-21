@@ -100,25 +100,22 @@ jobs:
       - make -j2
 
   - stage: "Build Checks"
-      name: Mac CUDA Build
-      os: osx
-      osx_image: xcode9.4
-      language: shell
-      install:
-        - python -m pip install twine cibuildwheel==1.1.0     
-        - pip install twine wheel setuptools
-        - pip install -U twine wheel setuptools
-        - wget http://developer.download.nvidia.com/compute/cuda/10.2/Prod/local_installers/cuda_10.2.89_mac.dmg 
-        - hdiutil mount cuda_10.2.89_mac.dmg
-        - sudo /Volumes/CUDAMacOSXInstaller/CUDAMacOSXInstaller.app/Contents/MacOS/CUDAMacOSXInstaller --no-window --accept-eula --install-package=cuda-toolkit
-      script:
-        - set -e
-        - mkdir build && cd build
-        - cmake ..
-        - make -j2
-        - rm -rf *
-        - cmake -DBUILD_CLIENT_SERVER=1 ..
-        - make -j2
+    name: Mac CUDA Build
+    os: osx
+    osx_image: xcode9.4
+    language: shell
+    install:
+      - wget http://developer.download.nvidia.com/compute/cuda/10.2/Prod/local_installers/cuda_10.2.89_mac.dmg 
+      - hdiutil mount cuda_10.2.89_mac.dmg
+      - sudo /Volumes/CUDAMacOSXInstaller/CUDAMacOSXInstaller.app/Contents/MacOS/CUDAMacOSXInstaller --no-window --accept-eula --install-package=cuda-toolkit
+    script:
+      - set -e
+      - mkdir build && cd build
+      - cmake ..
+      - make -j2
+      - rm -rf *
+      - cmake -DBUILD_CLIENT_SERVER=1 ..
+      - make -j2
 
   - stage: "Build Checks"
     name: Windows Build
@@ -157,6 +154,7 @@ jobs:
     name: Linux pip build
     os: linux
     language: python
+    python: 3.7
     script:
       - set -e
       - pip install .
