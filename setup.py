@@ -71,8 +71,8 @@ class CMakeBuild(build_ext):
                               cwd=self.build_temp)
 
 setup(
-    name='pySCAMP',
-    version='0.1.1',
+    name='pyscamp',
+    version='0.1.4',
     author='Zachary Zimmerman',
     author_email='zpzimmerman@gmail.com',
     description='SCAlable Matrix Profile',

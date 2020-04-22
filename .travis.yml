@@ -240,8 +240,6 @@ jobs:
         branch: add-python-module
       skip_existing: true
       user: "__token__"
-      password:
-        secure: "dzAn8DqzPEStVTOhseHsXeSIG/TwRiJD9xOBJFiHhjQufquwRCCTgNvCYzHfp1UATAj8tPiNjYfdbK/NqwUc7EKrN4xAS3tutqvlhEo3BcEbXKOUnsB2p/H/0QzZCTEIgo4RrFaMD6sXMJSZSuRUw7X2rrNYYJ6lommr3wxuEladT+acaKi22TZoDKKT3+VU/LFAh7BqkNCIpBGxvB0WtZybLPl8XVp9A/m08cKJfTH09rblBbhXeyJ0KYtQilcXkExqENdEDqMwPBzZ8++y9zsTFNs2Rlgv1XGeQILZnUoBjNvrzlSV+JxS/5gLkysUjOOot38M/9x3h3kecpctt+cIzs5YF0SDz8c3H8UfNLGodKzQ8xDYE5ZuyZeleqlzEG5O+1CqCYPO41QDlwCp6DTwJqq6k9A9dUmzei7dkh9yXZhk2wIegn8aqs3gOFbQpSZ/S5gpDL1od5Pyj1GF3OvKMgkLXSlS1tsf9KWp7oPoG0OAj9DcTheQxl+UQMYcTQO0FHxUfspyRXHqXL0YRhxY5bjfnLs24SQuW0AWRbpvS2nDtSeLHbnfoadXkpKBcFtDAHAnBCNKgaHSJUGtQqFfN40AAGulw5MmjyNyLyPQ7TkNTo6Il5/ySlI1L7jI0QRjdJKCELKH8rl0xhYi1ipK93LcY/Afbu1M3oUrfd0="
 
 notifications:
   email:

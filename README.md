@@ -82,12 +82,12 @@ CentOS:
 A source distribution for a python3 module using pybind11 is available on pypi.org to install run:
 ~~~
 # Python 3 only; will also install cmake
-pip install pySCAMP
+pip install pyscamp
 ~~~
 
 then you can use SCAMP in Python as follows:
 ~~~
-import pySCAMP as mp # Uses GPU if available and CUDA was available during the build
+import pyscamp as mp # Uses GPU if available and CUDA was available during the build
 
 # Allows checking if pyscamp was built with CUDA and has GPU support
 has_gpu_support = mp.has_gpu_support()
