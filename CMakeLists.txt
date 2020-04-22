@@ -173,6 +173,19 @@ endif()
 # C++/CUDA executable
 add_executable(SCAMP ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
 
+# Python module
+if (BUILD_PYTHON_MODULE)
+  add_library(pyscamp MODULE python/SCAMP_python.cpp)
+  set_target_properties(pyscamp PROPERTIES 
+    INTERPROCEDURAL_OPTIMIZATION TRUE
+    CXX_VISIBILITY_PRESET "hidden"
+    PREFIX "${PYTHON_MODULE_PREFIX}"
+    SUFFIX "${PYTHON_MODULE_EXTENSION}"
+  )
+  target_link_libraries(pyscamp PRIVATE scamp_op scamp_utils common)
+  target_link_libraries(pyscamp PRIVATE pybind11::module)
+endif()
+
 if (CMAKE_CUDA_COMPILER)
   target_compile_definitions(common PUBLIC -D_HAS_CUDA_)
   target_compile_definitions(qt_helper PUBLIC -D_HAS_CUDA_)
@@ -187,21 +200,12 @@ if (CMAKE_CUDA_COMPILER)
   target_compile_definitions(scamp_op PUBLIC -D_HAS_CUDA_)
   target_compile_definitions(gpu_kernels PUBLIC -D_HAS_CUDA_)
   target_compile_definitions(SCAMP PUBLIC -D_HAS_CUDA_)
+  if (BUILD_PYTHON_MODULE)
+    target_compile_definitions(pyscamp PUBLIC -D_HAS_CUDA_)
+  endif()
 endif()
 
 
-# Python module
-if (BUILD_PYTHON_MODULE)
-  add_library(pyscamp MODULE python/SCAMP_python.cpp)
-  set_target_properties(pyscamp PROPERTIES 
-    INTERPROCEDURAL_OPTIMIZATION TRUE
-    CXX_VISIBILITY_PRESET "hidden"
-    PREFIX "${PYTHON_MODULE_PREFIX}"
-    SUFFIX "${PYTHON_MODULE_EXTENSION}"
-  )
-  target_link_libraries(pyscamp PRIVATE scamp_op scamp_utils common)
-  target_link_libraries(pyscamp PRIVATE pybind11::module)
-endif()
 
 if (BUILD_CLIENT_SERVER)
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/grpc EXCLUDE_FROM_ALL)

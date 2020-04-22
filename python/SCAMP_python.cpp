@@ -18,9 +18,12 @@ void SplitProfile1NNINDEX(const std::vector<uint64_t> profile,
   }
 }
 
-std::vector<std::tuple<int64_t, int64_t, float>> SplitProfileKNN(std::vector<std::priority_queue<SCAMP::SCAMPmatch, std::vector<SCAMP::SCAMPmatch>, SCAMP::compareMatch>>& matches) {
+std::vector<std::tuple<int64_t, int64_t, float>> SplitProfileKNN(
+    std::vector<
+        std::priority_queue<SCAMP::SCAMPmatch, std::vector<SCAMP::SCAMPmatch>,
+                            SCAMP::compareMatch>>& matches) {
   std::vector<std::tuple<int64_t, int64_t, float>> result;
-  for (auto &pq : matches) {
+  for (auto& pq : matches) {
     while (!pq.empty()) {
       result.emplace_back(pq.top().col, pq.top().row, pq.top().corr);
       pq.pop();
@@ -95,7 +98,9 @@ std::tuple<std::vector<float>, std::vector<int>> scamp(
   return std::make_tuple(NN, index);
 }
 
-std::vector<std::tuple<int64_t, int64_t, float>> scamp_knn(const std::vector<double>& a, const std::vector<double>& b, int m, int k, double threshold) {
+std::vector<std::tuple<int64_t, int64_t, float>> scamp_knn(
+    const std::vector<double>& a, const std::vector<double>& b, int m, int k,
+    double threshold) {
   SCAMP::SCAMPArgs args = GetDefaultSCAMPArgs();
   args.timeseries_a = a;
   args.timeseries_b = b;
@@ -114,11 +119,13 @@ std::vector<std::tuple<int64_t, int64_t, float>> scamp_knn(const std::vector<dou
   return SplitProfileKNN(args.profile_a.data[0].match_value);
 }
 
-std::vector<std::tuple<int64_t, int64_t, float>> scamp_knn(const std::vector<double>& a, const std::vector<double>& b, int m, int k) {
+std::vector<std::tuple<int64_t, int64_t, float>> scamp_knn(
+    const std::vector<double>& a, const std::vector<double>& b, int m, int k) {
   return scamp_knn(a, b, m, k, 0);
 }
 
-std::vector<std::tuple<int64_t, int64_t, float>> scamp_knn(const std::vector<double>& a, int m, int k, double threshold) {
+std::vector<std::tuple<int64_t, int64_t, float>> scamp_knn(
+    const std::vector<double>& a, int m, int k, double threshold) {
   SCAMP::SCAMPArgs args = GetDefaultSCAMPArgs();
   args.timeseries_a = a;
   args.timeseries_b = a;
@@ -137,23 +144,36 @@ std::vector<std::tuple<int64_t, int64_t, float>> scamp_knn(const std::vector<dou
   return SplitProfileKNN(args.profile_a.data[0].match_value);
 }
 
-std::vector<std::tuple<int64_t, int64_t, float>> scamp_knn(const std::vector<double>& a, int m, int k) {
+std::vector<std::tuple<int64_t, int64_t, float>> scamp_knn(
+    const std::vector<double>& a, int m, int k) {
   return scamp_knn(a, m, k, 0);
 }
 
-
-
-
-
+bool has_gpu_support() {
+#ifdef _HAS_CUDA_
+  return true;
+#else
+  return false;
+#endif
+}
 
 namespace py = pybind11;
 
-std::tuple<std::vector<float>, std::vector<int>> (*self_join_1NN_INDEX)(const std::vector<double>&, int)  = &scamp;  
-std::tuple<std::vector<float>, std::vector<int>> (*ab_join_1NN_INDEX)(const std::vector<double>&, const std::vector<double>&, int)  = &scamp;  
-std::vector<std::tuple<int64_t, int64_t, float>> (*self_join_KNN_thresh)(const std::vector<double>&, int, int, double)  = &scamp_knn;  
-std::vector<std::tuple<int64_t, int64_t, float>> (*self_join_KNN)(const std::vector<double>&, int, int)  = &scamp_knn;  
-std::vector<std::tuple<int64_t, int64_t, float>> (*ab_join_KNN_thresh)(const std::vector<double>&, const std::vector<double>&, int, int, double)  = &scamp_knn;  
-std::vector<std::tuple<int64_t, int64_t, float>> (*ab_join_KNN)(const std::vector<double>&, const std::vector<double>&, int, int)  = &scamp_knn;  
+bool (*GPU_supported)() = &has_gpu_support;
+std::tuple<std::vector<float>, std::vector<int>> (*self_join_1NN_INDEX)(
+    const std::vector<double>&, int) = &scamp;
+std::tuple<std::vector<float>, std::vector<int>> (*ab_join_1NN_INDEX)(
+    const std::vector<double>&, const std::vector<double>&, int) = &scamp;
+std::vector<std::tuple<int64_t, int64_t, float>> (*self_join_KNN_thresh)(
+    const std::vector<double>&, int, int, double) = &scamp_knn;
+std::vector<std::tuple<int64_t, int64_t, float>> (*self_join_KNN)(
+    const std::vector<double>&, int, int) = &scamp_knn;
+std::vector<std::tuple<int64_t, int64_t, float>> (*ab_join_KNN_thresh)(
+    const std::vector<double>&, const std::vector<double>&, int, int,
+    double) = &scamp_knn;
+std::vector<std::tuple<int64_t, int64_t, float>> (*ab_join_KNN)(
+    const std::vector<double>&, const std::vector<double>&, int,
+    int) = &scamp_knn;
 
 PYBIND11_MODULE(pyscamp, m) {
   m.doc() = R"pbdoc(
@@ -166,6 +186,8 @@ PYBIND11_MODULE(pyscamp, m) {
            SCAMP_SELF
     )pbdoc";
 
+  m.def("gpu_supported", GPU_supported, R"pbdoc(
+        Returns whether or not the module was compiled with GPU support)pbdoc");
 
   m.def("scamp", self_join_1NN_INDEX, R"pbdoc(
         Returns the self-join matrix profile of a time series (in Pearson Correlation)
@@ -174,16 +196,16 @@ PYBIND11_MODULE(pyscamp, m) {
   m.def("scamp", ab_join_1NN_INDEX, R"pbdoc(
         Returns the ab-join matrix profile of 2 time series (in Pearson Correlation)
     )pbdoc");
-  
+
   m.def("scamp_knn", self_join_KNN, R"pbdoc(
         Returns the k nearest neighbors for each subsequence in a time series)pbdoc");
-  
+
   m.def("scamp_knn", self_join_KNN_thresh, R"pbdoc(
         Returns the k nearest neighbors for each subsequence in a time series, ignoring matches below 'threshold' correlation)pbdoc");
 
   m.def("scamp_knn", ab_join_KNN, R"pbdoc(
         For each subsequence in time series A, returns its K nearest neighbors in time series B)pbdoc");
-  
+
   m.def("scamp_knn", ab_join_KNN_thresh, R"pbdoc(
         For each subsequence in time series A, returns its K nearest neighbors in time series B, ignoring matches below 'threshold' correlation)pbdoc");
 

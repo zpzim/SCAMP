@@ -42,28 +42,29 @@ All of the above profiles support AB joins
 ## Performance
 SCAMP is extremely fast, especially on Tesla series GPUs. I belive this repository contains the fastest code in existance for computing the matrix profile. If you find a way to improve the speed of SCAMP, or compute matrix profiles any faster than SCAMP does, please let me know, I would be glad to point to your work and incorporate any improvements that can be made to SCAMP.
 
-Notes on CPU performance: SCAMP's CPU performance is very good. However, how performant it is depends heavily on the compiler you use. Newer compilers are better, clang v6 or greater tends to work best. Newer versions of GCC can work as well. MSVC tends to be slower. There can be up to a 10x (perhaps more) difference depending on the compiler you use. So please be aware of this.
+### Notes on CPU performance
+SCAMP's CPU performance is very good. However, how performant it is depends heavily on the compiler you use. Newer compilers are better, clang v6 or greater tends to work best. Newer versions of GCC can work as well. MSVC tends to be slower. There can be up to a 10x (perhaps more) difference depending on the compiler you use. This is related to how different compilers have varying levels of support for autovectorization.
 
+### Performance Comparisons
 The included performance tests showcase SCAMP's performance up to an input size of 16M datapoints; however, as we have shown in our publications SCAMP is scalable to hundreds of millions of datapoints and even billions of datapoints with the right hardware.
 
-![Alt text](/Readme/SCAMP_Profile_Performance_Comparison.png?raw=true "GPU SCAMP Profiles Performance")
+![SCAMP GPU Performance](/Readme/SCAMP_Profile_Performance_Comparison.png?raw=true "GPU SCAMP Profiles Performance")
 In the figure above we show the runtime in seconds for SCAMP's various profile types (self-join) on 2 P100 GPUs.
 
 
-![Alt text](/Readme/KNN.png?raw=true "GPU KNN Profiles Performance with different values of K")
+![SCAMP KNN Performance](/Readme/KNN.png?raw=true "GPU KNN Profiles Performance with different values of K")
 In the figure above we show the runtime in seconds for SCAMP's approximate KNN (--profile_type=ALL_NEIGHBORS) matrix profile, while varying K and the input size on 2 P100 GPUs. You can see that SCAMP maintains good performance relative to the baseline 1NN_INDEX matrix profile up to at least K=20, which should be sufficient for almost all practioners. All measurements were made with random data with the initial threshold set to 0 correlation (close to the worst case for KNN).
 
-![Alt text](/Readme/other_methods.png?raw=true "Performance of SCAMP on GPU compared to other methods to compute the matrix profile on GPU")
+![SCAMP vs Others](/Readme/other_methods.png?raw=true "Performance of SCAMP on GPU compared to other methods to compute the matrix profile on GPU")
 The above figure illustrates SCAMP's performance versus [STUMPY](https://github.com/TDAmeritrade/stumpy) which is a popular matrix profile implementation. As can be seen above SCAMP on 2x P100 GPUs much faster than STUMPY, when STUMPY is running on 16x V100 GPUs, which are about ~2x more powerful than P100s individually. This is several orders of magnitude of difference in processing power.
 
 ## Environment
 This base project requires:
  * Currently builds under Windows/Mac/Linux using msvc/gcc/clang and nvcc (if CUDA is available) with cmake (3.8+ for cuda support), this version is not available directly from all package managers so you may need to install it manually from [here](https://cmake.org/download/)
  * Optional, but highly recommended: At least version 9.0 of the CUDA toolkit available [here](https://developer.nvidia.com/cuda-toolkit) and an NVIDIA GPU with CUDA (compute capability 3.0+) support. You can find a list of CUDA compatible GPUs [here](https://developer.nvidia.com/cuda-gpus)
- * Optional: Version 6.0 of clang (for clang-tidy and clang-format)
  * Currently Supports Kepler-Volta, but Turing and beyond will likely work as well, just add the -gencode flag for your specific architecture in CMakeLists.txt 
  * Highly recommend using a Pascal/Volta GPU as they are much better (V100 is ~10x faster than a K80 for SCAMP, V100 is ~2-3x faster than a P100)
- * If you are using CPUs, using clang-6.0 or above is highly recomended as gcc does not properly autovectorize the CPU kernels.
+ * If you are using CPUs, using clang-6.0 or above is highly recomended as gcc may not properly autovectorize the CPU kernels.
 ~~~~
 Ubuntu Required Packages:
    # Depending on Ubuntu version cmake 3.8 may not be available and you will need to install manually
@@ -128,7 +129,7 @@ cmake -D FORCE_CUDA=1 ..
 
 ## Usage
 
-### Clone the repository and submodules make a build directory
+### Clone the repository and submodules; make a build directory
 ~~~~
 git clone https://github.com/zpzim/SCAMP
 cd SCAMP
@@ -150,7 +151,6 @@ cmake --build . --config Release
 ./SCAMP --window=window_size --input_a_file_name=input_A_file_path [--num_cpu_workers=N (to use CPU threads)]
 ~~~~
 
-~~~~
 This will generate two files: mp_columns_out and mp_columns_out_index, which contain the matrix profile and matrix profile index values respectively. 
 
 * Selected Optional Arguments:
@@ -184,7 +184,7 @@ docker run --gpus all \
 ~~~
 git submodule update --init --recursive
 mkdir build && cd build
-# requires golang-go and libz
+# requires golang and libz
 cmake -DBUILD_CLIENT_SERVER=1 ..
 make -j8
 ~~~
@@ -219,12 +219,12 @@ kubectl cp <SCAMP server container name>:/mp_columns_out .
 
 ### Distance Matrix Summaries using --reduce_all_neighbors --reduced_height --reduced_width
 
-![Alt text](/Readme/distance_matrix_summary.png?raw=true "Distance Matrix Summary")
+![Distance Matrix Summary](/Readme/distance_matrix_summary.png?raw=true "Distance Matrix Summary")
 
 You can see that various behavors in the data become apparent through the visualization of the distance matrix.
 
 ## References
 If you use SCAMP in your work, please reference the following paper:
-~~~
+~~~~
 Zimmerman, Zachary, et al. "Matrix Profile XIV: Scaling Time Series Motif Discovery with GPUs to Break a Quintillion Pairwise Comparisons a Day and Beyond." Proceedings of the ACM Symposium on Cloud Computing. 2019.
-~~~
+~~~~
