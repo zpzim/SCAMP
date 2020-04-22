@@ -108,13 +108,15 @@ jobs:
       - wget -q http://developer.download.nvidia.com/compute/cuda/10.2/Prod/local_installers/cuda_10.2.89_mac.dmg 
       - hdiutil mount cuda_10.2.89_mac.dmg
       - sudo /Volumes/CUDAMacOSXInstaller/CUDAMacOSXInstaller.app/Contents/MacOS/CUDAMacOSXInstaller --no-window --accept-eula --install-package=cuda-toolkit
+      - export PATH="/usr/local/cuda/bin:$PATH" 
+      - nvcc --version
     script:
       - mkdir build && cd build
-      - cmake ..
+      - cmake -DFORCE_CUDA=1 ..
       - make -j2
-      - rm -rf *
-      - cmake -DBUILD_CLIENT_SERVER=1 ..
-      - make -j2
+      #- rm -rf *
+      #- cmake -DFORCE_CUDA=1 -DBUILD_CLIENT_SERVER=1 ..
+      #- make -j2
 
   - stage: "Build Checks"
     name: Windows Build
@@ -143,16 +145,17 @@ jobs:
     script:
       - set -e
       - pip install .
-      - echo 'import pySCAMP' | python
+      - echo 'import pyscamp' | python
   
   - stage: "Build Checks"
     name: Mac pip build
     os: osx
+    osx_image: xcode11.2
     language: shell
     script:
       - set -e
       - pip install .
-      - echo 'import pySCAMP' | python
+      - echo 'import pyscamp' | python
 
   - stage: "Build Checks"
     name: Linux pip build
@@ -162,7 +165,7 @@ jobs:
     script:
       - set -e
       - pip install .
-      - echo 'import pySCAMP' | python
+      - echo 'import pyscamp' | python
 
   - stage: "Build Checks"
     name: "Style Check"

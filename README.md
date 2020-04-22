@@ -42,6 +42,8 @@ All of the above profiles support AB joins
 ## Performance
 SCAMP is extremely fast, especially on Tesla series GPUs. I belive this repository contains the fastest code in existance for computing the matrix profile. If you find a way to improve the speed of SCAMP, or compute matrix profiles any faster than SCAMP does, please let me know, I would be glad to point to your work and incorporate any improvements that can be made to SCAMP.
 
+Notes on CPU performance: SCAMP's CPU performance is very good. However, how performant it is depends heavily on the compiler you use. Newer compilers are better, clang v6 or greater tends to work best. Newer versions of GCC can work as well. MSVC tends to be slower. There can be up to a 10x (perhaps more) difference depending on the compiler you use. So please be aware of this.
+
 The included performance tests showcase SCAMP's performance up to an input size of 16M datapoints; however, as we have shown in our publications SCAMP is scalable to hundreds of millions of datapoints and even billions of datapoints with the right hardware.
 
 ![Alt text](/Readme/SCAMP_Profile_Performance_Comparison.png?raw=true "GPU SCAMP Profiles Performance")
@@ -54,7 +56,6 @@ In the figure above we show the runtime in seconds for SCAMP's approximate KNN (
 ![Alt text](/Readme/other_methods.png?raw=true "Performance of SCAMP on GPU compared to other methods to compute the matrix profile on GPU")
 The above figure illustrates SCAMP's performance versus [STUMPY](https://github.com/TDAmeritrade/stumpy) which is a popular matrix profile implementation. As can be seen above SCAMP on 2x P100 GPUs much faster than STUMPY, when STUMPY is running on 16x V100 GPUs, which are about ~2x more powerful than P100s individually. This is several orders of magnitude of difference in processing power.
 
- 
 ## Environment
 This base project requires:
  * Currently builds under Windows/Mac/Linux using msvc/gcc/clang and nvcc (if CUDA is available) with cmake (3.8+ for cuda support), this version is not available directly from all package managers so you may need to install it manually from [here](https://cmake.org/download/)
@@ -77,57 +78,78 @@ CentOS:
 ~~~~
 
 ## Python module
-A source distribution for a python module using pybind11 is available on pypi.org to install run:
+A source distribution for a python3 module using pybind11 is available on pypi.org to install run:
 ~~~
+# Python 3 only
 pip install pySCAMP
 ~~~
 
 then you can use SCAMP in Python as follows:
 ~~~
-import pySCAMPcpu as mp_cpu # Only uses cpu 
-
 import pySCAMP as mp # Uses GPU if available and CUDA was available during the build
+
+# Allows checking if pyscamp was built with CUDA and has GPU support
+has_gpu_support = mp.has_gpu_support()
 
 # Self join
 profile, index = mp.scamp(a, sublen)
 # AB join
 profile, index = mp.scamp(a, b, sublen)
-# KNN
-knn = mp.knn(a,sublen, k)
-# KNN with threshold
-knn = mp.knn(a, sublen, k, threshold)
-~~~
 
-This is a new feature and still has some kinks to work out. If you have problems building the module please submit an issue on github. I don't have access to all build environments so help in addressing these issues is appreciated.
+# KNN
+if has_gpu_support:
+  knn = mp.knn(a,sublen, k)
+  # KNN with threshold
+  knn = mp.knn(a, sublen, k, threshold)
+~~~~
+
+This is a new feature and still has some kinks to work out. If you have problems building the module (or getting GPU support to work) please submit an issue on github. I don't have access to all build environments so help in addressing these issues is appreciated.
+
+A few notes on GPU support: you need to have a cuda development environment set up in order to build SCAMP with GPU support. If you install pyscamp and it does not detect CUDA during installation it will install using CPU support only. Cmake must detect your cuda installation, this can be especially tricky when using Windows and MSVC as you need to have the CUDA extensions for visual studio installed.
 
 ## Configuration
 If you need to specify a specific compiler or cuda toolkit if you have multiple installed, you can use the following defines. By default cmake will look for cuda at the /usr/local/cuda symlink on linux
-~~~~
+~~~~~
 cmake -D CMAKE_CUDA_COMPILER=/path/to/nvcc \
       -D CMAKE_CXX_COMPILER=/path/to/clang++/or/g++ ..
       -D CMAKE_C_COMPILER=/path/to/clang/or/gcc ..
-~~~~
+~~~~~
+
+### Forcing cuda/no cuda
 You can force cmake to build without cuda using
-~~~
+~~~~
 cmake -D FORCE_NO_CUDA=1 ..
-~~~
+~~~~
 For testing with cuda, you can force the build to fail if cuda is not found using
-~~~
+~~~~
 cmake -D FORCE_CUDA=1 ..
-~~~
+~~~~
+
 
 ## Usage
+
+### Clone the repository and submodules make a build directory
 ~~~~
 git clone https://github.com/zpzim/SCAMP
 cd SCAMP
 git submodule update --init --recursive
 mkdir build && cd build
+~~~~
+
+### Build SCAMP on Mac/Linux/Windows
+~~~~
 # cmake will look in your $PATH for the cuda/c++ compilers
 # If you have problems with cmake, you may need to specify a
 # cuda or c++ compiler as shown above
 cmake ..
-make -j8
+cmake --build . --config Release
+~~~~
+
+### Using SCAMP
+~~~~
 ./SCAMP --window=window_size --input_a_file_name=input_A_file_path [--num_cpu_workers=N (to use CPU threads)]
+~~~~
+
 ~~~~
 This will generate two files: mp_columns_out and mp_columns_out_index, which contain the matrix profile and matrix profile index values respectively. 
 
