@@ -151,8 +151,6 @@ jobs:
         packages: clang-6.0 clang-format-6.0 clang-tidy-6.0
     before_install:
     - sudo apt-get install make g++
-    install:
-    - git submodule update --init --recursive
     script:
     - set -e
     - mkdir build && cd build
@@ -173,7 +171,6 @@ jobs:
     before_install:
     - sudo apt-get install make g++
     install:
-    - git submodule update --init --recursive
     - pip install numpy pandas tqdm
     script:
     - set -e
@@ -195,7 +192,6 @@ jobs:
     before_install:
     - sudo apt-get install make g++
     install:
-    - git submodule update --init --recursive
     - pip install numpy pandas tqdm
     script:
     - set -e
@@ -219,8 +215,6 @@ jobs:
         packages: clang-6.0 clang-format-6.0 clang-tidy-6.0
     before_install:
     - sudo apt-get install make g++
-    install:
-    - git submodule update --init --recursive
     script:
     - set -e
     - mkdir build && cd build
@@ -232,7 +226,12 @@ jobs:
     - cd ../test
     - "./run_tests.sh ../build/kubernetes/SCAMP_distributed /dev/null"
 
-  - stage: Deploy pypi
+  - stage: Deploy
+    name: "Deploy pypi sdist"
+    os: linux
+    dist: xenial
+    language: python
+    python: '3.7'
     deploy:
       provider: pypi
       on:
