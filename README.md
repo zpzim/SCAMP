@@ -60,7 +60,7 @@ The above figure illustrates SCAMP's performance versus [STUMPY](https://github.
 
 ## Environment
 This base project requires:
- * Currently builds under Windows/Mac/Linux using msvc/gcc/clang and nvcc (if CUDA is available) with cmake (3.8+ for cuda support), this version is not available directly from all package managers so you may need to install it manually from [here](https://cmake.org/download/)
+ * Currently builds under Windows/Mac/Linux using msvc/gcc/clang and nvcc (if CUDA is available) with cmake (3.8+ for cuda support), this version is not available directly from all package managers so you may need to install it manually, the easist way to do this is with python via "pip install cmake" or you can download it manually from [here](https://cmake.org/download/)
  * Optional, but highly recommended: At least version 9.0 of the CUDA toolkit available [here](https://developer.nvidia.com/cuda-toolkit) and an NVIDIA GPU with CUDA (compute capability 3.0+) support. You can find a list of CUDA compatible GPUs [here](https://developer.nvidia.com/cuda-gpus)
  * Currently Supports Kepler-Volta, but Turing and beyond will likely work as well, just add the -gencode flag for your specific architecture in CMakeLists.txt 
  * Highly recommend using a Pascal/Volta GPU as they are much better (V100 is ~10x faster than a K80 for SCAMP, V100 is ~2-3x faster than a P100)
@@ -81,7 +81,7 @@ CentOS:
 ## Python module
 A source distribution for a python3 module using pybind11 is available on pypi.org to install run:
 ~~~
-# Python 3 only
+# Python 3 only; will also install cmake
 pip install pySCAMP
 ~~~
 
