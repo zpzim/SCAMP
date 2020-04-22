@@ -155,7 +155,7 @@ jobs:
     - set -e
     - mkdir build && cd build
     - cmake -D CMAKE_CXX_COMPILER=clang++ ..
-    - make -j4
+    - make -j2
     - cd ../test
     - ./run_tests.sh ../build/SCAMP /dev/null "--no_gpu=true --num_cpu_workers=2"
   - stage: Integration Tests
@@ -176,7 +176,7 @@ jobs:
     - set -e
     - mkdir build && cd build
     - cmake -D CMAKE_CXX_COMPILER=clang++ ..
-    - make -j4
+    - make -j2
     - cd ../test
     - python3 ./run_tests.py --executable ../build/SCAMP --extra_args "--no_gpu --num_cpu_workers=2"
   - stage: Integration Tests
@@ -198,7 +198,7 @@ jobs:
     - mkdir build && cd build
     - cmake -DCMAKE_C_COMPILER=clang-6.0 -DCMAKE_CXX_COMPILER=clang++-6.0 -DBUILD_CLIENT_SERVER=1
       ..
-    - make -j4
+    - make -j2
     - "./kubernetes/SCAMPserver &"
     - "./kubernetes/SCAMPclient &"
     - sleep 10
@@ -219,7 +219,7 @@ jobs:
     - set -e
     - mkdir build && cd build
     - cmake -D CMAKE_CXX_COMPILER=g++ -DBUILD_CLIENT_SERVER=1 ..
-    - make -j4
+    - make -j2
     - "./kubernetes/SCAMPserver &"
     - "./kubernetes/SCAMPclient &"
     - sleep 10
@@ -232,6 +232,8 @@ jobs:
     dist: xenial
     language: python
     python: '3.7'
+    install: skip
+    script: skip
     deploy:
       provider: pypi
       on:
