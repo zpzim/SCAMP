@@ -236,8 +236,6 @@ jobs:
     script: skip
     deploy:
       provider: pypi
-      on:
-        branch: add-python-module
       skip_existing: true
       user: "__token__"
 
