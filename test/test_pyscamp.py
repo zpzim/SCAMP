@@ -1,17 +1,119 @@
+#This file includes tests to check the correcntess of the pyscamp module.
+#It does not do extenstive testing of the SCAMP framework that is handled by other integration tests.
+
 import pyscamp as mp
+import numpy as np
+from distance_matrix_fast import *
 import random 
 import sys
 
-arr = []
-num = 0
-for i in range(1,32000):
-  num += random.uniform(-0.1, 0.1)
-  arr.append(num)
+def compare_index(valid, check):
+  if np.any(valid.shape != check.shape):
+    print('Output Shapes do not match')
+    return False
+  
+  index_match_ratio = 0.001
+  incorrect = np.count_nonzero(valid != check)
+  ratio = incorrect / len(valid) 
+  is_valid = ratio < index_match_ratio
+  #if not is_valid:
+  #  print(valid)
+  #  print(check)
+  #  print('\n')
+  return is_valid
 
-mp.scamp(arr, 1024)
-print("CPU PASS")
+def compare_vectors(valid, check, eps):
+  if np.any(valid.shape != check.shape):
+    print('Output Shapes do not match')
+    return False
+    
+  diff = np.abs(valid - check)
+  is_valid = np.max(diff) < eps
+  
+  if not is_valid:
+    print(diff[diff > eps])
+    print(valid[diff > eps])
+    print(check[diff > eps])
+    print('\n')
+  return is_valid
+
+failed = False
+arr = []
+arr2 = []
+num = 0
+num2 = 0
+vector_match_epsilon = 0.001
+
+for i in range(1,8000):
+  num += random.uniform(-0.1, 0.1)
+  num2 += random.uniform(-0.1, 0.1)
+  arr.append(num)
+  arr2.append(num)
+
+
+
+dm_self = distance_matrix(arr, None, 1024)
+dm_ab = distance_matrix(arr, arr2, 1024)
+
+dist, index = mp.scamp(arr, 1024, pearson=True)
+vdist, vindex = reduce_1nn_index_unshifted(dm_self)
+
+dist = np.array(dist)
+index = np.array(index)
+
+if compare_vectors(vdist, np.array(dist), vector_match_epsilon) and compare_index(vindex, np.array(index)):
+  print("1NN INDEX Self join pass")
+else:
+  failed = True
+  print("1NN INDEX Self join fail")
+
+
+dist, index = mp.scamp(arr, arr2, 1024, pearson=True)
+vdist, vindex = reduce_1nn_index_unshifted(dm_ab)
+
+dist = np.array(dist)
+index = np.array(index)
+
+
+if compare_vectors(vdist, dist, vector_match_epsilon) and compare_index(vindex, index):
+  print("1NN INDEX AB join pass")
+else:
+  failed = True
+  print("1NN INDEX AB join fail")
+
+dist = mp.scamp_sum(arr, 1024, threshold=0.90, pearson=True)
+dist = np.array(dist)
+dist = dist.reshape((len(dist), 1))
+vdist = reduce_sum_thresh(dm_self, 0.90)
+
+if compare_vectors(vdist, dist, vector_match_epsilon):
+  print("SUM Self join pass")
+else:
+  failed = True
+  print("SUM Self join fail")
+
+
+dist = mp.scamp_sum(arr, arr2, 1024, threshold=0.90, pearson=True)
+dist = np.array(dist)
+dist = dist.reshape((len(dist), 1))
+vdist = reduce_sum_thresh(dm_ab, 0.90)
+
+if compare_vectors(vdist, dist, vector_match_epsilon):
+  print("SUM AB join pass")
+else:
+  failed = True
+  print("SUM AB join fail")
+
+dist = mp.scamp(arr, 1024, threads=1)
+dist = mp.scamp(arr, 1024, threads=2)
+
 
 if mp.gpu_supported():
-  mp.scamp_knn(arr, 1024, 5)
-  print("GPU PASS")
+  # TODO(zpzim): add a correctness check here once we have a test for that
+  x = mp.scamp_knn(arr, 1024, 5, threshold=0.95, pearson=True)
+
+
+if failed:
+  exit(1)
+
 

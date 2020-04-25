@@ -1,5 +1,6 @@
 language: cpp
 jobs:
+
   include:
   - stage: Build Checks
     name: Fedora CUDA Build
@@ -12,6 +13,7 @@ jobs:
     - sudo docker pull fedora:27
     script:
     - travis/setup_fedora_tests.sh 27
+
   - stage: Build Checks
     name: Ubuntu CUDA Build
     os: linux
@@ -45,6 +47,7 @@ jobs:
     - rm -rf *
     - cmake -DFORCE_CUDA=1 -DCMAKE_CXX_COMPILER=g++ -DBUILD_CLIENT_SERVER=1 ..
     - make -j2
+
   - stage: Build Checks
     name: Ubuntu Build
     os: linux
@@ -66,6 +69,7 @@ jobs:
     - rm -rf *
     - cmake ..
     - make -j2
+
   - stage: Build Checks
     name: Ubuntu Client/Server Build
     os: linux
@@ -77,6 +81,7 @@ jobs:
     - mkdir build && cd build
     - cmake -DBUILD_CLIENT_SERVER=1 -DCMAKE_CXX_COMPILER=g++ ..
     - make -j2
+
   - stage: Build Checks
     name: Mac CUDA Build
     os: osx
@@ -93,6 +98,7 @@ jobs:
     - mkdir build && cd build
     - cmake -DFORCE_CUDA=1 ..
     - make -j2
+
   - stage: Build Checks
     name: Windows Build
     os: windows
@@ -102,35 +108,44 @@ jobs:
     - mkdir build && cd build
     - cmake ..
     - cmake --build . --config Release
+
   - stage: Build Checks
-    name: Windows pip build
+    name: Windows pip build and pyscamp test
     os: windows
     language: shell
     before_install:
     - choco install python --version 3.8.0
     - export PATH="/c/Python38:/c/Python38/Scripts:$PATH"
+    - pip install numpy
     script:
     - set -e
     - pip install .
-    - echo 'import pyscamp' | python
+    - python test/test_pyscamp.py
+
   - stage: Build Checks
-    name: Mac pip build
+    name: Mac pip build and pyscamp test
     os: osx
     osx_image: xcode11.2
     language: shell
+    before_install:
+    - pip install numpy
     script:
     - set -e
     - pip install .
-    - echo 'import pyscamp' | python
+    - python test/test_pyscamp.py
+    
   - stage: Build Checks
-    name: Linux pip build
+    name: Linux pip build and pyscamp test
     os: linux
     language: python
     python: 3.8.0
+    before_install:
+      pip install numpy
     script:
     - set -e
     - pip install .
-    - echo 'import pyscamp' | python
+    - python test/test_pyscamp.py
+
   - stage: Build Checks
     name: Style Check
     os: linux
@@ -141,6 +156,7 @@ jobs:
     compiler: clang++-6.0
     script:
     - bash check_format.sh clang-format-6.0
+
   - stage: Integration Tests
     name: CPU Integration tests
     os: linux
@@ -158,6 +174,7 @@ jobs:
     - make -j2
     - cd ../test
     - ./run_tests.sh ../build/SCAMP /dev/null "--no_gpu=true --num_cpu_workers=2"
+
   - stage: Integration Tests
     name: CPU Extended Integration Tests
     os: linux
@@ -179,6 +196,7 @@ jobs:
     - make -j2
     - cd ../test
     - python3 ./run_tests.py --executable ../build/SCAMP --extra_args "--no_gpu --num_cpu_workers=2"
+
   - stage: Integration Tests
     name: Distributed CPU Extended Integration Tests
     os: linux
@@ -205,6 +223,7 @@ jobs:
     - cd ../test
     - python3 ./run_tests.py --executable ../build/kubernetes/SCAMP_distributed --window_sizes
       100 --extra_args "--no_gpu --num_cpu_workers=1 --distributed_tile_size=1500"
+
   - stage: Integration Tests
     name: Distributed Integration tests
     os: linux

@@ -81,7 +81,7 @@ CentOS:
 ## Python module
 A source distribution for a python3 module using pybind11 is available on pypi.org to install run:
 ~~~
-# Python 3 only; will also install cmake
+# Python 3 only
 pip install pyscamp
 ~~~
 
@@ -90,19 +90,34 @@ then you can use SCAMP in Python as follows:
 import pyscamp as mp # Uses GPU if available and CUDA was available during the build
 
 # Allows checking if pyscamp was built with CUDA and has GPU support
-has_gpu_support = mp.has_gpu_support()
+has_gpu_support = mp.gpu_supported()
 
 # Self join
 profile, index = mp.scamp(a, sublen)
-# AB join
-profile, index = mp.scamp(a, b, sublen)
+# AB join using 4 threads
+profile, index = mp.scamp(a, b, sublen, threads=4)
+# Sum thresh
+corr_sum = mp.scamp_sum(a, b, sublen, threshold=0.9)
 
-# KNN
+# Approximate KNN
 if has_gpu_support:
-  knn = mp.knn(a,sublen, k)
+  knn = mp.scamp_knn(a,sublen, k)
   # KNN with threshold
-  knn = mp.knn(a, sublen, k, threshold)
+  knn = mp.scamp_knn(a, sublen, k, threshold=0.85)
+  # KNN Ab join with threshold, outputting pearson correlation
+  knn = mp.scamp_knn(a, b, sublen, k, threshold=0.90, pearson=True)
 ~~~~
+
+### Keyword args
+* pyscamp methods support several different keyword arguments:
+  * threshold=<float> Distance threshold used for various profile types, correlations found below this threshold will be ignored
+  * pearson=<bool> Output Pearson Correlation rather than Z-normalized euclidean distance
+  * threads=<int> Number of CPU threads to use with SCAMP (if using gpus it is recommended to not use this flag)
+  * gpus=<list of integers> Cuda device ids of gpus to run on, by default we run on all gpus if you have any.
+  * precision=<string> one of [single, mixed, double] default is double precision, other precision types only supported on GPU
+  * mwidth=<int> for matrix summaries the width of the output matrix (default 50)
+  * mheight=<int> for matrix summaries the height of the output matrix (default 50)
+  * verbose=<bool> enable verbose output. This will log to stdout. (default False)
 
 This is a new feature and still has some kinks to work out. If you have problems building the module (or getting GPU support to work) please submit an issue on github. I don't have access to all build environments so help in addressing these issues is appreciated.
 
