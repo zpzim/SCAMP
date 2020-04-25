@@ -72,7 +72,7 @@ class CMakeBuild(build_ext):
 
 setup(
     name='pyscamp',
-    version='0.1.4',
+    version='0.2.0',
     author='Zachary Zimmerman',
     author_email='zpzimmerman@gmail.com',
     description='SCAlable Matrix Profile',
