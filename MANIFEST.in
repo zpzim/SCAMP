@@ -1,0 +1,6 @@
+global-include CMakeLists.txt
+
+graft src
+graft python
+graft pybind11
+graft gflags

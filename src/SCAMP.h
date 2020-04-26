@@ -15,6 +15,8 @@ namespace SCAMP {
 void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
               int num_threads);
 
+void do_SCAMP(SCAMPArgs *args);
+
 class SCAMP_Operation {
  private:
   // Precomputed statistics used by tiles
