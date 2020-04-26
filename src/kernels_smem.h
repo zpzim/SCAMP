@@ -127,36 +127,13 @@ __device__ void init_smem(
     SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_MATRIX_SUMMARY> &smem,
     PROFILE_OUTPUT_TYPE *profile_a, PROFILE_OUTPUT_TYPE *profile_b,
     uint32_t col_start, uint32_t row_start) {
-  int global_position = col_start + threadIdx.x;
-  int local_position = threadIdx.x;
-  mp_entry initializer;
-  initializer.ints[1] = 0;
-  while (local_position < tile_width && global_position < args.n_x) {
-    smem.dg_col[local_position] = args.dga[global_position];
-    smem.df_col[local_position] = args.dfa[global_position];
-    smem.inorm_col[local_position] = args.normsa[global_position];
-    if (COMPUTE_COLS) {
-      // TODO(zpzim): we can be smarter than this when picking the intial value
-      initializer.floats[0] = -2.0;
-      smem.local_mp_col[local_position] = initializer.ulong;
-    }
-    local_position += BLOCKSZ;
-    global_position += BLOCKSZ;
-  }
-
-  global_position = row_start + threadIdx.x;
-  local_position = threadIdx.x;
-  while (local_position < tile_height && global_position < args.n_y) {
-    smem.dg_row[local_position] = args.dgb[global_position];
-    smem.df_row[local_position] = args.dfb[global_position];
-    smem.inorm_row[local_position] = args.normsb[global_position];
-    if (COMPUTE_ROWS) {
-      initializer.floats[0] = -2.0;
-      smem.local_mp_row[local_position] = initializer.ulong;
-    }
-    local_position += BLOCKSZ;
-    global_position += BLOCKSZ;
-  }
+  mp_entry e;
+  e.floats[0] = args.opt.threshold;
+  e.ints[1] = 0;
+  init_smem_with_static_initializer<DATA_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS,
+                                    COMPUTE_COLS, tile_width, tile_height,
+                                    BLOCKSZ, PROFILE_TYPE_MATRIX_SUMMARY>(
+      args, smem, col_start, row_start, e.ulong);
 }
 
 template <typename DATA_TYPE, typename PROFILE_DATA_TYPE,
@@ -317,10 +294,12 @@ __device__ void write_back(
     while (local_position < TILE_WIDTH && global_position < n_x) {
       mp_entry e;
       e.ulong = smem.local_mp_col[local_position];
-      int col = (global_position + args.global_start_col) / args.cols_per_cell;
-      int row = (e.ints[1] + args.global_start_row) / args.rows_per_cell;
-      fAtomicMax<ATOMIC_GLOBAL>(profile_A + (row * args.matrix_width + col),
-                                e.floats[0]);
+      if (e.floats[0] > args.opt.threshold) {
+        int col = (global_position + args.global_start_col) / args.cols_per_cell;
+        int row = (e.ints[1] + args.global_start_row) / args.rows_per_cell;
+        fAtomicMax<ATOMIC_GLOBAL>(profile_A + (row * args.matrix_width + col),
+                                  e.floats[0]);
+      }
       global_position += BLOCKSZ;
       local_position += BLOCKSZ;
     }
@@ -334,10 +313,12 @@ __device__ void write_back(
       // In the matrix summary profile type, the only time we compute on rows in
       // in the transposed configuration, we can keep the col/row calculation the
       // same as above.
-      int col = (global_position + args.global_start_col) / args.cols_per_cell;
-      int row = (e.ints[1] + args.global_start_row) / args.rows_per_cell;
-      fAtomicMax<ATOMIC_GLOBAL>(profile_B + (row * args.matrix_width + col),
-                                e.floats[0]);
+      if (e.floats[0] > args.opt.threshold) {
+        int col = (global_position + args.global_start_col) / args.cols_per_cell;
+        int row = (e.ints[1] + args.global_start_row) / args.rows_per_cell;
+        fAtomicMax<ATOMIC_GLOBAL>(profile_B + (row * args.matrix_width + col),
+                                  e.floats[0]);
+      }
       global_position += BLOCKSZ;
       local_position += BLOCKSZ;
     }
