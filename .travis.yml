@@ -1,236 +1,263 @@
 language: cpp
-
-
 jobs:
+
   include:
-  - stage: "Build Checks"
-    name: "Fedora CUDA Build"
+  - stage: Build Checks
+    name: Fedora CUDA Build
     services:
-      - docker
-  
+    - docker
     before_install:
-      - sudo apt-get update
-      - sudo service docker restart
-      - sleep 5
-      - sudo docker pull fedora:27
-      - git submodule update --init --recursive
+    - sudo apt-get update
+    - sudo service docker restart
+    - sleep 5
+    - sudo docker pull fedora:27
     script:
-      - travis/setup_fedora_tests.sh 27
+    - travis/setup_fedora_tests.sh 27
 
-
-  - stage: "Build Checks"
-    name: "Ubuntu CUDA Build"
+  - stage: Build Checks
+    name: Ubuntu CUDA Build
     os: linux
     dist: xenial
     addons:
-        apt:
-            packages:
-                clang-6.0
-                clang-format-6.0
-                clang-tidy-6.0
+      apt:
+        packages: clang-6.0 clang-format-6.0 clang-tidy-6.0
     before_install:
-      - sudo apt-get install make g++
+    - sudo apt-get install make g++
     install:
-      - CUDA_REPO_PKG=cuda-repo-ubuntu1604_10.0.130-1_amd64.deb
-      - wget http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1604/x86_64/$CUDA_REPO_PKG
-      - sudo dpkg -i $CUDA_REPO_PKG
-      - sudo apt-key adv --fetch-keys http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1604/x86_64/7fa2af80.pub
-      - rm $CUDA_REPO_PKG
-      - sudo apt-get -y update
-      - sudo apt-get install -y cuda
-      - git submodule update --init --recursive
-      - sudo ln -s /usr/local/cuda-10.0/ /usr/local/cuda
-    script: 
-      - set -e
-      - export PATH=$PATH:/usr/local/cuda/bin
-      - mkdir build && cd build
-      # Build with clang
-      - cmake -D FORCE_CUDA=1 -D CMAKE_CXX_COMPILER=clang++ ..
-      - make -j4
-      - rm -rf *
-      # Build with gcc
-      - cmake -D FORCE_CUDA=1 -D CMAKE_CXX_COMPILER=g++ ..
-      - make -j4
-      - rm -rf *
-      # Build with Default compiler
-      - cmake -D FORCE_CUDA=1 ..
-      - make -j4
-      - rm -rf *
-      # Build client/server
-      - cmake -DFORCE_CUDA=1 -DCMAKE_CXX_COMPILER=g++ -DBUILD_CLIENT_SERVER=1 ..
-      - make -j4
+    - CUDA_REPO_PKG=cuda-repo-ubuntu1604_10.0.130-1_amd64.deb
+    - wget http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1604/x86_64/$CUDA_REPO_PKG
+    - sudo dpkg -i $CUDA_REPO_PKG
+    - sudo apt-key adv --fetch-keys http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1604/x86_64/7fa2af80.pub
+    - rm $CUDA_REPO_PKG
+    - sudo apt-get -y update
+    - sudo apt-get install -y cuda
+    - sudo ln -s /usr/local/cuda-10.0/ /usr/local/cuda
+    script:
+    - set -e
+    - export PATH=$PATH:/usr/local/cuda/bin
+    - mkdir build && cd build
+    - cmake -D FORCE_CUDA=1 -D CMAKE_CXX_COMPILER=clang++ ..
+    - make -j2
+    - rm -rf *
+    - cmake -D FORCE_CUDA=1 -D CMAKE_CXX_COMPILER=g++ ..
+    - make -j2
+    - rm -rf *
+    - cmake -D FORCE_CUDA=1 ..
+    - make -j2
+    - rm -rf *
+    - cmake -DFORCE_CUDA=1 -DCMAKE_CXX_COMPILER=g++ -DBUILD_CLIENT_SERVER=1 ..
+    - make -j2
 
-  - stage: "Build Checks"
-    name: "Ubuntu Build"
+  - stage: Build Checks
+    name: Ubuntu Build
     os: linux
     dist: xenial
     addons:
-        apt:
-            packages:
-                clang-6.0
-                clang-format-6.0
-                clang-tidy-6.0
+      apt:
+        packages: clang-6.0 clang-format-6.0 clang-tidy-6.0
     compiler: clang++-6.0
     before_install:
-      - sudo apt-get install make g++
-    install:  
-      - git submodule update --init --recursive
-    script: 
-      - set -e
-      - mkdir build && cd build
-      # Build with clang
-      - cmake -D CMAKE_CXX_COMPILER=clang++ ..
-      - make -j4
-      - rm -rf *
-      # Build with gcc
-      - cmake -D CMAKE_CXX_COMPILER=g++ ..
-      - make -j4
-      - rm -rf *
-      # Build with Default compiler
-      - cmake ..
-      - make -j4
-    
-  - stage: "Build Checks"
-    name: "Ubuntu Client/Server Build"
+    - sudo apt-get install make g++
+    script:
+    - set -e
+    - mkdir build && cd build
+    - cmake -D CMAKE_CXX_COMPILER=clang++ ..
+    - make -j2
+    - rm -rf *
+    - cmake -D CMAKE_CXX_COMPILER=g++ ..
+    - make -j2
+    - rm -rf *
+    - cmake ..
+    - make -j2
+
+  - stage: Build Checks
+    name: Ubuntu Client/Server Build
     os: linux
     dist: xenial
     before_install:
-      - sudo apt-get install make g++
-    install:  
-      - git submodule update --init --recursive
-    script: 
-      - set -e
-      - mkdir build && cd build
-      # Build with gcc
-      - cmake -DBUILD_CLIENT_SERVER=1 -D CMAKE_CXX_COMPILER=g++ ..
-      - make -j4
-   
-  - stage: "Build Checks"
-    name: "Style Check"
+    - sudo apt-get install make g++
+    script:
+    - set -e
+    - mkdir build && cd build
+    - cmake -DBUILD_CLIENT_SERVER=1 -DCMAKE_CXX_COMPILER=g++ ..
+    - make -j2
+
+  - stage: Build Checks
+    name: Mac CUDA Build
+    os: osx
+    osx_image: xcode9.4
+    language: shell
+    install:
+    - wget -q http://developer.download.nvidia.com/compute/cuda/10.2/Prod/local_installers/cuda_10.2.89_mac.dmg
+    - hdiutil mount cuda_10.2.89_mac.dmg
+    - sudo /Volumes/CUDAMacOSXInstaller/CUDAMacOSXInstaller.app/Contents/MacOS/CUDAMacOSXInstaller
+      --no-window --accept-eula --install-package=cuda-toolkit
+    - export PATH="/usr/local/cuda/bin:$PATH"
+    - nvcc --version
+    script:
+    - mkdir build && cd build
+    - cmake -DFORCE_CUDA=1 ..
+    - make -j2
+
+  - stage: Build Checks
+    name: Windows Build
+    os: windows
+    language: cpp
+    script:
+    - set -e
+    - mkdir build && cd build
+    - cmake ..
+    - cmake --build . --config Release
+
+  - stage: Build Checks
+    name: Windows pip build and pyscamp test
+    os: windows
+    language: shell
+    before_install:
+    - choco install python --version 3.8.0
+    - export PATH="/c/Python38:/c/Python38/Scripts:$PATH"
+    - pip install numpy
+    script:
+    - set -e
+    - pip install .
+    - python test/test_pyscamp.py
+
+  - stage: Build Checks
+    name: Mac pip build and pyscamp test
+    os: osx
+    osx_image: xcode11.2
+    language: shell
+    before_install:
+    - pip install numpy
+    script:
+    - set -e
+    - pip install .
+    - python test/test_pyscamp.py
+    
+  - stage: Build Checks
+    name: Linux pip build and pyscamp test
+    os: linux
+    language: python
+    python: 3.8.0
+    before_install:
+      pip install numpy
+    script:
+    - set -e
+    - pip install .
+    - python test/test_pyscamp.py
+
+  - stage: Build Checks
+    name: Style Check
     os: linux
     addons:
-        apt:
-            packages:
-                clang-6.0
-                clang-format-6.0
-                clang-tidy-6.0
+      apt:
+        packages: clang-6.0 clang-format-6.0 clang-tidy-6.0
     dist: xenial
     compiler: clang++-6.0
     script:
-      - bash check_format.sh clang-format-6.0
+    - bash check_format.sh clang-format-6.0
 
-  - stage: "Integration Tests"
-    name: "CPU Integration tests"
+  - stage: Integration Tests
+    name: CPU Integration tests
     os: linux
     dist: xenial
     compiler: clang++-6.0
     addons:
       apt:
-        packages:
-          clang-6.0
-          clang-format-6.0
-          clang-tidy-6.0
+        packages: clang-6.0 clang-format-6.0 clang-tidy-6.0
     before_install:
-      - sudo apt-get install make g++ 
-    install:  
-      - git submodule update --init --recursive
-    script: 
-      - set -e
-      - mkdir build && cd build
-      # Build with clang
-      - cmake -D CMAKE_CXX_COMPILER=clang++ ..
-      - make -j4
-      - cd ../test
-      - ./run_tests.sh ../build/SCAMP /dev/null "--no_gpu=true --num_cpu_workers=2"
-  
-  - stage: "Integration Tests"
-    name: "CPU Extended Integration Tests"
+    - sudo apt-get install make g++
+    script:
+    - set -e
+    - mkdir build && cd build
+    - cmake -D CMAKE_CXX_COMPILER=clang++ ..
+    - make -j2
+    - cd ../test
+    - ./run_tests.sh ../build/SCAMP /dev/null "--no_gpu=true --num_cpu_workers=2"
+
+  - stage: Integration Tests
+    name: CPU Extended Integration Tests
     os: linux
     dist: xenial
     compiler: clang++-6.0
     language: python
-    python:
-      "3.7"
+    python: '3.7'
     addons:
       apt:
-        packages:
-          clang-6.0
-          clang-format-6.0
-          clang-tidy-6.0
-          python3
+        packages: clang-6.0 clang-format-6.0 clang-tidy-6.0 python3
     before_install:
-      - sudo apt-get install make g++ 
-    install:  
-      - git submodule update --init --recursive
-      - pip install numpy pandas tqdm
-    script: 
-      - set -e
-      - mkdir build && cd build
-      # Build with clang
-      - cmake -D CMAKE_CXX_COMPILER=clang++ ..
-      - make -j4
-      - cd ../test
-      - python3 ./run_tests.py --executable ../build/SCAMP --extra_args "--no_gpu --num_cpu_workers=2"
-  
-  - stage: "Integration Tests"
-    name: "Distributed CPU Extended Integration Tests"
+    - sudo apt-get install make g++
+    install:
+    - pip install numpy pandas tqdm
+    script:
+    - set -e
+    - mkdir build && cd build
+    - cmake -D CMAKE_CXX_COMPILER=clang++ ..
+    - make -j2
+    - cd ../test
+    - python3 ./run_tests.py --executable ../build/SCAMP --extra_args "--no_gpu --num_cpu_workers=2"
+
+  - stage: Integration Tests
+    name: Distributed CPU Extended Integration Tests
     os: linux
     dist: xenial
     compiler: clang++-6.0
     language: python
-    python:
-      "3.7"
+    python: '3.7'
     addons:
       apt:
-        packages:
-          clang-6.0
-          clang-format-6.0
-          clang-tidy-6.0
-          python3
+        packages: clang-6.0 clang-format-6.0 clang-tidy-6.0 python3
     before_install:
-      - sudo apt-get install make g++ 
-    install:  
-      - git submodule update --init --recursive
-      - pip install numpy pandas tqdm
-    script: 
-      - set -e
-      - mkdir build && cd build
-      # Build with clang
-      - cmake -DCMAKE_C_COMPILER=clang-6.0 -DCMAKE_CXX_COMPILER=clang++-6.0 -DBUILD_CLIENT_SERVER=1 ..
-      - make -j4
-      - ./kubernetes/SCAMPserver &
-      - ./kubernetes/SCAMPclient &
-      - sleep 10
-      - cd ../test
-      - python3 ./run_tests.py --executable ../build/kubernetes/SCAMP_distributed --window_sizes 100 --extra_args "--no_gpu --num_cpu_workers=1 --distributed_tile_size=1500"
+    - sudo apt-get install make g++
+    install:
+    - pip install numpy pandas tqdm
+    script:
+    - set -e
+    - mkdir build && cd build
+    - cmake -DCMAKE_C_COMPILER=clang-6.0 -DCMAKE_CXX_COMPILER=clang++-6.0 -DBUILD_CLIENT_SERVER=1
+      ..
+    - make -j2
+    - "./kubernetes/SCAMPserver &"
+    - "./kubernetes/SCAMPclient &"
+    - sleep 10
+    - cd ../test
+    - python3 ./run_tests.py --executable ../build/kubernetes/SCAMP_distributed --window_sizes
+      100 --extra_args "--no_gpu --num_cpu_workers=1 --distributed_tile_size=1500"
 
-  - stage: "Integration Tests"
-    name: "Distributed Integration tests"
+  - stage: Integration Tests
+    name: Distributed Integration tests
     os: linux
     dist: xenial
     compiler: g++
     addons:
       apt:
-        packages:
-          clang-6.0
-          clang-format-6.0
-          clang-tidy-6.0
+        packages: clang-6.0 clang-format-6.0 clang-tidy-6.0
     before_install:
-      - sudo apt-get install make g++ 
-    install:  
-      - git submodule update --init --recursive
-    script: 
-      - set -e
-      - mkdir build && cd build
-      # Build client and server
-      - cmake -D CMAKE_CXX_COMPILER=g++ -DBUILD_CLIENT_SERVER=1 ..
-      - make -j4
-      - ./kubernetes/SCAMPserver &
-      - ./kubernetes/SCAMPclient &
-      - sleep 10
-      - cd ../test
-      - ./run_tests.sh ../build/kubernetes/SCAMP_distributed /dev/null
+    - sudo apt-get install make g++
+    script:
+    - set -e
+    - mkdir build && cd build
+    - cmake -D CMAKE_CXX_COMPILER=g++ -DBUILD_CLIENT_SERVER=1 ..
+    - make -j2
+    - "./kubernetes/SCAMPserver &"
+    - "./kubernetes/SCAMPclient &"
+    - sleep 10
+    - cd ../test
+    - "./run_tests.sh ../build/kubernetes/SCAMP_distributed /dev/null"
+
+  - stage: Deploy
+    name: "Deploy pypi sdist"
+    os: linux
+    dist: xenial
+    language: python
+    python: '3.7'
+    install: skip
+    script: skip
+    deploy:
+      provider: pypi
+      skip_existing: true
+      user: "__token__"
 
 notifications:
-    email:
-        on_success: never
+  email:
+    on_success: never

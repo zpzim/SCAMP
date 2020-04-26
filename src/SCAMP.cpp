@@ -230,6 +230,22 @@ SCAMPError_t SCAMP_Operation::do_join(const std::vector<double> &timeseries_a,
   return SCAMP_NO_ERROR;
 }
 
+void do_SCAMP(SCAMPArgs *args) {
+  std::vector<int> devices;
+  int num_threads = 0;
+#ifdef _HAS_CUDA_
+  int num_dev;
+  cudaGetDeviceCount(&num_dev);
+  for (int i = 0; i < num_dev; ++i) {
+    devices.push_back(i);
+  }
+#endif
+  if (devices.empty()) {
+    num_threads = std::thread::hardware_concurrency();
+  }
+  do_SCAMP(args, devices, num_threads);
+}
+
 // Wrapper on SCAMP_Operation called by main(), this function constructs
 // and executes a SCAMP_Operation given a set of user selected parameters.
 void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,

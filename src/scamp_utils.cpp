@@ -223,7 +223,7 @@ bool InitProfileMemory(SCAMP::SCAMPArgs *args) {
 
   args->profile_a.Alloc(profile_a_size, args->matrix_height, args->matrix_width,
                         args->distance_threshold);
-
+  
   if (args->keep_rows_separate) {
     args->profile_b.Alloc(profile_b_size, args->matrix_height,
                           args->matrix_width, args->distance_threshold);
