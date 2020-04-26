@@ -295,7 +295,8 @@ __device__ void write_back(
       mp_entry e;
       e.ulong = smem.local_mp_col[local_position];
       if (e.floats[0] > args.opt.threshold) {
-        int col = (global_position + args.global_start_col) / args.cols_per_cell;
+        int col =
+            (global_position + args.global_start_col) / args.cols_per_cell;
         int row = (e.ints[1] + args.global_start_row) / args.rows_per_cell;
         fAtomicMax<ATOMIC_GLOBAL>(profile_A + (row * args.matrix_width + col),
                                   e.floats[0]);
@@ -311,10 +312,11 @@ __device__ void write_back(
       mp_entry e;
       e.ulong = smem.local_mp_row[local_position];
       // In the matrix summary profile type, the only time we compute on rows in
-      // in the transposed configuration, we can keep the col/row calculation the
-      // same as above.
+      // in the transposed configuration, we can keep the col/row calculation
+      // the same as above.
       if (e.floats[0] > args.opt.threshold) {
-        int col = (global_position + args.global_start_col) / args.cols_per_cell;
+        int col =
+            (global_position + args.global_start_col) / args.cols_per_cell;
         int row = (e.ints[1] + args.global_start_row) / args.rows_per_cell;
         fAtomicMax<ATOMIC_GLOBAL>(profile_B + (row * args.matrix_width + col),
                                   e.floats[0]);

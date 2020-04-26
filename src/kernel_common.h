@@ -32,7 +32,7 @@ struct SCAMPKernelInputArgs {
   int32_t cols_per_cell;
   int64_t global_start_col;
   int64_t global_start_row;
-  
+
   OptionalArgs opt;
   void Print();
 };
