@@ -56,16 +56,16 @@ class SCAMP_Operation {
  public:
   SCAMP_Operation(size_t Asize, size_t Bsize, size_t window_sz,
                   size_t max_tile_size, const vector<int> &dev, bool selfjoin,
-                  SCAMPPrecisionType t, bool do_full_join, int64_t start_row,
-                  int64_t start_col, OptionalArgs args_,
-                  SCAMPProfileType profile_type, Profile *pA, Profile *pB,
-                  bool keep_rows, bool compute_rows, bool compute_cols,
-                  bool is_aligned, bool silent_mode, int num_threads,
-                  int64_t max_matches_per_col, bool matrix_mode)
+                  SCAMPPrecisionType t, int64_t start_row, int64_t start_col,
+                  OptionalArgs args_, SCAMPProfileType profile_type,
+                  Profile *pA, Profile *pB, bool keep_rows, bool compute_rows,
+                  bool compute_cols, bool is_aligned, bool silent_mode,
+                  int num_threads, int64_t max_matches_per_col,
+                  int64_t matrix_height, int64_t matrix_width)
       : _info(Asize, Bsize, window_sz, max_tile_size, selfjoin, t, start_row,
               start_col, args_, profile_type, keep_rows, compute_rows,
               compute_cols, is_aligned, silent_mode, dev.size() + num_threads,
-              max_matches_per_col, matrix_mode),
+              max_matches_per_col, matrix_height, matrix_width),
         _completed_tiles(0),
         _profile_a(pA),
         _profile_b(pB),

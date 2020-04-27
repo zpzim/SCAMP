@@ -298,6 +298,7 @@ __device__ inline DISTANCE_TYPE init_dist() {
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
     case PROFILE_TYPE_1NN_INDEX:
     case PROFILE_TYPE_1NN:
+    case PROFILE_TYPE_MATRIX_SUMMARY:
       // Smallest value possible is -1 so set to -2
       return static_cast<DISTANCE_TYPE>(-2);
     case PROFILE_TYPE_SUM_THRESH:

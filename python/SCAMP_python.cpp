@@ -1,3 +1,4 @@
+#include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <cmath>
@@ -9,19 +10,21 @@
 namespace py = pybind11;
 
 void SplitProfile1NNINDEX(const std::vector<uint64_t> profile,
-                          std::vector<float>* NN, std::vector<int>* index,
+                          py::array_t<float>& nn, py::array_t<int>& index,
                           bool output_pearson, int window) {
-  NN->clear();
-  index->clear();
+  auto nn_ptr = reinterpret_cast<float*>(nn.request().ptr);
+  auto index_ptr = reinterpret_cast<int*>(index.request().ptr);
+  int count = 0;
   for (auto& elem : profile) {
     SCAMP::mp_entry e;
     e.ulong = elem;
     if (output_pearson) {
-      NN->push_back(e.floats[0]);
+      nn_ptr[count] = e.floats[0];
     } else {
-      NN->push_back(ConvertToEuclidean(e.floats[0], window));
+      nn_ptr[count] = ConvertToEuclidean(e.floats[0], window);
     }
-    index->push_back(e.ints[1]);
+    index_ptr[count] = e.ints[1];
+    count++;
   }
 }
 
@@ -41,6 +44,21 @@ std::vector<std::tuple<int64_t, int64_t, float>> SplitProfileKNN(
       }
       result.emplace_back(pq.top().col, pq.top().row, corr);
       pq.pop();
+    }
+  }
+  return result;
+}
+
+template <typename T>
+py::array_t<T> vec2pyarr(const std::vector<T>& arr, bool pearson = true,
+                         int window = 0) {
+  py::array_t<T> result(arr.size());
+  auto ptr = reinterpret_cast<T*>(result.request().ptr);
+  for (int i = 0; i < arr.size(); ++i) {
+    if (pearson) {
+      ptr[i] = arr[i];
+    } else {
+      ptr[i] = ConvertToEuclidean(arr[i], window);
     }
   }
   return result;
@@ -66,16 +84,7 @@ SCAMP::SCAMPArgs GetDefaultSCAMPArgs() {
   args.matrix_width = 50;
   args.profile_a.type = profile_type;
   args.profile_b.type = profile_type;
-  args.profile_a.matrix_height = -1;
-  args.profile_b.matrix_height = -1;
-  args.profile_a.matrix_width = -1;
-  args.profile_b.matrix_width = -1;
-  args.profile_a.output_matrix = false;
-  args.profile_b.output_matrix = false;
-  args.profile_a.default_thresh = 0;
-  args.profile_b.default_thresh = 0;
 
-  args.matrix_mode = false;
   return args;
 }
 
@@ -86,9 +95,6 @@ void get_args_based_on_kwargs(SCAMP::SCAMPArgs* args, py::kwargs kwargs,
     std::string key = std::string(py::str(*item.first));
     if (key == "threshold") {
       args->distance_threshold = item.second.cast<double>();
-      args->profile_a.default_thresh = args->distance_threshold;
-      args->profile_b.default_thresh = args->distance_threshold;
-
       if (args->distance_threshold > 1 || args->distance_threshold < -1) {
         throw std::invalid_argument(
             "Invalid threshold specified: value must be between -1 and 1");
@@ -156,7 +162,7 @@ bool setup_and_do_SCAMP(SCAMP::SCAMPArgs* args, py::kwargs kwargs) {
 }
 
 // 1NN_INDEX ab join
-std::tuple<std::vector<float>, std::vector<int>> scamp(
+std::tuple<py::array_t<float>, py::array_t<int>> scamp(
     const std::vector<double>& a, const std::vector<double>& b, int m,
     const py::kwargs& kwargs) {
   SCAMP::SCAMPArgs args = GetDefaultSCAMPArgs();
@@ -169,15 +175,17 @@ std::tuple<std::vector<float>, std::vector<int>> scamp(
 
   bool output_pearson = setup_and_do_SCAMP(&args, kwargs);
 
-  std::vector<float> NN;
-  std::vector<int> index;
-  SplitProfile1NNINDEX(args.profile_a.data[0].uint64_value, &NN, &index,
-                       output_pearson, args.window);
-  return std::make_tuple(NN, index);
+  py::array_t<float> result_nn(args.profile_a.data[0].uint64_value.size());
+  py::array_t<int> result_index(args.profile_a.data[0].uint64_value.size());
+
+  SplitProfile1NNINDEX(args.profile_a.data[0].uint64_value, result_nn,
+                       result_index, output_pearson, args.window);
+
+  return std::make_tuple(result_nn, result_index);
 }
 
 // 1NN_INDEX self join
-std::tuple<std::vector<float>, std::vector<int>> scamp(
+std::tuple<py::array_t<float>, py::array_t<int>> scamp(
     const std::vector<double>& a, int m, const py::kwargs& kwargs) {
   SCAMP::SCAMPArgs args = GetDefaultSCAMPArgs();
   args.timeseries_a = a;
@@ -189,11 +197,11 @@ std::tuple<std::vector<float>, std::vector<int>> scamp(
 
   bool output_pearson = setup_and_do_SCAMP(&args, kwargs);
 
-  std::vector<float> NN;
-  std::vector<int> index;
-  SplitProfile1NNINDEX(args.profile_a.data[0].uint64_value, &NN, &index,
-                       output_pearson, args.window);
-  return std::make_tuple(NN, index);
+  py::array_t<float> result_nn(args.profile_a.data[0].uint64_value.size());
+  py::array_t<int> result_index(args.profile_a.data[0].uint64_value.size());
+  SplitProfile1NNINDEX(args.profile_a.data[0].uint64_value, result_nn,
+                       result_index, output_pearson, args.window);
+  return std::make_tuple(result_nn, result_index);
 }
 
 // KNN ab join
@@ -240,7 +248,7 @@ std::vector<std::tuple<int64_t, int64_t, float>> scamp_knn(
 }
 
 // SUM self join
-std::vector<double> scamp_sum(const std::vector<double>& a, int m,
+py::array_t<double> scamp_sum(const std::vector<double>& a, int m,
                               const py::kwargs& kwargs) {
   SCAMP::SCAMPArgs args = GetDefaultSCAMPArgs();
   args.timeseries_a = a;
@@ -255,13 +263,11 @@ std::vector<double> scamp_sum(const std::vector<double>& a, int m,
 
   bool output_pearson = setup_and_do_SCAMP(&args, kwargs);
 
-  return args.profile_a.data[0].double_value;
-  // return SplitProfileKNN(args.profile_a.data[0].match_value, output_pearson,
-  // args.window);
+  return vec2pyarr<double>(args.profile_a.data[0].double_value);
 }
 
 // SUM ab join
-std::vector<double> scamp_sum(const std::vector<double>& a,
+py::array_t<double> scamp_sum(const std::vector<double>& a,
                               const std::vector<double>& b, int m,
                               const py::kwargs& kwargs) {
   SCAMP::SCAMPArgs args = GetDefaultSCAMPArgs();
@@ -277,7 +283,50 @@ std::vector<double> scamp_sum(const std::vector<double>& a,
 
   bool output_pearson = setup_and_do_SCAMP(&args, kwargs);
 
-  return args.profile_a.data[0].double_value;
+  return vec2pyarr<double>(args.profile_a.data[0].double_value);
+}
+
+py::array_t<float> scamp_matrix(const std::vector<double>& a, int m,
+                                const py::kwargs& kwargs) {
+  SCAMP::SCAMPArgs args = GetDefaultSCAMPArgs();
+  args.timeseries_a = a;
+  args.timeseries_b = a;
+  args.window = m;
+  args.has_b = false;
+  args.computing_rows = true;
+  args.computing_columns = true;
+  args.profile_type = SCAMP::PROFILE_TYPE_MATRIX_SUMMARY;
+  args.profile_a.type = args.profile_type;
+  args.profile_b.type = args.profile_type;
+
+  bool output_pearson = setup_and_do_SCAMP(&args, kwargs);
+
+  auto arr =
+      vec2pyarr<float>(args.profile_a.data[0].float_value, output_pearson, m);
+  arr.resize({args.matrix_height, args.matrix_width});
+  return arr;
+}
+
+py::array_t<float> scamp_matrix(const std::vector<double>& a,
+                                const std::vector<double>& b, int m,
+                                const py::kwargs& kwargs) {
+  SCAMP::SCAMPArgs args = GetDefaultSCAMPArgs();
+  args.timeseries_a = a;
+  args.timeseries_b = b;
+  args.window = m;
+  args.has_b = true;
+  args.computing_rows = false;
+  args.computing_columns = true;
+  args.profile_type = SCAMP::PROFILE_TYPE_MATRIX_SUMMARY;
+  args.profile_a.type = args.profile_type;
+  args.profile_b.type = args.profile_type;
+
+  bool output_pearson = setup_and_do_SCAMP(&args, kwargs);
+
+  auto arr =
+      vec2pyarr<float>(args.profile_a.data[0].float_value, output_pearson, m);
+  arr.resize({args.matrix_height, args.matrix_width});
+  return arr;
 }
 
 bool has_gpu_support() {
@@ -289,17 +338,23 @@ bool has_gpu_support() {
 }
 
 bool (*GPU_supported)() = &has_gpu_support;
-std::tuple<std::vector<float>, std::vector<int>> (*self_join_1NN_INDEX)(
+std::tuple<py::array_t<float>, py::array_t<int>> (*self_join_1NN_INDEX)(
     const std::vector<double>&, int, const py::kwargs&) = &scamp;
-std::tuple<std::vector<float>, std::vector<int>> (*ab_join_1NN_INDEX)(
+std::tuple<py::array_t<float>, py::array_t<int>> (*ab_join_1NN_INDEX)(
     const std::vector<double>&, const std::vector<double>&, int,
     const py::kwargs&) = &scamp;
 
-std::vector<double> (*self_join_SUM_THRESH)(const std::vector<double>&, int,
+py::array_t<double> (*self_join_SUM_THRESH)(const std::vector<double>&, int,
                                             const py::kwargs&) = &scamp_sum;
-std::vector<double> (*ab_join_SUM_THRESH)(const std::vector<double>&,
+py::array_t<double> (*ab_join_SUM_THRESH)(const std::vector<double>&,
                                           const std::vector<double>&, int,
                                           const py::kwargs&) = &scamp_sum;
+
+py::array_t<float> (*self_join_MATRIX)(const std::vector<double>&, int,
+                                       const py::kwargs&) = &scamp_matrix;
+py::array_t<float> (*ab_join_MATRIX)(const std::vector<double>&,
+                                     const std::vector<double>&, int,
+                                     const py::kwargs&) = &scamp_matrix;
 
 std::vector<std::tuple<int64_t, int64_t, float>> (*self_join_KNN)(
     const std::vector<double>&, int, int, const py::kwargs&) = &scamp_knn;
@@ -342,6 +397,12 @@ PYBIND11_MODULE(pyscamp, m) {
 
   m.def("scamp_knn", ab_join_KNN, R"pbdoc(
         For each subsequence in time series A, returns its K nearest neighbors (approximate) in time series B)pbdoc");
+
+  m.def("scamp_matrix", self_join_MATRIX, R"pbdoc(
+        Returns a pooled version of the distance matrix with HxW of [mheight x mwidth])pbdoc");
+
+  m.def("scamp_matrix", ab_join_MATRIX, R"pbdoc(
+        Returns a pooled version of the distance matrix with HxW of [mheight x mwidth])pbdoc");
 
   m.attr("__version__") = "dev";
 }

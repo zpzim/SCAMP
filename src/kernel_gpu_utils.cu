@@ -49,6 +49,7 @@ size_t GetProfileTypeSizeInternalGPU(SCAMPProfileType type) {
     case PROFILE_TYPE_1NN:
       return sizeof(float);
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
+    case PROFILE_TYPE_MATRIX_SUMMARY:
     case PROFILE_TYPE_KNN:
       return sizeof(uint64_t);
     default:

@@ -44,22 +44,15 @@ num = 0
 num2 = 0
 vector_match_epsilon = 0.001
 
-for i in range(1,8000):
-  num += random.uniform(-0.1, 0.1)
-  num2 += random.uniform(-0.1, 0.1)
-  arr.append(num)
-  arr2.append(num)
 
-
+arr = np.random.random(size=(8000,))
+arr2 = np.random.random(size=(8000,))
 
 dm_self = distance_matrix(arr, None, 1024)
 dm_ab = distance_matrix(arr, arr2, 1024)
 
 dist, index = mp.scamp(arr, 1024, pearson=True)
 vdist, vindex = reduce_1nn_index_unshifted(dm_self)
-
-dist = np.array(dist)
-index = np.array(index)
 
 if compare_vectors(vdist, np.array(dist), vector_match_epsilon) and compare_index(vindex, np.array(index)):
   print("1NN INDEX Self join pass")
@@ -71,9 +64,6 @@ else:
 dist, index = mp.scamp(arr, arr2, 1024, pearson=True)
 vdist, vindex = reduce_1nn_index_unshifted(dm_ab)
 
-dist = np.array(dist)
-index = np.array(index)
-
 
 if compare_vectors(vdist, dist, vector_match_epsilon) and compare_index(vindex, index):
   print("1NN INDEX AB join pass")
@@ -82,7 +72,6 @@ else:
   print("1NN INDEX AB join fail")
 
 dist = mp.scamp_sum(arr, 1024, threshold=0.90, pearson=True)
-dist = np.array(dist)
 dist = dist.reshape((len(dist), 1))
 vdist = reduce_sum_thresh(dm_self, 0.90)
 
@@ -94,7 +83,6 @@ else:
 
 
 dist = mp.scamp_sum(arr, arr2, 1024, threshold=0.90, pearson=True)
-dist = np.array(dist)
 dist = dist.reshape((len(dist), 1))
 vdist = reduce_sum_thresh(dm_ab, 0.90)
 
@@ -109,9 +97,11 @@ dist = mp.scamp(arr, 1024, threads=2)
 
 
 if mp.gpu_supported():
+  print('GPUs Supported')
   # TODO(zpzim): add a correctness check here once we have a test for that
   x = mp.scamp_knn(arr, 1024, 5, threshold=0.95, pearson=True)
-
+  # TODO(zpzim): add a correctness check here once we have a test for that
+  matrix = mp.scamp_matrix(arr, arr2, 1024, threshold=0.125, mwidth=10, mheight=5, pearson=True)
 
 if failed:
   exit(1)
