@@ -99,13 +99,15 @@ profile, index = mp.scamp(a, b, sublen, threads=4)
 # Sum thresh
 corr_sum = mp.scamp_sum(a, b, sublen, threshold=0.9)
 
-# Approximate KNN
+# Approximate KNN and matrix summaries are supported with GPUs + CUDA only
 if has_gpu_support:
   knn = mp.scamp_knn(a,sublen, k)
   # KNN with threshold
   knn = mp.scamp_knn(a, sublen, k, threshold=0.85)
   # KNN Ab join with threshold, outputting pearson correlation
   knn = mp.scamp_knn(a, b, sublen, k, threshold=0.90, pearson=True)
+  # Matrix summary (100x100) with threshold outputting pearson correlation
+  matrix = mp.scamp_matrix(a, b, sublen, mwidth=100, mheight=100, threshold=0.5, pearson=True)
 ~~~~
 
 ### Keyword args
