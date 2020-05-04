@@ -11,7 +11,7 @@
 [Python Module](https://github.com/zpzim/SCAMP#python-module) \
 [Run Using Docker](https://github.com/zpzim/SCAMP#run-using-docker) \
 [Distributed Operation](https://github.com/zpzim/SCAMP#distributed-operation) \
-[Reference](https://github.com/zpzim/SCAMP#reference) \
+[Reference](https://github.com/zpzim/SCAMP#reference)
 
 ## Overview
 This is a GPU/CPU implementation of the SCAMP algorithm. SCAMP takes a time series as input and computes the matrix profile for a particular window size. You can read more at the [Matrix Profile Homepage](http://www.cs.ucr.edu/~eamonn/MatrixProfile.html)
@@ -56,7 +56,7 @@ profile, index = mp.scamp(a, sublen)
 profile, index = mp.scamp(a, b, sublen, threads=4)
 ~~~
 
-More information and the API documentation for pyscamp is avalaiable on [readthedocs](https://scamp-docs.readthedocs.io/en/latest/)
+More information and the API documentation for pyscamp is available on [readthedocs](https://scamp-docs.readthedocs.io/en/latest/)
 
 ## Run Using Docker
 You can run SCAMP via [nvidia-docker](https://github.com/NVIDIA/nvidia-docker) using the prebuilt [image](https://hub.docker.com/r/zpzim/scamp) on dockerhub.
