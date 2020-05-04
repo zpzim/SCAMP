@@ -1,0 +1,433 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>pyscamp API documentation &mdash; SCAMP 0.3.0 documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+  <script type="text/javascript" src="../_static/js/modernizr.min.js"></script>
+  
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/doctools.js"></script>
+        <script src="../_static/language_data.js"></script>
+    
+    <script type="text/javascript" src="../_static/js/theme.js"></script>
+
+    
+
+  
+  <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Keyword Arguments for pyscamp Methods" href="kwargs.html" />
+    <link rel="prev" title="pyscamp" href="intro.html" /> 
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+          
+
+          
+            <a href="../index.html" class="icon icon-home"> SCAMP
+          
+
+          
+          </a>
+
+          
+            
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <p class="caption"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../intro.html">Introduction</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../profile-types.html">SCAMP Profile Types</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../environment.html">Environment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="intro.html">pyscamp</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">pyscamp API documentation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#pyscamp-python-bindings-for-scamp">pyscamp: Python bindings for SCAMP</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="kwargs.html">Keyword Arguments for pyscamp Methods</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../command-line-interface.html">SCAMP CLI</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../performance.html">Performance</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../docker.html">Using SCAMP’s Docker image</a></li>
+</ul>
+
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">SCAMP</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="../index.html">Docs</a> &raquo;</li>
+        
+          <li><a href="index.html">&lt;no title&gt;</a> &raquo;</li>
+        
+      <li>pyscamp API documentation</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+            
+            <a href="../_sources/pyscamp/pyscamp.rst.txt" rel="nofollow"> View page source</a>
+          
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <div class="section" id="module-pyscamp">
+<span id="pyscamp-api-documentation"></span><h1>pyscamp API documentation<a class="headerlink" href="#module-pyscamp" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="pyscamp-python-bindings-for-scamp">
+<h2>pyscamp: Python bindings for SCAMP<a class="headerlink" href="#pyscamp-python-bindings-for-scamp" title="Permalink to this headline">¶</a></h2>
+<table class="longtable docutils align-default">
+<colgroup>
+<col style="width: 10%" />
+<col style="width: 90%" />
+</colgroup>
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#pyscamp.selfjoin" title="pyscamp.selfjoin"><code class="xref py py-obj docutils literal notranslate"><span class="pre">selfjoin</span></code></a>(a, m, **kwargs)</p></td>
+<td><p>Computes the matrix profile for time series A.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#pyscamp.abjoin" title="pyscamp.abjoin"><code class="xref py py-obj docutils literal notranslate"><span class="pre">abjoin</span></code></a>(a, b, m, **kwargs)</p></td>
+<td><p>For each subsequence in time series A, finds the nearest neighbor in time series B.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#pyscamp.selfjoin_sum" title="pyscamp.selfjoin_sum"><code class="xref py py-obj docutils literal notranslate"><span class="pre">selfjoin_sum</span></code></a>(a, m, **kwargs)</p></td>
+<td><p>Returns the sum of the correlations above specified threshold (default 0) for each subsequence in a time series.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#pyscamp.abjoin_sum" title="pyscamp.abjoin_sum"><code class="xref py py-obj docutils literal notranslate"><span class="pre">abjoin_sum</span></code></a>(a, b, m, **kwargs)</p></td>
+<td><p>For each subsequence in time series a, returns the sum of the correlations to subsequences in time series b above specified threshold (default 0).</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#pyscamp.selfjoin_knn" title="pyscamp.selfjoin_knn"><code class="xref py py-obj docutils literal notranslate"><span class="pre">selfjoin_knn</span></code></a>(a, m, k, **kwargs)</p></td>
+<td><p>[GPU ONLY, EXPERIMENTAL] Returns the approximate k nearest neighbors for each subsequence in a time series</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#pyscamp.abjoin_knn" title="pyscamp.abjoin_knn"><code class="xref py py-obj docutils literal notranslate"><span class="pre">abjoin_knn</span></code></a>(a, b, m, k, **kwargs)</p></td>
+<td><p>[GPU ONLY, EXPERIMENTAL] For each subsequence in time series A, returns its Approximate K nearest neighbors in time series B</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#pyscamp.selfjoin_matrix" title="pyscamp.selfjoin_matrix"><code class="xref py py-obj docutils literal notranslate"><span class="pre">selfjoin_matrix</span></code></a>(a, m, **kwargs)</p></td>
+<td><p>[GPU ONLY, EXPERIMENTAL] Returns a pooled version of the distance matrix with HxW of [mheight x mwidth]</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#pyscamp.abjoin_matrix" title="pyscamp.abjoin_matrix"><code class="xref py py-obj docutils literal notranslate"><span class="pre">abjoin_matrix</span></code></a>(a, b, m, **kwargs)</p></td>
+<td><p>[GPU ONLY, EXPERIMENTAL] Returns a pooled version of the distance matrix with HxW of [mheight x mwidth]</p></td>
+</tr>
+</tbody>
+</table>
+<dl class="function">
+<dt id="pyscamp.abjoin">
+<code class="sig-prename descclassname">pyscamp.</code><code class="sig-name descname">abjoin</code><span class="sig-paren">(</span><em class="sig-param">a: List[float], b: List[float], m: int, **kwargs</em><span class="sig-paren">)</span> &#x2192; Tuple[numpy.ndarray[float32], numpy.ndarray[int32]]<a class="headerlink" href="#pyscamp.abjoin" title="Permalink to this definition">¶</a></dt>
+<dd><p>For each subsequence in time series A, finds the nearest neighbor in time series B.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>a</strong> (<em>1D array</em>) – Time series, b will be queried for subsequences in a.</p></li>
+<li><p><strong>b</strong> (<em>1D array</em>) – Time series in which to search for matches for subsequences in a.</p></li>
+<li><p><strong>m</strong> (<em>int</em>) – Subsequence length to use for computing the matrix profile.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>A tuple. First element: The nearest neighbor distance of subsequences in a to time series b. Second element: The index (in b) of each nearest neighbor.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>Tuple of np.ndarray[float32] and np.ndarray[int32]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="function">
+<dt id="pyscamp.abjoin_knn">
+<code class="sig-prename descclassname">pyscamp.</code><code class="sig-name descname">abjoin_knn</code><span class="sig-paren">(</span><em class="sig-param">a: List[float], b: List[float], m: int, k: int, **kwargs</em><span class="sig-paren">)</span> &#x2192; List[Tuple[int, int, float]]<a class="headerlink" href="#pyscamp.abjoin_knn" title="Permalink to this definition">¶</a></dt>
+<dd><p>[GPU ONLY, EXPERIMENTAL] For each subsequence in time series A, returns its Approximate K nearest neighbors in time series B</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>a</strong> (<em>1D array</em>) – Time series to compute the KNN matrix profile for.`</p></li>
+<li><p><strong>b</strong> (<em>1D array</em>) – Time series in which to search for matches.</p></li>
+<li><p><strong>m</strong> (<em>int</em>) – Subsequence length to use for computing the matrix profile.</p></li>
+<li><p><strong>k</strong> (<em>int</em>) – Number of neighbors to return for each subsequence</p></li>
+<li><p><strong>threshold</strong> (<em>float</em><em>, </em><em>optional</em>) – Correlation threshold [0,1] (Default 0), matches which have a correlation less than the threshold will be ignored</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>List of tuples (col, row, distance) containing the matches (up to K) for each column of the distance matrix, col is the index in A, row is the index in B of the match, and d is the distance between the two subsequences</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>List of tuple[int, int, float]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="function">
+<dt id="pyscamp.abjoin_matrix">
+<code class="sig-prename descclassname">pyscamp.</code><code class="sig-name descname">abjoin_matrix</code><span class="sig-paren">(</span><em class="sig-param">a: List[float], b: List[float], m: int, **kwargs</em><span class="sig-paren">)</span> &#x2192; numpy.ndarray[float32]<a class="headerlink" href="#pyscamp.abjoin_matrix" title="Permalink to this definition">¶</a></dt>
+<dd><p>[GPU ONLY, EXPERIMENTAL] Returns a pooled version of the distance matrix with HxW of [mheight x mwidth]</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>a</strong> (<em>1D array</em>) – Time series corresponding to the columns of the distance matrix.</p></li>
+<li><p><strong>b</strong> (<em>1D array</em>) – Time series corresponding to the rows of the distance matrix.</p></li>
+<li><p><strong>m</strong> (<em>int</em>) – Subsequence length to use for computing the matrix profile.</p></li>
+<li><p><strong>mheight</strong> (<em>int</em><em>, </em><em>optional</em>) – Height of the pooled distance matrix to output. Default 50</p></li>
+<li><p><strong>mwidth</strong> (<em>int</em><em>, </em><em>optional</em>) – Width of the pooled distance matrix to output. Default 50</p></li>
+<li><p><strong>threshold</strong> (<em>float</em><em>, </em><em>optional</em>) – Correlation threshold [0,1] (Default 0), matches which have a correlation less than the threshold will be ignored</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>A 2D array of height of mheight and width of mwidth. This is a pooled version of the full distance matrix.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>2D array</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="function">
+<dt id="pyscamp.abjoin_sum">
+<code class="sig-prename descclassname">pyscamp.</code><code class="sig-name descname">abjoin_sum</code><span class="sig-paren">(</span><em class="sig-param">a: List[float], b: List[float], m: int, **kwargs</em><span class="sig-paren">)</span> &#x2192; numpy.ndarray[float64]<a class="headerlink" href="#pyscamp.abjoin_sum" title="Permalink to this definition">¶</a></dt>
+<dd><p>For each subsequence in time series a, returns the sum of the correlations to subsequences in time series b above specified threshold (default 0).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>a</strong> (<em>1D array</em>) – Time series to compute matrix profile for.</p></li>
+<li><p><strong>b</strong> (<em>1D array</em>) – Time series to search for matches.</p></li>
+<li><p><strong>m</strong> (<em>int</em>) – Subsequence length to use for computing the matrix profile.</p></li>
+<li><p><strong>threshold</strong> (<em>float</em><em>, </em><em>optional</em>) – Correlation threshold [0,1] (Default 0), matches which have a correlation less than the threshold will be ignored</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>For each subsequence in A, returns the sum of correlations above the the specified threshold in B.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>np.ndarray[float64]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="function">
+<dt id="pyscamp.gpu_supported">
+<code class="sig-prename descclassname">pyscamp.</code><code class="sig-name descname">gpu_supported</code><span class="sig-paren">(</span><span class="sig-paren">)</span> &#x2192; bool<a class="headerlink" href="#pyscamp.gpu_supported" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns whether or not the module was compiled with GPU support</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="pyscamp.selfjoin">
+<code class="sig-prename descclassname">pyscamp.</code><code class="sig-name descname">selfjoin</code><span class="sig-paren">(</span><em class="sig-param">a: List[float], m: int, **kwargs</em><span class="sig-paren">)</span> &#x2192; Tuple[numpy.ndarray[float32], numpy.ndarray[int32]]<a class="headerlink" href="#pyscamp.selfjoin" title="Permalink to this definition">¶</a></dt>
+<dd><p>Computes the matrix profile for time series A.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>a</strong> (<em>1D array</em>) – Time series to compute matrix profile for.</p></li>
+<li><p><strong>m</strong> (<em>int</em>) – Subsequence length to use for computing the matrix profile.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>A tuple containing the matrix profile as the first element and the indices as a the second element.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>Tuple of np.ndarray[float32] and np.ndarray[int32]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="function">
+<dt id="pyscamp.selfjoin_knn">
+<code class="sig-prename descclassname">pyscamp.</code><code class="sig-name descname">selfjoin_knn</code><span class="sig-paren">(</span><em class="sig-param">a: List[float], m: int, k: int, **kwargs</em><span class="sig-paren">)</span> &#x2192; List[Tuple[int, int, float]]<a class="headerlink" href="#pyscamp.selfjoin_knn" title="Permalink to this definition">¶</a></dt>
+<dd><p>[GPU ONLY, EXPERIMENTAL] Returns the approximate k nearest neighbors for each subsequence in a time series</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>a</strong> (<em>1D array</em>) – Time series to compute the KNN matrix profile for.</p></li>
+<li><p><strong>m</strong> (<em>int</em>) – Subsequence length to use for computing the matrix profile.</p></li>
+<li><p><strong>k</strong> (<em>int</em>) – Number of neighbors to return for each subsequence</p></li>
+<li><p><strong>threshold</strong> (<em>float</em><em>, </em><em>optional</em>) – Correlation threshold [0,1] (Default 0), matches which have a correlation less than the threshold will be ignored</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>List of tuples (col, row, distance) containing the matches (up to K) for each column of the distance matrix, row is the index of the match, and d is the distance between the two subsequences</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>List of tuple[int, int, float]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="function">
+<dt id="pyscamp.selfjoin_matrix">
+<code class="sig-prename descclassname">pyscamp.</code><code class="sig-name descname">selfjoin_matrix</code><span class="sig-paren">(</span><em class="sig-param">a: List[float], m: int, **kwargs</em><span class="sig-paren">)</span> &#x2192; numpy.ndarray[float32]<a class="headerlink" href="#pyscamp.selfjoin_matrix" title="Permalink to this definition">¶</a></dt>
+<dd><p>[GPU ONLY, EXPERIMENTAL] Returns a pooled version of the distance matrix with HxW of [mheight x mwidth]</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>a</strong> (<em>1D array</em>) – Time series to compute matrix profile for.</p></li>
+<li><p><strong>m</strong> (<em>int</em>) – Subsequence length to use for computing the matrix profile.</p></li>
+<li><p><strong>mheight</strong> (<em>int</em><em>, </em><em>optional</em>) – Height of the pooled distance matrix to output. Default 50</p></li>
+<li><p><strong>mwidth</strong> (<em>int</em><em>, </em><em>optional</em>) – Width of the pooled distance matrix to output. Default 50</p></li>
+<li><p><strong>threshold</strong> (<em>float</em><em>, </em><em>optional</em>) – Correlation threshold [0,1] (Default 0), matches which have a correlation less than the threshold will be ignored</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>A 2D array of height of mheight and width of mwidth. This is a pooled version of the full distance matrix.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>2D array</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="function">
+<dt id="pyscamp.selfjoin_sum">
+<code class="sig-prename descclassname">pyscamp.</code><code class="sig-name descname">selfjoin_sum</code><span class="sig-paren">(</span><em class="sig-param">a: List[float], m: int, **kwargs</em><span class="sig-paren">)</span> &#x2192; numpy.ndarray[float64]<a class="headerlink" href="#pyscamp.selfjoin_sum" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the sum of the correlations above specified threshold (default 0) for each subsequence in a time series.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>a</strong> (<em>1D array</em>) – Time series to compute matrix profile for.</p></li>
+<li><p><strong>m</strong> (<em>int</em>) – Subsequence length to use for computing the matrix profile.</p></li>
+<li><p><strong>threshold</strong> (<em>float</em><em>, </em><em>optional</em>) – Correlation threshold [0,1] (Default 0), matches which have a correlation less than the threshold will be ignored</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>For each subsequence in A, returns the sum of correlations above the the specified threshold to other subesequences in A.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>np.ndarray[float64]</p>
+</dd>
+</dl>
+</dd></dl>
+
+</div>
+</div>
+
+
+           </div>
+           
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="kwargs.html" class="btn btn-neutral float-right" title="Keyword Arguments for pyscamp Methods" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
+      
+      
+        <a href="intro.html" class="btn btn-neutral float-left" title="pyscamp" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2020, Zach Zimmerman
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/rtfd/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+
+  
+  
+    
+   
+
+</body>
+</html>

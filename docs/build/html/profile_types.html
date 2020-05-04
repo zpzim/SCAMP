@@ -1,0 +1,246 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>SCAMP Profile Types &mdash; SCAMP 0.3.0 documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+  <script type="text/javascript" src="_static/js/modernizr.min.js"></script>
+  
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script src="_static/language_data.js"></script>
+    
+    <script type="text/javascript" src="_static/js/theme.js"></script>
+
+    
+
+  
+  <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Environment" href="environment.html" />
+    <link rel="prev" title="Introduction" href="intro.html" /> 
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+          
+
+          
+            <a href="index.html" class="icon icon-home"> SCAMP
+          
+
+          
+          </a>
+
+          
+            
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <p class="caption"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="intro.html">Introduction</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">SCAMP Profile Types</a></li>
+<li class="toctree-l1"><a class="reference internal" href="environment.html">Environment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pyscamp/intro.html">pyscamp</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pyscamp/pyscamp.html">pyscamp API documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pyscamp/kwargs.html">Keyword Arguments for pyscamp Methods</a></li>
+<li class="toctree-l1"><a class="reference internal" href="command_line_interface.html">SCAMP CLI</a></li>
+<li class="toctree-l1"><a class="reference internal" href="performance.html">Performance</a></li>
+<li class="toctree-l1"><a class="reference internal" href="docker.html">Using SCAMP’s Docker image</a></li>
+</ul>
+
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SCAMP</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="index.html">Docs</a> &raquo;</li>
+        
+      <li>SCAMP Profile Types</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+            
+            <a href="_sources/profile_types.rst.txt" rel="nofollow"> View page source</a>
+          
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <div class="section" id="scamp-profile-types">
+<h1>SCAMP Profile Types<a class="headerlink" href="#scamp-profile-types" title="Permalink to this headline">¶</a></h1>
+<p>SCAMP can compute various types of matrix profiles. Each has slightly different semantics and provide different ‘views’ of the distance matrix. All of these profile types support AB-joins.</p>
+<dl>
+<dt>Nearest Neighbor and Index:</dt><dd><p>This is the default profile type and the normal definition of matrix profile, it will produce the nearest neighbor distance/correlation of every subsequence as well as the index of the nearest neighbor</p>
+<ul class="simple">
+<li><p>CLI flag: –profile_type=1NN_INDEX</p></li>
+<li><p>pyscamp functions: selfjoin, abjoin</p></li>
+</ul>
+</dd>
+<dt>Nearest Neighbor Only:</dt><dd><p>This is a slightly faster version of the default profile type, but it only returns the nearest neighbor distance/correlation not the index of the nearest neighbor</p>
+<ul class="simple">
+<li><p>CLI flag: –profile_type=1NN</p></li>
+<li><p>pyscamp functions: Currently unsupported.</p></li>
+</ul>
+</dd>
+<dt>Sum of correlations above threshold [correlation histogram]:</dt><dd><p>Rather than finding the nearest neighbor, this profile type will compute the sum of the correlations above the specified threshold (–threshold) for each subsequence. This is like a frequency histogram of correlations.</p>
+<ul class="simple">
+<li><p>CLI flag: –profile_type=SUM_THRESH</p></li>
+<li><p>pyscamp functions: selfjoin_sum, abjoin_sum</p></li>
+</ul>
+</dd>
+<dt>Approximate K nearest neighbors:</dt><dd><p>[EXPERIMENTAL, GPU ONLY, DISTRIBUTED UNSUPPORTED] This returns the approximate K (–max_matches_per_column) nearest neighbors and their correlations/indexes for each subsequence. A threshold (–threshold) can be used to accelerate the computation by ignoring matches below the threshold. This is an approximation, because the output may miss results which are too close together (up to ~1000 datapoints apart). The results will be provided in the output file where each row is a tuple of (subsequence index, match index, correlation/distance)</p>
+<ul class="simple">
+<li><p>CLI flag: –profile_type=ALL_NEIGHBORS</p></li>
+<li><p>pyscamp functions: selfjoin_knn, abjoin_knn</p></li>
+</ul>
+</dd>
+<dt>Pooled distance matrix summary:</dt><dd><p>[EXPERIMENTAL, GPU ONLY, DISTRIBUTED UNSUPPORTED] This returns a max-pooled summary (see example below) of the distance matrix using the specified summary matrix height (–reduced_height) and width (–reduced_width). There are limits to the resolution of the output. The output matrix height and width must be approximately 1000x smaller than the input size, otherwise you can get patchy results. Also the entire output matrix must be small enough to fit in your system/GPU’s memory.</p>
+<ul class="simple">
+<li><p>CLI flag: –profile_type=MATRIX_SUMMARY</p></li>
+<li><p>pyscamp functions: selfjoin_matrix, abjoin_matrix</p></li>
+</ul>
+<p>Below is an example distance matrix summary, as you can see there is structure exposed via the visualization of the distance matrix.</p>
+<img alt="Example matrix summary" src="_images/distance_matrix_summary.png" />
+</dd>
+</dl>
+</div>
+
+
+           </div>
+           
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="environment.html" class="btn btn-neutral float-right" title="Environment" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
+      
+      
+        <a href="intro.html" class="btn btn-neutral float-left" title="Introduction" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2020, Zach Zimmerman
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/rtfd/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+
+  
+  
+    
+   
+
+</body>
+</html>
