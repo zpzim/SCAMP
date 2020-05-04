@@ -1,18 +1,17 @@
-[![Build Status](https://travis-ci.org/zpzim/SCAMP.svg?branch=master)](https://travis-ci.org/zpzim/SCAMP)
-# SCAMP: SCAlable Matrix Profile
+[![Travis Build Status](https://travis-ci.org/zpzim/SCAMP.svg?branch=master)](https://travis-ci.org/zpzim/SCAMP)
+[![Docker Build Status](https://img.shields.io/docker/cloud/build/zpzim/scamp)](https://hub.docker.com/repository/docker/zpzim/scamp)
+[![RTD Build Status](https://img.shields.io/readthedocs/scamp-docs)](https://scamp-docs.readthedocs.io/en/latest/)
 
+# SCAMP: SCAlable Matrix Profile
 
 ## Table of Contents
 [Overview](https://github.com/zpzim/SCAMP#overview) \
-[Profile Types](https://github.com/zpzim/SCAMP#profile-types) \
+[Documentation](https://github.com/zpzim/SCAMP#documentation) \
 [Performance](https://github.com/zpzim/SCAMP#performance) \
-[Environment](https://github.com/zpzim/SCAMP#environment) \
 [Python Module](https://github.com/zpzim/SCAMP#python-module) \
-[Configuration](https://github.com/zpzim/SCAMP#configuration) \
-[Usage](https://github.com/zpzim/SCAMP#usage) \
 [Run Using Docker](https://github.com/zpzim/SCAMP#run-using-docker) \
 [Distributed Operation](https://github.com/zpzim/SCAMP#distributed-operation) \
-[Examples](https://github.com/zpzim/SCAMP#examples)
+[Reference](https://github.com/zpzim/SCAMP#reference) \
 
 ## Overview
 This is a GPU/CPU implementation of the SCAMP algorithm. SCAMP takes a time series as input and computes the matrix profile for a particular window size. You can read more at the [Matrix Profile Homepage](http://www.cs.ucr.edu/~eamonn/MatrixProfile.html)
@@ -22,61 +21,20 @@ This is a much improved framework over [GPU-STOMP](https://github.com/zpzim/STOM
  * fp32 version should get good performance on GeForce cards
  * AB joins (you can produce the matrix profile from 2 different time series)
  * Distributable (we use GCP but other cloud platforms can work) with verified scalability to billions of datapoints
- * More types of matrix profiles! See Below!
+ * More types of matrix profiles! See the Docs!
  * Extremely Efficient Implementation
  * Extensible to adding optimized versions of custom join operations.
  * Can compute joins with the CPU (Only enabled for double precision and does not support all-neighbors joins or distance matrix summaries yet)
  * Handles NaN input values. The matrix profile will be computed while excluding any subsequence with a NaN value
+ * Python module: Use SCAMP in Python with pyscamp
 
-## Profile Types
-SCAMP can compute various types of matrix profiles:
-
-* --profile_type=1NN_INDEX: This is the default profile type and the normal definition of matrix profile, it will produce the nearest neighbor distance/correlation of every subsequence as well as the index of the nearest neighbor
-* --profile_type=1NN: This is a slightly faster version of the default profile type, but it only returns the nearest neighbor distance/correlation not the index of the nearest neighbor
-* --profile_type=SUM_THRESH: Rather than finding the nearest neighbor, this profile type will compute the sum of the correlations above the specified threshold (--threshold) for each subsequence. This is like a frequency histogram of correlations.
-* --profile_type=ALL_NEIGHBORS: [EXPERIMENTAL, GPU ONLY, DISTRIBUTED UNSUPPORTED] This returns the approximate K (--max_matches_per_column) nearest neighbors and their correlations/indexes for each subsequence. A threshold (--threshold) can be used to accelerate the computation by ignoring matches below the threshold. This is an approximation, because the output may miss results which are too close together (up to ~1000 datapoints apart). The results will be provided in the output file where each row is a tuple of (subsequence index, match index, correlation/distance)
-* --profile_type=MATRIX_SUMMARY: [EXPERIMENTAL, GPU ONLY, DISTRIBUTED UNSUPPORTED] This returns a max-pooled summary (see example below) of the distance matrix using the specified summary matrix height (--reduced_height) and width (--reduced_width). There are limits to the resolution of the output. The output matrix height and width must be approximately 1000x smaller than the input size, otherwise you can get patchy results. Also the entire output matrix must be small enough to fit in your system/GPU's memory. 
-
-All of the above profiles support AB joins
+## Documentation
+SCAMP's documentation can be found at [readthedocs](https://scamp-docs.readthedocs.io/en/latest/).
 
 ## Performance
 SCAMP is extremely fast, especially on Tesla series GPUs. I belive this repository contains the fastest code in existance for computing the matrix profile. If you find a way to improve the speed of SCAMP, or compute matrix profiles any faster than SCAMP does, please let me know, I would be glad to point to your work and incorporate any improvements that can be made to SCAMP.
 
-### Notes on CPU performance
-SCAMP's CPU performance is very good. However, how performant it is depends heavily on the compiler you use. Newer compilers are better, clang v6 or greater tends to work best. Newer versions of GCC can work as well. MSVC tends to be slower. There can be up to a 10x (perhaps more) difference depending on the compiler you use. This is related to how different compilers have varying levels of support for autovectorization.
-
-### Performance Comparisons
-The included performance tests showcase SCAMP's performance up to an input size of 16M datapoints; however, as we have shown in our publications SCAMP is scalable to hundreds of millions of datapoints and even billions of datapoints with the right hardware.
-
-![SCAMP GPU Performance](/Readme/SCAMP_Profile_Performance_Comparison.png?raw=true "GPU SCAMP Profiles Performance")
-In the figure above we show the runtime in seconds for SCAMP's various profile types (self-join) on 2 P100 GPUs.
-
-
-![SCAMP KNN Performance](/Readme/KNN.png?raw=true "GPU KNN Profiles Performance with different values of K")
-In the figure above we show the runtime in seconds for SCAMP's approximate KNN (--profile_type=ALL_NEIGHBORS) matrix profile, while varying K and the input size on 2 P100 GPUs. You can see that SCAMP maintains good performance relative to the baseline 1NN_INDEX matrix profile up to at least K=20, which should be sufficient for almost all practioners. All measurements were made with random data with the initial threshold set to 0 correlation (close to the worst case for KNN).
-
-![SCAMP vs Others](/Readme/other_methods.png?raw=true "Performance of SCAMP on GPU compared to other methods to compute the matrix profile on GPU")
-The above figure illustrates SCAMP's performance versus [STUMPY](https://github.com/TDAmeritrade/stumpy) which is a popular matrix profile implementation. As can be seen above SCAMP on 2x P100 GPUs much faster than STUMPY, when STUMPY is running on 16x V100 GPUs, which are about ~2x more powerful than P100s individually. This is several orders of magnitude of difference in processing power.
-
-## Environment
-This base project requires:
- * Currently builds under Windows/Mac/Linux using msvc/gcc/clang and nvcc (if CUDA is available) with cmake (3.8+ for cuda support), this version is not available directly from all package managers so you may need to install it manually, the easist way to do this is with python via "pip install cmake" or you can download it manually from [here](https://cmake.org/download/)
- * Optional, but highly recommended: At least version 9.0 of the CUDA toolkit available [here](https://developer.nvidia.com/cuda-toolkit) and an NVIDIA GPU with CUDA (compute capability 3.0+) support. You can find a list of CUDA compatible GPUs [here](https://developer.nvidia.com/cuda-gpus)
- * Currently Supports Kepler-Volta, but Turing and beyond will likely work as well, just add the -gencode flag for your specific architecture in CMakeLists.txt 
- * Highly recommend using a Pascal/Volta GPU as they are much better (V100 is ~10x faster than a K80 for SCAMP, V100 is ~2-3x faster than a P100)
- * If you are using CPUs, using clang-6.0 or above is highly recomended as gcc may not properly autovectorize the CPU kernels.
-~~~~
-Ubuntu Required Packages:
-   # Depending on Ubuntu version cmake 3.8 may not be available and you will need to install manually
-   sudo apt-get install cmake
-   # Install cuda via the link above
-Fedora:
-   sudo dnf install cmake3 gcc-c++
-   # Install cuda via the link above
-CentOS:
-  yum install cmake3
-  # Install cuda via the link above
-~~~~
+More details on the performance of SCAMP can be found in the documentation.
 
 ## Python module
 A source distribution for a python3 module using pybind11 is available on pypi.org to install run:
@@ -96,93 +54,12 @@ has_gpu_support = mp.gpu_supported()
 profile, index = mp.scamp(a, sublen)
 # AB join using 4 threads
 profile, index = mp.scamp(a, b, sublen, threads=4)
-# Sum thresh
-corr_sum = mp.scamp_sum(a, b, sublen, threshold=0.9)
+~~~
 
-# Approximate KNN and matrix summaries are supported with GPUs + CUDA only
-if has_gpu_support:
-  knn = mp.scamp_knn(a,sublen, k)
-  # KNN with threshold
-  knn = mp.scamp_knn(a, sublen, k, threshold=0.85)
-  # KNN Ab join with threshold, outputting pearson correlation
-  knn = mp.scamp_knn(a, b, sublen, k, threshold=0.90, pearson=True)
-  # Matrix summary (100x100) with threshold outputting pearson correlation
-  matrix = mp.scamp_matrix(a, b, sublen, mwidth=100, mheight=100, threshold=0.5, pearson=True)
-~~~~
-
-### Keyword args
-* pyscamp methods support several different keyword arguments:
-  * threshold=[float] Distance threshold used for various profile types, correlations found below this threshold will be ignored
-  * pearson=[bool] Output Pearson Correlation rather than Z-normalized euclidean distance
-  * threads=[int] Number of CPU threads to use with SCAMP (if using gpus it is recommended to not use this flag)
-  * gpus=[list of integers] Cuda device ids of gpus to run on, by default we run on all gpus if you have any.
-  * precision=[string] one of [single, mixed, double] default is double precision, other precision types only supported on GPU
-  * mwidth=[int] for matrix summaries the width of the output matrix (default 50)
-  * mheight=[int] for matrix summaries the height of the output matrix (default 50)
-  * verbose=[bool] enable verbose output. This will log to stdout. (default False)
-
-This is a new feature and still has some kinks to work out. If you have problems building the module (or getting GPU support to work) please submit an issue on github. I don't have access to all build environments so help in addressing these issues is appreciated.
-
-A few notes on GPU support: you need to have a cuda development environment set up in order to build SCAMP with GPU support. If you install pyscamp and it does not detect CUDA during installation it will install using CPU support only. Cmake must detect your cuda installation, this can be especially tricky when using Windows and MSVC as you need to have the CUDA extensions for visual studio installed.
-
-## Configuration
-If you need to specify a specific compiler or cuda toolkit if you have multiple installed, you can use the following defines. By default cmake will look for cuda at the /usr/local/cuda symlink on linux
-~~~~~
-cmake -D CMAKE_CUDA_COMPILER=/path/to/nvcc \
-      -D CMAKE_CXX_COMPILER=/path/to/clang++/or/g++ ..
-      -D CMAKE_C_COMPILER=/path/to/clang/or/gcc ..
-~~~~~
-
-### Forcing cuda/no cuda
-You can force cmake to build without cuda using
-~~~~
-cmake -D FORCE_NO_CUDA=1 ..
-~~~~
-For testing with cuda, you can force the build to fail if cuda is not found using
-~~~~
-cmake -D FORCE_CUDA=1 ..
-~~~~
-
-
-## Usage
-
-### Clone the repository and submodules; make a build directory
-~~~~
-git clone https://github.com/zpzim/SCAMP
-cd SCAMP
-git submodule update --init --recursive
-mkdir build && cd build
-~~~~
-
-### Build SCAMP on Mac/Linux/Windows
-~~~~
-# cmake will look in your $PATH for the cuda/c++ compilers
-# If you have problems with cmake, you may need to specify a
-# cuda or c++ compiler as shown above
-cmake ..
-cmake --build . --config Release
-~~~~
-
-### Using SCAMP
-~~~~
-./SCAMP --window=window_size --input_a_file_name=input_A_file_path [--num_cpu_workers=N (to use CPU threads)]
-~~~~
-
-This will generate two files: mp_columns_out and mp_columns_out_index, which contain the matrix profile and matrix profile index values respectively. 
-
-* Selected Optional Arguments:
-    * "--input_b_file_name=/path/to/file": allows a second input file which acts as the second time series for an AB join. An AB join compares every subsequence in input A with every subsequence in input B, the length of the matrix profile produced by this operation is always determined by input A, but the matrix profile index's values will reference subsequences in input B. Providing this parameter implies that SCAMP will compute an AB join.
-
-    * "--max_tile_size=[integer tile size]": allows you to specify the max tile size used by the SCAMP tile scheme. By default this is set to 1M, but you can adjust this as desired. Note that a tile size smaller than ~1M will likely fail to saturate the compute resources of newer GPUs
-    * One of "--double_precision, --mixed_precision, --single_precision": Changes the precision mode of SCAMP, default is double precision, mixed precision will work on many datasets but not all, single precision will work for some simple datasets, but may prove unreliable for many. See test/SampleInput/earthquake_precision_test.txt for an example of a dataset that fails in mixed/single precision. The single precision mode is about 2x faster than double precision, mixed_precision falls in the middle, but can sometimes be as slow as double precision".
-    * "--gpus=\"list of device numbers to use\"": allows you to specify which gpus to use on the machine, by default we try to use all of them. The device numbers must be valid cuda devices on your system. You can chain these to add more gpus. Example: --gpus="0 1" will use gpu 0 and gpu 1 on the system.
-    * "--num_cpu_workers": allows you to specify the number of cpu threads to compute with, by default we use none. For now, if you don't have gpus, we recommend setting this to the number of cores on your system for best performance. It is possible to perform hetrogeneous GPU/CPU computation using this flag, but because the CPU code isn't optimized yet, you will likely see no speedup compared to using just GPUs
-    * "--reduce_all_neighbors": reduces the output of the ALL_NEIGHBORS profile type to a matrix (a summary of the distance matrix) see Examples
-* There are more arguments that allow you even greater control over what SCAMP can do. Use --helpfull for a list of possible arguments and their descriptions.
-* cmake provides support for clang-tidy (when you build) and clang-format (using build target clang-format) to use these please make sure clang-tidy and clang-format are installed on your system
+More information and the API documentation for pyscamp is avalaiable on [readthedocs](https://scamp-docs.readthedocs.io/en/latest/)
 
 ## Run Using Docker
-Rather than building from scratch you can run SCAMP via [nvidia-docker](https://github.com/NVIDIA/nvidia-docker) using the prebuilt [image](https://hub.docker.com/r/zpzim/scamp) on dockerhub.
+You can run SCAMP via [nvidia-docker](https://github.com/NVIDIA/nvidia-docker) using the prebuilt [image](https://hub.docker.com/r/zpzim/scamp) on dockerhub.
 
 In order to expose the host GPUs nvidia-docker must be installed correctly. Please follow the directions provided on the nvidia-docker github page. The following example uses docker 19.03 functionality:
 ~~~
@@ -231,16 +108,7 @@ kubectl cp <SCAMP server container name>:/mp_columns_out .
 #### Sharded implementation
 * The original distributed implementation used [AWS batch](https://aws.amazon.com/batch/) and shards the time series to Amazon S3. This approach avoids the above limitations of our in-memory SCAMPserver, however our initial implementation was very limited in scope and was not extensible to other types of SCAMP workloads, so it is mostly obsolete. However, we still provide the scripts used for posterity in the aws/ directory. Though these would be strictly for inspiration, as there are AWS account side configurations required for operation that cannot be provided.
 
-
-## Examples
-
-### Distance Matrix Summaries using --profile_type=MATRIX_SUMMARY --reduced_height=h --reduced_width=w
-
-![Distance Matrix Summary](/Readme/distance_matrix_summary.png?raw=true "Distance Matrix Summary")
-
-You can see that various behavors in the data become apparent through the visualization of the distance matrix.
-
-## References
+## Reference
 If you use SCAMP in your work, please reference the following paper:
 ~~~
 Zimmerman, Zachary, et al. "Matrix Profile XIV: Scaling Time Series Motif Discovery with GPUs to Break a Quintillion Pairwise Comparisons a Day and Beyond." Proceedings of the ACM Symposium on Cloud Computing. 2019.
