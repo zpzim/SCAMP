@@ -22,10 +22,13 @@ copyright = '2020, Zach Zimmerman'
 author = 'Zach Zimmerman'
 
 # The full version, including alpha/beta/rc tags
-release = '0.3.0'
+release = '0.4.0'
 
 
 # -- General configuration ---------------------------------------------------
+
+# Use index.rst as the master document
+master_doc = 'index'
 
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
