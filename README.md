@@ -52,8 +52,8 @@ has_gpu_support = mp.gpu_supported()
 
 # Self join
 profile, index = mp.selfjoin(a, sublen)
-# AB join using 4 threads
-profile, index = mp.abjoim(a, b, sublen, threads=4)
+# AB join using 4 threads, outtputing pearson correlation.
+profile, index = mp.abjoin(a, b, sublen, pearson=True, threads=4)
 ~~~
 
 More information and the API documentation for pyscamp is available on [readthedocs](https://scamp-docs.readthedocs.io/en/latest/)
