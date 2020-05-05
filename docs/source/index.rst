@@ -17,6 +17,7 @@ Welcome to SCAMP's documentation!
    performance
    docker
    pyscamp/index.rst
+   distributed
     
     
 
