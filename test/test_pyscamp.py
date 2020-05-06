@@ -51,7 +51,7 @@ arr2 = np.random.random(size=(8000,))
 dm_self = distance_matrix(arr, None, 1024)
 dm_ab = distance_matrix(arr, arr2, 1024)
 
-dist, index = mp.scamp(arr, 1024, pearson=True)
+dist, index = mp.selfjoin(arr, 1024, pearson=True)
 vdist, vindex = reduce_1nn_index_unshifted(dm_self)
 
 if compare_vectors(vdist, np.array(dist), vector_match_epsilon) and compare_index(vindex, np.array(index)):
@@ -61,7 +61,7 @@ else:
   print("1NN INDEX Self join fail")
 
 
-dist, index = mp.scamp(arr, arr2, 1024, pearson=True)
+dist, index = mp.abjoin(arr, arr2, 1024, pearson=True)
 vdist, vindex = reduce_1nn_index_unshifted(dm_ab)
 
 
@@ -71,7 +71,7 @@ else:
   failed = True
   print("1NN INDEX AB join fail")
 
-dist = mp.scamp_sum(arr, 1024, threshold=0.90, pearson=True)
+dist = mp.selfjoin_sum(arr, 1024, threshold=0.90, pearson=True)
 dist = dist.reshape((len(dist), 1))
 vdist = reduce_sum_thresh(dm_self, 0.90)
 
@@ -82,7 +82,7 @@ else:
   print("SUM Self join fail")
 
 
-dist = mp.scamp_sum(arr, arr2, 1024, threshold=0.90, pearson=True)
+dist = mp.abjoin_sum(arr, arr2, 1024, threshold=0.90, pearson=True)
 dist = dist.reshape((len(dist), 1))
 vdist = reduce_sum_thresh(dm_ab, 0.90)
 
@@ -92,16 +92,16 @@ else:
   failed = True
   print("SUM AB join fail")
 
-dist = mp.scamp(arr, 1024, threads=1)
-dist = mp.scamp(arr, 1024, threads=2)
+dist = mp.selfjoin(arr, 1024, threads=1)
+dist = mp.selfjoin(arr, 1024, threads=2)
 
 
 if mp.gpu_supported():
   print('GPUs Supported')
   # TODO(zpzim): add a correctness check here once we have a test for that
-  x = mp.scamp_knn(arr, 1024, 5, threshold=0.95, pearson=True)
+  x = mp.selfjoin_knn(arr, 1024, 5, threshold=0.95, pearson=True)
   # TODO(zpzim): add a correctness check here once we have a test for that
-  matrix = mp.scamp_matrix(arr, arr2, 1024, threshold=0.125, mwidth=10, mheight=5, pearson=True)
+  matrix = mp.abjoin_matrix(arr, arr2, 1024, threshold=0.125, mwidth=10, mheight=5, pearson=True)
 
 if failed:
   exit(1)

@@ -88,11 +88,40 @@ SCAMP::SCAMPArgs GetDefaultSCAMPArgs() {
   return args;
 }
 
+bool KeyIsOkForProfileType(std::string key, SCAMP::SCAMPProfileType type) {
+  static const std::set<std::string> nn_index = {"verbose", "precision",
+                                                 "pearson", "gpus", "threads"};
+  static const std::set<std::string> sum_thresh = {
+      "verbose", "precision", "pearson", "gpus", "threads", "threshold"};
+  static const std::set<std::string> knn = {
+      "verbose", "precision", "pearson", "gpus", "threads", "threshold"};
+  static const std::set<std::string> matrix = {
+      "verbose", "precision", "pearson", "gpus",
+      "threads", "threshold", "mheight", "mwidth"};
+
+  switch (type) {
+    case SCAMP::PROFILE_TYPE_1NN_INDEX:
+      return nn_index.count(key) == 1;
+    case SCAMP::PROFILE_TYPE_SUM_THRESH:
+      return sum_thresh.count(key) == 1;
+    case SCAMP::PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
+      return knn.count(key) == 1;
+    case SCAMP::PROFILE_TYPE_MATRIX_SUMMARY:
+      return matrix.count(key) == 1;
+    default:
+      return false;
+  }
+}
+
 void get_args_based_on_kwargs(SCAMP::SCAMPArgs* args, py::kwargs kwargs,
                               bool& pearson, std::vector<int>& gpus,
                               int& num_cpus) {
   for (auto item : kwargs) {
     std::string key = std::string(py::str(*item.first));
+    if (!KeyIsOkForProfileType(key, args->profile_type)) {
+      throw std::invalid_argument(
+          "Invalid keyword argument specified unknown argument: " + key);
+    }
     if (key == "threshold") {
       args->distance_threshold = item.second.cast<double>();
       if (args->distance_threshold > 1 || args->distance_threshold < -1) {
@@ -364,45 +393,154 @@ std::vector<std::tuple<int64_t, int64_t, float>> (*ab_join_KNN)(
 
 PYBIND11_MODULE(pyscamp, m) {
   m.doc() = R"pbdoc(
-        SCAMP: SCAlable Matrix Profile
-        -------------------------------
-        .. currentmodule:: scamp
+        pyscamp: Python bindings for SCAMP
+        ----------------------------------
+
+        .. currentmodule:: pyscamp
+
         .. autosummary::
            :toctree: _generate
-           SCAMP_AB
-           SCAMP_SELF
+
+           selfjoin
+           abjoin
+           selfjoin_sum
+           abjoin_sum
+           selfjoin_knn
+           abjoin_knn
+           selfjoin_matrix
+           abjoin_matrix 
     )pbdoc";
 
   m.def("gpu_supported", GPU_supported, R"pbdoc(
-        Returns whether or not the module was compiled with GPU support)pbdoc");
+        Returns whether or not the module was compiled with GPU support
+        )pbdoc");
 
-  m.def("scamp", self_join_1NN_INDEX, R"pbdoc(
-        Returns the self-join matrix profile of a time series.
+  m.def("selfjoin", self_join_1NN_INDEX, py::arg("a"), py::arg("m"), R"pbdoc(
+    Computes the matrix profile for time series A.
+  
+    :param a: Time series to compute matrix profile for.
+    :type a: 1D array
+    :param m: Subsequence length to use for computing the matrix profile.
+    :type m: int
+    :return: A tuple containing the matrix profile as the first element and the indices as a the second element.
+    :rtype: Tuple of np.ndarray[float32] and np.ndarray[int32]
     )pbdoc");
 
-  m.def("scamp", ab_join_1NN_INDEX, R"pbdoc(
-        Returns the ab-join matrix profile of 2 time series.
+  m.def("abjoin", ab_join_1NN_INDEX, py::arg("a"), py::arg("b"), py::arg("m"),
+        R"pbdoc(
+    For each subsequence in time series A, finds the nearest neighbor in time series B.
+
+    :param a: Time series, b will be queried for subsequences in a.
+    :type a: 1D array 
+    :param b: Time series in which to search for matches for subsequences in a.
+    :type b: 1D array
+    :param m: Subsequence length to use for computing the matrix profile.
+    :type m: int
+    :return: A tuple. First element: The nearest neighbor distance of subsequences in a to time series b. Second element: The index (in b) of each nearest neighbor.
+    :rtype: Tuple of np.ndarray[float32] and np.ndarray[int32]
     )pbdoc");
 
-  m.def("scamp_sum", self_join_SUM_THRESH, R"pbdoc(
-        Returns the sum of the correlations above specified threshold (default 0) for each subsequence in a time series.
+  m.def("selfjoin_sum", self_join_SUM_THRESH, py::arg("a"), py::arg("m"),
+        R"pbdoc(
+    Returns the sum of the correlations above specified threshold (default 0) for each subsequence in a time series.
+
+    :param a: Time series to compute matrix profile for.
+    :type a: 1D array
+    :param m: Subsequence length to use for computing the matrix profile.
+    :type m: int
+    :param threshold: Correlation threshold [0,1] (Default 0), matches which have a correlation less than the threshold will be ignored
+    :type threshold: float, optional
+    :return: For each subsequence in A, returns the sum of correlations above the the specified threshold to other subesequences in A.
+    :rtype: np.ndarray[float64]
     )pbdoc");
 
-  m.def("scamp_sum", ab_join_SUM_THRESH, R"pbdoc(
-        For each subsequence in time series a, returns the sum of the correlations to subsequences in time series b above specified threshold (default 0).
+  m.def("abjoin_sum", ab_join_SUM_THRESH, py::arg("a"), py::arg("b"),
+        py::arg("m"), R"pbdoc(
+    For each subsequence in time series a, returns the sum of the correlations to subsequences in time series b above specified threshold (default 0).
+
+    :param a: Time series to compute matrix profile for.
+    :type a: 1D array
+    :param b: Time series to search for matches.
+    :type b: 1D array
+    :param m: Subsequence length to use for computing the matrix profile.
+    :type m: int
+    :param threshold: Correlation threshold [0,1] (Default 0), matches which have a correlation less than the threshold will be ignored
+    :type threshold: float, optional
+    :return: For each subsequence in A, returns the sum of correlations above the the specified threshold in B.
+    :rtype: np.ndarray[float64]
     )pbdoc");
 
-  m.def("scamp_knn", self_join_KNN, R"pbdoc(
-        Returns the k nearest neighbors for each subsequence in a time series)pbdoc");
+  m.def("selfjoin_knn", self_join_KNN, py::arg("a"), py::arg("m"), py::arg("k"),
+        R"pbdoc(
+    [GPU ONLY, EXPERIMENTAL] Returns the approximate k nearest neighbors for each subsequence in a time series
 
-  m.def("scamp_knn", ab_join_KNN, R"pbdoc(
-        For each subsequence in time series A, returns its K nearest neighbors (approximate) in time series B)pbdoc");
+    :param a: Time series to compute the KNN matrix profile for.
+    :type a: 1D array
+    :param m: Subsequence length to use for computing the matrix profile.
+    :type m: int
+    :param k: Number of neighbors to return for each subsequence
+    :type k: int
+    :param threshold: Correlation threshold [0,1] (Default 0), matches which have a correlation less than the threshold will be ignored
+    :type threshold: float, optional
+    :return: List of tuples (col, row, distance) containing the matches (up to K) for each column of the distance matrix, row is the index of the match, and d is the distance between the two subsequences
+    :rtype: List of tuple[int, int, float]
+    )pbdoc");
 
-  m.def("scamp_matrix", self_join_MATRIX, R"pbdoc(
-        Returns a pooled version of the distance matrix with HxW of [mheight x mwidth])pbdoc");
+  m.def("abjoin_knn", ab_join_KNN, py::arg("a"), py::arg("b"), py::arg("m"),
+        py::arg("k"), R"pbdoc(
+    [GPU ONLY, EXPERIMENTAL] For each subsequence in time series A, returns its Approximate K nearest neighbors in time series B
 
-  m.def("scamp_matrix", ab_join_MATRIX, R"pbdoc(
-        Returns a pooled version of the distance matrix with HxW of [mheight x mwidth])pbdoc");
+    :param a: Time series to compute the KNN matrix profile for.`
+    :type a: 1D array
+    :param b: Time series in which to search for matches.
+    :type b: 1D array
+    :param m: Subsequence length to use for computing the matrix profile.
+    :type m: int
+    :param k: Number of neighbors to return for each subsequence
+    :type k: int
+    :param threshold: Correlation threshold [0,1] (Default 0), matches which have a correlation less than the threshold will be ignored
+    :type threshold: float, optional
+    :return: List of tuples (col, row, distance) containing the matches (up to K) for each column of the distance matrix, col is the index in A, row is the index in B of the match, and d is the distance between the two subsequences
+    :rtype: List of tuple[int, int, float]
+    )pbdoc");
+
+  m.def("selfjoin_matrix", self_join_MATRIX, py::arg("a"), py::arg("m"),
+        R"pbdoc(
+    [GPU ONLY, EXPERIMENTAL] Returns a pooled version of the distance matrix with HxW of [mheight x mwidth]
+
+    :param a: Time series to compute matrix profile for.
+    :type a: 1D array
+    :param m: Subsequence length to use for computing the matrix profile.
+    :type m: int
+    :param mheight: Height of the pooled distance matrix to output. Default 50
+    :type mheight: int, optional
+    :param mwidth: Width of the pooled distance matrix to output. Default 50
+    :type mwidth: int, optional
+    :param threshold: Correlation threshold [0,1] (Default 0), matches which have a correlation less than the threshold will be ignored
+    :type threshold: float, optional
+    :return: A 2D array of height of mheight and width of mwidth. This is a pooled version of the full distance matrix.
+    :rtype: 2D array
+    )pbdoc");
+
+  m.def("abjoin_matrix", ab_join_MATRIX, py::arg("a"), py::arg("b"),
+        py::arg("m"), R"pbdoc(
+    [GPU ONLY, EXPERIMENTAL] Returns a pooled version of the distance matrix with HxW of [mheight x mwidth]
+
+    :param a: Time series corresponding to the columns of the distance matrix.
+    :type a: 1D array
+    :param b: Time series corresponding to the rows of the distance matrix.
+    :type b: 1D array
+    :param m: Subsequence length to use for computing the matrix profile.
+    :type m: int
+    :param mheight: Height of the pooled distance matrix to output. Default 50
+    :type mheight: int, optional
+    :param mwidth: Width of the pooled distance matrix to output. Default 50
+    :type mwidth: int, optional
+    :param threshold: Correlation threshold [0,1] (Default 0), matches which have a correlation less than the threshold will be ignored
+    :type threshold: float, optional
+    :return: A 2D array of height of mheight and width of mwidth. This is a pooled version of the full distance matrix.
+    :rtype: 2D array
+)pbdoc");
 
   m.attr("__version__") = "dev";
 }
