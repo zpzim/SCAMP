@@ -17,12 +17,13 @@ For GPU support (required for any SCAMP build which will use a GPU):
   * NVIDIA GPU with CUDA (compute capability 3.0+) support.
 
     * You can find a list of CUDA compatible GPUs `here <https://developer.nvidia.com/cuda-gpus>`_
-    * Currently Supports Kepler-Volta, but Turing and beyond will likely work as well, just add the -gencode flag for your specific architecture in CMakeLists.txt 
+    * Currently Supports Kepler-Turing, but Ampere and beyond will likely work as well, just add the -gencode flag for your specific architecture in CMakeLists.txt
     * Highly recommend using a Pascal/Volta GPU as they are much better (V100 is ~10x faster than a K80 for SCAMP, V100 is ~2-3x faster than a P100)
 
  
 For python support:
   * Only python 3 is supported
+  * Python 2 can work, but will not be supported if things break
 
 Recommended Compiler:
  * If you are using CPUs, using clang v6.0 or above is highly recomended as gcc may not properly autovectorize the CPU kernels.

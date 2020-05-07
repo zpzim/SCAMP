@@ -31,8 +31,6 @@ class CMakeBuild(build_ext):
         except OSError:
            print('CUDA was not found on the system, to build with CUDA, verify nvcc can be found in the PATH')
         
-        print(out)
-
         for ext in self.extensions:
             self.build_extension(ext)
 

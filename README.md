@@ -39,7 +39,8 @@ More details on the performance of SCAMP can be found in the documentation.
 ## Python module
 A source distribution for a python3 module using pybind11 is available on pypi.org to install run:
 ~~~
-# Python 3 only
+# Python 3; python 2 can work but is unsupported
+# cmake is required (if you don't have it you can pip install cmake)
 pip install pyscamp
 ~~~
 

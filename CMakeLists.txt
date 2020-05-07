@@ -7,6 +7,8 @@ project(SCAMPmain LANGUAGES CXX)
 set(VERSION_MAJOR 1)
 set(VERSION_MINOR 1)
 
+set(CUDA_MINIMUM_VERSION "9.0")
+
 # Release build by default
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
@@ -24,6 +26,14 @@ else()
     enable_language(CUDA)
     # For CUFFT libraries
     find_package(CUDA ${CMAKE_CUDA_VERSION} REQUIRED)
+  endif()
+endif()
+
+# Do not use an unsupported cuda version
+if (CMAKE_CUDA_COMPILER)
+  if (CUDA_VERSION VERSION_LESS ${CUDA_MINIMUM_VERSION})
+    message(STATUS "CUDA version ${CUDA_VERSION} is less than the mininmum required version ${CUDA_MINIMUM_VERSION} defaulting to no-cuda build")
+    unset(CMAKE_CUDA_COMPILER)
   endif()
 endif()
 
@@ -86,6 +96,9 @@ if (CMAKE_CUDA_COMPILER)
   include_directories(${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   set(CUDA_SEPARABLE_COMPILATION ON)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler=-fPIC -lineinfo")
+  if (CUDA_VERSION VERSION_GREATER_EQUAL "10.0")
+    set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_75,code=sm_75")
+  endif()
   set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_60,code=sm_70")
   set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_61,code=sm_61")
   set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_60,code=sm_60")
