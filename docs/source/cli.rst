@@ -60,6 +60,11 @@ For a matrix summary::
 
 This will generate one file: mp_columns_out, which contains the matrix summary.
 
+Input Format
+************
+
+Input files should have one value per line. The parser expects newlines at the end of each value. You can find examples of this on github in the `test/SampleInput <https://github.com/zpzim/SCAMP/tree/master/test/SampleInput>`_ directory.
+
 
 Optional Arguments
 ******************
@@ -97,7 +102,7 @@ On Windows this is slightly different as you need to specify the generator to cm
   # Build with Ninja (requires ninja)
   cmake -G "Ninja" -DCMAKE_CXX_COMPILER=/path/to/compiler
 
-Windows CUDA builds seem to only work using visual studio tools (and the CUDA visual studio extensions) currently. Looking into making this work more generally with other generators.
+Windows CUDA builds will only work using visual studio tools (and the CUDA visual studio extensions). This is due to the fact that the visual studio toolchain is the only suppored toolchain for compiling cuda on windows, changing the C++ compiler will cause nvcc to fail. Therefore you can only use other generators for C++ only builds.
 
 Forcing CUDA (or No CUDA)
 ************************************

@@ -8,6 +8,8 @@ from setuptools import setup, Extension, find_packages
 from setuptools.command.build_ext import build_ext
 from distutils.version import LooseVersion
 
+cmake_default_generator = False
+
 class CMakeExtension(Extension):
     def __init__(self, name, sourcedir=''):
         Extension.__init__(self, name, sources=[])
@@ -26,6 +28,15 @@ class CMakeBuild(build_ext):
         if cmake_version < LooseVersion('3.12.0'):
             raise RuntimeError("CMake >= 3.12.0 is required")
 
+        cmake_help = ''
+        try:
+            cmake_help = subprocess.check_output(['cmake', '--help'])
+        except OSError:
+            raise RuntimeError("Cmake could not be queried for its default generator")
+        
+        # Check if visual studio is the default cmake generator
+        if '* Visual Studio' in cmake_help:
+          cmake_vs_default_generator = True
         try:
             out = subprocess.check_output(['nvcc', '--version'])
         except OSError:
@@ -39,6 +50,13 @@ class CMakeBuild(build_ext):
         cmake_args = ['-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=' + extdir,
                       '-DPYTHON_EXECUTABLE=' + sys.executable]
 
+        force_cuda = os.environ.get("FORCE_CUDA", "")
+        force_no_cuda = os.environ.get("FORCE_NO_CUDA", "")
+        cmake_cpp_compiler = os.environ.get("CMAKE_CXX_COMPILER", "")
+        cmake_cuda_compiler = os.environ.get("CMAKE_CUDA_COMPILER", "")
+        cmake_generator = os.environ.get("CMAKE_GENERATOR", "")     
+        cmake_toolset = os.environ.get("CMAKE_GENERATOR_TOOLSET", "")        
+
         build_type = os.environ.get("BUILD_TYPE", "Release")
         build_args = ['--config', build_type]
 
@@ -47,11 +65,45 @@ class CMakeBuild(build_ext):
         cmake_args += ["-DCMAKE_INSTALL_RPATH={}".format("$ORIGIN")]
         cmake_args += ["-DBUILD_PYTHON_MODULE=TRUE"]
 
+        if force_cuda:
+          cmake_args += ["-DFORCE_CUDA={}".format(force_cuda)]
+
+        if force_no_cuda:
+          cmake_args += ["-DFORCE_NO_CUDA={}".format(force_no_cuda)]
+
+        if cmake_cpp_compiler:
+          cmake_args += ["-DCMAKE_CXX_COMPILER={}".format(cmake_cpp_compiler)]
+
+        if cmake_cuda_compiler:
+          cmake_args += ["-DCMAKE_CUDA_COMPILER={}".format(cmake_cuda_compiler)]      
+
+        if cmake_generator:
+          cmake_args += ["-DCMAKE_GENERATOR={}".format(cmake_generator)]
+
+        if cmake_toolset:
+          cmake_args += ["-DCMAKE_GENERATOR_TOOLSET={}".format(cmake_toolset)]
+          
+
+
         if platform.system() == "Windows":
-            cmake_args += ['-DCMAKE_LIBRARY_OUTPUT_DIRECTORY_{}={}'.format(build_type.upper(), extdir)]
-            if sys.maxsize > 2**32:
+            generator_is_vs = False
+            # If the user specified a visual studio generator OR the default generator is visual studio
+            # then we need to specify the correct options for the visual studio generator
+            if 'Visual Studio' in cmake_generator:
+              generator_is_vs = True
+            elif not cmake_generator and cmake_vs_default_generator:
+              generator_is_vs = True
+
+            if generator_is_vs:
+              cmake_args += ['-DCMAKE_LIBRARY_OUTPUT_DIRECTORY_{}={}'.format(build_type.upper(), extdir)]
+              build_args += ['--', '/m']
+            else:
+              cmake_args += ['-DCMAKE_BUILD_TYPE=' + build_type]
+              build_args += ['--', '-j4']
+          
+            if sys.maxsize > 2**32 and generator_is_vs:
                 cmake_args += ['-A', 'x64']
-            build_args += ['--', '/m']
+
         else:
             cmake_args += ['-DCMAKE_BUILD_TYPE=' + build_type]
             build_args += ['--', '-j4']

@@ -1,6 +1,7 @@
 # cmake file to build the project and tests
 cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
 include(CheckLanguage)
+include(CheckCXXCompilerFlag)
 # ----------------------------------------------------------------------------------------
 #                              ===== Project Setup =====
 project(SCAMPmain LANGUAGES CXX)
@@ -73,7 +74,6 @@ else()
   set(DO_CLANG_FORMAT "${CLANG_FORMAT}" "-i -style=file")
 endif()
 
-
 set(
   PROJECT_SOURCE_FILES
   src/*.h
@@ -89,6 +89,7 @@ set(
 #                         ===== Compiler Configuration =====
 
 set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_POSITION_INDEPENDANT_CODE ON)
 
 # CUDA_CONFIG
 if (CMAKE_CUDA_COMPILER)
@@ -108,21 +109,44 @@ if (CMAKE_CUDA_COMPILER)
   set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_30,code=sm_30")
 endif()
 
-if (NOT MSVC) 
-  #GCC+CLANG Specific FLAGS
-  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fPIC -funroll-loops -march=native -O3")
-  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=address -fno-omit-frame-pointer")
-else()
-  # Use default MSVC flags
+CHECK_CXX_COMPILER_FLAG("-march=native" COMPILER_OPT_ARCH_NATIVE_SUPPORTED)
+CHECK_CXX_COMPILER_FLAG("-O3" COMPILER_OPT_O3_SUPPORTED)
+CHECK_CXX_COMPILER_FLAG("-funroll-loops" COMPILER_OPT_UNROLL_LOOPS_SUPPORTED)
+CHECK_CXX_COMPILER_FLAG("-ffp-contract=fast" COMPILER_OPT_FPCONTRACT_FAST_SUPPORTED)
+CHECK_CXX_COMPILER_FLAG("-Wall" COMPILER_OPT_WARN_ALL_SUPPORTED)
+
+if (COMPILER_OPT_ARCH_NATIVE_SUPPORTED)
+  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native")
 endif()
 
-# Compiler Specific FLAGS
-if(${COMPILER_ID} MATCHES "GNU") # gcc specific flags
-  add_definitions("-Wextra -Wpedantic")
-elseif(${COMPILER_ID} MATCHES "clang") # clang specific flags
-  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -ffp-contract=fast")
-  add_definitions("-Weverything")
+if (COMPILER_OPT_O3_SUPPORTED)
+  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
 endif()
+  
+if (COMPILER_OPT_UNROLL_LOOPS_SUPPORTED)
+  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -funroll-loops")
+endif()
+
+if (COMPILER_OPT_FPCONTRACT_FAST_SUPPORTED)
+  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -ffp-contract=fast")
+endif()
+
+if (COMPILER_OPT_WARN_ALL_SUPPORTED)
+  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Wall")
+  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wall")
+endif()
+
+CHECK_CXX_COMPILER_FLAG("-fsanitize=address" COMPILER_OPT_SANITIZE_ADDRESS_SUPPORTED)
+CHECK_CXX_COMPILER_FLAG("-fno-omit-frame-pointer" COMPILER_OPT_NO_OMIT_FP_SUPPORTED)
+
+if (COMPILER_OPT_SANITIZE_ADDRESS_SUPPORTED)
+  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=address")
+endif()
+
+if (COMPILER_OPT_NO_OMIT_FP_SUPPORTED)
+  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer")
+endif()
+
 
 # ----------------------------------------------------------------------------------------
 #                              ===== Build targets =====
