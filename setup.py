@@ -35,7 +35,7 @@ class CMakeBuild(build_ext):
             raise RuntimeError("Cmake could not be queried for its default generator")
         
         # Check if visual studio is the default cmake generator
-        if '* Visual Studio' in cmake_help:
+        if '* Visual Studio' in cmake_help.decode():
           cmake_vs_default_generator = True
         try:
             out = subprocess.check_output(['nvcc', '--version'])
