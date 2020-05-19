@@ -8,7 +8,7 @@ from setuptools import setup, Extension, find_packages
 from setuptools.command.build_ext import build_ext
 from distutils.version import LooseVersion
 
-cmake_default_generator = False
+cmake_vs_default_generator = False
 
 class CMakeExtension(Extension):
     def __init__(self, name, sourcedir=''):
