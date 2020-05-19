@@ -138,18 +138,31 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
         args, smem, tile_start_col, tile_start_row, args.n_x, args.n_y,
         profile_A, profile_B);
 
-    if (*args.profile_a_length > args.max_matches_per_tile ||
-        *args.profile_b_length > args.max_matches_per_tile) {
-      // No more space for matches, break out of the kernel
-      break;
-    }
-
     // Update the tile position
     tile_start_col += tile_height;
     tile_start_row += tile_height;
 
     // Make sure our updates were committed before we pull in the next tile
     __threadfence_block();
+
+    if (NeedsCheckIfDone(PROFILE_TYPE)) {
+      // Copy the latest value of the profile length to shared memory
+      if (threadIdx.x == 0) {
+        *smem.profile_a_length = *args.profile_a_length;
+        *smem.profile_b_length = *args.profile_b_length;
+      }
+
+      // Sync so that the write to shared memory is visible by all other threads
+      __syncthreads();
+
+      // If we have too many results, break this thread block out of the kernel
+      // as more computation is pointless. We need to break the entire thread
+      // block out at once otherwise this is undefined behavior.
+      if (*smem.profile_a_length > args.max_matches_per_tile ||
+          *smem.profile_b_length > args.max_matches_per_tile) {
+        break;
+      }
+    }
   }
 }
 
