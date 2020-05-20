@@ -34,9 +34,9 @@ class CMakeBuild(build_ext):
 
         # Check if visual studio is the default cmake generator
         if '* Visual Studio' in cmake_help.decode():
-          cmake_vs_default_generator = True
+          self.cmake_vs_default_generator = True
         else:
-          cmake_vs_default_generator = False
+          self.cmake_vs_default_generator = False
 
         try:
             out = subprocess.check_output(['nvcc', '--version'])
