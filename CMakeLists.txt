@@ -1,11 +1,14 @@
 # cmake file to build the project and tests
 cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
 include(CheckLanguage)
+include(CheckCXXCompilerFlag)
 # ----------------------------------------------------------------------------------------
 #                              ===== Project Setup =====
 project(SCAMPmain LANGUAGES CXX)
 set(VERSION_MAJOR 1)
 set(VERSION_MINOR 1)
+
+set(CUDA_MINIMUM_VERSION "9.0")
 
 # Release build by default
 if(NOT CMAKE_BUILD_TYPE)
@@ -24,6 +27,14 @@ else()
     enable_language(CUDA)
     # For CUFFT libraries
     find_package(CUDA ${CMAKE_CUDA_VERSION} REQUIRED)
+  endif()
+endif()
+
+# Do not use an unsupported cuda version
+if (CMAKE_CUDA_COMPILER)
+  if (CUDA_VERSION VERSION_LESS ${CUDA_MINIMUM_VERSION})
+    message(STATUS "CUDA version ${CUDA_VERSION} is less than the mininmum required version ${CUDA_MINIMUM_VERSION} defaulting to no-cuda build")
+    unset(CMAKE_CUDA_COMPILER)
   endif()
 endif()
 
@@ -63,7 +74,6 @@ else()
   set(DO_CLANG_FORMAT "${CLANG_FORMAT}" "-i -style=file")
 endif()
 
-
 set(
   PROJECT_SOURCE_FILES
   src/*.h
@@ -86,6 +96,9 @@ if (CMAKE_CUDA_COMPILER)
   include_directories(${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   set(CUDA_SEPARABLE_COMPILATION ON)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler=-fPIC -lineinfo")
+  if (CUDA_VERSION VERSION_GREATER_EQUAL "10.0")
+    set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_75,code=sm_75")
+  endif()
   set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_60,code=sm_70")
   set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_61,code=sm_61")
   set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_60,code=sm_60")
@@ -95,21 +108,50 @@ if (CMAKE_CUDA_COMPILER)
   set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_30,code=sm_30")
 endif()
 
-if (NOT MSVC) 
-  #GCC+CLANG Specific FLAGS
-  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fPIC -funroll-loops -march=native -O3")
-  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=address -fno-omit-frame-pointer")
-else()
-  # Use default MSVC flags
+CHECK_CXX_COMPILER_FLAG("-fPIC" COMPILER_OPT_PIC_SUPPORTED)
+CHECK_CXX_COMPILER_FLAG("-march=native" COMPILER_OPT_ARCH_NATIVE_SUPPORTED)
+CHECK_CXX_COMPILER_FLAG("-O3" COMPILER_OPT_O3_SUPPORTED)
+CHECK_CXX_COMPILER_FLAG("-funroll-loops" COMPILER_OPT_UNROLL_LOOPS_SUPPORTED)
+CHECK_CXX_COMPILER_FLAG("-ffp-contract=fast" COMPILER_OPT_FPCONTRACT_FAST_SUPPORTED)
+CHECK_CXX_COMPILER_FLAG("-Wall" COMPILER_OPT_WARN_ALL_SUPPORTED)
+
+if (COMPILER_OPT_PIC_SUPPORTED)
+  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fPIC")
+  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fPIC")
 endif()
 
-# Compiler Specific FLAGS
-if(${COMPILER_ID} MATCHES "GNU") # gcc specific flags
-  add_definitions("-Wextra -Wpedantic")
-elseif(${COMPILER_ID} MATCHES "clang") # clang specific flags
-  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -ffp-contract=fast")
-  add_definitions("-Weverything")
+if (COMPILER_OPT_ARCH_NATIVE_SUPPORTED)
+  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native")
 endif()
+
+if (COMPILER_OPT_O3_SUPPORTED)
+  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
+endif()
+  
+if (COMPILER_OPT_UNROLL_LOOPS_SUPPORTED)
+  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -funroll-loops")
+endif()
+
+if (COMPILER_OPT_FPCONTRACT_FAST_SUPPORTED)
+  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -ffp-contract=fast")
+endif()
+
+if (COMPILER_OPT_WARN_ALL_SUPPORTED)
+  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Wall")
+  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wall")
+endif()
+
+CHECK_CXX_COMPILER_FLAG("-fsanitize=address" COMPILER_OPT_SANITIZE_ADDRESS_SUPPORTED)
+CHECK_CXX_COMPILER_FLAG("-fno-omit-frame-pointer" COMPILER_OPT_NO_OMIT_FP_SUPPORTED)
+
+if (COMPILER_OPT_SANITIZE_ADDRESS_SUPPORTED)
+  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=address")
+endif()
+
+if (COMPILER_OPT_NO_OMIT_FP_SUPPORTED)
+  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer")
+endif()
+
 
 # ----------------------------------------------------------------------------------------
 #                              ===== Build targets =====
