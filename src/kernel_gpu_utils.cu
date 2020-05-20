@@ -73,6 +73,9 @@ int get_smem(const OpInfo *info, uint64_t blocksz) {
   if (info->computing_rows) {
     smem += tile_height * profile_data_size;
   }
+  if (NeedsCheckIfDone(info->profile_type)) {
+    smem += 2 * sizeof(uint64_t);
+  }
   return smem;
 }
 
