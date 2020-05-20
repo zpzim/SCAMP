@@ -8,8 +8,6 @@ from setuptools import setup, Extension, find_packages
 from setuptools.command.build_ext import build_ext
 from distutils.version import LooseVersion
 
-cmake_vs_default_generator = False
-
 class CMakeExtension(Extension):
     def __init__(self, name, sourcedir=''):
         Extension.__init__(self, name, sources=[])
@@ -33,10 +31,13 @@ class CMakeBuild(build_ext):
             cmake_help = subprocess.check_output(['cmake', '--help'])
         except OSError:
             raise RuntimeError("Cmake could not be queried for its default generator")
-        
+
         # Check if visual studio is the default cmake generator
         if '* Visual Studio' in cmake_help.decode():
           cmake_vs_default_generator = True
+        else:
+          cmake_vs_default_generator = False
+
         try:
             out = subprocess.check_output(['nvcc', '--version'])
         except OSError:
@@ -91,7 +92,7 @@ class CMakeBuild(build_ext):
             # then we need to specify the correct options for the visual studio generator
             if 'Visual Studio' in cmake_generator:
               generator_is_vs = True
-            elif not cmake_generator and cmake_vs_default_generator:
+            elif not cmake_generator and self.cmake_vs_default_generator:
               generator_is_vs = True
 
             if generator_is_vs:
