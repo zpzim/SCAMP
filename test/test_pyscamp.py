@@ -27,7 +27,7 @@ def compare_vectors(valid, check, eps):
     print('Output Shapes do not match')
     return False
     
-  return np.allclose(valid, check, nan_equal=True)
+  return np.allclose(valid, check, equal_nan=True)
 
 failed = False
 arr = []

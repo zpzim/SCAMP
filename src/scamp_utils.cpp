@@ -171,8 +171,7 @@ bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
       auto arr = p.data[0].float_value;
       for (const float elem : arr) {
         if (output_pearson) {
-          mp_out << std::setprecision(10) << CleanupPearson(elem)
-                 << std::endl;
+          mp_out << std::setprecision(10) << CleanupPearson(elem) << std::endl;
         } else {
           mp_out << std::setprecision(10) << ConvertToEuclidean(elem, window)
                  << std::endl;
