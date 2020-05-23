@@ -100,6 +100,9 @@ void SCAMP_Operation::do_work(const std::vector<double> &timeseries_a,
                               const int device_id) {
   // Init working memory and op/tile specific variables
   Tile tile(info, arch, device_id);
+  if (!NeedsIntermittentReset(_info.profile_type)) {
+    tile.InitProfile(_profile_a, _profile_b);
+  }
   while (!_work_queue.empty()) {
     std::pair<int, int> t = _work_queue.pop();
     if (t.first == -1 && t.second == -1) {
@@ -124,32 +127,43 @@ void SCAMP_Operation::do_work(const std::vector<double> &timeseries_a,
     //  we will be using from the global arrays.
     tile.InitTimeseries(timeseries_a, timeseries_b);
     tile.InitStats(_precompA, _precompB);
-    // Copy the portion of the best-so-far profile
-    // we will be using.
-    tile.InitProfile(_profile_a, _profile_b);
-    SCAMPError_t err;
-    if (_info.self_join) {
-      if (t.first == t.second) {
-        // Partial tile on diagonal
-        err = tile.execute(SELF_JOIN_UPPER_TRIANGULAR);
-      } else {
-        // Full Tile
-        err = tile.execute(SELF_JOIN_FULL_TILE);
+    bool done = false;
+    while (!done) {
+      // Copy the portion of the best-so-far profile
+      // we will be using.
+      if (NeedsIntermittentReset(_info.profile_type)) {
+        tile.InitProfile(_profile_a, _profile_b);
       }
-    } else {
-      // AB-join
-      err = tile.execute(AB_FULL_JOIN_FULL_TILE);
+      SCAMPError_t err;
+      if (_info.self_join) {
+        if (t.first == t.second) {
+          // Partial tile on diagonal
+          err = tile.execute(SELF_JOIN_UPPER_TRIANGULAR);
+        } else {
+          // Full Tile
+          err = tile.execute(SELF_JOIN_FULL_TILE);
+        }
+      } else {
+        // AB-join
+        err = tile.execute(AB_FULL_JOIN_FULL_TILE);
+      }
+      if (err != SCAMP_NO_ERROR) {
+        throw SCAMPException("ERROR " + getSCAMPErrorString(err) +
+                             " executing tile");
+      }
+      // Merge join result
+      if (NeedsIntermittentMerge(_info.profile_type)) {
+        done = tile.MergeProfile(_profile_a, _profile_b);
+      } else {
+        done = true;
+      }
     }
-    if (err != SCAMP_NO_ERROR) {
-      throw SCAMPException("ERROR " + getSCAMPErrorString(err) +
-                           " executing tile");
-    }
-    // Merge join result
-    tile.MergeProfile(_profile_a, _profile_b);
-
     // Update our counter with a lock
     std::unique_lock<std::mutex> lock(_counter_lock);
     _completed_tiles++;
+  }
+  if (!NeedsIntermittentMerge(_info.profile_type)) {
+    tile.MergeProfile(_profile_a, _profile_b);
   }
 }
 
@@ -216,6 +230,22 @@ SCAMPError_t SCAMP_Operation::do_join(const std::vector<double> &timeseries_a,
   return SCAMP_NO_ERROR;
 }
 
+void do_SCAMP(SCAMPArgs *args) {
+  std::vector<int> devices;
+  int num_threads = 0;
+#ifdef _HAS_CUDA_
+  int num_dev;
+  cudaGetDeviceCount(&num_dev);
+  for (int i = 0; i < num_dev; ++i) {
+    devices.push_back(i);
+  }
+#endif
+  if (devices.empty()) {
+    num_threads = std::thread::hardware_concurrency();
+  }
+  do_SCAMP(args, devices, num_threads);
+}
+
 // Wrapper on SCAMP_Operation called by main(), this function constructs
 // and executes a SCAMP_Operation given a set of user selected parameters.
 void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
@@ -239,16 +269,16 @@ void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
   if (!args->silent_mode) {
     std::cout << "Building SCAMP Operation from args" << std::endl;
   }
+
   // Construct operation
   SCAMP_Operation op(
       args->timeseries_a.size(), args->timeseries_b.size(), args->window,
       args->max_tile_size, devices, !args->has_b, args->precision_type,
-      args->computing_columns && args->computing_rows,
       args->distributed_start_row, args->distributed_start_col, _opt_args,
       args->profile_type, &args->profile_a, &args->profile_b,
       args->keep_rows_separate, args->computing_rows, args->computing_columns,
       args->is_aligned, args->silent_mode, num_threads,
-      args->max_matches_per_column);
+      args->max_matches_per_column, args->matrix_height, args->matrix_width);
 
   if (!args->silent_mode) {
     std::cout << "SCAMP Operation constructed" << std::endl;

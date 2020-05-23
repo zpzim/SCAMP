@@ -138,6 +138,12 @@ def distance_matrix_simple(a,b, m):
   return out
 '''
     
+def reduce_1nn_index_unshifted(dm):
+    corr = np.amax(dm, axis=0)
+    idxs = np.argmax(dm, axis=0)
+    idxs[corr == -2] = -1
+    return corr, idxs
+
 
 def reduce_1nn_index(dm):
     corr = np.amax(dm, axis=0)

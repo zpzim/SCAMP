@@ -271,6 +271,7 @@ SCAMPError_t compute_cpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
             reinterpret_cast<float *>(profile_b), t->info()->fp_type, do_rows,
             do_cols);
       case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
+      case PROFILE_TYPE_MATRIX_SUMMARY:
       default:
         return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
     }

@@ -12,6 +12,8 @@ SCAMPKernelInputArgs<T>::SCAMPKernelInputArgs(Tile *t, bool transpose,
   dgb = transpose ? t->dga() : t->dgb();
   normsa = transpose ? t->normsb() : t->normsa();
   normsb = transpose ? t->normsa() : t->normsb();
+  thresholds_a = transpose ? t->thresholds_B() : t->thresholds_A();
+  thresholds_b = transpose ? t->thresholds_A() : t->thresholds_B();
   n_x = transpose ? t->get_tile_height() : t->get_tile_width();
   n_y = transpose ? t->get_tile_width() : t->get_tile_height();
   n_x = n_x - t->info()->mp_window + 1;
@@ -27,6 +29,12 @@ SCAMPKernelInputArgs<T>::SCAMPKernelInputArgs(Tile *t, bool transpose,
   profile_b_length =
       transpose ? t->get_mutable_a_dev_length() : t->get_mutable_b_dev_length();
   max_matches_per_tile = t->info()->max_matches_per_tile;
+  matrix_width = t->info()->matrix_width;
+  matrix_height = t->info()->matrix_height;
+  rows_per_cell = t->info()->rows_per_cell;
+  cols_per_cell = t->info()->cols_per_cell;
+  global_start_col = t->get_tile_col();
+  global_start_row = t->get_tile_row();
 }
 
 template <typename T>

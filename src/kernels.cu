@@ -1,3 +1,6 @@
+#include <thrust/device_ptr.h>
+#include <thrust/execution_policy.h>
+#include <thrust/sort.h>
 #include <unordered_map>
 #include "defines.h"
 #include "kernel_common.h"
@@ -135,18 +138,31 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
         args, smem, tile_start_col, tile_start_row, args.n_x, args.n_y,
         profile_A, profile_B);
 
-    if (*args.profile_a_length > args.max_matches_per_tile ||
-        *args.profile_b_length > args.max_matches_per_tile) {
-      // No more space for matches, break out of the kernel
-      break;
-    }
-
     // Update the tile position
     tile_start_col += tile_height;
     tile_start_row += tile_height;
 
     // Make sure our updates were committed before we pull in the next tile
     __threadfence_block();
+
+    if (NeedsCheckIfDone(PROFILE_TYPE)) {
+      // Copy the latest value of the profile length to shared memory
+      if (threadIdx.x == 0) {
+        *smem.profile_a_length = *args.profile_a_length;
+        *smem.profile_b_length = *args.profile_b_length;
+      }
+
+      // Sync so that the write to shared memory is visible by all other threads
+      __syncthreads();
+
+      // If we have too many results, break this thread block out of the kernel
+      // as more computation is pointless. We need to break the entire thread
+      // block out at once otherwise this is undefined behavior.
+      if (*smem.profile_a_length > args.max_matches_per_tile ||
+          *smem.profile_b_length > args.max_matches_per_tile) {
+        break;
+      }
+    }
   }
 }
 
@@ -266,7 +282,6 @@ SCAMPError_t compute_gpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
     std::cout << "Launching " << num_blocks << " thread blocks of size "
               << blocksz << " with a total of " << smem
               << " bytes of shared memory per block." << std::endl;
-    args.Print();
   }
   if (exclusion_total < args.n_x) {
     switch (t->info()->profile_type) {
@@ -293,6 +308,12 @@ SCAMPError_t compute_gpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
             args, reinterpret_cast<SCAMPmatch *>(profile_a),
             reinterpret_cast<SCAMPmatch *>(profile_b), t->info()->fp_type,
             do_rows, do_cols, blocksz, num_blocks, smem, t->get_stream());
+      case PROFILE_TYPE_MATRIX_SUMMARY:
+        return LaunchDoTile<float, uint64_t, float, PROFILE_TYPE_MATRIX_SUMMARY,
+                            BLOCKSPERSM>(
+            args, reinterpret_cast<float *>(profile_a),
+            reinterpret_cast<float *>(profile_b), t->info()->fp_type, do_rows,
+            do_cols, blocksz, num_blocks, smem, t->get_stream());
       default:
         return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
     }
@@ -327,4 +348,10 @@ SCAMPError_t gpu_kernel_ab_join_lower(Tile *t) {
       tile_args, t, t->profile_b(), t->profile_a(), t->info()->computing_cols,
       t->info()->computing_rows);
 }
+
+void match_gpu_sort(SCAMPmatch *matches, int64_t len, cudaStream_t stream) {
+  thrust::device_ptr<SCAMPmatch> ptr = thrust::device_pointer_cast(matches);
+  thrust::sort(thrust::cuda::par.on(stream), ptr, ptr + len);
+}
+
 }  // namespace SCAMP

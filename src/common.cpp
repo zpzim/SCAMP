@@ -3,16 +3,38 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <sstream>
 
 namespace SCAMP {
+
+static constexpr int64_t GIGABYTE = 1024 * 1024 * 1024;
+
+static constexpr int64_t MEMORY_SAVINGS_FACTOR = 200;
+
+bool NeedsSort(SCAMPProfileType type) {
+  return type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS;
+}
+
+bool NeedsIntermittentMerge(SCAMPProfileType type) {
+  return type != PROFILE_TYPE_MATRIX_SUMMARY;
+}
+
+bool NeedsIntermittentReset(SCAMPProfileType type) {
+  return type != PROFILE_TYPE_MATRIX_SUMMARY;
+}
+
+// TODO(zpzim): make this a more generic parameter that is specified by
+// the user or memory availibility
+static constexpr int64_t PROFILE_MEMORY_BUDGET = 0.5 * GIGABYTE;
 
 OpInfo::OpInfo(size_t Asize, size_t Bsize, size_t window_sz,
                size_t max_tile_size, bool selfjoin, SCAMPPrecisionType t,
                int64_t start_row, int64_t start_col, OptionalArgs args_,
                SCAMPProfileType profiletype, bool keep_rows, bool compute_rows,
                bool compute_cols, bool aligned, bool silent_mode,
-               int num_workers, int64_t max_matches_per_col)
+               int num_workers, int64_t max_matches_per_col, int64_t mheight,
+               int64_t mwidth)
     : full_ts_len_A(Asize),
       full_ts_len_B(Bsize),
       mp_window(window_sz),
@@ -27,7 +49,9 @@ OpInfo::OpInfo(size_t Asize, size_t Bsize, size_t window_sz,
       computing_cols(compute_cols),
       is_aligned(aligned),
       silent_mode(silent_mode),
-      max_matches_per_column(max_matches_per_col) {
+      max_matches_per_column(max_matches_per_col),
+      matrix_height(mheight),
+      matrix_width(mwidth) {
   if (self_join) {
     full_ts_len_B = full_ts_len_A;
   }
@@ -41,7 +65,6 @@ OpInfo::OpInfo(size_t Asize, size_t Bsize, size_t window_sz,
   // Prevents our tiles from becoming pathalogically small
   // Tiles should not be smaller than the exclusion zone (mp_window / 4)
   // otherwise the tiling becomes unnecessarially complex
-
   const int SMALLEST_ALLOWED_TILE_DIM = mp_window;
 
   if (max_tile_ts_size < SMALLEST_ALLOWED_TILE_DIM + mp_window) {
@@ -50,14 +73,36 @@ OpInfo::OpInfo(size_t Asize, size_t Bsize, size_t window_sz,
 
   max_tile_width = max_tile_ts_size - mp_window + 1;
   max_tile_height = max_tile_width;
-  // TODO(zpzim): make this a more generic parameter that is specified by
-  // the user or memory availibility
-  max_matches_per_tile =
+
+  int64_t normative_match_budget_per_tile =
       (PROFILE_MEMORY_BUDGET / num_workers) / sizeof(SCAMPmatch);
+
+  max_matches_per_tile = max_matches_per_column * max_tile_width;
+
+  if (normative_match_budget_per_tile > max_matches_per_tile) {
+    max_matches_per_tile = normative_match_budget_per_tile;
+  }
+
+  int64_t worker_memory_budget = max_matches_per_tile * sizeof(SCAMPmatch) * 2;
+
   if (!silent_mode && profile_type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
-    std::cout << "Profile memory budget is " << PROFILE_MEMORY_BUDGET
-              << " setting max matches per tile to: "
-              << max_matches_per_tile / 1000000.0 << " million. " << std::endl;
+    std::cout << "Have to allocate space for " << max_matches_per_tile
+              << " matches per tile, which will require on the order of "
+              << worker_memory_budget / static_cast<double>(GIGABYTE)
+              << " GB of memory per worker.";
+    std::cout << "If this amount of memory is too large we may run out of "
+                 "memory on the system/GPUs, if this happens try reducing "
+                 "max_matches_per_column to a smaller value.";
+  }
+
+  // Matrix summaries only need to reduce along the columns.
+  if (profile_type == PROFILE_TYPE_MATRIX_SUMMARY) {
+    computing_rows = false;
+    keep_rows_separate = false;
+    cols_per_cell = std::ceil((full_ts_len_A - mp_window + 1) /
+                              static_cast<double>(matrix_width));
+    rows_per_cell = std::ceil((full_ts_len_B - mp_window + 1) /
+                              static_cast<double>(matrix_height));
   }
 }
 
@@ -151,49 +196,92 @@ void elementwise_max(T *mp_full, uint64_t merge_start, uint64_t tile_sz,
   }
 }
 
-void match_merge(const std::vector<SCAMPmatch> &matches, ProfileData *profile,
-                 uint64_t merge_start_row, uint64_t merge_start_col,
-                 int64_t max_matches) {
-  for (auto elem : matches) {
-    uint64_t col = elem.col + merge_start_col;
-    auto &pq = profile->match_value[col];
-    if (pq.size() == max_matches && pq.top().corr < elem.corr) {
-      pq.pop();
-      elem.col = col;
-      elem.row += merge_start_row;
-      pq.push(elem);
-    } else if (pq.size() < max_matches) {
-      elem.col = col;
-      elem.row += merge_start_row;
-      pq.push(elem);
+// Updates the adaptive thresholds of a tile in the case that there was an
+// overflow. This is very similar logic to match_merge, except it does not
+// add any elements to the top K lists and only updates the thresholds.
+void Profile::threshold_merge(const std::vector<SCAMPmatch> &matches,
+                              uint64_t merge_start_col, int64_t max_matches) {
+  if (matches.empty()) {
+    return;
+  }
+
+  int i = 0;
+  while (i < matches.size()) {
+    uint64_t curr_col = matches[i].col;
+    int count = 1;
+    // Count how many results we have for the current column.
+    while (i + count < matches.size() && matches[i + count].col == curr_col) {
+      ++count;
+    }
+    // If we have more than max_matches we can update the threshold with the
+    // smallest value.
+    if (count - 1 > max_matches && thresholds[curr_col + merge_start_col] <
+                                       matches[i + max_matches].corr) {
+      thresholds[curr_col + merge_start_col] = matches[i + max_matches].corr;
+    }
+    i += count;
+  }
+}
+
+// Merges the elements in matches into the top K values in the current
+// profile. Matches must be properly sorted first by column in ascending
+// order, then by correlation in descending order.
+void Profile::match_merge(const std::vector<SCAMPmatch> &matches,
+                          uint64_t merge_start_row, uint64_t merge_start_col,
+                          int64_t max_matches) {
+  if (matches.empty()) {
+    return;
+  }
+
+  int i = 0;
+  while (i < matches.size()) {
+    uint64_t curr_col = matches[i].col;
+    auto &pq = this->data.front().match_value[curr_col + merge_start_col];
+    uint64_t count = 0;
+    float old_val;
+    bool update_possible = false;
+    // Loop over the initial values that might need to go into the top K
+    while (i + count < matches.size() && matches[i + count].col == curr_col &&
+           count < max_matches) {
+      auto &match = matches[i + count];
+      // If the match is not better than the bottom of the top K, break out.
+      if (pq.size() == max_matches && match.corr <= pq.top().corr) {
+        break;
+      }
+      // If we have found K values we need to make some space for the new one.
+      if (pq.size() == max_matches) {
+        update_possible = true;
+        old_val = pq.top().corr;
+        pq.pop();
+      }
+      pq.emplace(match.corr, match.row + merge_start_row,
+                 match.col + merge_start_col);
+      ++count;
+    }
+
+    // Skip the rest of the values for this column, they aren't useful.
+    while (i + count < matches.size() && matches[i + count].col == curr_col) {
+      ++count;
+    }
+    // If we ever updated the top K we can update the threshold.
+    if (update_possible) {
+      this->thresholds[curr_col + merge_start_col] = old_val;
+    }
+    i += count;
+  }
+}
+
+// Merges elements in matches into a reduced distance matrix summary.
+void Profile::matrix_merge(const std::vector<float> &values) {
+  for (int i = 0; i < values.size(); ++i) {
+    if (this->data[0].float_value[i] < values[i]) {
+      this->data[0].float_value[i] = values[i];
     }
   }
 }
 
-void matrix_merge(const std::vector<SCAMPmatch> &matches, ProfileData *profile,
-                  uint64_t merge_start_row, uint64_t merge_start_col,
-                  int64_t matrix_reduced_rows, int64_t matrix_reduced_cols) {
-  int matrix_rows = profile->matrix_value.size();
-  int matrix_cols = profile->matrix_value.front().size();
-  for (auto elem : matches) {
-    uint64_t col = elem.col + merge_start_col;
-    int64_t matrix_col = col / matrix_reduced_cols;
-    int64_t matrix_row = (elem.row + merge_start_row) / matrix_reduced_rows;
-    if (matrix_row >= matrix_rows || matrix_col >= matrix_cols ||
-        matrix_row < 0 || matrix_col < 0) {
-      std::ostringstream ostream;
-      ostream << "Error in matrix merge: matrix is " << matrix_rows << " by "
-              << matrix_cols << " trying to access position [" << matrix_row
-              << ", " << matrix_col << "]";
-      throw SCAMPException(ostream.str());
-    }
-    if (profile->matrix_value[matrix_row][matrix_col] < elem.corr) {
-      profile->matrix_value[matrix_row][matrix_col] = elem.corr;
-    }
-  }
-}
-
-void Profile::Alloc(size_t size) {
+void Profile::Alloc(size_t size, int64_t matrix_height, int64_t matrix_width,
+                    float default_thresh) {
   switch (type) {
     case PROFILE_TYPE_SUM_THRESH:
       data.emplace_back();
@@ -216,12 +304,12 @@ void Profile::Alloc(size_t size) {
       break;
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
       data.emplace_back();
-      if (output_matrix) {
-        data[0].matrix_value.resize(matrix_height,
-                                    std::vector<float>(matrix_width, -2.0));
-      } else {
-        data[0].match_value.resize(size);
-      }
+      data[0].match_value.resize(size);
+      thresholds.resize(size, default_thresh);
+      break;
+    case PROFILE_TYPE_MATRIX_SUMMARY:
+      data.emplace_back();
+      data[0].float_value.resize(matrix_height * matrix_width, -2.0);
       break;
     case PROFILE_TYPE_KNN:
     case PROFILE_TYPE_1NN_MULTIDIM:
@@ -231,30 +319,36 @@ void Profile::Alloc(size_t size) {
 }
 
 // Copies a profile to the host
-void Profile::CopyFromDevice(const ExecInfo *info,
+void Profile::CopyFromDevice(const OpInfo *info, const ExecInfo *exec_info,
                              const DeviceProfile *device_tile_profile,
                              uint64_t length) {
   switch (type) {
     case PROFILE_TYPE_SUM_THRESH:
       Memcopy(this->data[0].double_value.data(),
               device_tile_profile->at(PROFILE_TYPE_SUM_THRESH),
-              length * sizeof(double), true, info);
+              length * sizeof(double), true, exec_info);
       break;
     case PROFILE_TYPE_1NN:
       Memcopy(this->data[0].float_value.data(),
               device_tile_profile->at(PROFILE_TYPE_1NN), length * sizeof(float),
-              true, info);
+              true, exec_info);
       break;
     case PROFILE_TYPE_1NN_INDEX:
       Memcopy(this->data[0].uint64_value.data(),
               device_tile_profile->at(PROFILE_TYPE_1NN_INDEX),
-              length * sizeof(uint64_t), true, info);
+              length * sizeof(uint64_t), true, exec_info);
       break;
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
       this->data[0].match_value_unordered.resize(length);
       Memcopy(this->data[0].match_value_unordered.data(),
               device_tile_profile->at(PROFILE_TYPE_APPROX_ALL_NEIGHBORS),
-              length * sizeof(SCAMPmatch), true, info);
+              length * sizeof(SCAMPmatch), true, exec_info);
+      break;
+    case PROFILE_TYPE_MATRIX_SUMMARY:
+      Memcopy(this->data[0].float_value.data(),
+              device_tile_profile->at(PROFILE_TYPE_MATRIX_SUMMARY),
+              info->matrix_width * info->matrix_height * sizeof(float), true,
+              exec_info);
       break;
     case PROFILE_TYPE_FREQUENCY_THRESH:
     case PROFILE_TYPE_KNN:
@@ -270,9 +364,13 @@ void Profile::CopyFromDevice(const ExecInfo *info,
 void Profile::MergeTileToProfile(Profile *tile_profile, const OpInfo *info,
                                  uint64_t position, uint64_t length,
                                  uint64_t index_start) {
+  // Check if we overflowed
+  bool overflowed = length >= info->max_matches_per_tile;
+
   // Lock the before we merge, this function can be called by multiple
   // threads
   std::unique_lock<std::mutex> mlock(this->_profile_lock);
+
   if (type != tile_profile->type) {
     throw(SCAMPException("Profile Types do not match"));
   }
@@ -297,14 +395,16 @@ void Profile::MergeTileToProfile(Profile *tile_profile, const OpInfo *info,
                                 tile_profile->data[0].uint64_value.data());
       return;
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
-      if (output_matrix) {
-        matrix_merge(tile_profile->data[0].match_value_unordered,
-                     &this->data[0], index_start, position,
-                     this->matrix_reduced_rows, this->matrix_reduced_cols);
+      if (overflowed) {
+        threshold_merge(tile_profile->data[0].match_value_unordered, position,
+                        info->max_matches_per_column);
       } else {
-        match_merge(tile_profile->data[0].match_value_unordered, &this->data[0],
-                    index_start, position, info->max_matches_per_column);
+        match_merge(tile_profile->data[0].match_value_unordered, index_start,
+                    position, info->max_matches_per_column);
       }
+      return;
+    case PROFILE_TYPE_MATRIX_SUMMARY:
+      matrix_merge(tile_profile->data[0].float_value);
       return;
     case PROFILE_TYPE_KNN:
     case PROFILE_TYPE_1NN_MULTIDIM:
@@ -353,6 +453,8 @@ std::string GetProfileTypeString(SCAMPProfileType t) {
       return "PROFILE_TYPE_1NN_MULTIDIM";
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
       return "PROFILE_TYPE_APPROX_ALL_NEIGHBORS";
+    case PROFILE_TYPE_MATRIX_SUMMARY:
+      return "PROFILE_TYPE_MATRIX_SUMMARY";
   }
 }
 
@@ -417,6 +519,7 @@ size_t GetProfileTypeSize(SCAMPProfileType t) {
     case PROFILE_TYPE_1NN_INDEX:
       return sizeof(uint64_t);
     case PROFILE_TYPE_1NN:
+    case PROFILE_TYPE_MATRIX_SUMMARY:
       return sizeof(float);
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
     case PROFILE_TYPE_KNN:
