@@ -27,15 +27,7 @@ def compare_vectors(valid, check, eps):
     print('Output Shapes do not match')
     return False
     
-  diff = np.abs(valid - check)
-  is_valid = np.max(diff) < eps
-  
-  if not is_valid:
-    print(diff[diff > eps])
-    print(valid[diff > eps])
-    print(check[diff > eps])
-    print('\n')
-  return is_valid
+  return np.allclose(valid, check, equal_nan=True)
 
 failed = False
 arr = []

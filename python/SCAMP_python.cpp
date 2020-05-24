@@ -19,7 +19,7 @@ void SplitProfile1NNINDEX(const std::vector<uint64_t> profile,
     SCAMP::mp_entry e;
     e.ulong = elem;
     if (output_pearson) {
-      nn_ptr[count] = e.floats[0];
+      nn_ptr[count] = CleanupPearson(e.floats[0]);
     } else {
       nn_ptr[count] = ConvertToEuclidean(e.floats[0], window);
     }
@@ -38,7 +38,7 @@ std::vector<std::tuple<int64_t, int64_t, float>> SplitProfileKNN(
     while (!pq.empty()) {
       float corr;
       if (output_pearson) {
-        corr = pq.top().corr;
+        corr = CleanupPearson(pq.top().corr);
       } else {
         corr = ConvertToEuclidean(pq.top().corr, window);
       }
@@ -56,7 +56,7 @@ py::array_t<T> vec2pyarr(const std::vector<T>& arr, bool pearson = true,
   auto ptr = reinterpret_cast<T*>(result.request().ptr);
   for (int i = 0; i < arr.size(); ++i) {
     if (pearson) {
-      ptr[i] = arr[i];
+      ptr[i] = CleanupPearson(arr[i]);
     } else {
       ptr[i] = ConvertToEuclidean(arr[i], window);
     }

@@ -150,10 +150,12 @@ def reduce_1nn_index(dm):
     idxs = np.argmax(dm, axis=0)
     idxs += 1
     idxs[corr == -2] = -1
+    corr[corr == -2] = np.nan
     return corr.reshape((corr.shape[0],1)), idxs.reshape((idxs.shape[0],1))
 
 def reduce_1nn(dm):
     corrs = np.amax(dm, axis=0)
+    corrs[corrs == -2] = np.nan
     return corrs.reshape((corrs.shape[0],1))
 
 def reduce_sum_thresh(dm, thresh):
@@ -183,5 +185,6 @@ def reduce_matrix(dm, rows, cols):
         st_c = c * reduced_cols
         ed_c = min(dm.shape[1], (c+1)*reduced_cols)
         out[r, c] = np.amax(dm[st_r:ed_r, st_c:ed_c])
+    out[out == -2] = np.nan
     return out
 
