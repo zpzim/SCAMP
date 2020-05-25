@@ -160,7 +160,7 @@ bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
         if (e.floats[0] < -1) {
           index = -1;
         } else {
-          index = e.ints[1] + 1;
+          index = e.ints[1];
         }
         mpi_out << index << std::endl;
       }

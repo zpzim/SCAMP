@@ -44,7 +44,7 @@ dm_self = distance_matrix(arr, None, 1024)
 dm_ab = distance_matrix(arr, arr2, 1024)
 
 dist, index = mp.selfjoin(arr, 1024, pearson=True)
-vdist, vindex = reduce_1nn_index_unshifted(dm_self)
+vdist, vindex = reduce_1nn_index(dm_self)
 
 if compare_vectors(vdist, np.array(dist), vector_match_epsilon) and compare_index(vindex, np.array(index)):
   print("1NN INDEX Self join pass")
