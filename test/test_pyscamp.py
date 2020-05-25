@@ -54,7 +54,7 @@ else:
 
 
 dist, index = mp.abjoin(arr, arr2, 1024, pearson=True)
-vdist, vindex = reduce_1nn_index_unshifted(dm_ab)
+vdist, vindex = reduce_1nn_index(dm_ab)
 
 
 if compare_vectors(vdist, dist, vector_match_epsilon) and compare_index(vindex, index):
