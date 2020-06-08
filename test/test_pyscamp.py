@@ -22,7 +22,7 @@ def compare_index(valid, check):
   #  print('\n')
   return is_valid
 
-def compare_vectors(valid, check, eps):
+def compare_vectors(valid, check):
   if np.any(valid.shape != check.shape):
     print('Output Shapes do not match')
     return False
@@ -34,7 +34,6 @@ arr = []
 arr2 = []
 num = 0
 num2 = 0
-vector_match_epsilon = 0.001
 
 
 arr = np.random.random(size=(8000,))
@@ -44,9 +43,11 @@ dm_self = distance_matrix(arr, None, 1024)
 dm_ab = distance_matrix(arr, arr2, 1024)
 
 dist, index = mp.selfjoin(arr, 1024, pearson=True)
-vdist, vindex = reduce_1nn_index_unshifted(dm_self)
+dist = dist.reshape((len(dist) , 1))
+index = index.reshape((len(index), 1))
+vdist, vindex = reduce_1nn_index(dm_self)
 
-if compare_vectors(vdist, np.array(dist), vector_match_epsilon) and compare_index(vindex, np.array(index)):
+if compare_vectors(vdist, dist) and compare_index(vindex, index):
   print("1NN INDEX Self join pass")
 else:
   failed = True
@@ -54,10 +55,12 @@ else:
 
 
 dist, index = mp.abjoin(arr, arr2, 1024, pearson=True)
-vdist, vindex = reduce_1nn_index_unshifted(dm_ab)
+dist = dist.reshape((len(dist) , 1))
+index = index.reshape((len(index), 1))
+vdist, vindex = reduce_1nn_index(dm_ab)
 
 
-if compare_vectors(vdist, dist, vector_match_epsilon) and compare_index(vindex, index):
+if compare_vectors(vdist, dist) and compare_index(vindex, index):
   print("1NN INDEX AB join pass")
 else:
   failed = True
@@ -67,7 +70,7 @@ dist = mp.selfjoin_sum(arr, 1024, threshold=0.90, pearson=True)
 dist = dist.reshape((len(dist), 1))
 vdist = reduce_sum_thresh(dm_self, 0.90)
 
-if compare_vectors(vdist, dist, vector_match_epsilon):
+if compare_vectors(vdist, np.array(dist)):
   print("SUM Self join pass")
 else:
   failed = True
@@ -78,7 +81,7 @@ dist = mp.abjoin_sum(arr, arr2, 1024, threshold=0.90, pearson=True)
 dist = dist.reshape((len(dist), 1))
 vdist = reduce_sum_thresh(dm_ab, 0.90)
 
-if compare_vectors(vdist, dist, vector_match_epsilon):
+if compare_vectors(vdist, np.array(dist)):
   print("SUM AB join pass")
 else:
   failed = True
