@@ -24,14 +24,14 @@ DEFINE_int64(distributed_tile_size, 4000000,
 DEFINE_string(hostname_port, "localhost:30078",
               "Hostname:Port of SCAMP server to perform distributed work");
 #endif
-DEFINE_int64(max_matches_per_column, 100,
+DEFINE_int64(max_matches_per_column, 5,
              "Maximum number of neighbors to generate for any subsequence "
              "(used for ALL_NEIGHBORS profiles).");
 DEFINE_bool(reduce_all_neighbors, false,
             "Whether to reduce the all neighbors graph into a matrix with a "
             "reduced size");
-DEFINE_int32(reduced_height, -1, "The final height of the output matrix");
-DEFINE_int32(reduced_width, -1, "The final width of the output matrix");
+DEFINE_int32(reduced_height, 50, "The final height of the output matrix");
+DEFINE_int32(reduced_width, 50, "The final width of the output matrix");
 DEFINE_bool(print_debug_info, false, "Whether SCAMP will print debug info.");
 DEFINE_int32(num_cpu_workers, 0, "Number of CPU workers to use");
 DEFINE_bool(output_pearson, false,
@@ -43,7 +43,7 @@ DEFINE_bool(
 DEFINE_int32(max_tile_size, 1 << 17, "Maximum tile size SCAMP will use");
 DEFINE_int32(window, -1, "Length of subsequences to search for");
 DEFINE_double(
-    threshold, std::nan("NaN"),
+    threshold, 0,
     "Distance threshold for frequency and sum calculations, we will only count "
     "events with a Pearson correlation above this threshold.");
 DEFINE_string(
@@ -207,24 +207,8 @@ int main(int argc, char **argv) {
   args.timeseries_b = std::move(Tb_h);
   args.silent_mode = !FLAGS_print_debug_info;
   args.max_matches_per_column = FLAGS_max_matches_per_column;
-  args.profile_a.matrix_height =
-      FLAGS_reduce_all_neighbors ? FLAGS_reduced_height : -1.0;
-  args.profile_a.matrix_width =
-      FLAGS_reduce_all_neighbors ? FLAGS_reduced_width : -1.0;
-  args.profile_a.matrix_reduced_cols =
-      std::ceil(n_x / static_cast<double>(FLAGS_reduced_width));
-  args.profile_a.matrix_reduced_rows =
-      std::ceil(n_y / static_cast<double>(FLAGS_reduced_height));
-  args.profile_b.matrix_height =
-      FLAGS_reduce_all_neighbors ? FLAGS_reduced_height : -1.0;
-  args.profile_b.matrix_width =
-      FLAGS_reduce_all_neighbors ? FLAGS_reduced_width : -1.0;
-  args.profile_b.matrix_reduced_cols =
-      std::ceil(n_x / static_cast<double>(FLAGS_reduced_width));
-  args.profile_b.matrix_reduced_rows =
-      std::ceil(n_y / static_cast<double>(FLAGS_reduced_height));
-  args.profile_a.output_matrix = FLAGS_reduce_all_neighbors;
-  args.profile_b.output_matrix = FLAGS_reduce_all_neighbors;
+  args.matrix_height = FLAGS_reduced_height;
+  args.matrix_width = FLAGS_reduced_width;
   if (FLAGS_print_debug_info) {
     printf("Starting SCAMP\n");
   }
@@ -244,10 +228,12 @@ int main(int argc, char **argv) {
     printf("Now writing result to files\n");
   }
   WriteProfileToFile(FLAGS_output_a_file_name, FLAGS_output_a_index_file_name,
-                     args.profile_a, FLAGS_output_pearson, FLAGS_window);
+                     args.profile_a, FLAGS_output_pearson, FLAGS_window,
+                     FLAGS_reduced_width, FLAGS_reduced_height);
   if (FLAGS_keep_rows) {
     WriteProfileToFile(FLAGS_output_b_file_name, FLAGS_output_b_index_file_name,
-                       args.profile_b, FLAGS_output_pearson, FLAGS_window);
+                       args.profile_b, FLAGS_output_pearson, FLAGS_window,
+                       FLAGS_reduced_width, FLAGS_reduced_height);
   }
   if (FLAGS_print_debug_info) {
     printf("Done\n");

@@ -49,6 +49,7 @@ size_t GetProfileTypeSizeInternalGPU(SCAMPProfileType type) {
     case PROFILE_TYPE_1NN:
       return sizeof(float);
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
+    case PROFILE_TYPE_MATRIX_SUMMARY:
     case PROFILE_TYPE_KNN:
       return sizeof(uint64_t);
     default:
@@ -71,6 +72,9 @@ int get_smem(const OpInfo *info, uint64_t blocksz) {
   }
   if (info->computing_rows) {
     smem += tile_height * profile_data_size;
+  }
+  if (NeedsCheckIfDone(info->profile_type)) {
+    smem += 2 * sizeof(uint64_t);
   }
   return smem;
 }

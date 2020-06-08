@@ -17,6 +17,8 @@ class Tile {
       _QT_dev, _means_A, _means_B, _norms_A, _norms_B, _df_A, _df_B, _dg_A,
       _dg_B, _scratchpad;
 
+  std::unique_ptr<float, std::function<void(float *)>> _thresholds_A,
+      _thresholds_B;
   // Per worker output vectors (device)
   DeviceProfile _profile_a_tile_dev, _profile_b_tile_dev;
 
@@ -60,11 +62,11 @@ class Tile {
   void CopyProfileToHost(Profile *destination_profile,
                          const DeviceProfile *device_tile_profile,
                          uint64_t length);
+  void SortMatches(SCAMPmatch *matches, uint64_t len);
 
   // Gets the profile length computed by the kernel when there can be a variable
   // length
-  std::pair<unsigned long long int, unsigned long long int>
-  get_profile_dims_from_device();
+  std::pair<int64_t, int64_t> get_profile_dims_from_device();
 
  public:
   Tile(const OpInfo *info);
@@ -96,7 +98,9 @@ class Tile {
   const double *dga() const { return _dg_A.get(); }
   const double *dgb() const { return _dg_B.get(); }
   const double *normsa() const { return _norms_A.get(); }
-  const double *normsb() { return _norms_B.get(); }
+  const double *normsb() const { return _norms_B.get(); }
+  const float *thresholds_A() const { return _thresholds_A.get(); }
+  const float *thresholds_B() const { return _thresholds_B.get(); }
   unsigned long long int *get_mutable_a_dev_length() {
     return _profile_a_dev_length;
   }
@@ -110,7 +114,7 @@ class Tile {
   void set_tile_row(size_t row) { _current_tile_row = row; }
   void set_tile_height(size_t height) { _current_tile_height = height; }
   void set_tile_width(size_t width) { _current_tile_width = width; }
-  void MergeProfile(Profile *profile_a, Profile *profile_b);
+  bool MergeProfile(Profile *profile_a, Profile *profile_b);
   void Sync();
 
   // Initializes the precomputed statistics required by the current tile

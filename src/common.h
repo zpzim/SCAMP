@@ -17,15 +17,18 @@
 #include <unordered_map>
 #include "scamp_exception.h"
 
+#ifdef _HAS_CUDA_
+#define HOST_DEVICE_FUNCTION __host__ __device__
+#else
+#define HOST_DEVICE_FUNCTION
+#endif
+
 namespace SCAMP {
 
 using DeviceProfile = std::unordered_map<int, void *>;
 
 struct OpInfo;
 struct ExecInfo;
-
-constexpr int64_t GIGABYTE = 1024 * 1024 * 1024;
-constexpr int64_t PROFILE_MEMORY_BUDGET = 2 * GIGABYTE;
 
 // Types of matrix profile to compute
 enum SCAMPProfileType {
@@ -37,7 +40,13 @@ enum SCAMPProfileType {
   PROFILE_TYPE_1NN_MULTIDIM = 5,
   PROFILE_TYPE_1NN = 6,
   PROFILE_TYPE_APPROX_ALL_NEIGHBORS = 7,
+  PROFILE_TYPE_MATRIX_SUMMARY = 8,
 };
+
+bool NeedsSort(SCAMPProfileType type);
+
+bool NeedsIntermittentMerge(SCAMPProfileType type);
+bool NeedsIntermittentReset(SCAMPProfileType type);
 
 // Precision modes
 enum SCAMPPrecisionType {
@@ -64,8 +73,15 @@ typedef union {
 } mp_entry;
 
 struct SCAMPmatch {
-  SCAMPmatch() : corr(-2), row(0), col(0) {}
-  SCAMPmatch(float d, uint32_t r, uint32_t c) : corr(d), row(r), col(c) {}
+  HOST_DEVICE_FUNCTION SCAMPmatch() : corr(-2), row(0), col(0) {}
+  HOST_DEVICE_FUNCTION SCAMPmatch(float d, uint32_t r, uint32_t c)
+      : corr(d), row(r), col(c) {}
+  HOST_DEVICE_FUNCTION bool operator<(const SCAMPmatch &other) const {
+    if (col == other.col) {
+      return corr > other.corr;
+    }
+    return col < other.col;
+  }
   float corr;
   uint32_t row;
   uint32_t col;
@@ -101,55 +117,44 @@ class Profile {
   Profile() : type(PROFILE_TYPE_INVALID) {}
   Profile(Profile &other) {
     std::unique_lock<std::mutex> lock(_profile_lock);
-    matrix_height = other.matrix_height;
-    matrix_width = other.matrix_width;
-    output_matrix = other.output_matrix;
     type = other.type;
     data = other.data;
   }
   Profile(Profile &&other) {
     std::unique_lock<std::mutex> lock(_profile_lock);
-    matrix_height = other.matrix_height;
-    matrix_width = other.matrix_width;
-    output_matrix = other.output_matrix;
     type = other.type;
     data = std::move(other.data);
   }
   Profile &operator=(Profile &&other) {
     std::unique_lock<std::mutex> lock(_profile_lock);
-    matrix_height = other.matrix_height;
-    matrix_width = other.matrix_width;
-    output_matrix = other.output_matrix;
     type = other.type;
     data = std::move(other.data);
     return *this;
   }
-  Profile(SCAMPProfileType t, size_t size, int64_t mwidth = -1,
-          int64_t mheight = -1, int64_t rrows = -1, int64_t rcols = -1)
-      : type(t),
-        matrix_width(mwidth),
-        matrix_height(mheight),
-        matrix_reduced_rows(rrows),
-        matrix_reduced_cols(rcols),
-        output_matrix(mwidth > 0 && mheight > 0) {
-    Alloc(size);
+  Profile(SCAMPProfileType t, size_t size, float thresh_init = 0,
+          int64_t mwidth = -1, int64_t mheight = -1)
+      : type(t) {
+    Alloc(size, mheight, mwidth, thresh_init);
   }
   std::vector<ProfileData> data;
+  std::vector<float> thresholds;
   SCAMPProfileType type;
-  int64_t matrix_width;
-  int64_t matrix_height;
-  int64_t matrix_reduced_rows;
-  int64_t matrix_reduced_cols;
-  bool output_matrix;
   void MergeTileToProfile(Profile *tile_profile, const OpInfo *info,
                           uint64_t position, uint64_t length,
                           uint64_t index_start);
-  void CopyFromDevice(const ExecInfo *info,
+  void CopyFromDevice(const OpInfo *info, const ExecInfo *exec_info,
                       const DeviceProfile *device_tile_profile,
                       uint64_t length);
-  void Alloc(size_t size);
+  void Alloc(size_t size, int64_t matrix_height, int64_t matrix_width,
+             float default_thresh);
 
  private:
+  void threshold_merge(const std::vector<SCAMPmatch> &matches,
+                       uint64_t merge_start_col, int64_t max_matches);
+  void match_merge(const std::vector<SCAMPmatch> &matches,
+                   uint64_t merge_start_row, uint64_t merge_start_col,
+                   int64_t max_matches);
+  void matrix_merge(const std::vector<float> &values);
   std::mutex _profile_lock;
 };
 
@@ -211,7 +216,8 @@ struct OpInfo {
          bool selfjoin, SCAMPPrecisionType t, int64_t start_row,
          int64_t start_col, OptionalArgs args_, SCAMPProfileType profiletype,
          bool keep_rows, bool compute_rows, bool compute_cols, bool aligned,
-         bool silent_mode, int num_workers, int64_t max_matches_per_col);
+         bool silent_mode, int num_workers, int64_t max_matches_per_col,
+         int64_t mheight, int64_t mwidth);
 
   // Type of profile to compute
   SCAMPProfileType profile_type;
@@ -257,6 +263,11 @@ struct OpInfo {
   int64_t max_matches_per_column;
   // Max matches per tile for ALL_NEIGHBORS profile type
   int64_t max_matches_per_tile;
+  // Variables associated with the MATRIX_SUMMARY profile type
+  int64_t matrix_height;
+  int64_t matrix_width;
+  int64_t cols_per_cell;
+  int64_t rows_per_cell;
 };
 
 // Struct containing the precomputed statistics for an input time series

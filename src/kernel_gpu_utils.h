@@ -37,6 +37,11 @@ constexpr int TILE_HEIGHT_DP = KERNEL_TILE_HEIGHT;
 // Describes the SCOPE of an atomic operation in a GPU kernel
 enum SCAMPAtomicType { ATOMIC_BLOCK, ATOMIC_GLOBAL, ATOMIC_SYSTEM };
 
+HOST_DEVICE_FUNCTION constexpr bool NeedsCheckIfDone(
+    SCAMPProfileType profile_type) {
+  return profile_type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS;
+}
+
 // Structure which manages shared memory on the GPU and automatically allocates
 // appropriate segments in memory for variables used by the kernel
 template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, SCAMPProfileType type>
@@ -52,6 +57,9 @@ struct SCAMPSmem {
 
   PROFILE_DATA_TYPE *__restrict__ local_mp_col;
   PROFILE_DATA_TYPE *__restrict__ local_mp_row;
+
+  uint64_t *profile_a_length;
+  uint64_t *profile_b_length;
 };
 
 template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, SCAMPProfileType type>
@@ -85,6 +93,15 @@ __device__ SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, type>::SCAMPSmem(
     curr_byte += tile_height * profile_size;
   } else {
     local_mp_row = nullptr;
+  }
+  if (NeedsCheckIfDone(type)) {
+    profile_a_length = (uint64_t *)(smem + curr_byte);
+    curr_byte += sizeof(uint64_t);
+    profile_b_length = (uint64_t *)(smem + curr_byte);
+    curr_byte += sizeof(uint64_t);
+  } else {
+    profile_a_length = nullptr;
+    profile_b_length = nullptr;
   }
 }
 
@@ -298,6 +315,7 @@ __device__ inline DISTANCE_TYPE init_dist() {
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
     case PROFILE_TYPE_1NN_INDEX:
     case PROFILE_TYPE_1NN:
+    case PROFILE_TYPE_MATRIX_SUMMARY:
       // Smallest value possible is -1 so set to -2
       return static_cast<DISTANCE_TYPE>(-2);
     case PROFILE_TYPE_SUM_THRESH:
