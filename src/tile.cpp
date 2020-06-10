@@ -520,11 +520,11 @@ bool Tile::MergeProfile(Profile *profile_a, Profile *profile_b) {
   profile_a->MergeTileToProfile(&_profile_a_tile, _info, _current_tile_col,
                                 width, _current_tile_row);
 
-  if (_info->self_join && _info->computing_rows) {
-    profile_a->MergeTileToProfile(&_profile_b_tile, _info, _current_tile_row,
-                                  height, _current_tile_col);
-  } else if (_info->computing_rows && _info->keep_rows_separate) {
+  if (_info->computing_rows && _info->keep_rows_separate) {
     profile_b->MergeTileToProfile(&_profile_b_tile, _info, _current_tile_row,
+                                  height, _current_tile_col);
+  } else if (_info->self_join && _info->computing_rows) {
+    profile_a->MergeTileToProfile(&_profile_b_tile, _info, _current_tile_row,
                                   height, _current_tile_col);
   }
 
