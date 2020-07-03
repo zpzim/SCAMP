@@ -210,7 +210,7 @@ SCAMPError_t SCAMP_Operation::do_join(const std::vector<double> &timeseries_a,
         std::chrono::duration_cast<std::chrono::microseconds>(end - start)
             .count() /
         static_cast<double>(1000000);
-    std::cout << "Precomputation took " << precompute_time << " seconds."
+    std::cout << "Precomputation took " << precomputes_time << " seconds."
               << std::endl;
   }
 
