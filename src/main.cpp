@@ -97,6 +97,10 @@ DEFINE_string(
 DEFINE_string(gpus, "",
               "IDs of GPUs on the system to use, if this flag is not set SCAMP "
               "tries to use all available GPUs on the system");
+DEFINE_bool(high_precision_precompute, true,
+            "Determines whether SCAMP will perform an expensive precompute "
+            "operation with higher precision. This causes more overhead the "
+            "larger the subsequence length is.");
 
 int main(int argc, char **argv) {
   bool self_join, computing_rows, computing_cols;
@@ -209,6 +213,7 @@ int main(int argc, char **argv) {
   args.max_matches_per_column = FLAGS_max_matches_per_column;
   args.matrix_height = FLAGS_reduced_height;
   args.matrix_width = FLAGS_reduced_width;
+  args.high_precision_precompute = FLAGS_high_precision_precompute;
   if (FLAGS_print_debug_info) {
     printf("Starting SCAMP\n");
   }

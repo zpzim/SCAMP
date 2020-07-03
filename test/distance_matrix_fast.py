@@ -1,36 +1,58 @@
 import numpy as np
 import math
 
+def moving_mean(a, w):
+  result = np.zeros((len(a) - w + 1,))
+  p = a[0]
+  s = 0
+  for i in range(1, w):
+    x = p + a[i]
+    z = x - p
+    s += (p - (x - z)) + (a[i] - z)
+    p = x
+  
+  result[0] = (p + s) / w
+
+  for i in range(w, len(a)):
+    x = p - a[i - w]
+    z = x - p
+    s += (p - (x - z)) - (a[i - w] + z)
+    p = x
+
+    x = p + a[i]
+    z = x - p
+    s += (p - (x - z)) + (a[i] - z)
+    p = x
+    result[i - w + 1] = (p + s) / w
+
+  return result;
+
+def sum_of_squared_differences(a, means, w):
+  result = np.zeros((len(a) - w + 1,))
+  for i in range(len(a) - w + 1):
+    s = 0
+    for j in range(w):
+      val = a[i+j] - means[i]
+      s += val * val
+    result[i] = s
+  return result
+  
+
+
 def get_precomputes(T, m, nanvalues):
-  prefix_sum = np.zeros((len(T),))
-  prefix_sum_sq = np.zeros((len(T),))
+  flatness_epsilon = 1e-7
   n = len(T) - m + 1;
-  norms = np.zeros((n,))
-  means = np.zeros((n,))
   df = np.zeros((n,))
   dg = np.zeros((n,))
 
-  prefix_sum[0] = T[0]
-  prefix_sum_sq[0] = T[0] * T[0]
-  for i in range(1,len(T)):
-    prefix_sum[i] = T[i] + prefix_sum[i - 1]
-    prefix_sum_sq[i] = T[i] * T[i] + prefix_sum_sq[i - 1]
+  means = moving_mean(T,m)
 
-  means[0] = prefix_sum[m - 1] / m
-  for i in range(1,n):
-    means[i] = (prefix_sum[i + m - 1] - prefix_sum[i - 1]) / m
-
-  s = 0;
-  for i in range(m):
-    val = T[i] - means[0]
-    s += val * val
-  norms[0] = s
-
-  for i in range(1,n):
-    norms[i] = norms[i - 1] + ((T[i - 1] - means[i - 1]) + (T[i + m - 1] - means[i])) * (T[i + m - 1] - T[i - 1])
+  norms = sum_of_squared_differences(T, means, m)
 
   for i in range(n):
     if nanvalues[i]:
+      norms[i] = NaN
+    elif norms[i] <= flatness_epsilon:
       norms[i] = NaN
     else:
       norms[i] = 1.0 / math.sqrt(norms[i])

@@ -8,6 +8,14 @@ Notes on CPU performance
 
 SCAMP's CPU performance is very good. However, how performant it is depends heavily on the compiler you use. Newer compilers are better, clang v6 or greater tends to work best. Newer versions of GCC can work as well. MSVC tends to be slower. There can be up to a 10x (perhaps more) difference depending on the compiler you use. This is related to how different compilers have varying levels of support for autovectorization.
 
+Precomputation performance
+**************************
+
+SCAMP's method for precomputing the necessary statisics for the matrix profile computation uses an O(nm) algorithm to compute the norms. This computation can become a bottleneck if you specify an extremely large subsequence length. If this is an issue, you can use a faster method by passing --high_precision_precompute=false to the SCAMP CLI.
+
+The timing results below use window size 100 and are not affected by the bottleneck described above.
+
+
 Performance Comparisons
 ***********************
 

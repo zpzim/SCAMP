@@ -15,6 +15,7 @@ Welcome to SCAMP's documentation!
    cli
    environment
    performance
+   interpreting_output
    docker
    pyscamp/index.rst
    distributed

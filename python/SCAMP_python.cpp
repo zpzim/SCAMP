@@ -84,6 +84,7 @@ SCAMP::SCAMPArgs GetDefaultSCAMPArgs() {
   args.matrix_width = 50;
   args.profile_a.type = profile_type;
   args.profile_b.type = profile_type;
+  args.high_precision_precompute = true;
 
   return args;
 }
