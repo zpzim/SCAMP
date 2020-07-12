@@ -3,7 +3,7 @@
 #include <vector>
 namespace SCAMP {
 
-constexpr const double FLATNESS_EPSILON = 1e-7;
+constexpr const double FLATNESS_EPSILON = 1e-13;
 
 // Converts any NaN or inf values in the input to 0, returns the cleaned
 // timeseries in timeseries_clean, and returns the subsequences which contained
@@ -67,6 +67,9 @@ std::vector<double> moving_mean(std::vector<double> a, int w) {
 // This is an accurate, but slower O(len(a) * w) brute force method. (the
 // default) There is room for optimization here either through unrolling and
 // using SIMD operations, via multithreading, or using the GPU (if available)
+
+// This method can be enabled by setting the high_precision_precompute flag
+// in SCAMPArgs to true.
 std::vector<double> brute_force_sum_of_squared_difference(
     const std::vector<double> &a, const std::vector<double> &means, int w) {
   std::vector<double> result(a.size() - w + 1);
@@ -83,11 +86,8 @@ std::vector<double> brute_force_sum_of_squared_difference(
 
 // Computes the subesequence norms for a time series, subsequence length w
 
-// This is a faster, less accurate method that should only be used if the
-// slower method becomes a botteneck.
-
-// This method can be enabled by using the high_precision_precompute flag
-// in SCAMPArgs.
+// This is a faster, less accurate method than the above, but is good enough
+// for nearly all cases.
 std::vector<double> fast_sum_of_squared_difference(
     const std::vector<double> &a, const std::vector<double> &means, int w) {
   std::vector<double> result(a.size() - w + 1);
@@ -128,9 +128,9 @@ void compute_statistics_cpu(const std::vector<double> &T,
     // If the subsequence includes a NaN, we define the norm as NaN
     if (nanvalues[i]) {
       norms[i] = std::nan("NaN");
-      // Check if the average distance from the mean is too small and this
+      // Check if the sum of differences from the mean is too small and this
       // subsequence should be considered FLAT
-    } else if (norms[i] / m <= FLATNESS_EPSILON) {
+    } else if (norms[i] <= FLATNESS_EPSILON) {
       norms[i] = std::nan("NaN");
     } else {
       // Compute the inverse norm from the sum of squared differences

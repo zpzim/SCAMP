@@ -97,7 +97,7 @@ DEFINE_string(
 DEFINE_string(gpus, "",
               "IDs of GPUs on the system to use, if this flag is not set SCAMP "
               "tries to use all available GPUs on the system");
-DEFINE_bool(high_precision_precompute, true,
+DEFINE_bool(high_precision_precompute, false,
             "Determines whether SCAMP will perform an expensive precompute "
             "operation with higher precision. This causes more overhead the "
             "larger the subsequence length is.");

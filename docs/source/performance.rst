@@ -11,9 +11,9 @@ SCAMP's CPU performance is very good. However, how performant it is depends heav
 Precomputation performance
 **************************
 
-SCAMP's method for precomputing the necessary statisics for the matrix profile computation uses an O(nm) algorithm to compute the norms. This computation can become a bottleneck if you specify an extremely large subsequence length. If this is an issue, you can use a faster method by passing --high_precision_precompute=false to the SCAMP CLI.
+When enabling the --high_precision_precompute flag in the SCAMP CLI, the method for precomputing the necessary statisics for the matrix profile computation uses an O(nm) algorithm to compute the norms. This computation can become a bottleneck if you specify an extremely large subsequence length.
 
-The timing results below use window size 100 and are not affected by the bottleneck described above.
+The timing results below do not use this option.
 
 
 Performance Comparisons

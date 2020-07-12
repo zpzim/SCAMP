@@ -30,17 +30,13 @@ def moving_mean(a, w):
 def sum_of_squared_differences(a, means, w):
   result = np.zeros((len(a) - w + 1,))
   for i in range(len(a) - w + 1):
-    s = 0
-    for j in range(w):
-      val = a[i+j] - means[i]
-      s += val * val
-    result[i] = s
+    vals = a[i:i+w] - means[i]
+    vals = vals * vals
+    result[i] = np.sum(vals)
   return result
   
-
-
 def get_precomputes(T, m, nanvalues):
-  flatness_epsilon = 1e-7
+  flatness_epsilon = 1e-13
   n = len(T) - m + 1;
   df = np.zeros((n,))
   dg = np.zeros((n,))
@@ -51,9 +47,9 @@ def get_precomputes(T, m, nanvalues):
 
   for i in range(n):
     if nanvalues[i]:
-      norms[i] = NaN
+      norms[i] = np.nan
     elif norms[i] <= flatness_epsilon:
-      norms[i] = NaN
+      norms[i] = np.nan
     else:
       norms[i] = 1.0 / math.sqrt(norms[i])
 
@@ -78,6 +74,7 @@ def convert_non_finite_to_zero(T, m):
     steps_since_last_nan += 1
   return timeseries_clean, nanvals
 
+# Computes the distance matrix using the diagonal update method used in SCAMP
 def distance_matrix(a,b,w):
     has_b = True
     if b is None:
@@ -136,9 +133,69 @@ def distance_matrix(a,b,w):
         x = c + dfa[offset] * dgb[minlag+offset:] + dfb[minlag+offset:]*dga[offset]
         c = x[:-1]
 
+    out[np.isnan(out)] = -2;
     return out
 
-# Simple (slow) distance matrix generation for reference
+
+# Computes the distance matrix using np.corrcoef
+def distance_matrix_np(a,b,m):
+  has_b = True
+  if b is None:
+    has_b = False
+    b = a
+
+  na = len(a) - m  + 1
+  nb = len(b) - m  + 1
+
+  a, nan_a = convert_non_finite_to_zero(a,m)
+
+  if has_b:
+    b, nan_b = convert_non_finite_to_zero(b,m)
+  else:
+    b = a;
+
+  mua, siga, _, _ = get_precomputes(a,m,nan_a)
+  if not has_b:
+      mub = mua
+      sigb = siga
+  else:
+      mub, sigb, _, _ = get_precomputes(b,m, nan_b)
+
+  
+  x = np.zeros((na,m))
+  y = np.zeros((nb,m))
+  for i in range(na):
+    if (np.isnan(siga[i])):
+      x[i,:] = np.nan
+    else:
+      x[i,:] = a[i:i+m]
+
+  if has_b:
+    for i in range(nb):
+      if (np.isnan(sigb[i])):
+        y[i,:] = np.nan
+      else:
+        y[i,:] = b[i:i+m]
+
+  if has_b:
+    out = np.corrcoef(x,y=y)
+    # Take the AB-join portion of the correlation matrix
+    out = out[na:, :na]
+  else:
+    out = np.corrcoef(x)
+
+  # Mark exclusion zone
+  if not has_b:
+    minlag = m // 4 - 1
+    for i in range(nb):
+      x = max(0, i - minlag)
+      y = min(na, i + minlag + 1)
+      out[i,x:y] = -2 
+
+  out[np.isnan(out)] = -2;
+  return out
+
+# Simple (slow) distance matrix generation using scipy.stats.pearsonr for reference
 '''
 def distance_matrix_simple(a,b, m):
   has_b = True
@@ -147,16 +204,18 @@ def distance_matrix_simple(a,b, m):
     b = a
   na = len(a) - m  + 1
   nb = len(b) - m  + 1
-  out = np.zeros((nb,na))
+  out = np.ones((nb,na)) * -2
   for i in range(na):
+    x = a[i:i+m]
     for j in range(nb):
-      out[j,i] = pearsonr(a[i:i+m], b[j:j+m])[0]
+      out[j,i] = pearsonr(x, b[j:j+m])[0]
   if not has_b:
     minlag = m // 4 - 1
     for i in range(nb):
       x = max(0, i - minlag)
       y = min(na, i + minlag + 1)
-      out[i,x:y] = 0
+      out[i,x:y] = -2 
+  out[np.isnan(out)] = -2;
   return out
 '''
     
@@ -175,7 +234,7 @@ def reduce_1nn(dm):
 def reduce_sum_thresh(dm, thresh):
     dm2 = np.copy(dm)
     dm2[dm2 <= thresh] = 0
-     
+
     result = np.sum(dm2, dtype='float64', axis=0)
     return result.reshape((result.shape[0],1))
 
