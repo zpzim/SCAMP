@@ -657,7 +657,7 @@ __device__ inline void reduce_edge(
     SCAMPThreadInfo<ACCUM_TYPE> &info, DISTANCE_TYPE dist[4],
     DISTANCE_TYPE &dist_row, uint32_t &idx_row, int diag, int num_diags, int n,
     OptionalArgs &args) {
-  if (info.global_col + iter < n && diag + iter < num_diags) {
+  if (info.global_col + iter < n && diag + iter < num_diags && !isnan(dist[iter])) {
     if (COMPUTE_ROWS) {
       dist_row = fmaxf(dist_row, dist[iter]);
     }
