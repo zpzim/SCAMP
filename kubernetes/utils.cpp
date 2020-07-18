@@ -280,15 +280,15 @@ bool InitProfile(SCAMPProto::Profile *p, SCAMPProto::SCAMPProfileType type,
   switch (type) {
     case SCAMPProto::PROFILE_TYPE_1NN_INDEX: {
       SCAMP::mp_entry e;
-      e.floats[0] = std::numeric_limits<float>::lowest();
-      e.ints[1] = -1u;
+      e.floats[0] = -2;
+      e.ints[1] = -1;
       std::vector<uint64_t> v(size, e.ulong);
       *p->mutable_data()->Add()->mutable_uint64_value()->mutable_value() = {
           v.begin(), v.end()};
       return true;
     }
     case SCAMPProto::PROFILE_TYPE_1NN: {
-      std::vector<float> v(size, -1);
+      std::vector<float> v(size, -2);
       *p->mutable_data()->Add()->mutable_float_value()->mutable_value() = {
           v.begin(), v.end()};
       return true;
