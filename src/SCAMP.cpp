@@ -180,6 +180,13 @@ SCAMPError_t SCAMP_Operation::do_join(const std::vector<double> &timeseries_a,
   std::vector<double> timeseries_a_clean, timeseries_b_clean;
   std::vector<bool> nanvals_a, nanvals_b;
 
+  if (!_info.silent_mode) {
+    std::cout << "Precomputing statisics on the CPU." << std::endl;
+  }
+
+  std::chrono::high_resolution_clock::time_point start =
+      std::chrono::high_resolution_clock::now();
+
   // Remove NaN/inf values and replace with 0, this allows us to tolerate these
   // values during the calculation. nanvals contains the subsequences which
   // contain non-finite values, we use these to force distance calculations
@@ -191,9 +198,21 @@ SCAMPError_t SCAMP_Operation::do_join(const std::vector<double> &timeseries_a,
 
   // Compute statistics for entire problem
   compute_statistics_cpu(timeseries_a_clean, nanvals_a, &_precompA,
-                         _info.mp_window);
+                         _info.mp_window, _high_precision_precompute);
   compute_statistics_cpu(timeseries_b_clean, nanvals_b, &_precompB,
-                         _info.mp_window);
+                         _info.mp_window, _high_precision_precompute);
+
+  std::chrono::high_resolution_clock::time_point end =
+      std::chrono::high_resolution_clock::now();
+
+  if (!_info.silent_mode) {
+    double precomputes_time =
+        std::chrono::duration_cast<std::chrono::microseconds>(end - start)
+            .count() /
+        static_cast<double>(1000000);
+    std::cout << "Precomputation took " << precomputes_time << " seconds."
+              << std::endl;
+  }
 
   // Populate Work Queue with tiles
   get_tiles();
@@ -278,7 +297,8 @@ void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
       args->profile_type, &args->profile_a, &args->profile_b,
       args->keep_rows_separate, args->computing_rows, args->computing_columns,
       args->is_aligned, args->silent_mode, num_threads,
-      args->max_matches_per_column, args->matrix_height, args->matrix_width);
+      args->max_matches_per_column, args->matrix_height, args->matrix_width,
+      args->high_precision_precompute);
 
   if (!args->silent_mode) {
     std::cout << "SCAMP Operation constructed" << std::endl;

@@ -184,6 +184,7 @@ struct SCAMPArgs {
   int64_t max_matches_per_column;
   int64_t matrix_height;
   int64_t matrix_width;
+  bool high_precision_precompute;
 };
 
 // Struct describing kernel arguments which are non-standard
