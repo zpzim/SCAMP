@@ -4,37 +4,13 @@
 import pyscamp as mp
 import numpy as np
 from distance_matrix_fast import *
+from test_common import *
 import random 
 import sys
-
-def compare_index(valid, check):
-  if np.any(valid.shape != check.shape):
-    print('Output Shapes do not match')
-    return False
-  
-  index_match_ratio = 0.001
-  incorrect = np.count_nonzero(valid != check)
-  ratio = incorrect / len(valid) 
-  is_valid = ratio < index_match_ratio
-  #if not is_valid:
-  #  print(valid)
-  #  print(check)
-  #  print('\n')
-  return is_valid
-
-def compare_vectors(valid, check):
-  if np.any(valid.shape != check.shape):
-    print('Output Shapes do not match')
-    return False
-    
-  return np.allclose(valid, check, equal_nan=True)
 
 failed = False
 arr = []
 arr2 = []
-num = 0
-num2 = 0
-
 
 arr = np.random.random(size=(8000,))
 arr2 = np.random.random(size=(8000,))
@@ -47,7 +23,7 @@ dist = dist.reshape((len(dist) , 1))
 index = index.reshape((len(index), 1))
 vdist, vindex = reduce_1nn_index(dm_self)
 
-if compare_vectors(vdist, dist) and compare_index(vindex, index):
+if compare_vectors(vdist, dist) and compare_index(vindex, vdist, index, dist):
   print("1NN INDEX Self join pass")
 else:
   failed = True
@@ -60,7 +36,7 @@ index = index.reshape((len(index), 1))
 vdist, vindex = reduce_1nn_index(dm_ab)
 
 
-if compare_vectors(vdist, dist) and compare_index(vindex, index):
+if compare_vectors(vdist, dist) and compare_index(vindex, vdist, index, dist):
   print("1NN INDEX AB join pass")
 else:
   failed = True
@@ -70,7 +46,7 @@ dist = mp.selfjoin_sum(arr, 1024, threshold=0.90, pearson=True)
 dist = dist.reshape((len(dist), 1))
 vdist = reduce_sum_thresh(dm_self, 0.90)
 
-if compare_vectors(vdist, np.array(dist)):
+if compare_vectors_sum(vdist, np.array(dist), 0.90):
   print("SUM Self join pass")
 else:
   failed = True
@@ -81,7 +57,7 @@ dist = mp.abjoin_sum(arr, arr2, 1024, threshold=0.90, pearson=True)
 dist = dist.reshape((len(dist), 1))
 vdist = reduce_sum_thresh(dm_ab, 0.90)
 
-if compare_vectors(vdist, np.array(dist)):
+if compare_vectors_sum(vdist, np.array(dist), 0.90):
   print("SUM AB join pass")
 else:
   failed = True
