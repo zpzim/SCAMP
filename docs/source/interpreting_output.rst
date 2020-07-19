@@ -26,7 +26,7 @@ There can also be regions that are **almost flat**, these regions contain values
 
 We have tried to prevent catastrophic roundoff error in SCAMP by using an epsilon (currently hardcoded to 1e-13). If the sum of squared error from the mean for the values in a particular subsequence is less than this epsilon, then SCAMP considers the subsequence totally flat (as defined above). This will cause NaN to be output for that subsequence.
 
-In addition, by default we use compensated arithemtic to compute the subsequence means and a high-precision brute force O(nm) approcach for computing the subsequence norms. With this approach precomputation can be expensive when a very large subsequence length is chosen in combonation with a large input size. If you would like to speed up the precomputation with a potential loss of accuracy you can specify (CLI flag: --high_precision_precompute=false) as an option to use a faster, more imprecise method.
+In addition, by default we use compensated arithemtic to compute the subsequence means and optionally a high-precision brute force O(nm) approcach for computing the subsequence norms. With this approach precomputation can be expensive when a very large subsequence length is chosen in combonation with a large input size. If you would like to use this method of computation in exchange for speed you can specify (CLI flag: --high_precision_precompute) as an option to use this slower, more precise method.
 
 SCAMP Output Precision
 **********************

@@ -27,9 +27,6 @@ DEFINE_string(hostname_port, "localhost:30078",
 DEFINE_int64(max_matches_per_column, 5,
              "Maximum number of neighbors to generate for any subsequence "
              "(used for ALL_NEIGHBORS profiles).");
-DEFINE_bool(reduce_all_neighbors, false,
-            "Whether to reduce the all neighbors graph into a matrix with a "
-            "reduced size");
 DEFINE_int32(reduced_height, 50, "The final height of the output matrix");
 DEFINE_int32(reduced_width, 50, "The final width of the output matrix");
 DEFINE_bool(print_debug_info, false, "Whether SCAMP will print debug info.");
