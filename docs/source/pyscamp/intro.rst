@@ -40,8 +40,9 @@ This is a new feature and still has some kinks to work out. If you have problems
 
 **Figuring out what went wrong**: You can use ``pip install -v pyscamp`` to print the output of the cmake configuration and build.
 
-**Getting CUDA to work**: Ensure pyscamp is built with cuda using ``FORCE_CUDA=1 pip install pyscamp`` if this fails. That means cmake was unable to detect your cuda installation or it wasn't new enough (see :doc:`environment setup guide </environment>` for which versions of cuda are supported). Some general troubleshooting steps you can try are:
+**Getting CUDA to work**: Ensure pyscamp is built with cuda using ``FORCE_CUDA=1 pip install -I --no-cache-dir pyscamp`` if this fails. That means cmake was unable to detect your cuda installation or it wasn't new enough (see :doc:`environment setup guide </environment>` for which versions of cuda are supported). Some general troubleshooting steps you can try are:
 
+  * If you installed pyscamp previously and you have since installed cuda, make sure to add the ``-I`` and ``--no-cache-dir`` flags to pip install just to make sure you are reinstalling correctly.
   * Use ``pip install -v`` to get more information about the build configuration and make sure it is using the compilers and cuda like you expect.
   * On Mac/Linux make sure nvcc (the CUDA compiler, usually located at /usr/local/cuda/bin), is in your PATH. You can also specify a cuda compiler using ``CMAKE_CUDA_COMPILER=/path/to/cuda/compiler pip install pyscamp``
   * On Windows, CUDA will only work using using the visual studio toochains **with the appropriate visual studio plugins installed** so make sure cuda is installed with these plugins. (see :doc:`GPU support </environment>` for more information and links to the cuda installation guide)
