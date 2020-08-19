@@ -298,6 +298,15 @@ struct PrecomputedInfo {
   std::vector<double> &mutable_means() { return _means; }
 };
 
+struct CombinedStats {
+ public:
+  std::vector<double> dr_fwd;
+  std::vector<double> dr_bkwd;
+  std::vector<double> dc_fwd;
+  std::vector<double> dc_bkwd;
+};
+
+
 // Thread safe queue to hold tiles to be executed
 class ThreadSafeQueue {
  public:

@@ -13,4 +13,8 @@ void compute_statistics_cpu(const std::vector<double> &T,
                             PrecomputedInfo *info, size_t m,
                             bool high_precision_norms);
 
+CombinedStats compute_combined_stats_cpu(const std::vector<double> &A, const std::vector<double> means_A,
+                                         const std::vector<double> &B, const std::vector<double> means_B,
+                                         size_t m);
+
 }  // namespace SCAMP

@@ -146,4 +146,33 @@ void compute_statistics_cpu(const std::vector<double> &T,
   info->set(means, norms, df, dg);
 }
 
+CombinedStats compute_combined_stats_cpu(const std::vector<double> &A, const std::vector<double> means_A,
+                                         const std::vector<double> &B, const std::vector<double> means_B,
+                                         size_t m) {
+  CombinedStats result;
+
+  int na = A.size() - m + 1;
+  int nb = B.size() - m + 1;
+  int na2 = A.size() - (m - 1) + 1;
+  int nb2 = B.size() - (m - 1) + 1;
+  std::vector<double> dc_fwd(na2), dc_bkwd(na2), dr_fwd(nb2), dr_bkwd(nb2);
+
+  for (int i = 0; i < na; ++i) {
+    dc_bkwd[i] = -1 * (A[i] - means_A[i]);
+    dc_fwd[i] = (A[i + m] - means_A[i + 1]);
+  }
+
+  for (int i = 0; i < nb2; ++i) {
+    dr_bkwd[i] = B[i] - means_B[i + 1];
+    dr_fwd[i] = B[i + m] - means_B[i + 1];
+  }
+
+  result.dc_bkwd = std::move(dc_bkwd);
+  result.dr_bkwd = std::move(dr_bkwd);
+  result.dc_fwd = std::move(dc_fwd);
+  result.dr_fwd = std::move(dr_fwd);
+
+  return std::move(result);
+}
+
 }  // namespace SCAMP
