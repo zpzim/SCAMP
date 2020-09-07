@@ -84,7 +84,6 @@ SCAMP::SCAMPArgs GetDefaultSCAMPArgs() {
   args.matrix_width = 50;
   args.profile_a.type = profile_type;
   args.profile_b.type = profile_type;
-  args.high_precision_precompute = false;
 
   return args;
 }
@@ -151,10 +150,12 @@ void get_args_based_on_kwargs(SCAMP::SCAMPArgs* args, py::kwargs kwargs,
         args->precision_type = SCAMP::PRECISION_MIXED;
       } else if (ptype == "double") {
         args->precision_type = SCAMP::PRECISION_DOUBLE;
+      } else if (ptype == "ultra") {
+        args->precision_type = SCAMP::PRECISION_ULTRA;
       } else {
         throw std::invalid_argument(
             "Invalid precision type specified: valid options are single, "
-            "mixed, double");
+            "mixed, double, ultra");
       }
     } else if (key == "pearson") {
       pearson = item.second.cast<bool>();

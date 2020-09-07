@@ -54,6 +54,7 @@ enum SCAMPPrecisionType {
   PRECISION_SINGLE = 1,
   PRECISION_MIXED = 2,
   PRECISION_DOUBLE = 3,
+  PRECISION_ULTRA = 4,
 };
 
 // Enum describing worker architecture, used to switch on architecture specific
@@ -184,7 +185,6 @@ struct SCAMPArgs {
   int64_t max_matches_per_column;
   int64_t matrix_height;
   int64_t matrix_width;
-  bool high_precision_precompute;
 };
 
 // Struct describing kernel arguments which are non-standard
@@ -305,7 +305,6 @@ struct CombinedStats {
   std::vector<double> dc_fwd;
   std::vector<double> dc_bkwd;
 };
-
 
 // Thread safe queue to hold tiles to be executed
 class ThreadSafeQueue {
