@@ -22,6 +22,9 @@ class SCAMP_Operation {
   // Precomputed statistics used by tiles
   PrecomputedInfo _precompA, _precompB;
 
+  // Precomputed statistics computed from both input A and B.
+  CombinedStats _precomp;
+
   // Result vectors
   Profile *_profile_a, *_profile_b;
 
@@ -47,10 +50,6 @@ class SCAMP_Operation {
   // CPU threads to compute with
   int _cpu_workers;
 
-  // Whether or not to compute the statisics with a higher precision but more
-  // expensive method.
-  bool _high_precision_precompute;
-
   void get_tiles();
 
   void do_work(const std::vector<double> &timeseries_a,
@@ -65,8 +64,7 @@ class SCAMP_Operation {
                   Profile *pA, Profile *pB, bool keep_rows, bool compute_rows,
                   bool compute_cols, bool is_aligned, bool silent_mode,
                   int num_threads, int64_t max_matches_per_col,
-                  int64_t matrix_height, int64_t matrix_width,
-                  bool high_precision_precompute)
+                  int64_t matrix_height, int64_t matrix_width)
       : _info(Asize, Bsize, window_sz, max_tile_size, selfjoin, t, start_row,
               start_col, args_, profile_type, keep_rows, compute_rows,
               compute_cols, is_aligned, silent_mode, dev.size() + num_threads,
@@ -75,8 +73,7 @@ class SCAMP_Operation {
         _profile_a(pA),
         _profile_b(pB),
         _devices(dev),
-        _cpu_workers(num_threads),
-        _high_precision_precompute(high_precision_precompute) {}
+        _cpu_workers(num_threads) {}
 
   SCAMPError_t do_join(const std::vector<double> &timeseries_a,
                        const std::vector<double> &timeseries_b);

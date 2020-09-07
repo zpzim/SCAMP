@@ -11,7 +11,7 @@ threads=[int]:
 gpus=[list of integers]:
   Cuda device ids of gpus to run on, by default we run on all gpus if you have any.
 precision=[string]:
-  One of [single, mixed, double] default is double precision, other precision types only supported on GPU
+  One of ['single', 'mixed', 'double', 'ultra'] default is double precision, ultra and double precision are supported on CPU and GPU, mixed and single precision are only supported on GPU.
 mwidth=[int]:
   For matrix summaries, the width of the output matrix (default 50)
 mheight=[int]:

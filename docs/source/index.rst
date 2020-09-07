@@ -19,6 +19,7 @@ Welcome to SCAMP's documentation!
    docker
    pyscamp/index.rst
    distributed
+   faq
     
     
 

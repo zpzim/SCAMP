@@ -6,7 +6,7 @@ Interpreting the Matrix Profile
 
 When using z-normalized euclidean distance (the default). Peaks in the matrix profile represent time series discords (anomalies) and valleys represent motifs in the data.
 
-When using Pearson Correlation (CLI flag: --output_pearson, pyscamp argument: pearson=true), then the opposite is true; Peaks in the matrix profile correspond to motifs and valleys correspond to discords.
+When using Pearson Correlation (CLI flag: ``--output_pearson``, pyscamp argument: ``pearson=True``), then the opposite is true; Peaks in the matrix profile correspond to motifs and valleys correspond to discords.
 
 Please see the Matrix Profile Tutorial (slides available `here <https://www.cs.ucr.edu/~eamonn/Matrix_Profile_Tutorial_Part1.pdf>`_ for more information on how to interpret and use the matrix profile.
 
@@ -26,7 +26,7 @@ There can also be regions that are **almost flat**, these regions contain values
 
 We have tried to prevent catastrophic roundoff error in SCAMP by using an epsilon (currently hardcoded to 1e-13). If the sum of squared error from the mean for the values in a particular subsequence is less than this epsilon, then SCAMP considers the subsequence totally flat (as defined above). This will cause NaN to be output for that subsequence.
 
-In addition, by default we use compensated arithemtic to compute the subsequence means and optionally a high-precision brute force O(nm) approcach for computing the subsequence norms. With this approach precomputation can be expensive when a very large subsequence length is chosen in combonation with a large input size. If you would like to use this method of computation in exchange for speed you can specify (CLI flag: --high_precision_precompute) as an option to use this slower, more precise method.
+By default we use compensated arithemtic to compute the subsequence means and a fast method to compute the subsequence norms during precomputation. Optionally, you can use a high-precision brute force O(nm) approcach for computing the subsequence norms and means. With this approach precomputation can be expensive when a very large subsequence length is chosen in combination with a large input size. If you would like to use this method of computation in exchange for speed you can specify (CLI flag: ``--ultra_precision``, pyscamp arg: ``precision='ultra'``) as an option to use this slower, more precise method. Using the Ultra precision option also enables a new more stable update formula.
 
 SCAMP Output Precision
 **********************

@@ -48,6 +48,9 @@ DEFINE_string(
     "Matrix Profile Type to compute, must be one of \"1NN_INDEX, SUM_THRESH\", "
     "1NN_INDEX generates the classic Matrix Profile, SUM_THRESH generates a "
     "sum of the correlations above threshold set by the --threshold flag.");
+DEFINE_bool(ultra_precision, false,
+            "Ultra high precision computation with a potential performance hit "
+            "(for large subsequence lengths).");
 DEFINE_bool(double_precision, false, "Computation in double precision");
 DEFINE_bool(mixed_precision, false, "Computation in mixed precision");
 DEFINE_bool(single_precision, false, "Computation in single precision");
@@ -94,22 +97,18 @@ DEFINE_string(
 DEFINE_string(gpus, "",
               "IDs of GPUs on the system to use, if this flag is not set SCAMP "
               "tries to use all available GPUs on the system");
-DEFINE_bool(high_precision_precompute, false,
-            "Determines whether SCAMP will perform an expensive precompute "
-            "operation with higher precision. This causes more overhead the "
-            "larger the subsequence length is.");
 
 int main(int argc, char **argv) {
   bool self_join, computing_rows, computing_cols;
   size_t start_row = 0;
   size_t start_col = 0;
   gflags::ParseCommandLineFlags(&argc, &argv, true);
-  if (!FLAGS_double_precision && !FLAGS_mixed_precision &&
-      !FLAGS_single_precision) {
+  if (!FLAGS_ultra_precision && !FLAGS_double_precision &&
+      !FLAGS_mixed_precision && !FLAGS_single_precision) {
     FLAGS_double_precision = true;
   }
-  if ((FLAGS_double_precision ? 1 : 0) + (FLAGS_mixed_precision ? 1 : 0) +
-          (FLAGS_single_precision ? 1 : 0) !=
+  if ((FLAGS_ultra_precision ? 1 : 0) + (FLAGS_double_precision ? 1 : 0) +
+          (FLAGS_mixed_precision ? 1 : 0) + (FLAGS_single_precision ? 1 : 0) !=
       1) {
     printf("Error: only one precision flag can be enabled at a time\n");
     return 1;
@@ -147,8 +146,9 @@ int main(int argc, char **argv) {
     computing_rows = FLAGS_keep_rows;
   }
 
-  SCAMP::SCAMPPrecisionType t = GetPrecisionType(
-      FLAGS_double_precision, FLAGS_mixed_precision, FLAGS_single_precision);
+  SCAMP::SCAMPPrecisionType t =
+      GetPrecisionType(FLAGS_ultra_precision, FLAGS_double_precision,
+                       FLAGS_mixed_precision, FLAGS_single_precision);
   SCAMP::SCAMPProfileType profile_type = ParseProfileType(FLAGS_profile_type);
 
   std::vector<double> Ta_h, Tb_h;
@@ -210,7 +210,6 @@ int main(int argc, char **argv) {
   args.max_matches_per_column = FLAGS_max_matches_per_column;
   args.matrix_height = FLAGS_reduced_height;
   args.matrix_width = FLAGS_reduced_width;
-  args.high_precision_precompute = FLAGS_high_precision_precompute;
   if (FLAGS_print_debug_info) {
     printf("Starting SCAMP\n");
   }

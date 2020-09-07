@@ -11,9 +11,9 @@ SCAMP's CPU performance is very good. However, how performant it is depends heav
 Precomputation performance
 **************************
 
-When enabling the --high_precision_precompute flag in the SCAMP CLI, the method for precomputing the necessary statisics for the matrix profile computation uses an O(nm) algorithm to compute the norms. This computation can become a bottleneck if you specify an extremely large subsequence length.
+When enabling the ``--ultra_precision`` flag in the SCAMP CLI, or specifying the ``precision='ultra'`` option in pyscamp, the method for precomputing the necessary statisics for the matrix profile computation uses an O(nm) algorithm to compute the subsequence means and norms. This computation can become a bottleneck if you specify an extremely large subsequence length.
 
-The timing results below do not use this option.
+The timing results below do not use this option. All experiments were performed in double precision.
 
 
 Performance Comparisons
@@ -29,7 +29,7 @@ In the figure above we show the runtime in seconds for SCAMP's various profile t
 .. image:: /images/KNN.png
   :alt: SCAMP KNN Performance
 
-In the figure above we show the runtime in seconds for SCAMP's approximate KNN (--profile_type=ALL_NEIGHBORS) matrix profile, while varying K and the input size on 2 P100 GPUs.
+In the figure above we show the runtime in seconds for SCAMP's approximate KNN (``--profile_type=ALL_NEIGHBORS``) matrix profile, while varying K and the input size on 2 P100 GPUs.
 
 You can see that SCAMP maintains good performance relative to the baseline 1NN_INDEX matrix profile up to at least K=20, which should be sufficient for almost all practioners. All measurements were made with random data with the initial threshold set to 0 correlation (close to the worst case for KNN).
 

@@ -5,6 +5,7 @@ namespace SCAMP {
 
 int get_blocksz(Tile *t) {
   switch (t->info()->fp_type) {
+    case PRECISION_ULTRA:
     case PRECISION_DOUBLE:
       return BLOCKSZ_DP;
     case PRECISION_MIXED:
@@ -16,6 +17,7 @@ int get_blocksz(Tile *t) {
 
 int FPTypeSize(SCAMPPrecisionType dtype) {
   switch (dtype) {
+    case PRECISION_ULTRA:
     case PRECISION_DOUBLE:
       return sizeof(double);
     case PRECISION_MIXED:
@@ -29,6 +31,7 @@ int FPTypeSize(SCAMPPrecisionType dtype) {
 
 int GetTileHeight(SCAMPPrecisionType dtype) {
   switch (dtype) {
+    case PRECISION_ULTRA:
     case PRECISION_DOUBLE:
       return TILE_HEIGHT_DP;
     case PRECISION_MIXED:

@@ -28,6 +28,18 @@ void convert_non_finite_to_zero(const std::vector<double> &T, const int m,
   }
 }
 
+std::vector<double> brute_force_moving_mean(std::vector<double> a, int w) {
+  std::vector<double> result(a.size() - w + 1, 0);
+  for (int i = 0; i < result.size(); ++i) {
+    double sum = 0;
+    for (int j = 0; j < w; ++j) {
+      sum += a[i + j];
+    }
+    result[i] = sum / w;
+  }
+  return result;
+}
+
 // moving mean over sequence a with window length w
 // based on Ogita et. al, Accurate Sum and Dot Product
 
@@ -115,12 +127,13 @@ void compute_statistics_cpu(const std::vector<double> &T,
   std::vector<double> prefix_sum(T.size());
   int n = T.size() - m + 1;
   std::vector<double> norms, df(n), dg(n);
-
-  std::vector<double> means = moving_mean(T, m);
+  std::vector<double> means;
 
   if (high_precision_norms) {
+    means = brute_force_moving_mean(T, m);
     norms = brute_force_sum_of_squared_difference(T, means, m);
   } else {
+    means = moving_mean(T, m);
     norms = fast_sum_of_squared_difference(T, means, m);
   }
 
@@ -144,6 +157,42 @@ void compute_statistics_cpu(const std::vector<double> &T,
   }
 
   info->set(means, norms, df, dg);
+}
+
+CombinedStats compute_combined_stats_cpu(const std::vector<double> &A,
+                                         const std::vector<double> means_A,
+                                         const std::vector<double> &B, size_t m,
+                                         bool high_precision) {
+  CombinedStats result;
+
+  int na = A.size() - m + 1;
+  int nb = B.size() - m + 1;
+  int na2 = A.size() - (m - 1) + 1;
+  int nb2 = B.size() - (m - 1) + 1;
+  std::vector<double> dc_fwd(na2), dc_bkwd(na2), dr_fwd(nb2), dr_bkwd(nb2);
+  std::vector<double> means_B;
+  if (high_precision) {
+    means_B = brute_force_moving_mean(B, m - 1);
+  } else {
+    means_B = moving_mean(B, m - 1);
+  }
+
+  for (int i = 0; i < na; ++i) {
+    dc_bkwd[i] = -1 * (A[i] - means_A[i]);
+    dc_fwd[i] = (A[i + m] - means_A[i + 1]);
+  }
+
+  for (int i = 0; i < nb2; ++i) {
+    dr_bkwd[i] = B[i] - means_B[i + 1];
+    dr_fwd[i] = B[i + m] - means_B[i + 1];
+  }
+
+  result.dc_bkwd = std::move(dc_bkwd);
+  result.dr_bkwd = std::move(dr_bkwd);
+  result.dc_fwd = std::move(dc_fwd);
+  result.dr_fwd = std::move(dr_fwd);
+
+  return result;
 }
 
 }  // namespace SCAMP

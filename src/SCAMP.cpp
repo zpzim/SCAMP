@@ -126,7 +126,8 @@ void SCAMP_Operation::do_work(const std::vector<double> &timeseries_a,
     // Copy the portion of the time series and stats
     //  we will be using from the global arrays.
     tile.InitTimeseries(timeseries_a, timeseries_b);
-    tile.InitStats(_precompA, _precompB);
+    tile.InitStats(_precompA, _precompB, _precomp);
+
     bool done = false;
     while (!done) {
       // Copy the portion of the best-so-far profile
@@ -196,11 +197,19 @@ SCAMPError_t SCAMP_Operation::do_join(const std::vector<double> &timeseries_a,
   convert_non_finite_to_zero(timeseries_b, _info.mp_window, &timeseries_b_clean,
                              &nanvals_b);
 
+  bool ultra_precision = _info.fp_type == PRECISION_ULTRA;
+
   // Compute statistics for entire problem
   compute_statistics_cpu(timeseries_a_clean, nanvals_a, &_precompA,
-                         _info.mp_window, _high_precision_precompute);
+                         _info.mp_window, ultra_precision);
   compute_statistics_cpu(timeseries_b_clean, nanvals_b, &_precompB,
-                         _info.mp_window, _high_precision_precompute);
+                         _info.mp_window, ultra_precision);
+
+  if (ultra_precision) {
+    _precomp = compute_combined_stats_cpu(timeseries_a_clean, _precompA.means(),
+                                          timeseries_b_clean, _info.mp_window,
+                                          ultra_precision);
+  }
 
   std::chrono::high_resolution_clock::time_point end =
       std::chrono::high_resolution_clock::now();
@@ -297,8 +306,7 @@ void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
       args->profile_type, &args->profile_a, &args->profile_b,
       args->keep_rows_separate, args->computing_rows, args->computing_columns,
       args->is_aligned, args->silent_mode, num_threads,
-      args->max_matches_per_column, args->matrix_height, args->matrix_width,
-      args->high_precision_precompute);
+      args->max_matches_per_column, args->matrix_height, args->matrix_width);
 
   if (!args->silent_mode) {
     std::cout << "SCAMP Operation constructed" << std::endl;

@@ -46,6 +46,7 @@ if(NOT CMAKE_CUDA_COMPILER)
   endif()
 else()
   message(STATUS "CUDA compiler found: ${CMAKE_CUDA_COMPILER}")
+  message(STATUS "Using cufft libraries: ${CUDA_CUFFT_LIBRARIES}")
 endif()
 
 # Use clang tidy if available

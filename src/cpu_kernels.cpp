@@ -209,6 +209,7 @@ SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> &args,
     constexpr bool COMPUTE_COLS = true;
     constexpr bool COMPUTE_ROWS = true;
     switch (fp_type) {
+      case PRECISION_ULTRA:
       case PRECISION_DOUBLE:
         do_tile<DIST_TYPE, PROFILE_OUTPUT_TYPE, PROFILE_TYPE, COMPUTE_ROWS,
                 COMPUTE_COLS>(args, profile_A, profile_B);
@@ -222,6 +223,7 @@ SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> &args,
     constexpr bool COMPUTE_COLS = true;
     constexpr bool COMPUTE_ROWS = false;
     switch (fp_type) {
+      case PRECISION_ULTRA:
       case PRECISION_DOUBLE:
         do_tile<DIST_TYPE, PROFILE_OUTPUT_TYPE, PROFILE_TYPE, COMPUTE_ROWS,
                 COMPUTE_COLS>(args, profile_A, profile_B);
@@ -235,6 +237,7 @@ SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> &args,
     constexpr bool COMPUTE_COLS = false;
     constexpr bool COMPUTE_ROWS = true;
     switch (fp_type) {
+      case PRECISION_ULTRA:
       case PRECISION_DOUBLE:
         do_tile<DIST_TYPE, PROFILE_OUTPUT_TYPE, PROFILE_TYPE, COMPUTE_ROWS,
                 COMPUTE_COLS>(args, profile_A, profile_B);

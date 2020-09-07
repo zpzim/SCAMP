@@ -468,6 +468,8 @@ std::string GetPrecisionTypeString(SCAMPPrecisionType t) {
       return "PRECISION_MIXED";
     case PRECISION_DOUBLE:
       return "PRECISION_DOUBLE";
+    case PRECISION_ULTRA:
+      return "PRECISION_ULTRA";
   }
 }
 

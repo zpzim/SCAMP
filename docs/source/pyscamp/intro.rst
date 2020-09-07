@@ -40,7 +40,7 @@ This is a new feature and still has some kinks to work out. If you have problems
 
 **Figuring out what went wrong**: You can use ``pip install -v pyscamp`` to print the output of the cmake configuration and build.
 
-**Getting CUDA to work**: Ensure pyscamp is built with cuda using ``FORCE_CUDA=1 pip install -I --no-cache-dir pyscamp`` if this fails. That means cmake was unable to detect your cuda installation or it wasn't new enough (see :doc:`environment setup guide </environment>` for which versions of cuda are supported). Some general troubleshooting steps you can try are:
+**Getting CUDA to work**: Ensure pyscamp is built with cuda using ``FORCE_CUDA=1 pip install -I --no-cache-dir pyscamp``. If this fails, that means cmake was unable to detect your cuda installation or it wasn't new enough (see :doc:`environment setup guide </environment>` for which versions of cuda are supported). Some general troubleshooting steps you can try are:
 
   * If you installed pyscamp previously and you have since installed cuda, make sure to add the ``-I`` and ``--no-cache-dir`` flags to pip install just to make sure you are reinstalling correctly.
   * Use ``pip install -v`` to get more information about the build configuration and make sure it is using the compilers and cuda like you expect.
