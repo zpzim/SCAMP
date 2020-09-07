@@ -397,24 +397,22 @@ void Tile::InitStats(const PrecomputedInfo &a, const PrecomputedInfo &b,
 
   // Initialize the tile's local stats based on global statistics "a" and "b"
   Memcopy(_norms_A.get(), a.norms().data() + _current_tile_col, bytes_a, false);
-  Memcopy(_means_A.get(), a.means().data() + _current_tile_col, bytes_a, false);
   Memcopy(_norms_B.get(), b.norms().data() + _current_tile_row, bytes_b, false);
+  Memcopy(_means_A.get(), a.means().data() + _current_tile_col, bytes_a, false);
   Memcopy(_means_B.get(), b.means().data() + _current_tile_row, bytes_b, false);
 
   if (_info->fp_type == PRECISION_ULTRA) {
     // Initialize the tile's local stats when using alternative formula.
     Memcopy(_df_A.get(), ab.dc_bkwd.data() + _current_tile_col, bytes_a, false);
-    Memcopy(_dg_B.get(), ab.dr_bkwd.data() + _current_tile_row, bytes_b, false);
     Memcopy(_dg_A.get(), ab.dc_fwd.data() + _current_tile_col, bytes_a, false);
     Memcopy(_df_B.get(), ab.dr_fwd.data() + _current_tile_row, bytes_b, false);
+    Memcopy(_dg_B.get(), ab.dr_bkwd.data() + _current_tile_row, bytes_b, false);
   } else {
     // Initialize the tile's local stats when using published formula.
-    Memcopy(_norms_B.get(), b.norms().data() + _current_tile_row, bytes_b,
-            false);
+    Memcopy(_df_A.get(), a.df().data() + _current_tile_col, bytes_a, false);
+    Memcopy(_dg_A.get(), a.dg().data() + _current_tile_col, bytes_a, false);
     Memcopy(_df_B.get(), b.df().data() + _current_tile_row, bytes_b, false);
     Memcopy(_dg_B.get(), b.dg().data() + _current_tile_row, bytes_b, false);
-    Memcopy(_means_B.get(), b.means().data() + _current_tile_row, bytes_b,
-            false);
   }
 }
 
