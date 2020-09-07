@@ -25,3 +25,14 @@ A common issue is that CUDA does not get picked up properly when building SCAMP 
 - Set FORCE_CUDA=1 (See CLI and pyscamp docs for more information) to validate that CUDA is being detected during installation.
 
 - See the :doc:`pyscamp </pyscamp/intro>` and :doc:`SCAMP CLI </cli>` documentation for more troubleshooting information.
+
+SCAMP's output looks wrong
+**************************
+
+By default, SCAMP uses double precision to compute the matrix profile, for some datasets this may not be sufficient. SCAMP provides an ultra precision option which can help reduce floating point roundoff error. You can specify this option by specifying:
+
+- SCAMP CLI: ``--ultra_precision``
+
+- pyscamp: ``precision='ultra'`` as a kwarg to any pyscamp function
+
+Even this option will not be sufficient for some datasets, but it should work for the vast majority. For more information please see the documentation on :doc:`interpreting output </interpreting_output>`.
