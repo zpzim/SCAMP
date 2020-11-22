@@ -18,4 +18,6 @@ mheight=[int]:
   For matrix summaries, the height of the output matrix (default 50)
 verbose=[bool]:
   Enable verbose output. This will log to stdout. (default False)
+distributedpos=[int, int]
+  Specifies that the join is actually part of a larger join which potentially requires an exclusion zone to be applied. Arguments are [row, col] where row/col are the global starting row/col of this join in the distance matrix.
 

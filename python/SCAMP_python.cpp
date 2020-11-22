@@ -168,6 +168,19 @@ void get_args_based_on_kwargs(SCAMP::SCAMPArgs* args, py::kwargs kwargs,
             "Invalid number of cpu worker threads specified, must be greater "
             "than or equal to 0.");
       }
+    } else if (key == "distributedpos") {
+      auto start_row_column = item.second.cast<std::vector<int64_t>>();
+      if (start_row_column.size() != 2) {
+        throw std::invalid_argument(
+            "distributedpos requires a start row and column passed as [row, "
+            "column]");
+      }
+      if (start_row_column[0] < 0 || start_row_column[1] < 0) {
+        throw std::invalid_argument(
+            "distributedpos start row and column must be positive numbers");
+      }
+      args->distributed_start_row = start_row_column[0];
+      args->distributed_start_col = start_row_column[1];
     } else {
       throw std::invalid_argument(
           "Invalid keyword argument specified unknown argument: " + key);
