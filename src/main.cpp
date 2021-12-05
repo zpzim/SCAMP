@@ -14,6 +14,8 @@
 #include "scamp_exception.h"
 #include "scamp_utils.h"
 
+#include "helper_cuda.h"
+
 #ifdef _DISTRIBUTED_EXECUTION_
 #include "../kubernetes/scamp_interface.h"
 #endif
@@ -99,6 +101,8 @@ DEFINE_string(gpus, "",
               "tries to use all available GPUs on the system");
 
 int main(int argc, char **argv) {
+
+  findCudaDevice(argc, (const char **)argv);
   bool self_join, computing_rows, computing_cols;
   size_t start_row = 0;
   size_t start_col = 0;

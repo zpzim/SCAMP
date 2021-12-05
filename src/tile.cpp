@@ -143,11 +143,10 @@ T *alloc_mem(size_t count, SCAMPArchitecture arch, int deviceid) {
   switch (arch) {
     case CUDA_GPU_WORKER: {
 #ifdef _HAS_CUDA_
-      cudaSetDevice(deviceid);
-      gpuErrchk(cudaPeekAtLastError());
+      gpuErrchk(cudaSetDevice(deviceid));
       size_t bytes = count * sizeof(T);
       T *ptr;
-      cudaMalloc(&ptr, bytes);
+      gpuErrchk(cudaMalloc(&ptr, bytes));
       gpuErrchk(cudaPeekAtLastError());
       return ptr;
 #else
@@ -166,10 +165,8 @@ void free_mem(T *ptr, SCAMPArchitecture arch, int deviceid) {
   switch (arch) {
     case CUDA_GPU_WORKER:
 #ifdef _HAS_CUDA_
-      cudaSetDevice(deviceid);
-      gpuErrchk(cudaPeekAtLastError());
-      cudaFree(ptr);
-      gpuErrchk(cudaPeekAtLastError());
+      gpuErrchk(cudaSetDevice(deviceid));
+      gpuErrchk(cudaFree(ptr));
 #else
       ASSERT(false, "Using CUDA in binary not built with it");
 #endif
@@ -184,10 +181,8 @@ void Tile::Memset(void *destination, char value, size_t bytes) {
   switch (get_arch()) {
     case CUDA_GPU_WORKER:
 #ifdef _HAS_CUDA_
-      cudaSetDevice(get_cuda_id());
-      gpuErrchk(cudaPeekAtLastError());
-      cudaMemsetAsync(destination, value, bytes, get_stream());
-      gpuErrchk(cudaPeekAtLastError());
+      gpuErrchk(cudaSetDevice(get_cuda_id()));
+      gpuErrchk(cudaMemsetAsync(destination, value, bytes, get_stream()));
 #else
       ASSERT(false, "Using CUDA in binary not built with it");
 #endif

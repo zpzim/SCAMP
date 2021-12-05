@@ -216,6 +216,12 @@ if (CMAKE_CUDA_COMPILER)
   set_target_properties(gpu_kernels PROPERTIES
     COMPILE_FLAGS "${COMPILE_FLAGS} ${CUDA_GENCODE_FLAGS}"
   )
+  set_target_properties(qt_kernels PROPERTIES
+    COMPILE_FLAGS "${COMPILE_FLAGS} ${CUDA_GENCODE_FLAGS}"
+  )
+  set_target_properties(gpu_utils PROPERTIES
+    COMPILE_FLAGS "${COMPILE_FLAGS} ${CUDA_GENCODE_FLAGS}"
+  )
 endif()
 
 # C++/CUDA executable
