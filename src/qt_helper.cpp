@@ -93,7 +93,6 @@ SCAMPError_t qt_compute_helper::compute_QT(double *QT, const double *T,
 
   // clear last error
   error = cudaGetLastError();
-  printf("Clearing error before execute: %s\n", cudaGetErrorString(error));
 
   // Reverse and zero pad the query
   launch_populate_reverse_pad(Q, Q_reverse_pad, qmeans, window_size, size,
