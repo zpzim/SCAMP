@@ -363,10 +363,7 @@ void Profile::CopyFromDevice(const OpInfo *info, const ExecInfo *exec_info,
 // profile
 void Profile::MergeTileToProfile(Profile *tile_profile, const OpInfo *info,
                                  uint64_t position, uint64_t length,
-                                 uint64_t index_start) {
-  // Check if we overflowed
-  bool overflowed = length >= info->max_matches_per_tile;
-
+                                 uint64_t index_start, bool overflowed) {
   // Lock the before we merge, this function can be called by multiple
   // threads
   std::unique_lock<std::mutex> mlock(this->_profile_lock);

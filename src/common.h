@@ -142,7 +142,7 @@ class Profile {
   SCAMPProfileType type;
   void MergeTileToProfile(Profile *tile_profile, const OpInfo *info,
                           uint64_t position, uint64_t length,
-                          uint64_t index_start);
+                          uint64_t index_start, bool overflowed);
   void CopyFromDevice(const OpInfo *info, const ExecInfo *exec_info,
                       const DeviceProfile *device_tile_profile,
                       uint64_t length);
