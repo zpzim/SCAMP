@@ -42,9 +42,10 @@ jobs:
 
       - name: Prep Build
           if: matrix.os != 'windows-latest'
-          run: CXX=${{ matrix.compiler }}
+          run: echo "CXX=${{ matrix.compiler }}" >> $GITHUB_ENV
         
       - name: Build SCAMP
+        shell: bash
         run: |
           set -e
           cd $GITHUB_WORKSPACE
