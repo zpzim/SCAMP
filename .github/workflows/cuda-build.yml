@@ -1,6 +1,6 @@
 # This is a basic workflow to help you get started with Actions
 
-name: Ubuntu Cuda Build
+name: CUDA Build
 
 # Controls when the workflow will run
 on:
@@ -21,17 +21,14 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         compiler: [g++, clang++, msvc]
         exclude:
-          os: ubuntu-latest
-          compiler: msvc
-        exclude:
-          os: macos-latest
-          compiler: msvc
-        exclude:
-          os: windows-latest
-          compiler: g++
-        exclude:
-          os: windows-latest
-          compiler: clang++
+          - os: ubuntu-latest
+            compiler: msvc
+          - os: macos-latest
+            compiler: msvc
+          - os: windows-latest
+            compiler: g++
+          - os: windows-latest
+            compiler: clang++
 
     # The type of runner that the job will run on
     runs-on: ${{ matrix.os }}
