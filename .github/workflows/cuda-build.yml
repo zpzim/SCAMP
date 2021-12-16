@@ -17,13 +17,12 @@ on:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest]
         compiler: [g++, clang++, msvc]
         exclude:
           - os: ubuntu-latest
-            compiler: msvc
-          - os: macos-latest
             compiler: msvc
           - os: windows-latest
             compiler: g++
