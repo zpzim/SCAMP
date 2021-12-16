@@ -29,12 +29,9 @@ jobs:
           - os: windows-latest
             compiler: clang++
 
-    # The type of runner that the job will run on
     runs-on: ${{ matrix.os }}
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
         with:
           submodules: 'recursive'
@@ -43,14 +40,14 @@ jobs:
         with:
           cuda: '11.5.1'
 
-      # Runs a single command using the runners shell
+      - name: Prep Build
+          if: matrix.os != 'windows-latest'
+          run: CXX=${{ matrix.compiler }}
+        
       - name: Build SCAMP
         run: |
           set -e
           cd $GITHUB_WORKSPACE
           mkdir build && cd build
-          if: matrix.os != 'windows-latest'
-            cmake -DFORCE_CUDA=1 -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} ..
-          if: matrix.os == 'windows-latest'
-            cmake -DFORCE_CUDA=1 ..
+          cmake -DFORCE_CUDA=1 ..
           cmake --build . --config Release 
