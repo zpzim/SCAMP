@@ -41,8 +41,8 @@ jobs:
           cuda: '11.5.1'
 
       - name: Prep Build
-          if: matrix.os != 'windows-latest'
-          run: CXX=${{ matrix.compiler }}
+        if: matrix.os != 'windows-latest'
+        run: CXX=${{ matrix.compiler }}
         
       - name: Build SCAMP
         run: |
