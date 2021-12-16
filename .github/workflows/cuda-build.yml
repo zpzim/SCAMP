@@ -49,7 +49,7 @@ jobs:
 
       # Runs a single command using the runners shell
       - name: Build SCAMP
-          run: |
+        run: |
           set -e
           cd $GITHUB_WORKSPACE
           mkdir build && cd build
