@@ -29,8 +29,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
-        with:
-          submodules: 'recursive'
+
+      - name: Setup upterm session
+        uses: lhotari/action-upterm@v1
 
       - name: Prep Build
         run: echo "CXX=${{ matrix.compiler }}" >> $GITHUB_ENV
@@ -55,6 +56,7 @@ jobs:
         shell: bash
         run: |
           set -e
+          pip install numpy pandas tqdm
           cd $GITHUB_WORKSPACE/test
           python3 ./run_tests.py --executable ../build/SCAMP --extra_args "--no_gpu --num_cpu_workers=2"
                
