@@ -66,7 +66,9 @@ SCAMPError_t qt_compute_helper::compute_QT_CPU(double *QT, const double *T,
       sum += (T[i + j] - mu) * (Q[j] - qmean);
     }
     QT[i] = sum;
-    rolling_sum = rolling_sum - T[i] + T[i + window_size];
+    if (i != n - 1) {
+      rolling_sum = rolling_sum - T[i] + T[i + window_size];
+    }
   }
   return SCAMP_NO_ERROR;
 }
