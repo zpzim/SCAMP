@@ -32,9 +32,6 @@ jobs:
         with:
           submodules: 'true'
 
-      - name: Setup upterm session
-        uses: lhotari/action-upterm@v1
-
       - name: Prep Build
         run: echo "CXX=${{ matrix.compiler }}" >> $GITHUB_ENV
           
