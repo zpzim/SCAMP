@@ -43,6 +43,9 @@ jobs:
           mkdir build && cd build
           cmake ..
           cmake --build . --config Release 
+          if [ -f "./Release/SCAMP.exe" ]; then
+            cp ./Release/SCAMP.exe .
+          fi
 
       - name: Basic Tests SCAMP
         shell: bash
@@ -55,7 +58,7 @@ jobs:
         shell: bash
         run: |
           set -e
-          pip install numpy pandas tqdm
+          python3 -m pip install numpy pandas tqdm
           cd $GITHUB_WORKSPACE/test
           python3 ./run_tests.py --executable ../build/SCAMP --extra_args "--no_gpu --num_cpu_workers=2"
                
