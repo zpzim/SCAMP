@@ -44,7 +44,7 @@ jobs:
           cmake ..
           cmake --build . --config Release 
           if [ -f "./Release/SCAMP.exe" ]; then
-            cp ./Release/SCAMP.exe ./SCAMP
+            cp ./Release/SCAMP.exe .
           fi
 
       - name: Basic Tests SCAMP
