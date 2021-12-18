@@ -28,8 +28,7 @@ bool NeedsIntermittentReset(SCAMPProfileType type) {
 // the user or memory availibility
 static constexpr int64_t PROFILE_MEMORY_BUDGET = 0.5 * GIGABYTE;
 
-OpInfo::OpInfo(size_t Asize, size_t Bsize, size_t window_sz,
-               size_t max_tile_size, bool selfjoin, SCAMPPrecisionType t,
+OpInfo::OpInfo(size_t Asize, size_t Bsize, size_t window_sz, size_t max_tile_size, bool selfjoin, SCAMPPrecisionType t,
                int64_t start_row, int64_t start_col, OptionalArgs args_,
                SCAMPProfileType profiletype, bool keep_rows, bool compute_rows,
                bool compute_cols, bool aligned, bool silent_mode,
