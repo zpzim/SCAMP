@@ -10,6 +10,10 @@ fd3 = open(sys.argv[3], 'w')
 maxdiff = 0
 count = 1
 for line1, line2 in zip(fd1,fd2):
+    if 'nan' in line1:
+      line1 = 'nan' 
+    if 'nan' in line2:
+      line2 = 'nan'
     x = float(line1)
     x2 = float(line2)
     if math.isnan(x) != math.isnan(x2) or math.isinf(x) != math.isinf(x2):

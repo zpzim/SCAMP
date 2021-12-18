@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 import argparse
+import subprocess
 
 
 extra_opts = ''
@@ -118,46 +119,46 @@ def evaluate_result(dm_reductions, scamp_results, subtestargs):
   return None
 
 def run_scamp(inputs, a, b, window, tilesz, max_matches, thresh, ptype, rrows, rcols, keep_rows, aligned):
-  command = executable + f' --output_pearson --window={window} --input_a_file_name=a.txt {extra_opts}'
+  args = f'--output_pearson --window={window} --input_a_file_name=a.txt {extra_opts}'
 
   if a != b:
-    command += f' --input_b_file_name=b.txt'
-  command += f' --max_tile_size={tilesz} --profile_type={ptype}'
+    args += f' --input_b_file_name=b.txt'
+  args += f' --max_tile_size={tilesz} --profile_type={ptype}'
 
   if keep_rows:
-    command += ' --keep_rows_separate'
+    args += ' --keep_rows_separate'
 
   if aligned:
-    command += ' --aligned'
+    args += ' --aligned'
 
   if thresh is not None:
-    command += f' --threshold={thresh}'
+    args += f' --threshold={thresh}'
   
   if rrows is not None and rcols is not None:
-    command += f' --reduce_all_neighbors --reduced_height={rrows} --reduced_width={rcols}'
+    args += f' --reduce_all_neighbors --reduced_height={rrows} --reduced_width={rcols}'
 
   if max_matches is not None:
-    command += f' --max_matches_per_column={max_matches}'
+    args += f' --max_matches_per_column={max_matches}'
 
-  #print(command)
+  #print(args)
 
-  ret = os.system(command)
+  ret = subprocess.call(os.path.abspath(executable) + ' ' + args, shell=True)
   
   mp_columns_out = None
   mp_columns_out_index = None
   mp_rows_out = None
   mp_rows_out_index = None
   if os.path.exists('mp_columns_out'):
-    mp_columns_out = np.array(pd.read_csv('mp_columns_out', sep=' ', header=None))
+    mp_columns_out = np.array(pd.read_csv('mp_columns_out', sep=' ', header=None, na_values='-nan(ind)'))
     os.remove('mp_columns_out')
   if os.path.exists('mp_columns_out_index'):
-    mp_columns_out_index = np.array(pd.read_csv('mp_columns_out_index', sep=' ',  header=None))
+    mp_columns_out_index = np.array(pd.read_csv('mp_columns_out_index', sep=' ',  header=None, na_values='-nan(ind)'))
     os.remove('mp_columns_out_index')
   if os.path.exists('mp_rows_out'):
-    mp_rows_out = np.array(pd.read_csv('mp_rows_out', sep=' ', header=None))
+    mp_rows_out = np.array(pd.read_csv('mp_rows_out', sep=' ', header=None, na_values='-nan(ind)'))
     os.remove('mp_rows_out')
   if os.path.exists('mp_rows_out_index'):
-    mp_rows_out_index = np.array(pd.read_csv('mp_rows_out_index', sep=' ', header=None))
+    mp_rows_out_index = np.array(pd.read_csv('mp_rows_out_index', sep=' ', header=None, na_values='-nan(ind)'))
     os.remove('mp_rows_out_index')
   
   return mp_columns_out, mp_columns_out_index, mp_rows_out, mp_rows_out_index
@@ -258,7 +259,8 @@ def all_tests_passed(results):
          print(key)
   print(f'{correct_tests} of {test_count} tests passed')
   return test_count == correct_tests
-    
+
+print('Path to SCAMP executable is: ' + os.path.abspath(executable))  
   
 inputs = generate_input_arrays(input_sizes_to_test)
 file_inputs = read_file_inputs(static_test_cases)

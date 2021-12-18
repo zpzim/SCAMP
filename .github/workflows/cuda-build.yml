@@ -1,0 +1,47 @@
+name: CUDA Build (No Test)
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        compiler: [g++, clang++, cl]
+        exclude:
+          - os: ubuntu-latest
+            compiler: cl
+          - os: windows-latest
+            compiler: g++
+          - os: windows-latest
+            compiler: clang++
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: 'true'
+      - uses: Jimver/cuda-toolkit@v0.2.5
+        id: cuda-toolkit
+        with:
+          cuda: '11.5.1'
+
+      - name: Prep Build
+        run: echo "CXX=${{ matrix.compiler }}" >> $GITHUB_ENV
+        
+      - name: Build SCAMP
+        shell: bash
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE
+          mkdir build && cd build
+          cmake -DFORCE_CUDA=1 ..
+          cmake --build . --config Release --parallel 2
