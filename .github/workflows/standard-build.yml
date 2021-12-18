@@ -1,4 +1,4 @@
-name: Standard Build And Test
+name: CPU Build And Test
 
 on:
   push:
@@ -42,7 +42,7 @@ jobs:
           cd $GITHUB_WORKSPACE
           mkdir build && cd build
           cmake ..
-          cmake --build . --config Release 
+          cmake --build . --config Release --parallel 2
           if [ -f "./Release/SCAMP.exe" ]; then
             cp ./Release/SCAMP.exe .
           fi

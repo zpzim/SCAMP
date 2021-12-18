@@ -1,4 +1,4 @@
-name: Pyscamp Build And Test
+name: Pyscamp CPU Build And Test
 
 on:
   push:

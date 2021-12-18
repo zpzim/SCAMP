@@ -1,29 +1,23 @@
-# This is a basic workflow to help you get started with Actions
+name: CUDA Build (No Test)
 
-name: CUDA Build
-
-# Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the master branch
   push:
     branches: [ master ]
   pull_request:
     branches: [ master ]
 
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   build:
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        compiler: [g++, clang++, msvc]
+        compiler: [g++, clang++, cl]
         exclude:
           - os: ubuntu-latest
-            compiler: msvc
+            compiler: cl
           - os: windows-latest
             compiler: g++
           - os: windows-latest
@@ -41,7 +35,6 @@ jobs:
           cuda: '11.5.1'
 
       - name: Prep Build
-        if: matrix.os != 'windows-latest'
         run: echo "CXX=${{ matrix.compiler }}" >> $GITHUB_ENV
         
       - name: Build SCAMP
@@ -51,4 +44,4 @@ jobs:
           cd $GITHUB_WORKSPACE
           mkdir build && cd build
           cmake -DFORCE_CUDA=1 ..
-          cmake --build . --config Release 
+          cmake --build . --config Release --parallel 2
