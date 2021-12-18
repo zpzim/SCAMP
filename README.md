@@ -1,5 +1,6 @@
 [![CLI CPU Build And Test](https://github.com/zpzim/SCAMP/actions/workflows/standard-build.yml/badge.svg)](https://github.com/zpzim/SCAMP/actions/workflows/standard-build.yml)
 [![pyscamp CPU Build And Test](https://github.com/zpzim/SCAMP/actions/workflows/pyscamp-build.yml/badge.svg)](https://github.com/zpzim/SCAMP/actions/workflows/pyscamp-build.yml)
+[![Distributed CPU Build And Test](https://github.com/zpzim/SCAMP/actions/workflows/distributed-build.yml/badge.svg)](https://github.com/zpzim/SCAMP/actions/workflows/distributed-build.yml)
 [![CLI CUDA Build](https://github.com/zpzim/SCAMP/actions/workflows/cuda-build.yml/badge.svg)](https://github.com/zpzim/SCAMP/actions/workflows/cuda-build.yml)
 [![Docker Build Status](https://img.shields.io/docker/cloud/build/zpzim/scamp)](https://hub.docker.com/repository/docker/zpzim/scamp)
 [![RTD Build Status](https://img.shields.io/readthedocs/scamp-docs)](https://scamp-docs.readthedocs.io/en/latest/)
