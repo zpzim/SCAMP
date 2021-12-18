@@ -149,16 +149,16 @@ def run_scamp(inputs, a, b, window, tilesz, max_matches, thresh, ptype, rrows, r
   mp_rows_out = None
   mp_rows_out_index = None
   if os.path.exists('mp_columns_out'):
-    mp_columns_out = np.array(pd.read_csv('mp_columns_out', sep=' ', header=None))
+    mp_columns_out = np.array(pd.read_csv('mp_columns_out', sep=' ', header=None, na_values='-nan(ind)'))
     os.remove('mp_columns_out')
   if os.path.exists('mp_columns_out_index'):
-    mp_columns_out_index = np.array(pd.read_csv('mp_columns_out_index', sep=' ',  header=None))
+    mp_columns_out_index = np.array(pd.read_csv('mp_columns_out_index', sep=' ',  header=None, na_values='-nan(ind)'))
     os.remove('mp_columns_out_index')
   if os.path.exists('mp_rows_out'):
-    mp_rows_out = np.array(pd.read_csv('mp_rows_out', sep=' ', header=None))
+    mp_rows_out = np.array(pd.read_csv('mp_rows_out', sep=' ', header=None, na_values='-nan(ind)'))
     os.remove('mp_rows_out')
   if os.path.exists('mp_rows_out_index'):
-    mp_rows_out_index = np.array(pd.read_csv('mp_rows_out_index', sep=' ', header=None))
+    mp_rows_out_index = np.array(pd.read_csv('mp_rows_out_index', sep=' ', header=None, na_values='-nan(ind)'))
     os.remove('mp_rows_out_index')
   
   return mp_columns_out, mp_columns_out_index, mp_rows_out, mp_rows_out_index
