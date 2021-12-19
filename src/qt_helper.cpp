@@ -41,7 +41,7 @@ void qt_compute_helper::free() {
     gpuErrchk(cudaFree(Tc));
     gpuErrchk(cudaFree(Qc));
     CHECK_CUFFT_ERRORS(cufftDestroy(fft_plan))
-        CHECK_CUFFT_ERRORS(cufftDestroy(ifft_plan))
+    CHECK_CUFFT_ERRORS(cufftDestroy(ifft_plan))
 #else
     ASSERT(false,
            "Attempted to use GPU resources in a binary not built with cuda");
@@ -100,7 +100,8 @@ SCAMPError_t qt_compute_helper::compute_QT(double *QT, const double *T,
                               fft_work_size, s);
   error = cudaGetLastError();
   if (error != cudaSuccess) {
-    printf("Error launching populate reverse pad: %s\n", cudaGetErrorString(error));
+    printf("Error launching populate reverse pad: %s\n",
+           cudaGetErrorString(error));
     return SCAMP_CUDA_ERROR;
   }
 
@@ -110,7 +111,8 @@ SCAMPError_t qt_compute_helper::compute_QT(double *QT, const double *T,
                                       s);
   error = cudaGetLastError();
   if (error != cudaSuccess) {
-    printf("Error launching elementwise multiply inplace: %s\n", cudaGetErrorString(error));
+    printf("Error launching elementwise multiply inplace: %s\n",
+           cudaGetErrorString(error));
     return SCAMP_CUDA_ERROR;
   }
 
@@ -121,7 +123,8 @@ SCAMPError_t qt_compute_helper::compute_QT(double *QT, const double *T,
   error = cudaGetLastError();
 
   if (error != cudaSuccess) {
-    printf("Error launching normalized aligned dot products: %s\n", cudaGetErrorString(error));
+    printf("Error launching normalized aligned dot products: %s\n",
+           cudaGetErrorString(error));
     return SCAMP_CUDA_ERROR;
   }
 
