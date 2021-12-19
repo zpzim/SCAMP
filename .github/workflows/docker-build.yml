@@ -1,14 +1,13 @@
 name: Docker Build and Push
 
 on:
-  push:
-    branches:
-      - 'master'
-      - 'add-docker-build-action'
+  # Runs on default branch after testing is completed and successful.
+  workflow_run: ["CUDA Build (No Test)", "Distributed CPU Build And Test", "CPU Build And Test"]
 
 jobs:
   docker:
     runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: Login to DockerHub
         uses: docker/login-action@v1 
