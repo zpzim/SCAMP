@@ -2,7 +2,10 @@ name: Docker Build and Push
 
 on:
   # Runs on default branch after testing is completed and successful.
-  workflow_run: ["CUDA Build (No Test)", "Distributed CPU Build And Test", "CPU Build And Test"]
+  workflow_run:
+    workflows: ["CUDA Build (No Test)", "Distributed CPU Build And Test", "CPU Build And Test"]
+    branches: [master]
+    types: [completed]
 
 jobs:
   docker:
