@@ -1,0 +1,26 @@
+name: Docker Build and Push
+
+on:
+  # Runs on default branch after testing is completed and successful.
+  workflow_run:
+    workflows: ["CUDA Build (No Test)", "Distributed CPU Build And Test", "CPU Build And Test"]
+    branches: [master]
+    types: [completed]
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Login to DockerHub
+        uses: docker/login-action@v1 
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        id: docker_build
+        uses: docker/build-push-action@v2
+        with:
+          push: true
+          tags: zpzim/scamp:latest
