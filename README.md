@@ -1,6 +1,8 @@
 [![Build and Test](https://github.com/zpzim/SCAMP/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/zpzim/SCAMP/actions/workflows/build-and-test.yml)
-[![Docker Build Status](https://img.shields.io/docker/cloud/build/zpzim/scamp)](https://hub.docker.com/repository/docker/zpzim/scamp)
+[![Docker Build and Push](https://github.com/zpzim/SCAMP/actions/workflows/docker-build.yml/badge.svg)](https://github.com/zpzim/SCAMP/actions/workflows/docker-build.yml)
 [![RTD Build Status](https://img.shields.io/readthedocs/scamp-docs)](https://scamp-docs.readthedocs.io/en/latest/)
+![PyPI](https://img.shields.io/pypi/v/pyscamp?label=pyscamp%20version)
+![PyPI - Downloads](https://img.shields.io/pypi/dm/pyscamp?label=pypi%20downloads)
 
 # SCAMP: SCAlable Matrix Profile
 
