@@ -87,7 +87,6 @@ SCAMPError_t qt_compute_helper::compute_QT(double *QT, const double *T,
   // For some reason the input parameter to cufftExecD2Z is not held const
   // by cufft I see nowhere in the documentation that the input vector is
   // modified using const_cast as a hack to get around this...
-  //
   CHECK_CUFFT_ERRORS(
       cufftExecD2Z(fft_plan, const_cast<double *>(T), Tc))  // NOLINT
 
