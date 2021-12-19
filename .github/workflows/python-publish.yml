@@ -3,7 +3,7 @@ name: Upload Python Package
 on:
   workflow_run:
     workflows: ["Build and Test"]
-    branches: [master,zpzim-add-pypi-publish]
+    branches: [master]
     types: [completed]
 
 jobs:
