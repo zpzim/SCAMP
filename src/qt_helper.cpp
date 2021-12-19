@@ -38,9 +38,9 @@ void qt_compute_helper::free() {
   if (_arch == CUDA_GPU_WORKER) {
 #ifdef _HAS_CUDA_
     cudaFree(Q_reverse_pad);
-    gpuErrchk(cudaPeekAtLastError()) cudaFree(Tc);
-    gpuErrchk(cudaPeekAtLastError()) cudaFree(Qc);
-    gpuErrchk(cudaPeekAtLastError()) CHECK_CUFFT_ERRORS(cufftDestroy(fft_plan))
+    gpuErrchk(cudaFree(Tc));
+    gpuErrchk(cudaFree(Qc));
+    CHECK_CUFFT_ERRORS(cufftDestroy(fft_plan))
         CHECK_CUFFT_ERRORS(cufftDestroy(ifft_plan))
 #else
     ASSERT(false,
@@ -92,11 +92,15 @@ SCAMPError_t qt_compute_helper::compute_QT(double *QT, const double *T,
   CHECK_CUFFT_ERRORS(
       cufftExecD2Z(fft_plan, const_cast<double *>(T), Tc))  // NOLINT
 
+  // clear last error
+  error = cudaGetLastError();
+
   // Reverse and zero pad the query
   launch_populate_reverse_pad(Q, Q_reverse_pad, qmeans, window_size, size,
                               fft_work_size, s);
-  error = cudaPeekAtLastError();
+  error = cudaGetLastError();
   if (error != cudaSuccess) {
+    printf("Error launching populate reverse pad: %s\n", cudaGetErrorString(error));
     return SCAMP_CUDA_ERROR;
   }
 
@@ -104,8 +108,9 @@ SCAMPError_t qt_compute_helper::compute_QT(double *QT, const double *T,
 
   launch_elementwise_multiply_inplace(Tc, Qc, cufft_data_size, fft_work_size,
                                       s);
-  error = cudaPeekAtLastError();
+  error = cudaGetLastError();
   if (error != cudaSuccess) {
+    printf("Error launching elementwise multiply inplace: %s\n", cudaGetErrorString(error));
     return SCAMP_CUDA_ERROR;
   }
 
@@ -113,9 +118,10 @@ SCAMPError_t qt_compute_helper::compute_QT(double *QT, const double *T,
 
   launch_normalized_aligned_dot_products(Q_reverse_pad, size, window_size, n,
                                          QT, fft_work_size, s);
-  error = cudaPeekAtLastError();
+  error = cudaGetLastError();
 
   if (error != cudaSuccess) {
+    printf("Error launching normalized aligned dot products: %s\n", cudaGetErrorString(error));
     return SCAMP_CUDA_ERROR;
   }
 
