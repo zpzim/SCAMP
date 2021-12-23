@@ -19,8 +19,6 @@ dm_self = distance_matrix(arr, None, 1024)
 dm_ab = distance_matrix(arr, arr2, 1024)
 
 dist, index = mp.selfjoin(arr, 1024, pearson=True)
-dist = dist.reshape((len(dist) , 1))
-index = index.reshape((len(index), 1))
 vdist, vindex = reduce_1nn_index(dm_self)
 if compare_vectors(vdist, dist) and compare_index(vindex, vdist, index, dist):
   print("1NN INDEX Self join pass")
@@ -30,8 +28,6 @@ else:
 
 
 dist, index = mp.abjoin(arr, arr2, 1024, pearson=True)
-dist = dist.reshape((len(dist) , 1))
-index = index.reshape((len(index), 1))
 vdist, vindex = reduce_1nn_index(dm_ab)
 
 
@@ -42,7 +38,6 @@ else:
   print("1NN INDEX AB join fail")
 
 dist = mp.selfjoin_sum(arr, 1024, threshold=0.90, pearson=True)
-dist = dist.reshape((len(dist), 1))
 vdist = reduce_sum_thresh(dm_self, 0.90)
 
 if compare_vectors_sum(vdist, dist, 0.90):
@@ -53,7 +48,6 @@ else:
 
 
 dist = mp.abjoin_sum(arr, arr2, 1024, threshold=0.90, pearson=True)
-dist = dist.reshape((len(dist), 1))
 vdist = reduce_sum_thresh(dm_ab, 0.90)
 
 if compare_vectors_sum(vdist, dist, 0.90):
