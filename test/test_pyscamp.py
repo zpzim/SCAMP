@@ -22,7 +22,6 @@ dist, index = mp.selfjoin(arr, 1024, pearson=True)
 dist = dist.reshape((len(dist) , 1))
 index = index.reshape((len(index), 1))
 vdist, vindex = reduce_1nn_index(dm_self)
-
 if compare_vectors(vdist, dist) and compare_index(vindex, vdist, index, dist):
   print("1NN INDEX Self join pass")
 else:
@@ -46,7 +45,7 @@ dist = mp.selfjoin_sum(arr, 1024, threshold=0.90, pearson=True)
 dist = dist.reshape((len(dist), 1))
 vdist = reduce_sum_thresh(dm_self, 0.90)
 
-if compare_vectors_sum(vdist, np.array(dist), 0.90):
+if compare_vectors_sum(vdist, dist, 0.90):
   print("SUM Self join pass")
 else:
   failed = True
@@ -57,7 +56,7 @@ dist = mp.abjoin_sum(arr, arr2, 1024, threshold=0.90, pearson=True)
 dist = dist.reshape((len(dist), 1))
 vdist = reduce_sum_thresh(dm_ab, 0.90)
 
-if compare_vectors_sum(vdist, np.array(dist), 0.90):
+if compare_vectors_sum(vdist, dist, 0.90):
   print("SUM AB join pass")
 else:
   failed = True
@@ -69,8 +68,21 @@ dist = mp.selfjoin(arr, 1024, threads=2)
 
 if mp.gpu_supported():
   print('GPUs Supported')
-  # TODO(zpzim): add a correctness check here once we have a test for that
-  x = mp.selfjoin_knn(arr, 1024, 5, threshold=0.95, pearson=True)
+  thresh = 0.12
+  vdist, vindex = reduce_1nn_index(dm_self)
+  x = mp.selfjoin_knn(arr, 1024, 5, threshold=thresh, pearson=True)
+  if compare_all_neighbors(dm_self, vdist, vindex, x, thresh):
+    print("KNN Self join pass")
+  else:
+    failed = True
+    print("KNN Self join fail")
+  vdist, vindex = reduce_1nn_index(dm_ab)
+  x = mp.abjoin_knn(arr,arr2, 1024, 5, threshold=thresh, pearson=True)
+  if compare_all_neighbors(dm_ab, vdist, vindex, x, thresh):
+    print("KNN AB join pass")
+  else:
+    failed = True
+    print("KNN AB join fail")
   # TODO(zpzim): add a correctness check here once we have a test for that
   matrix = mp.abjoin_matrix(arr, arr2, 1024, threshold=0.125, mwidth=10, mheight=5, pearson=True)
 
