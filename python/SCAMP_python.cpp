@@ -194,7 +194,7 @@ bool setup_and_do_SCAMP(SCAMP::SCAMPArgs* args, py::kwargs kwargs) {
       num_cpus = std::thread::hardware_concurrency();
     }
     SCAMP::do_SCAMP(args, gpus, num_cpus);
-  // If no threads/GPUs were specified, let SCAMP figure out what to do.
+    // If no threads/GPUs were specified, let SCAMP figure out what to do.
   } else if (gpus.empty() && num_cpus == 0) {
     SCAMP::do_SCAMP(args);
   } else {
