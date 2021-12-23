@@ -130,7 +130,7 @@ jobs:
           set -e
           cd $GITHUB_WORKSPACE
           python3 -m pip install .
-          python3 -m pip install numpy
+          python3 -m pip install numpy pandas tqdm
 
       - name: pyscamp Test
         shell: bash
