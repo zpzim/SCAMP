@@ -263,14 +263,14 @@ int num_available_gpus() {
 #ifdef _HAS_CUDA_
   cudaGetDeviceCount(&num_dev);
 #endif
-  return num_def;
+  return num_dev;
 }
 
 void do_SCAMP(SCAMPArgs *args) {
   std::vector<int> devices;
   int num_threads = 0;
   int num_devices = num_available_gpus();
-  for (int i = 0; i < num_dev; ++i) {
+  for (int i = 0; i < num_devices; ++i) {
     devices.push_back(i);
   }
   if (devices.empty()) {
