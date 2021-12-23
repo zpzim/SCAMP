@@ -258,16 +258,21 @@ SCAMPError_t SCAMP_Operation::do_join(const std::vector<double> &timeseries_a,
   return SCAMP_NO_ERROR;
 }
 
+int num_available_gpus() {
+  int num_dev = 0;
+#ifdef _HAS_CUDA_
+  cudaGetDeviceCount(&num_dev);
+#endif
+  return num_def;
+}
+
 void do_SCAMP(SCAMPArgs *args) {
   std::vector<int> devices;
   int num_threads = 0;
-#ifdef _HAS_CUDA_
-  int num_dev;
-  cudaGetDeviceCount(&num_dev);
+  int num_devices = num_available_gpus();
   for (int i = 0; i < num_dev; ++i) {
     devices.push_back(i);
   }
-#endif
   if (devices.empty()) {
     num_threads = std::thread::hardware_concurrency();
   }

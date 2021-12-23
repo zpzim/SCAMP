@@ -365,11 +365,7 @@ py::array_t<float> scamp_matrix(const std::vector<double>& a,
 }
 
 bool has_gpu_support() {
-#ifdef _HAS_CUDA_
-  return true;
-#else
-  return false;
-#endif
+  return SCAMP::num_available_gpus() > 0;
 }
 
 bool (*GPU_supported)() = &has_gpu_support;
@@ -418,7 +414,7 @@ PYBIND11_MODULE(pyscamp, m) {
     )pbdoc";
 
   m.def("gpu_supported", GPU_supported, R"pbdoc(
-        Returns whether or not the module was compiled with GPU support
+        Returns true if both 1) The module was compiled with GPU support and 2) GPUs are available.
         )pbdoc");
 
   m.def("selfjoin", self_join_1NN_INDEX, py::arg("a"), py::arg("m"), R"pbdoc(
