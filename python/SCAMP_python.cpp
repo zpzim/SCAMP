@@ -364,9 +364,7 @@ py::array_t<float> scamp_matrix(const std::vector<double>& a,
   return arr;
 }
 
-bool has_gpu_support() {
-  return SCAMP::num_available_gpus() > 0;
-}
+bool has_gpu_support() { return SCAMP::num_available_gpus() > 0; }
 
 bool (*GPU_supported)() = &has_gpu_support;
 std::tuple<py::array_t<float>, py::array_t<int>> (*self_join_1NN_INDEX)(
