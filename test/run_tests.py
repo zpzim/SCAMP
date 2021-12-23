@@ -107,8 +107,8 @@ def generate_tests(input_sizes, windows):
 def evaluate_result(dm_reductions, scamp_results, subtestargs):
   ptype = subtestargs['ptype']
   if ptype == "1NN_INDEX":
-    valid_data = dm_reductions[("1NN_INDEX",None,None,None)]
-    return compare_index(valid_data[1], valid_data[0], scamp_results[1], scamp_results[0]) and compare_vectors(valid_data[0], scamp_results[0])
+    valid_nn, valid_idx = dm_reductions[("1NN_INDEX",None,None,None)]
+    return compare_index(valid_idx, valid_nn, scamp_results[1], scamp_results[0]) and compare_vectors(valid_nn, scamp_results[0])
   
   if ptype == "1NN":
     valid_data = dm_reductions[("1NN",None,None,None)]
@@ -139,6 +139,8 @@ def run_pyscamp(inputs, a, b, window, max_matches, thresh, ptype, rrows, rcols):
     args['mheight'] = rrows
   if rcols:
     args['mwidth'] = rcols
+  if '--no_gpu' in extra_opts:
+    args['gpus'] = []
 
   if not max_matches:
     max_matches = 5
@@ -166,7 +168,16 @@ def run_pyscamp(inputs, a, b, window, max_matches, thresh, ptype, rrows, rcols):
   else:
     raise ValueError('pyscamp does not support profile type {}'.format(ptype))
 
-  return mp_columns_out, mp_columns_out_index, mp_rows_out, mp_rows_out_index 
+  if mp_columns_out is not None:
+    mp_columns_out = mp_columns_out.squeeze()
+  if mp_columns_out_index is not None:
+    mp_columns_out_index = mp_columns_out_index.squeeze()
+  if mp_rows_out is not None:
+    mp_rows_out = mp_rows_out.squeeze()
+  if mp_rows_out_index is not None:
+    mp_rows_out_index = mp_rows_out_index.squeeze()
+  
+  return mp_columns_out, mp_columns_out_index, mp_rows_out, mp_rows_out_index
 
 def read_file_to_array(filename):
   if not os.path.exists(filename):

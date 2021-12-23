@@ -2,7 +2,7 @@ import numpy as np
 
 def compare_index(valid, valid_corr, check, check_corr):
   if np.any(valid.shape != check.shape):
-    print('Output Shapes do not match')
+    print('Compare Index: Output Shapes valid = {} and check = {} do not match'.format(valid.shape, check.shape))
     return False
 
   # Find the elements which do not agree
@@ -14,18 +14,24 @@ def compare_index(valid, valid_corr, check, check_corr):
   # Any indexes whose nearest neighbor correlations do not agree with fp32 precision should be treated as non-matching
   incorrect = np.count_nonzero(corr_fp32_no_agree)
 
-  return incorrect == 0
+  if incorrect > 0:
+    print('Compare Index: found {} incorrect indexes.'.format(incorrect))
+    return False
+  return True
 
 
 def compare_vectors(valid, check):
   if np.any(valid.shape != check.shape):
-    print('Output Shapes do not match')
+    print('Compare Vectors: Output Shapes valid = {} and check = {} do not match'.format(valid.shape, check.shape))
     return False
-  return np.allclose(valid, check, equal_nan=True)
+  if not np.allclose(valid, check, equal_nan=True):
+    print('Compare Vectors: Found inconsistencies between SCAMP output and the ground truth.')
+    return False
+  return True
 
 def compare_vectors_sum(valid, check, thresh):
   if np.any(valid.shape != check.shape):
-    print('Output Shapes do not match')
+    print('Compare Sum: Output Shapes valid = {} and check = {} do not match'.format(valid.shape, check.shape))
     return False
     
   x = np.allclose(valid, check, equal_nan=False)
@@ -46,12 +52,14 @@ def compare_vectors_sum(valid, check, thresh):
     # The nonzero values in this resulting array correspond to errors that very likely do not come from perturbation errors around the threshold.
     incorrect = np.count_nonzero(diff)
     
-    return incorrect == 0
+    if incorrect != 0:
+      print('Compare Sum: Found {} values which were far from the correct sum.'.format(incorrect))
+      return False
   return True
 
 def compare_matrix(valid, check):
   if np.any(valid.shape != check.shape):
-    print('Output Shapes do not match')
+    print('Compare Matrix: Output Shapes valid = {} and check = {} do not match'.format(valid.shape, check.shape))
     return False
   
   return np.allclose(valid, check, equal_nan=True)
