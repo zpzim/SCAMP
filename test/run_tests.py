@@ -21,7 +21,8 @@ np.set_printoptions(edgeitems=30, linewidth=100000)
 np.random.seed(13)
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--executable', help='SCAMP executable to test', required=True)
+parser.add_argument('--executable', help='SCAMP executable to test, input \'pyscamp\' to use pyscamp', required=True)
+parser.add_argument('--force_gpu', type=bool, help='Forces GPU-specific tests to run')
 parser.add_argument('--output_file', help='File for test std output')
 parser.add_argument('--extra_args', help='Extra arguments to be passed to each test invocation')
 parser.add_argument('--window_sizes', type=int, nargs='+')
@@ -31,7 +32,9 @@ parser.add_argument('--matrix_sizes', type=int, nargs='+')
 parser.add_argument('--thresholds', type=float, nargs='+')
 args = parser.parse_args()
 
+
 executable = args.executable
+
 if args.output_file is not None:
   outfile = args.output_file
 
@@ -53,7 +56,15 @@ if args.matrix_sizes is not None:
 if args.thresholds is not None:
   thresholds_to_test = args.thresholds
 
+if executable == 'pyscamp':
+  import pyscamp as mp
+  if args.tile_sizes:
+    print('Warning: ignoring tile_sizes during pyscamp execution')
+  tile_sizes_to_test = [0]
 
+gpu_enabled = False
+if args.force_gpu or (executable == 'pyscamp' and mp.gpu_supported()):
+  gpu_enabled = True
 
 index_match_ratio = 0.001
 matrix_match_ratio = 0.001
@@ -96,8 +107,8 @@ def generate_tests(input_sizes, windows):
 def evaluate_result(dm_reductions, scamp_results, subtestargs):
   ptype = subtestargs['ptype']
   if ptype == "1NN_INDEX":
-    valid_data = dm_reductions[("1NN_INDEX",None,None,None)]
-    return compare_index(valid_data[1], valid_data[0], scamp_results[1], scamp_results[0]) and compare_vectors(valid_data[0], scamp_results[0])
+    valid_nn, valid_idx = dm_reductions[("1NN_INDEX",None,None,None)]
+    return compare_index(valid_idx, valid_nn, scamp_results[1], scamp_results[0]) and compare_vectors(valid_nn, scamp_results[0])
   
   if ptype == "1NN":
     valid_data = dm_reductions[("1NN",None,None,None)]
@@ -107,18 +118,84 @@ def evaluate_result(dm_reductions, scamp_results, subtestargs):
     valid_data = dm_reductions[("SUM_THRESH",subtestargs['threshold'],None,None)]
     return compare_vectors_sum(valid_data, scamp_results[0], subtestargs['threshold'])
   
-  if ptype == "ALL_NEIGHBORS_MATRIX":
-    valid_data = dm_reductions[("ALL_NEIGHBORS_MATRIX", None, subtestargs['rrow'], subtestargs['rcol'])] 
+  if ptype == "MATRIX_SUMMARY":
+    valid_data = dm_reductions[("MATRIX_SUMMARY", None, subtestargs['rrow'], subtestargs['rcol'])] 
     valid_data[valid_data < subtestargs['threshold']] = -1.0
     return compare_matrix(valid_data, scamp_results[0][:,:-1])
   
   if ptype == "ALL_NEIGHBORS":
-    valid_data = dm_reductions[("ALL_NEIGHBORS", subtestargs['threshold'], None, None)]
-    return compare_all_neighbors(valid_data, scamp_results[0])
+    valid_dm = dm_reductions[("ALL_NEIGHBORS", None, None, None)]
+    valid_nn, valid_idx = dm_reductions[("1NN_INDEX",None,None,None)]
+    return compare_all_neighbors(valid_dm, valid_nn, valid_idx, scamp_results[0], subtestargs['threshold'])
   
   return None
 
+def run_pyscamp(inputs, a, b, window, max_matches, thresh, ptype, rrows, rcols):  
+  args = {}
+  args['pearson'] = True
+  if thresh:
+    args['threshold'] = thresh
+  if rrows:
+    args['mheight'] = rrows
+  if rcols:
+    args['mwidth'] = rcols
+  if '--no_gpu' in extra_opts:
+    args['gpus'] = []
+
+  if not max_matches:
+    max_matches = 5
+  
+  mp_columns_out = None
+  mp_columns_out_index = None
+  mp_rows_out = None
+  mp_rows_out_index = None
+    
+  if ptype == "1NN_INDEX":
+    if a == b:
+      mp_columns_out, mp_columns_out_index = mp.selfjoin(inputs[a], window, **args)
+    else:
+      mp_columns_out, mp_columns_out_index = mp.abjoin(inputs[a], inputs[b], window, **args)
+  elif ptype == "SUM_THRESH":
+    if a == b:
+      mp_columns_out = mp.selfjoin_sum(inputs[a], window, **args)
+    else:
+      mp_columns_out = mp.abjoin_sum(inputs[a], inputs[b], window, **args)
+  elif ptype == "ALL_NEIGHBORS":
+    if a == b:
+      mp_columns_out = mp.selfjoin_knn(inputs[a], window, max_matches, **args)
+    else:
+      mp_columns_out = mp.abjoin_knn(inputs[a], inputs[b], window, max_matches, **args)
+  else:
+    raise ValueError('pyscamp does not support profile type {}'.format(ptype))
+
+  if mp_columns_out is not None:
+    mp_columns_out = mp_columns_out.squeeze()
+  if mp_columns_out_index is not None:
+    mp_columns_out_index = mp_columns_out_index.squeeze()
+  if mp_rows_out is not None:
+    mp_rows_out = mp_rows_out.squeeze()
+  if mp_rows_out_index is not None:
+    mp_rows_out_index = mp_rows_out_index.squeeze()
+  
+  return mp_columns_out, mp_columns_out_index, mp_rows_out, mp_rows_out_index
+
+def read_file_to_array(filename):
+  if not os.path.exists(filename):
+    return None
+  try:
+    return np.array(pd.read_csv(filename, sep=' ', header=None, na_values='-nan(ind)')).squeeze()
+  except pd.errors.EmptyDataError:
+    print('Note: file {} was empty. Returning empty array.'.format(filename))
+    return np.array([])
+
 def run_scamp(inputs, a, b, window, tilesz, max_matches, thresh, ptype, rrows, rcols, keep_rows, aligned):
+  if executable == 'pyscamp':
+    if keep_rows:
+      raise ValueError('keep_rows not supported with pyscamp.')
+    if aligned:
+      raise ValueError('aligned not supported with pyscamp.')
+    return run_pyscamp(inputs, a, b, window, max_matches, thresh, ptype, rrows, rcols)
+
   args = f'--output_pearson --window={window} --input_a_file_name=a.txt {extra_opts}'
 
   if a != b:
@@ -141,26 +218,14 @@ def run_scamp(inputs, a, b, window, tilesz, max_matches, thresh, ptype, rrows, r
     args += f' --max_matches_per_column={max_matches}'
 
   #print(args)
-
+  
   ret = subprocess.call(os.path.abspath(executable) + ' ' + args, shell=True)
   
-  mp_columns_out = None
-  mp_columns_out_index = None
-  mp_rows_out = None
-  mp_rows_out_index = None
-  if os.path.exists('mp_columns_out'):
-    mp_columns_out = np.array(pd.read_csv('mp_columns_out', sep=' ', header=None, na_values='-nan(ind)'))
-    os.remove('mp_columns_out')
-  if os.path.exists('mp_columns_out_index'):
-    mp_columns_out_index = np.array(pd.read_csv('mp_columns_out_index', sep=' ',  header=None, na_values='-nan(ind)'))
-    os.remove('mp_columns_out_index')
-  if os.path.exists('mp_rows_out'):
-    mp_rows_out = np.array(pd.read_csv('mp_rows_out', sep=' ', header=None, na_values='-nan(ind)'))
-    os.remove('mp_rows_out')
-  if os.path.exists('mp_rows_out_index'):
-    mp_rows_out_index = np.array(pd.read_csv('mp_rows_out_index', sep=' ', header=None, na_values='-nan(ind)'))
-    os.remove('mp_rows_out_index')
-  
+  mp_columns_out = read_file_to_array('mp_columns_out')
+  mp_columns_out_index = read_file_to_array('mp_columns_out_index')  
+  mp_rows_out = read_file_to_array('mp_rows_out')
+  mp_rows_out_index = read_file_to_array('mp_rows_out_index')
+
   return mp_columns_out, mp_columns_out_index, mp_rows_out, mp_rows_out_index
 
 
@@ -178,17 +243,19 @@ def run_test(test, inputs):
   dm_reductions = {}
   dm_reductions[('1NN_INDEX', None, None, None)] = reduce_1nn_index(dm)
   dm_reductions[('1NN', None, None, None)] = reduce_1nn(dm)
-  dm_reductions[('ALL_NEIGHBORS', 0.0, None, None)] = dm
+  dm_reductions[('ALL_NEIGHBORS', None, None, None)] = dm
   
   result_sum = []
   for thresh in thresholds_to_test:
     dm_reductions[('SUM_THRESH', thresh, None, None)] = reduce_sum_thresh(dm, thresh)
   for rows in matrix_sizes_to_test:
     for cols in matrix_sizes_to_test:
-      dm_reductions[('ALL_NEIGHBORS_MATRIX', None, rows, cols)] = reduce_matrix(dm, rows,cols)
+      dm_reductions[('MATRIX_SUMMARY', None, rows, cols)] = reduce_matrix(dm, rows,cols)
   
-  np.savetxt('a.txt', a_data)
-  np.savetxt('b.txt', b_data)
+  # We only need local files for the CLI
+  if executable != 'pyscamp':
+    np.savetxt('a.txt', a_data)
+    np.savetxt('b.txt', b_data)
   
   subtests = {}
   prev_tile_size = None
@@ -201,20 +268,14 @@ def run_test(test, inputs):
     valid = evaluate_result(dm_reductions,scamp_results,subtest_dict)
     subtests[subtest_args] = valid
  
-    subtest_dict = {'tilesz' : tile_sz, 'matchpercol' : None, 'threshold': None, 'ptype': "1NN", 'rrow': None, 'rcol': None, 'keeprows': False, 'aligned': False}
-    subtest_args = tuple(subtest_dict.values())
-    scamp_results = run_scamp(inputs, a, b, window, tile_sz, None, None, "1NN", None, None,False, False);
-    valid = evaluate_result(dm_reductions,scamp_results,subtest_dict)
-    subtests[subtest_args] = valid
+    # Pyscamp does not support 1NN profiles
+    if executable != 'pyscamp':
+      subtest_dict = {'tilesz' : tile_sz, 'matchpercol' : None, 'threshold': None, 'ptype': "1NN", 'rrow': None, 'rcol': None, 'keeprows': False, 'aligned': False}
+      subtest_args = tuple(subtest_dict.values())
+      scamp_results = run_scamp(inputs, a, b, window, tile_sz, None, None, "1NN", None, None,False, False);
+      valid = evaluate_result(dm_reductions,scamp_results,subtest_dict)
+      subtests[subtest_args] = valid
    
-    # All_neighbors not supported on both CPU/GPU yet 
-    ''' 
-    subtest_dict = {'tilesz': tile_sz, 'matchpercol': None, 'threshold': 0.0, 'ptype': 'ALL_NEIGHBORS', 'rrow': None, 'rcol': None, 'keeprows': False, 'aligned': False}
-    subtest_args = tuple(subtest_dict.values())
-    scamp_results = run_scamp(inputs, a, b, window, tile_sz, 99999999, 0.0, "ALL_NEIGHBORS", None, None,False, False);
-    valid = evaluate_result(dm_reductions,scamp_results,subtest_dict)
-    subtests[subtest_args] = valid
-    '''
 
     for thresh in thresholds_to_test:
       subtest_dict = {'tilesz' : tile_sz, 'matchpercol' : None, 'threshold': thresh, 'ptype': "SUM_THRESH", 'rrow': None, 'rcol': None, 'keeprows': False, 'aligned': False}
@@ -222,7 +283,17 @@ def run_test(test, inputs):
       scamp_results = run_scamp(inputs, a, b, window, tile_sz, None, thresh, "SUM_THRESH", None, None,False, False);
       valid = evaluate_result(dm_reductions,scamp_results,subtest_dict)
       subtests[subtest_args] = valid
-  
+
+      # KNN MPs are only supported when cuda devices are available and SCAMP is built with CUDA.
+      # KNN not supported on both CPU/GPU yet
+      '''
+      if gpu_enabled: 
+        subtest_dict = {'tilesz': tile_sz, 'matchpercol': 5, 'threshold': thresh, 'ptype': 'ALL_NEIGHBORS', 'rrow': None, 'rcol': None, 'keeprows': False, 'aligned': False}
+        subtest_args = tuple(subtest_dict.values())
+        scamp_results = run_scamp(inputs, a, b, window, tile_sz, 5, thresh, "ALL_NEIGHBORS", None, None,False, False);
+        valid = evaluate_result(dm_reductions,scamp_results,subtest_dict)
+        subtests[subtest_args] = valid
+      '''
     
 
     for rrow in matrix_sizes_to_test:
@@ -232,17 +303,23 @@ def run_test(test, inputs):
         if rcol * min_reduce_ratio > len(a_data):
           continue
         for thresh in thresholds_to_test:
-          subtest_dict = {'tilesz' : tile_sz, 'matchpercol' : None, 'threshold': thresh, 'ptype': "ALL_NEIGHBORS_MATRIX", 'rrow': rrow, 'rcol': rcol, 'keeprows': False, 'aligned': False}
-          subtest_args = tuple(subtest_dict.values())
-          #subtest_args = (tile_sz, 999999999, thresh, "ALL_NEIGHBORS_MATRIX", rrow, rcol, False, False)
-          scamp_results = run_scamp(inputs, a, b, window, tile_sz, 999999999, thresh, "ALL_NEIGHBORS", rrow, rcol, False, False);
-          valid = evaluate_result(dm_reductions,scamp_results,subtest_dict)
-          subtests[subtest_args] = valid
+          # Matrix summary MPs are only supported when cuda devices are available and SCAMP is built with CUDA.
+          # Matrix summary not supported on both CPU/GPU yet
+          '''
+          if gpu_enabled:
+            subtest_dict = {'tilesz' : tile_sz, 'matchpercol' : None, 'threshold': thresh, 'ptype': "MATRIX_SUMMARY", 'rrow': rrow, 'rcol': rcol, 'keeprows': False, 'aligned': False}
+            subtest_args = tuple(subtest_dict.values())
+            scamp_results = run_scamp(inputs, a, b, window, tile_sz, None, thresh, "MATRIX_SUMMARY", rrow, rcol, False, False);
+            valid = evaluate_result(dm_reductions,scamp_results,subtest_dict)
+            subtests[subtest_args] = valid
+          '''
 
     prev_tile_size = tile_sz
 
-  os.remove('a.txt')
-  os.remove('b.txt')
+  if os.path.exists('a.txt'):
+    os.remove('a.txt')
+  if os.path.exists('b.txt'):
+    os.remove('b.txt')
         
   return subtests
 
@@ -260,8 +337,6 @@ def all_tests_passed(results):
   print(f'{correct_tests} of {test_count} tests passed')
   return test_count == correct_tests
 
-print('Path to SCAMP executable is: ' + os.path.abspath(executable))  
-  
 inputs = generate_input_arrays(input_sizes_to_test)
 file_inputs = read_file_inputs(static_test_cases)
 inputs += [x for x in file_inputs]

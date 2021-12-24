@@ -188,7 +188,14 @@ bool setup_and_do_SCAMP(SCAMP::SCAMPArgs* args, py::kwargs kwargs) {
     get_args_based_on_kwargs(args, kwargs, pearson, gpus, num_cpus);
   }
   InitProfileMemory(args);
-  if (gpus.empty() && num_cpus == 0) {
+  // If an empty list of GPUs was specified we should use CPU only.
+  if (kwargs.contains("gpus") && gpus.empty()) {
+    if (num_cpus <= 0) {
+      num_cpus = std::thread::hardware_concurrency();
+    }
+    SCAMP::do_SCAMP(args, gpus, num_cpus);
+    // If no threads/GPUs were specified, let SCAMP figure out what to do.
+  } else if (gpus.empty() && num_cpus == 0) {
     SCAMP::do_SCAMP(args);
   } else {
     SCAMP::do_SCAMP(args, gpus, num_cpus);
@@ -364,13 +371,7 @@ py::array_t<float> scamp_matrix(const std::vector<double>& a,
   return arr;
 }
 
-bool has_gpu_support() {
-#ifdef _HAS_CUDA_
-  return true;
-#else
-  return false;
-#endif
-}
+bool has_gpu_support() { return SCAMP::num_available_gpus() > 0; }
 
 bool (*GPU_supported)() = &has_gpu_support;
 std::tuple<py::array_t<float>, py::array_t<int>> (*self_join_1NN_INDEX)(
@@ -418,7 +419,7 @@ PYBIND11_MODULE(pyscamp, m) {
     )pbdoc";
 
   m.def("gpu_supported", GPU_supported, R"pbdoc(
-        Returns whether or not the module was compiled with GPU support
+        Returns true if both 1) The module was compiled with GPU support and 2) GPUs are available.
         )pbdoc");
 
   m.def("selfjoin", self_join_1NN_INDEX, py::arg("a"), py::arg("m"), R"pbdoc(

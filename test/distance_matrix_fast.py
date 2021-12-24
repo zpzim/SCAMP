@@ -224,19 +224,19 @@ def reduce_1nn_index(dm):
     idxs = np.argmax(dm, axis=0)
     idxs[corr == -2] = -1
     corr[corr == -2] = np.nan
-    return corr.reshape((corr.shape[0],1)), idxs.reshape((idxs.shape[0],1))
+    return corr.squeeze(), idxs.squeeze()
 
 def reduce_1nn(dm):
     corrs = np.amax(dm, axis=0)
     corrs[corrs == -2] = np.nan
-    return corrs.reshape((corrs.shape[0],1))
+    return corrs.squeeze()
 
 def reduce_sum_thresh(dm, thresh):
     dm2 = np.copy(dm)
     dm2[dm2 <= thresh] = 0
 
     result = np.sum(dm2, dtype='float64', axis=0)
-    return result.reshape((result.shape[0],1))
+    return result.squeeze()
 
 def reduce_frequency_thresh(dm, thresh):
     dm2 = np.copy(dm)
@@ -244,7 +244,7 @@ def reduce_frequency_thresh(dm, thresh):
     dm2[dm2 <= thresh] = 0
   
     result = np.sum(dm2, dtype='float64', axis=0)
-    return result.reshape((result.shape[0],1))
+    return result.squeeze()
   
 
 def reduce_matrix(dm, rows, cols):

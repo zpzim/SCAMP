@@ -7,9 +7,9 @@ threshold=[float]:
 pearson=[bool]:
   Output Pearson Correlation rather than Z-normalized euclidean distance
 threads=[int]:
-  Number of CPU threads to use with SCAMP (if using gpus it is recommended to not use this flag)
+  Number of CPU threads to use with SCAMP (if using gpus it is recommended to not use this flag). If you want to prevent GPUs from being used, pass gpus=[] as a kwarg.
 gpus=[list of integers]:
-  Cuda device ids of gpus to run on, by default we run on all gpus if you have any.
+  Cuda device ids of gpus to run on, by default we run on all gpus if you have any. To opt out of gpu execution, specify an empty list here.
 precision=[string]:
   One of ['single', 'mixed', 'double', 'ultra'] default is double precision, ultra and double precision are supported on CPU and GPU, mixed and single precision are only supported on GPU.
 mwidth=[int]:

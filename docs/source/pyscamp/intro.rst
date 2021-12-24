@@ -65,7 +65,7 @@ Python Example
 
   import pyscamp as mp # Uses GPU if available and CUDA was available during the build
 
-  # Allows checking if pyscamp was built with CUDA and has GPU support
+  # Allows checking if pyscamp was built with CUDA and GPUs are available.
   has_gpu_support = mp.gpu_supported()
 
   # Self join

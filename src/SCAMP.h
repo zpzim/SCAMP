@@ -17,6 +17,8 @@ void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
 
 void do_SCAMP(SCAMPArgs *args);
 
+int num_available_gpus();
+
 class SCAMP_Operation {
  private:
   // Precomputed statistics used by tiles
