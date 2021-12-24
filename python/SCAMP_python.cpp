@@ -35,15 +35,19 @@ std::vector<std::tuple<int64_t, int64_t, float>> SplitProfileKNN(
     bool output_pearson, int window) {
   std::vector<std::tuple<int64_t, int64_t, float>> result;
   for (auto& pq : matches) {
+    std::list<SCAMP::SCAMPmatch> elems;
     while (!pq.empty()) {
+      elems.push_front(pq.top());
+      pq.pop();
+    }
+    for (auto& elem : elems) {
       float corr;
       if (output_pearson) {
-        corr = CleanupPearson(pq.top().corr);
+        corr = CleanupPearson(elem.corr);
       } else {
-        corr = ConvertToEuclidean(pq.top().corr, window);
+        corr = ConvertToEuclidean(elem.corr, window);
       }
-      result.emplace_back(pq.top().col, pq.top().row, corr);
-      pq.pop();
+      result.emplace_back(elem.col, elem.row, corr);
     }
   }
   return result;
