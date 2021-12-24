@@ -100,8 +100,6 @@ DEFINE_string(gpus, "",
 
 int main(int argc, char **argv) {
   bool self_join, computing_rows, computing_cols;
-  size_t start_row = 0;
-  size_t start_col = 0;
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   if (!FLAGS_ultra_precision && !FLAGS_double_precision &&
       !FLAGS_mixed_precision && !FLAGS_single_precision) {

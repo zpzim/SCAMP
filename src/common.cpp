@@ -10,8 +10,6 @@ namespace SCAMP {
 
 static constexpr int64_t GIGABYTE = 1024 * 1024 * 1024;
 
-static constexpr int64_t MEMORY_SAVINGS_FACTOR = 200;
-
 bool NeedsSort(SCAMPProfileType type) {
   return type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS;
 }
@@ -38,16 +36,16 @@ OpInfo::OpInfo(size_t Asize, size_t Bsize, size_t window_sz,
     : full_ts_len_A(Asize),
       full_ts_len_B(Bsize),
       mp_window(window_sz),
-      self_join(selfjoin),
-      fp_type(t),
       global_start_row_position(start_row),
       global_start_col_position(start_col),
       opt_args(args_),
       profile_type(profiletype),
-      keep_rows_separate(keep_rows),
+      fp_type(t),
+      self_join(selfjoin),
       computing_rows(compute_rows),
       computing_cols(compute_cols),
       is_aligned(aligned),
+      keep_rows_separate(keep_rows),
       silent_mode(silent_mode),
       max_matches_per_column(max_matches_per_col),
       matrix_height(mheight),

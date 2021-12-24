@@ -160,13 +160,12 @@ void compute_statistics_cpu(const std::vector<double> &T,
 }
 
 CombinedStats compute_combined_stats_cpu(const std::vector<double> &A,
-                                         const std::vector<double> means_A,
+                                         const std::vector<double> &means_A,
                                          const std::vector<double> &B, size_t m,
                                          bool high_precision) {
   CombinedStats result;
 
   int na = A.size() - m + 1;
-  int nb = B.size() - m + 1;
   int na2 = A.size() - (m - 1) + 1;
   int nb2 = B.size() - (m - 1) + 1;
   std::vector<double> dc_fwd(na2), dc_bkwd(na2), dr_fwd(nb2), dr_bkwd(nb2);

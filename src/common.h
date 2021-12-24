@@ -195,8 +195,8 @@ struct OptionalArgs {
   OptionalArgs(double threshold_, int num_extra_operands_)
       : threshold(threshold_), num_extra_operands(num_extra_operands_) {}
 
-  int num_extra_operands;
   double threshold;
+  int num_extra_operands;
 };
 
 // Defines the execution environment of a SCAMP tile
@@ -220,9 +220,6 @@ struct OpInfo {
          bool silent_mode, int num_workers, int64_t max_matches_per_col,
          int64_t mheight, int64_t mwidth);
 
-  // Type of profile to compute
-  SCAMPProfileType profile_type;
-
   // Total size of A timeseries
   size_t full_ts_len_A;
   // Total size of B timesereis
@@ -233,7 +230,6 @@ struct OpInfo {
   size_t max_tile_width;
   // Max height of the distance matrix associated with the tile
   size_t max_tile_height;
-
   // Subsequence window length for MP
   size_t mp_window;
 
@@ -244,6 +240,9 @@ struct OpInfo {
 
   // Optional kernel arguments
   OptionalArgs opt_args;
+
+  // Type of profile to compute
+  SCAMPProfileType profile_type;
 
   // Precision type of computation
   SCAMPPrecisionType fp_type;

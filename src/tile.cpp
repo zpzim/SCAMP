@@ -21,19 +21,19 @@ static int get_exclusion(uint64_t window_size, int64_t start_row,
 std::pair<int, int> Tile::get_exclusion_for_self_join(bool upper_tile) {
   int exclusion;
   int extra_exclusion = 0;
-  if (_info->profile_type == PROFILE_TYPE_SUM_THRESH ||
-      _info->profile_type == PROFILE_TYPE_FREQUENCY_THRESH) {
+  if (info_->profile_type == PROFILE_TYPE_SUM_THRESH ||
+      info_->profile_type == PROFILE_TYPE_FREQUENCY_THRESH) {
     // We need to omit the main diagonal from one tile so it doesn't get
     // double counted
     extra_exclusion = 1;
   }
   if (upper_tile) {
-    exclusion = get_exclusion(_info->mp_window, get_tile_row(), get_tile_col());
+    exclusion = get_exclusion(info_->mp_window, get_tile_row(), get_tile_col());
     return std::make_pair(exclusion, 0);
   }
-  size_t height = get_tile_height() - _info->mp_window + 1;
+  size_t height = get_tile_height() - info_->mp_window + 1;
   exclusion =
-      get_exclusion(_info->mp_window, get_tile_col(), get_tile_row() + height);
+      get_exclusion(info_->mp_window, get_tile_col(), get_tile_row() + height);
   return std::make_pair(extra_exclusion, exclusion);
 }
 
@@ -49,29 +49,29 @@ std::pair<int, int> Tile::get_exclusion_for_ab_join(bool upper_tile) {
   // We need to omit the main diagonal from bordering subtiles in cases where
   // the join operator incorporates all values into the result to prevent
   // double counting of the main diagonal.
-  if (upper_tile && (_info->profile_type == PROFILE_TYPE_SUM_THRESH ||
-                     _info->profile_type == PROFILE_TYPE_FREQUENCY_THRESH)) {
+  if (upper_tile && (info_->profile_type == PROFILE_TYPE_SUM_THRESH ||
+                     info_->profile_type == PROFILE_TYPE_FREQUENCY_THRESH)) {
     alternative_exclusion_lower += 1;
   }
 
   // If the global join is not 'aligned' most of this function is unnecessary
-  if (!_info->is_aligned) {
+  if (!info_->is_aligned) {
     return std::make_pair(
         std::max(exclusion_lower, alternative_exclusion_lower),
         exclusion_upper);
   }
 
-  size_t height = get_tile_height() - _info->mp_window + 1;
-  size_t width = get_tile_width() - _info->mp_window + 1;
+  size_t height = get_tile_height() - info_->mp_window + 1;
+  size_t width = get_tile_width() - info_->mp_window + 1;
   int64_t start_col = get_tile_col();
   int64_t start_row = get_tile_row();
 
   // For distributed joins, we need to find the global position in the join
   // to determine the exclusion zone
-  if (_info->global_start_col_position >= 0 &&
-      _info->global_start_row_position >= 0) {
-    start_col += _info->global_start_col_position;
-    start_row += _info->global_start_row_position;
+  if (info_->global_start_col_position >= 0 &&
+      info_->global_start_row_position >= 0) {
+    start_col += info_->global_start_col_position;
+    start_row += info_->global_start_row_position;
   }
 
   if (upper_tile) {
@@ -92,13 +92,13 @@ std::pair<int, int> Tile::get_exclusion_for_ab_join(bool upper_tile) {
 
     // On the main diagonal (bottom) we can have a trivial match in the case
     // that this AB join is part of a larger self-join.
-    exclusion_lower = get_exclusion(_info->mp_window, start_row, start_col);
+    exclusion_lower = get_exclusion(info_->mp_window, start_row, start_col);
 
     // The top of the tile may need to be excluded if this tile is below
     // the main diagonal (start_row > start_col)
     if (start_row > start_col) {
       exclusion_upper =
-          get_exclusion(_info->mp_window, start_row, start_col + width);
+          get_exclusion(info_->mp_window, start_row, start_col + width);
     } else {
       exclusion_upper = 0;
     }
@@ -122,13 +122,13 @@ std::pair<int, int> Tile::get_exclusion_for_ab_join(bool upper_tile) {
 
     // On the main diagonal (top) we can have a trivial match in the case
     // that this AB join is part of a larger self-join.
-    exclusion_lower = get_exclusion(_info->mp_window, start_col, start_row);
+    exclusion_lower = get_exclusion(info_->mp_window, start_col, start_row);
 
     // The bottom of the tile may need to be excluded if this tile is above
     // the main diagonal (start_row <= start_col)
     if (start_row <= start_col) {
       exclusion_upper =
-          get_exclusion(_info->mp_window, start_col, start_row + height);
+          get_exclusion(info_->mp_window, start_col, start_row + height);
     } else {
       exclusion_upper = 0;
     }
@@ -195,97 +195,97 @@ void Tile::Memset(void *destination, char value, size_t bytes) {
 
 void Tile::Memcopy(void *destination, const void *source, size_t bytes,
                    bool from_tile) {
-  SCAMP::Memcopy(destination, source, bytes, from_tile, &_exec_info);
+  SCAMP::Memcopy(destination, source, bytes, from_tile, &exec_info_);
 }
 
 Tile::Tile(const OpInfo *info, SCAMPArchitecture arch, int cuda_id)
-    : _info(info),
-      _exec_info(arch, cuda_id),
-      _current_tile_width(0),
-      _current_tile_height(0),
-      _current_tile_row(0),
-      _current_tile_col(0),
-      // Allocate memory for tile based on architecture
-      _T_A_dev(alloc_mem<double>(info->max_tile_ts_size, arch, cuda_id),
+    :  // Allocate memory for tile based on architecture
+      T_A_dev_(alloc_mem<double>(info->max_tile_ts_size, arch, cuda_id),
                // Lambda deallocator
                [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
-      _T_B_dev(alloc_mem<double>(info->max_tile_ts_size, arch, cuda_id),
+      T_B_dev_(alloc_mem<double>(info->max_tile_ts_size, arch, cuda_id),
                [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
-      _QT_dev(alloc_mem<double>(info->max_tile_width, arch, cuda_id),
+      QT_dev_(alloc_mem<double>(info->max_tile_width, arch, cuda_id),
               [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
-      _means_A(alloc_mem<double>(info->max_tile_width, arch, cuda_id),
+      means_A_(alloc_mem<double>(info->max_tile_width, arch, cuda_id),
                [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
-      _means_B(alloc_mem<double>(info->max_tile_height, arch, cuda_id),
+      means_B_(alloc_mem<double>(info->max_tile_height, arch, cuda_id),
                [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
-      _norms_A(alloc_mem<double>(info->max_tile_width, arch, cuda_id),
+      norms_A_(alloc_mem<double>(info->max_tile_width, arch, cuda_id),
                [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
-      _norms_B(alloc_mem<double>(info->max_tile_height, arch, cuda_id),
+      norms_B_(alloc_mem<double>(info->max_tile_height, arch, cuda_id),
                [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
-      _df_A(alloc_mem<double>(info->max_tile_width, arch, cuda_id),
+      df_A_(alloc_mem<double>(info->max_tile_width, arch, cuda_id),
             [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
-      _df_B(alloc_mem<double>(info->max_tile_height, arch, cuda_id),
+      df_B_(alloc_mem<double>(info->max_tile_height, arch, cuda_id),
             [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
-      _dg_A(alloc_mem<double>(info->max_tile_width, arch, cuda_id),
+      dg_A_(alloc_mem<double>(info->max_tile_width, arch, cuda_id),
             [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
-      _dg_B(alloc_mem<double>(info->max_tile_height, arch, cuda_id),
+      dg_B_(alloc_mem<double>(info->max_tile_height, arch, cuda_id),
             [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
-      _thresholds_A(
-          alloc_mem<float>(info->max_tile_width, arch, cuda_id),
-          [=](float *p) { return free_mem<float>(p, arch, cuda_id); }),
-      _thresholds_B(
-          alloc_mem<float>(info->max_tile_height, arch, cuda_id),
-          [=](float *p) { return free_mem<float>(p, arch, cuda_id); }),
-
-      _scratchpad(
+      scratchpad_(
           static_cast<double *>(
               alloc_mem<double>(info->max_tile_ts_size, arch, cuda_id)),
           [=](double *p) { return free_mem<double>(p, arch, cuda_id); }),
-
-      _scratch(
-          std::unique_ptr<qt_compute_helper>(new qt_compute_helper(  // NOLINT
-              info->max_tile_ts_size, info->mp_window, true, arch))),
-      _profile_a_tile(info->profile_type, info->max_tile_width,
+      thresholds_A_(
+          alloc_mem<float>(info->max_tile_width, arch, cuda_id),
+          [=](float *p) { return free_mem<float>(p, arch, cuda_id); }),
+      thresholds_B_(
+          alloc_mem<float>(info->max_tile_height, arch, cuda_id),
+          [=](float *p) { return free_mem<float>(p, arch, cuda_id); }),
+      profile_a_tile_(info->profile_type, info->max_tile_width,
                       info->opt_args.threshold, info->matrix_width,
                       info->matrix_height),
-      _profile_b_tile(info->profile_type, info->max_tile_width,
+      profile_b_tile_(info->profile_type, info->max_tile_width,
                       info->opt_args.threshold, info->matrix_width,
-                      info->matrix_height) {
-  size_t profile_size = GetProfileTypeSize(_info->profile_type);
+                      info->matrix_height),
+      scratch_(
+          std::unique_ptr<qt_compute_helper>(new qt_compute_helper(  // NOLINT
+              info->max_tile_ts_size, info->mp_window, true, arch))),
+      current_tile_width_(0),
+      current_tile_height_(0),
+      current_tile_col_(0),
+      current_tile_row_(0),
+      info_(info),
+      exec_info_(arch, cuda_id)
+
+{
+  size_t profile_size = GetProfileTypeSize(info_->profile_type);
   size_t rows_to_alloc, cols_to_alloc;
 
   // For profile types where we can have more than one match per tile we need
   // to allocate additional memory
-  if (_info->profile_type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
-    cols_to_alloc = _info->max_matches_per_tile;
-    rows_to_alloc = _info->max_matches_per_tile;
-  } else if (_info->profile_type == PROFILE_TYPE_MATRIX_SUMMARY) {
-    cols_to_alloc = _info->matrix_height * _info->matrix_width;
+  if (info_->profile_type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
+    cols_to_alloc = info_->max_matches_per_tile;
+    rows_to_alloc = info_->max_matches_per_tile;
+  } else if (info_->profile_type == PROFILE_TYPE_MATRIX_SUMMARY) {
+    cols_to_alloc = info_->matrix_height * info_->matrix_width;
     rows_to_alloc = 0;
   } else {
-    cols_to_alloc = _info->max_tile_width;
-    rows_to_alloc = _info->max_tile_height;
+    cols_to_alloc = info_->max_tile_width;
+    rows_to_alloc = info_->max_tile_height;
   }
 
   // Allocate the tile's device memory
-  _profile_a_tile_dev[_info->profile_type] =
+  profile_a_tile_dev_[info_->profile_type] =
       alloc_mem<char>(profile_size * cols_to_alloc, arch, cuda_id);
-  _profile_b_tile_dev[_info->profile_type] =
+  profile_b_tile_dev_[info_->profile_type] =
       alloc_mem<char>(profile_size * rows_to_alloc, arch, cuda_id);
 
   // Allocate variable to track number of outputs generated by the kernel
-  _profile_a_dev_length = alloc_mem<unsigned long long int>(1, arch, cuda_id);
-  _profile_b_dev_length = alloc_mem<unsigned long long int>(1, arch, cuda_id);
+  profile_a_dev_length_ = alloc_mem<unsigned long long int>(1, arch, cuda_id);
+  profile_b_dev_length_ = alloc_mem<unsigned long long int>(1, arch, cuda_id);
 }
 
 Tile::~Tile() {
   // Free any memory allocated that will not be freed automatically
-  free_mem<char>(static_cast<char *>(_profile_a_tile_dev[_info->profile_type]),
+  free_mem<char>(static_cast<char *>(profile_a_tile_dev_[info_->profile_type]),
                  get_arch(), get_cuda_id());
-  free_mem<char>(static_cast<char *>(_profile_b_tile_dev[_info->profile_type]),
+  free_mem<char>(static_cast<char *>(profile_b_tile_dev_[info_->profile_type]),
                  get_arch(), get_cuda_id());
-  free_mem<unsigned long long int>(_profile_a_dev_length, get_arch(),
+  free_mem<unsigned long long int>(profile_a_dev_length_, get_arch(),
                                    get_cuda_id());
-  free_mem<unsigned long long int>(_profile_b_dev_length, get_arch(),
+  free_mem<unsigned long long int>(profile_b_dev_length_, get_arch(),
                                    get_cuda_id());
 }
 
@@ -306,71 +306,71 @@ void Tile::Sync() {
 
 void Tile::InitTimeseries(const std::vector<double> &Ta_h,
                           const std::vector<double> &Tb_h) {
-  Memcopy(_T_A_dev.get(), Ta_h.data() + _current_tile_col,
-          sizeof(double) * _current_tile_width, false);
-  Memcopy(_T_B_dev.get(), Tb_h.data() + _current_tile_row,
-          sizeof(double) * _current_tile_height, false);
+  Memcopy(T_A_dev_.get(), Ta_h.data() + current_tile_col_,
+          sizeof(double) * current_tile_width_, false);
+  Memcopy(T_B_dev_.get(), Tb_h.data() + current_tile_row_,
+          sizeof(double) * current_tile_height_, false);
 }
 
 // Initializes the tile's local profile values based on global profiles
 // "profile_a" and "profile_b"
 SCAMPError_t Tile::InitProfile(Profile *profile_a, Profile *profile_b) {
-  int profile_size = GetProfileTypeSize(_info->profile_type);
-  int width = _current_tile_width - _info->mp_window + 1;
-  int height = _current_tile_height - _info->mp_window + 1;
-  SCAMPProfileType type = _info->profile_type;
+  int profile_size = GetProfileTypeSize(info_->profile_type);
+  int width = current_tile_width_ - info_->mp_window + 1;
+  int height = current_tile_height_ - info_->mp_window + 1;
+  SCAMPProfileType type = info_->profile_type;
   switch (type) {
     case PROFILE_TYPE_SUM_THRESH:
-      Memset(_profile_a_tile_dev.at(type), 0, profile_size * width);
-      Memset(_profile_b_tile_dev.at(type), 0, profile_size * height);
+      Memset(profile_a_tile_dev_.at(type), 0, profile_size * width);
+      Memset(profile_b_tile_dev_.at(type), 0, profile_size * height);
       break;
     case PROFILE_TYPE_1NN_INDEX: {
       const uint64_t *pA_ptr = profile_a->data[0].uint64_value.data();
-      Memcopy(_profile_a_tile_dev.at(type), pA_ptr + _current_tile_col,
+      Memcopy(profile_a_tile_dev_.at(type), pA_ptr + current_tile_col_,
               sizeof(uint64_t) * width, false);
-      if (_info->computing_rows && _info->keep_rows_separate) {
+      if (info_->computing_rows && info_->keep_rows_separate) {
         const uint64_t *pB_ptr = profile_b->data[0].uint64_value.data();
-        Memcopy(_profile_b_tile_dev.at(type), pB_ptr + _current_tile_row,
+        Memcopy(profile_b_tile_dev_.at(type), pB_ptr + current_tile_row_,
                 sizeof(uint64_t) * height, false);
-      } else if (_info->self_join) {
-        Memcopy(_profile_b_tile_dev.at(type), pA_ptr + _current_tile_row,
+      } else if (info_->self_join) {
+        Memcopy(profile_b_tile_dev_.at(type), pA_ptr + current_tile_row_,
                 sizeof(uint64_t) * height, false);
       }
       break;
     }
     case PROFILE_TYPE_1NN: {
       const float *pA_ptr = profile_a->data[0].float_value.data();
-      Memcopy(_profile_a_tile_dev.at(type), pA_ptr + _current_tile_col,
+      Memcopy(profile_a_tile_dev_.at(type), pA_ptr + current_tile_col_,
               sizeof(float) * width, false);
-      if (_info->self_join) {
-        Memcopy(_profile_b_tile_dev.at(type), pA_ptr + _current_tile_row,
+      if (info_->self_join) {
+        Memcopy(profile_b_tile_dev_.at(type), pA_ptr + current_tile_row_,
                 sizeof(float) * height, false);
-      } else if (_info->computing_rows && _info->keep_rows_separate) {
+      } else if (info_->computing_rows && info_->keep_rows_separate) {
         const float *pB_ptr = profile_b->data[0].float_value.data();
-        Memcopy(_profile_b_tile_dev.at(type), pB_ptr + _current_tile_row,
+        Memcopy(profile_b_tile_dev_.at(type), pB_ptr + current_tile_row_,
                 sizeof(float) * height, false);
       }
       break;
     }
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
-      Memset(_profile_a_dev_length, 0, sizeof(unsigned long long int));
-      Memset(_profile_b_dev_length, 0, sizeof(unsigned long long int));
-      Memcopy(_thresholds_A.get(),
-              profile_a->thresholds.data() + _current_tile_col,
+      Memset(profile_a_dev_length_, 0, sizeof(unsigned long long int));
+      Memset(profile_b_dev_length_, 0, sizeof(unsigned long long int));
+      Memcopy(thresholds_A_.get(),
+              profile_a->thresholds.data() + current_tile_col_,
               sizeof(float) * width, false);
-      if (_info->self_join) {
-        Memcopy(_thresholds_B.get(),
-                profile_a->thresholds.data() + _current_tile_row,
+      if (info_->self_join) {
+        Memcopy(thresholds_B_.get(),
+                profile_a->thresholds.data() + current_tile_row_,
                 sizeof(float) * height, false);
-      } else if (_info->computing_rows && _info->keep_rows_separate) {
-        Memcopy(_thresholds_B.get(),
-                profile_b->thresholds.data() + _current_tile_row,
+      } else if (info_->computing_rows && info_->keep_rows_separate) {
+        Memcopy(thresholds_B_.get(),
+                profile_b->thresholds.data() + current_tile_row_,
                 sizeof(float) * height, false);
       }
       break;
     case PROFILE_TYPE_MATRIX_SUMMARY: {
       const float *pA_ptr = profile_a->data[0].float_value.data();
-      Memcopy(_profile_a_tile_dev.at(type), pA_ptr,
+      Memcopy(profile_a_tile_dev_.at(type), pA_ptr,
               sizeof(float) * profile_a->data[0].float_value.size(), false);
       break;
     }
@@ -386,28 +386,28 @@ SCAMPError_t Tile::InitProfile(Profile *profile_a, Profile *profile_b) {
 void Tile::InitStats(const PrecomputedInfo &a, const PrecomputedInfo &b,
                      const CombinedStats &ab) {
   size_t bytes_a =
-      (_current_tile_width - _info->mp_window + 1) * sizeof(double);
+      (current_tile_width_ - info_->mp_window + 1) * sizeof(double);
   size_t bytes_b =
-      (_current_tile_height - _info->mp_window + 1) * sizeof(double);
+      (current_tile_height_ - info_->mp_window + 1) * sizeof(double);
 
   // Initialize the tile's local stats based on global statistics "a" and "b"
-  Memcopy(_norms_A.get(), a.norms().data() + _current_tile_col, bytes_a, false);
-  Memcopy(_norms_B.get(), b.norms().data() + _current_tile_row, bytes_b, false);
-  Memcopy(_means_A.get(), a.means().data() + _current_tile_col, bytes_a, false);
-  Memcopy(_means_B.get(), b.means().data() + _current_tile_row, bytes_b, false);
+  Memcopy(norms_A_.get(), a.norms().data() + current_tile_col_, bytes_a, false);
+  Memcopy(norms_B_.get(), b.norms().data() + current_tile_row_, bytes_b, false);
+  Memcopy(means_A_.get(), a.means().data() + current_tile_col_, bytes_a, false);
+  Memcopy(means_B_.get(), b.means().data() + current_tile_row_, bytes_b, false);
 
-  if (_info->fp_type == PRECISION_ULTRA) {
+  if (info_->fp_type == PRECISION_ULTRA) {
     // Initialize the tile's local stats when using alternative formula.
-    Memcopy(_df_A.get(), ab.dc_bkwd.data() + _current_tile_col, bytes_a, false);
-    Memcopy(_dg_A.get(), ab.dc_fwd.data() + _current_tile_col, bytes_a, false);
-    Memcopy(_df_B.get(), ab.dr_fwd.data() + _current_tile_row, bytes_b, false);
-    Memcopy(_dg_B.get(), ab.dr_bkwd.data() + _current_tile_row, bytes_b, false);
+    Memcopy(df_A_.get(), ab.dc_bkwd.data() + current_tile_col_, bytes_a, false);
+    Memcopy(dg_A_.get(), ab.dc_fwd.data() + current_tile_col_, bytes_a, false);
+    Memcopy(df_B_.get(), ab.dr_fwd.data() + current_tile_row_, bytes_b, false);
+    Memcopy(dg_B_.get(), ab.dr_bkwd.data() + current_tile_row_, bytes_b, false);
   } else {
     // Initialize the tile's local stats when using published formula.
-    Memcopy(_df_A.get(), a.df().data() + _current_tile_col, bytes_a, false);
-    Memcopy(_dg_A.get(), a.dg().data() + _current_tile_col, bytes_a, false);
-    Memcopy(_df_B.get(), b.df().data() + _current_tile_row, bytes_b, false);
-    Memcopy(_dg_B.get(), b.dg().data() + _current_tile_row, bytes_b, false);
+    Memcopy(df_A_.get(), a.df().data() + current_tile_col_, bytes_a, false);
+    Memcopy(dg_A_.get(), a.dg().data() + current_tile_col_, bytes_a, false);
+    Memcopy(df_B_.get(), b.df().data() + current_tile_row_, bytes_b, false);
+    Memcopy(dg_B_.get(), b.dg().data() + current_tile_row_, bytes_b, false);
   }
 }
 
@@ -415,18 +415,18 @@ std::pair<int64_t, int64_t> Tile::get_profile_dims_from_device() {
   std::pair<int64_t, int64_t> result;
   result.first = 0;
   result.second = 0;
-  this->Memcopy(&result.first, _profile_a_dev_length,
+  this->Memcopy(&result.first, profile_a_dev_length_,
                 sizeof(unsigned long long int), true);
-  this->Memcopy(&result.second, _profile_b_dev_length,
+  this->Memcopy(&result.second, profile_b_dev_length_,
                 sizeof(unsigned long long int), true);
   Sync();
   if (result.first > info()->max_matches_per_tile) {
-    if (!_info->silent_mode) {
+    if (!info_->silent_mode) {
       std::cout << "Warning: Unable to return all matches! SCAMP found a "
                    "total of "
                 << result.first
                 << " matches for this tile. But we could only store "
-                << _info->max_matches_per_tile
+                << info_->max_matches_per_tile
                 << " of them. Perhaps try a smaller tile size or a higher "
                    "match threshold? "
                 << std::endl;
@@ -435,19 +435,19 @@ std::pair<int64_t, int64_t> Tile::get_profile_dims_from_device() {
   }
 
   if (result.second > info()->max_matches_per_tile) {
-    if (!_info->silent_mode) {
+    if (!info_->silent_mode) {
       std::cout << "Warning: Unable to return all matches! SCAMP found a "
                    "total of "
                 << result.second
                 << " matches for this tile. But we could only store "
-                << _info->max_matches_per_tile
+                << info_->max_matches_per_tile
                 << " of them. Perhaps try a smaller tile size or a higher "
                    "match threshold? "
                 << std::endl;
     }
     result.second = -1;
   }
-  if (!_info->silent_mode) {
+  if (!info_->silent_mode) {
     std::cout << "width = " << result.first << " height = " << result.second
               << std::endl;
   }
@@ -456,7 +456,7 @@ std::pair<int64_t, int64_t> Tile::get_profile_dims_from_device() {
 
 void Tile::SortMatches(SCAMPmatch *matches, uint64_t len) {
 #ifdef _HAS_CUDA_
-  if (_exec_info.arch == CUDA_GPU_WORKER) {
+  if (exec_info_.arch == CUDA_GPU_WORKER) {
     return match_gpu_sort(matches, len, get_stream());
   }
 #endif
@@ -468,16 +468,16 @@ void Tile::SortMatches(SCAMPmatch *matches, uint64_t len) {
 bool Tile::MergeProfile(Profile *profile_a, Profile *profile_b) {
   // Set up a copy operation back to the host
   int height, width;
-  switch (_info->profile_type) {
+  switch (info_->profile_type) {
     case PROFILE_TYPE_1NN:
     case PROFILE_TYPE_1NN_INDEX:
     case PROFILE_TYPE_SUM_THRESH:
       // We already know how many elements to copy back
-      width = _current_tile_width - _info->mp_window + 1;
-      height = _current_tile_height - _info->mp_window + 1;
+      width = current_tile_width_ - info_->mp_window + 1;
+      height = current_tile_height_ - info_->mp_window + 1;
       break;
     case PROFILE_TYPE_MATRIX_SUMMARY:
-      width = _info->matrix_width * _info->matrix_height;
+      width = info_->matrix_width * info_->matrix_height;
       height = 0;
       break;
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS: {
@@ -495,28 +495,28 @@ bool Tile::MergeProfile(Profile *profile_a, Profile *profile_b) {
   bool overflowed = width < 0 || height < 0;
 
   if (width < 0) {
-    width = _info->max_matches_per_tile;
+    width = info_->max_matches_per_tile;
   }
   if (height < 0) {
-    height = _info->max_matches_per_tile;
+    height = info_->max_matches_per_tile;
   }
 
-  if (NeedsSort(_info->profile_type)) {
+  if (NeedsSort(info_->profile_type)) {
     // Sort the resulting array
-    SortMatches(reinterpret_cast<SCAMPmatch *>(
-                    _profile_a_tile_dev.at(_info->profile_type)),
-                width);
-    if (_info->computing_rows) {
-      SortMatches(reinterpret_cast<SCAMPmatch *>(
-                      _profile_b_tile_dev.at(_info->profile_type)),
+    SortMatches(
+        static_cast<SCAMPmatch *>(profile_a_tile_dev_.at(info_->profile_type)),
+        width);
+    if (info_->computing_rows) {
+      SortMatches(static_cast<SCAMPmatch *>(
+                      profile_b_tile_dev_.at(info_->profile_type)),
                   height);
     }
   }
 
-  _profile_a_tile.CopyFromDevice(_info, &_exec_info, &_profile_a_tile_dev,
+  profile_a_tile_.CopyFromDevice(info_, &exec_info_, &profile_a_tile_dev_,
                                  width);
-  if (_info->computing_rows) {
-    _profile_b_tile.CopyFromDevice(_info, &_exec_info, &_profile_b_tile_dev,
+  if (info_->computing_rows) {
+    profile_b_tile_.CopyFromDevice(info_, &exec_info_, &profile_b_tile_dev_,
                                    height);
   }
 
@@ -524,15 +524,15 @@ bool Tile::MergeProfile(Profile *profile_a, Profile *profile_b) {
   Sync();
 
   // Merge result
-  profile_a->MergeTileToProfile(&_profile_a_tile, _info, _current_tile_col,
-                                width, _current_tile_row, overflowed);
+  profile_a->MergeTileToProfile(&profile_a_tile_, info_, current_tile_col_,
+                                width, current_tile_row_, overflowed);
 
-  if (_info->computing_rows && _info->keep_rows_separate) {
-    profile_b->MergeTileToProfile(&_profile_b_tile, _info, _current_tile_row,
-                                  height, _current_tile_col, overflowed);
-  } else if (_info->self_join && _info->computing_rows) {
-    profile_a->MergeTileToProfile(&_profile_b_tile, _info, _current_tile_row,
-                                  height, _current_tile_col, overflowed);
+  if (info_->computing_rows && info_->keep_rows_separate) {
+    profile_b->MergeTileToProfile(&profile_b_tile_, info_, current_tile_row_,
+                                  height, current_tile_col_, overflowed);
+  } else if (info_->self_join && info_->computing_rows) {
+    profile_a->MergeTileToProfile(&profile_b_tile_, info_, current_tile_row_,
+                                  height, current_tile_col_, overflowed);
   }
 
   return !overflowed;
@@ -574,8 +574,8 @@ SCAMPError_t Tile::do_self_join_full() {
     case CUDA_GPU_WORKER:
 #ifdef _HAS_CUDA_
       error =
-          _scratch->compute_QT(_QT_dev.get(), _T_B_dev.get(), _T_A_dev.get(),
-                               _means_A.get(), get_stream());
+          scratch_->compute_QT(QT_dev_.get(), T_B_dev_.get(), T_A_dev_.get(),
+                               means_A_.get(), get_stream());
       if (error != SCAMP_NO_ERROR) {
         return error;
       }
@@ -585,8 +585,8 @@ SCAMPError_t Tile::do_self_join_full() {
 #endif
       break;
     case CPU_WORKER:
-      error = _scratch->compute_QT_CPU(_QT_dev.get(), _T_B_dev.get(),
-                                       _T_A_dev.get());
+      error = scratch_->compute_QT_CPU(QT_dev_.get(), T_B_dev_.get(),
+                                       T_A_dev_.get());
       if (error != SCAMP_NO_ERROR) {
         return error;
       }
@@ -600,10 +600,10 @@ SCAMPError_t Tile::do_self_join_full() {
 SCAMPError_t Tile::do_self_join_half() {
   SCAMPError_t error = SCAMP_NO_ERROR;
 
-  if (_info->mp_window > _current_tile_width) {
+  if (info_->mp_window > current_tile_width_) {
     return SCAMP_DIM_INCOMPATIBLE;
   }
-  if (_info->mp_window > _current_tile_height) {
+  if (info_->mp_window > current_tile_height_) {
     return SCAMP_DIM_INCOMPATIBLE;
   }
 
@@ -612,8 +612,8 @@ SCAMPError_t Tile::do_self_join_half() {
     case CUDA_GPU_WORKER:
 #ifdef _HAS_CUDA_
       error =
-          _scratch->compute_QT(_QT_dev.get(), _T_A_dev.get(), _T_B_dev.get(),
-                               _means_B.get(), get_stream());
+          scratch_->compute_QT(QT_dev_.get(), T_A_dev_.get(), T_B_dev_.get(),
+                               means_B_.get(), get_stream());
       if (error != SCAMP_NO_ERROR) {
         return error;
       }
@@ -623,8 +623,8 @@ SCAMPError_t Tile::do_self_join_half() {
 #endif
       break;
     case CPU_WORKER:
-      error = _scratch->compute_QT_CPU(_QT_dev.get(), _T_A_dev.get(),
-                                       _T_B_dev.get());
+      error = scratch_->compute_QT_CPU(QT_dev_.get(), T_A_dev_.get(),
+                                       T_B_dev_.get());
       if (error != SCAMP_NO_ERROR) {
         return error;
       }
@@ -640,10 +640,10 @@ SCAMPError_t Tile::do_self_join_half() {
 SCAMPError_t Tile::do_ab_join_full() {
   SCAMPError_t error = SCAMP_NO_ERROR;
 
-  if (_info->mp_window > _current_tile_width) {
+  if (info_->mp_window > current_tile_width_) {
     return SCAMP_DIM_INCOMPATIBLE;
   }
-  if (_info->mp_window > _current_tile_height) {
+  if (info_->mp_window > current_tile_height_) {
     return SCAMP_DIM_INCOMPATIBLE;
   }
 
@@ -651,8 +651,8 @@ SCAMPError_t Tile::do_ab_join_full() {
     case CUDA_GPU_WORKER:
 #ifdef _HAS_CUDA_
       error =
-          _scratch->compute_QT(_QT_dev.get(), _T_A_dev.get(), _T_B_dev.get(),
-                               _means_B.get(), get_stream());
+          scratch_->compute_QT(QT_dev_.get(), T_A_dev_.get(), T_B_dev_.get(),
+                               means_B_.get(), get_stream());
       if (error != SCAMP_NO_ERROR) {
         return error;
       }
@@ -662,8 +662,8 @@ SCAMPError_t Tile::do_ab_join_full() {
 #endif
       break;
     case CPU_WORKER:
-      error = _scratch->compute_QT_CPU(_QT_dev.get(), _T_A_dev.get(),
-                                       _T_B_dev.get());
+      error = scratch_->compute_QT_CPU(QT_dev_.get(), T_A_dev_.get(),
+                                       T_B_dev_.get());
       if (error != SCAMP_NO_ERROR) {
         return error;
       }
@@ -678,8 +678,8 @@ SCAMPError_t Tile::do_ab_join_full() {
     case CUDA_GPU_WORKER:
 #ifdef _HAS_CUDA_
       error =
-          _scratch->compute_QT(_QT_dev.get(), _T_B_dev.get(), _T_A_dev.get(),
-                               _means_A.get(), get_stream());
+          scratch_->compute_QT(QT_dev_.get(), T_B_dev_.get(), T_A_dev_.get(),
+                               means_A_.get(), get_stream());
       if (error != SCAMP_NO_ERROR) {
         return error;
       }
@@ -690,8 +690,8 @@ SCAMPError_t Tile::do_ab_join_full() {
 #endif
       break;
     case CPU_WORKER:
-      error = _scratch->compute_QT_CPU(_QT_dev.get(), _T_B_dev.get(),
-                                       _T_A_dev.get());
+      error = scratch_->compute_QT_CPU(QT_dev_.get(), T_B_dev_.get(),
+                                       T_A_dev_.get());
       if (error != SCAMP_NO_ERROR) {
         return error;
       }
