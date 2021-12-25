@@ -3,7 +3,9 @@
 #include <fstream>
 #include <string>
 #include <vector>
+
 #include "common.h"
+#include "profile.h"
 
 void write_matrix(const std::string &mp, bool output_pearson,
                   const std::vector<std::vector<double>> &matrix, int window);
@@ -29,5 +31,3 @@ double CleanupPearson(double val);
 bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
                         SCAMP::Profile &p, bool output_pearson, int window,
                         int matrix_width, int matrix_height);
-
-bool InitProfileMemory(SCAMP::SCAMPArgs *args);

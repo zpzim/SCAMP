@@ -177,6 +177,15 @@ if (CMAKE_CUDA_COMPILER)
   target_link_libraries(common ${CUDA_cudart_LIBRARY})
 endif()
 
+add_library(profile ${CMAKE_CURRENT_SOURCE_DIR}/src/profile.cpp)
+target_link_libraries(profile common)
+
+add_library(scamp_args ${CMAKE_CURRENT_SOURCE_DIR}/src/scamp_args.cpp)
+target_link_libraries(scamp_args profile common)
+
+add_library(scamp_interface ${CMAKE_CURRENT_SOURCE_DIR}/src/scamp_interface.cpp)
+target_link_libraries(scamp_interface scamp_args scamp_op)
+
 add_library(qt_helper ${CMAKE_CURRENT_SOURCE_DIR}/src/qt_helper.cpp)
 
 if (CMAKE_CUDA_COMPILER)
@@ -205,15 +214,16 @@ add_library(tile ${CMAKE_CURRENT_SOURCE_DIR}/src/tile.cpp)
 
 
 if (CMAKE_CUDA_COMPILER)
-  target_link_libraries(tile common gpu_kernels cpu_kernels qt_helper)
+  target_link_libraries(tile common gpu_kernels cpu_kernels profile qt_helper)
 else()
-  target_link_libraries(tile common cpu_kernels qt_helper)
+  target_link_libraries(tile common cpu_kernels profile qt_helper)
 endif()
 
 add_library(scamp_utils ${CMAKE_CURRENT_SOURCE_DIR}/src/scamp_utils.cpp)
+target_link_libraries(scamp_utils common profile)
 
 add_library(scamp_op ${CMAKE_CURRENT_SOURCE_DIR}/src/SCAMP.cpp)
-target_link_libraries(scamp_op Threads::Threads tile cpu_stats common qt_helper)
+target_link_libraries(scamp_op Threads::Threads tile cpu_stats common profile qt_helper)
 
 
 if (CMAKE_CUDA_COMPILER)
@@ -240,12 +250,15 @@ if (BUILD_PYTHON_MODULE)
     PREFIX "${PYTHON_MODULE_PREFIX}"
     SUFFIX "${PYTHON_MODULE_EXTENSION}"
   )
-  target_link_libraries(pyscamp PRIVATE scamp_op scamp_utils common)
+  target_link_libraries(pyscamp PRIVATE scamp_args scamp_interface common)
   target_link_libraries(pyscamp PRIVATE pybind11::module)
 endif()
 
 if (CMAKE_CUDA_COMPILER)
   target_compile_definitions(common PUBLIC -D_HAS_CUDA_)
+  target_compile_definitions(profile PUBLIC -D_HAS_CUDA_)
+  target_compile_definitions(scamp_interface PUBLIC -D_HAS_CUDA_)
+  target_compile_definitions(scamp_op PUBLIC -D_HAS_CUDA_)
   target_compile_definitions(qt_helper PUBLIC -D_HAS_CUDA_)
   target_compile_definitions(qt_kernels PUBLIC -D_HAS_CUDA_)
   target_compile_definitions(kernel_common PUBLIC -D_HAS_CUDA_)
@@ -255,8 +268,6 @@ if (CMAKE_CUDA_COMPILER)
   target_compile_definitions(cpu_kernels PUBLIC -D_HAS_CUDA_)
   target_compile_definitions(tile PUBLIC -D_HAS_CUDA_)
   target_compile_definitions(scamp_utils PUBLIC -D_HAS_CUDA_)
-  target_compile_definitions(scamp_op PUBLIC -D_HAS_CUDA_)
-  target_compile_definitions(gpu_kernels PUBLIC -D_HAS_CUDA_)
   target_compile_definitions(SCAMP PUBLIC -D_HAS_CUDA_)
   if (BUILD_PYTHON_MODULE)
     target_compile_definitions(pyscamp PUBLIC -D_HAS_CUDA_)
@@ -294,14 +305,17 @@ if(NOT TARGET gflags)
 endif()
 
 if (CMAKE_CUDA_COMPILER)
-  target_link_libraries(SCAMP ${CUDA_cudart_LIBRARY} gflags common scamp_op scamp_utils)
+  target_link_libraries(SCAMP ${CUDA_cudart_LIBRARY} gflags common scamp_interface scamp_utils)
 else()
-  target_link_libraries(SCAMP gflags common scamp_op scamp_utils)
+  target_link_libraries(SCAMP gflags common scamp_interface scamp_utils)
 endif() 
 
 # Add clang tidy rules
 if(CLANG_TIDY_EXE)
-  set(MAIN_LIBS common scamp_op qt_helper tile scamp_utils cpu_kernels cpu_stats)
+  set(MAIN_LIBS common profile scamp_args scamp_interface scamp_op qt_helper kernel_common tile scamp_utils cpu_kernels cpu_stats)
+  if (CMAKE_CUDA_COMPILER)
+    set(MAIN_LIBS ${MAIN_LIBS} qt_kernels gpu_utils gpu_kernels)
+  endif()
   foreach(lib ${MAIN_LIBS})
     set_target_properties(
       "${lib}" PROPERTIES

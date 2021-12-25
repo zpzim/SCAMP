@@ -7,9 +7,9 @@
 #include <cuda_runtime.h>
 #endif
 
-#include "../src/SCAMP.h"
 #include "../src/common.h"
 #include "../src/scamp_exception.h"
+#include "../src/scamp_interface.h"
 #include "../src/scamp_utils.h"
 #include "scamp_worker.h"
 #include "utils.h"
@@ -45,7 +45,7 @@ SCAMPProto::SCAMPWork SCAMPWorker::ExecuteWork(SCAMPProto::SCAMPWork work) {
   std::cout << "Issuing the following args to SCAMP: " << std::endl;
   args.print();
 
-  if (!InitProfileMemory(&args)) {
+  if (!args.InitProfileMemory()) {
     std::cout << "Error: Problem allocating memory for matrix profile."
               << std::endl;
     work.set_valid(false);
@@ -54,7 +54,7 @@ SCAMPProto::SCAMPWork SCAMPWorker::ExecuteWork(SCAMPProto::SCAMPWork work) {
   try {
 #ifdef _HAS_CUDA_
     int num_dev;
-    vector<int> devices;
+    std::vector<int> devices;
     if (cudaGetDeviceCount(&num_dev) == cudaSuccess) {
       for (int i = 0; i < num_dev; ++i) {
         devices.push_back(i);
@@ -118,7 +118,7 @@ SCAMPProto::SCAMPResult SCAMPWorker::ReportFailedTile(
 float calibration_run(int64_t input_size, const std::vector<int> &gpus,
                       int threads) {
   SCAMP::SCAMPArgs args = get_default_args(input_size);
-  if (!InitProfileMemory(&args)) {
+  if (!args.InitProfileMemory()) {
     return -1.0;
   }
   auto begin = std::chrono::high_resolution_clock::now();
@@ -138,7 +138,7 @@ double SCAMPWorker::get_expected_throughput() {
   try {
 #ifdef _HAS_CUDA_
     int num_dev;
-    vector<int> devices;
+    std::vector<int> devices;
     if (cudaGetDeviceCount(&num_dev) == cudaSuccess) {
       for (int i = 0; i < num_dev; ++i) {
         devices.push_back(i);

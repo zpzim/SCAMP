@@ -1,8 +1,9 @@
 #include <grpcpp/grpcpp.h>
 #include <random>
 
-#include "../src/SCAMP.h"
 #include "../src/common.h"
+#include "../src/profile.h"
+#include "../src/scamp_interface.h"
 #include "../src/scamp_utils.h"
 #include "scamp.grpc.pb.h"
 #include "scamp_interface.h"

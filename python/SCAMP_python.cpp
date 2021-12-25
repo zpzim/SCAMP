@@ -3,8 +3,9 @@
 #include <pybind11/stl.h>
 #include <cmath>
 #include <thread>
-#include "../src/SCAMP.h"
 #include "../src/common.h"
+#include "../src/scamp_args.h"
+#include "../src/scamp_interface.h"
 #include "../src/scamp_utils.h"
 
 namespace py = pybind11;
@@ -187,7 +188,6 @@ bool setup_and_do_SCAMP(SCAMP::SCAMPArgs* args, py::kwargs kwargs) {
   if (kwargs) {
     get_args_based_on_kwargs(args, kwargs, pearson, gpus, num_cpus);
   }
-  InitProfileMemory(args);
   // If an empty list of GPUs was specified we should use CPU only.
   if (kwargs.contains("gpus") && gpus.empty()) {
     if (num_cpus <= 0) {
