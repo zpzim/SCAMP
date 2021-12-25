@@ -164,8 +164,9 @@ void do_tile(const SCAMPKernelInputArgs<double> &args,
         }
       }
       if (computing_rows) {
-        std::array<int, unrollWid / 2> corrIdx;  // NOLINT(cppcoreguidelines-pro-type-member-init,
-                                                 // hicpp-member-init)
+        std::array<int, unrollWid / 2>
+            corrIdx;  // NOLINT(cppcoreguidelines-pro-type-member-init,
+                      // hicpp-member-init)
         reduce_row<DIST_TYPE, PROFILE_TYPE>(corr, corrIdx, args.opt.threshold);
         update_mp<PROFILE_TYPE>(profile_B, corr[0],
                                 corrIdx[0] + tile_diag + row, row,
