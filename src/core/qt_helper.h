@@ -5,8 +5,8 @@
 #endif
 
 #include <stdlib.h>
-#include "common.h"
-#include "scamp_exception.h"
+#include "common/common.h"
+#include "common/scamp_exception.h"
 
 #ifdef _CUFFT_H_
 

@@ -10,9 +10,9 @@
 #include <vector>
 
 #include "SCAMP.h"
-#include "common.h"
+#include "common/common.h"
+#include "common/scamp_exception.h"
 #include "cpu_stats.h"
-#include "scamp_exception.h"
 #include "tile.h"
 
 using std::vector;

@@ -9,14 +9,14 @@
 #include <sstream>
 #include <string>
 #include <vector>
-#include "common.h"
-#include "scamp_args.h"
-#include "scamp_exception.h"
-#include "scamp_utils.h"
+#include "common/common.h"
+#include "common/scamp_args.h"
+#include "common/scamp_exception.h"
+#include "common/scamp_utils.h"
 #ifdef _DISTRIBUTED_EXECUTION_
-#include "../kubernetes/scamp_interface.h"
+#include <distributed/scamp_interface.h>
 #else
-#include "scamp_interface.h"
+#include <common/scamp_interface.h>
 #endif
 
 #ifdef _DISTRIBUTED_EXECUTION_

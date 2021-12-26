@@ -54,6 +54,6 @@ spec:
           limits:
             nvidia.com/gpu: 1
         # Run the worker on startup
-        command: ["/SCAMP/build/kubernetes/SCAMPclient"]
+        command: ["/SCAMP/build/src/distributed/SCAMPclient"]
         ports:
         - containerPort: 30078

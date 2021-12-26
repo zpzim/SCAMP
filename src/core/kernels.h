@@ -1,7 +1,7 @@
 #pragma once
 #include <cuda.h>
 #include <float.h>
-#include "common.h"
+#include "common/common.h"
 #include "tile.h"
 
 namespace SCAMP {

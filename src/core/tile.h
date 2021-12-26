@@ -5,8 +5,8 @@
 #include <mutex>
 #include <queue>
 #include <thread>
-#include "common.h"
-#include "profile.h"
+#include "common/common.h"
+#include "common/profile.h"
 #include "qt_helper.h"
 
 namespace SCAMP {
