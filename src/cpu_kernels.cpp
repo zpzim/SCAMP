@@ -1,7 +1,9 @@
 #include "cpu_kernels.h"
+#include "kernel_common.h"
+
 #include <array>
 #include <vector>
-#include "kernel_common.h"
+
 namespace SCAMP {
 
 // this is hard coded for now. It needs to be a power of 2
@@ -35,7 +37,8 @@ inline DISTANCE_TYPE init_dist() {
 }
 
 template <SCAMPProfileType PROFILE_TYPE>
-inline void update_mp(double *mp, double corr, int row, int col,
+inline void update_mp(double *mp, double corr, int row,
+                      int col,  // NOLINT(misc-unused-parameters)
                       double thresh) {
   if (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
     mp[col] = corr > thresh ? mp[col] + corr : mp[col];
@@ -46,7 +49,7 @@ inline void update_mp(double *mp, double corr, int row, int col,
 
 template <SCAMPProfileType PROFILE_TYPE>
 inline void update_mp(mp_entry *mp, double corr, int row, int col,
-                      double thresh) {
+                      double thresh) {  // NOLINT(misc-unused-parameters)
   if (PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX) {
     if (corr > mp[col].floats[0]) {
       mp[col].floats[0] = corr;
@@ -58,7 +61,8 @@ inline void update_mp(mp_entry *mp, double corr, int row, int col,
 }
 
 template <SCAMPProfileType PROFILE_TYPE>
-inline void update_mp(float *mp, double corr, int row, int col, double thresh) {
+inline void update_mp(float *mp, double corr, int row, int col,
+                      double thresh) {  // NOLINT(misc-unused-parameters)
   if (PROFILE_TYPE == PROFILE_TYPE_1NN) {
     mp[col] = mp[col] >= corr ? mp[col] : corr;
   } else {
@@ -68,7 +72,8 @@ inline void update_mp(float *mp, double corr, int row, int col, double thresh) {
 
 template <typename DATA_TYPE, SCAMPProfileType type>
 inline void reduce_row(std::array<DATA_TYPE, unrollWid> &corr,
-                       std::array<int, unrollWid / 2> &corrIdx, double thresh) {
+                       std::array<int, unrollWid / 2> &corrIdx,
+                       double thresh) {  // NOLINT
   switch (type) {
     case PROFILE_TYPE_1NN_INDEX: {
       for (int i = 0; i < unrollWid / 2; i++) {
@@ -117,10 +122,10 @@ inline void reduce_row(std::array<DATA_TYPE, unrollWid> &corr,
 template <typename DIST_TYPE, typename PROFILE_DATA_TYPE,
           SCAMPProfileType PROFILE_TYPE, bool computing_rows,
           bool computing_cols>
-void do_tile(SCAMPKernelInputArgs<double> &args,
+void do_tile(const SCAMPKernelInputArgs<double> &args,
              PROFILE_DATA_TYPE *__restrict profile_A,
              PROFILE_DATA_TYPE *__restrict profile_B) {
-  DIST_TYPE initializer = init_dist<DIST_TYPE, PROFILE_TYPE>();
+  auto initializer = init_dist<DIST_TYPE, PROFILE_TYPE>();
   int num_diags = args.n_x - args.exclusion_upper + 1;
   for (int tile_diag = args.exclusion_lower; tile_diag < num_diags;
        tile_diag += unrollWid) {
@@ -139,7 +144,9 @@ void do_tile(SCAMPKernelInputArgs<double> &args,
 
     // Fast, Unrolled, Autovectorized Case
     for (int row = 0; row < fullRowIters; row++) {
-      alignas(simdByteLen) std::array<DIST_TYPE, unrollWid> corr;
+      alignas(simdByteLen) std::array<DIST_TYPE, unrollWid>
+          corr;  // NOLINT(cppcoreguidelines-pro-type-member-init,
+                 // hicpp-member-init)
       for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
         int curr_diag = tile_diag + local_diag;
         int col = curr_diag + row;
@@ -157,7 +164,9 @@ void do_tile(SCAMPKernelInputArgs<double> &args,
         }
       }
       if (computing_rows) {
-        std::array<int, unrollWid / 2> corrIdx;
+        std::array<int, unrollWid / 2>
+            corrIdx;  // NOLINT(cppcoreguidelines-pro-type-member-init,
+                      // hicpp-member-init)
         reduce_row<DIST_TYPE, PROFILE_TYPE>(corr, corrIdx, args.opt.threshold);
         update_mp<PROFILE_TYPE>(profile_B, corr[0],
                                 corrIdx[0] + tile_diag + row, row,
@@ -200,7 +209,7 @@ void do_tile(SCAMPKernelInputArgs<double> &args,
 
 template <typename DIST_TYPE, typename PROFILE_OUTPUT_TYPE,
           SCAMPProfileType PROFILE_TYPE>
-SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> &args,
+SCAMPError_t LaunchDoTile(const SCAMPKernelInputArgs<double> &args,
                           PROFILE_OUTPUT_TYPE *profile_A,
                           PROFILE_OUTPUT_TYPE *profile_B,
                           SCAMPPrecisionType fp_type, bool computing_rows,
@@ -260,18 +269,18 @@ SCAMPError_t compute_cpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
     switch (t->info()->profile_type) {
       case PROFILE_TYPE_SUM_THRESH:
         return LaunchDoTile<double, double, PROFILE_TYPE_SUM_THRESH>(
-            args, reinterpret_cast<double *>(profile_a),
-            reinterpret_cast<double *>(profile_b), t->info()->fp_type, do_rows,
+            args, static_cast<double *>(profile_a),
+            static_cast<double *>(profile_b), t->info()->fp_type, do_rows,
             do_cols);
       case PROFILE_TYPE_1NN_INDEX:
         return LaunchDoTile<float, mp_entry, PROFILE_TYPE_1NN_INDEX>(
-            args, reinterpret_cast<mp_entry *>(profile_a),
-            reinterpret_cast<mp_entry *>(profile_b), t->info()->fp_type,
-            do_rows, do_cols);
+            args, static_cast<mp_entry *>(profile_a),
+            static_cast<mp_entry *>(profile_b), t->info()->fp_type, do_rows,
+            do_cols);
       case PROFILE_TYPE_1NN:
         return LaunchDoTile<float, float, PROFILE_TYPE_1NN>(
-            args, reinterpret_cast<float *>(profile_a),
-            reinterpret_cast<float *>(profile_b), t->info()->fp_type, do_rows,
+            args, static_cast<float *>(profile_a),
+            static_cast<float *>(profile_b), t->info()->fp_type, do_rows,
             do_cols);
       case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
       case PROFILE_TYPE_MATRIX_SUMMARY:

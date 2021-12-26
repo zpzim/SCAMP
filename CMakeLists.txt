@@ -33,8 +33,12 @@ endif()
 # Do not use an unsupported cuda version
 if (CMAKE_CUDA_COMPILER)
   if (CUDA_VERSION VERSION_LESS ${CUDA_MINIMUM_VERSION})
-    message(STATUS "CUDA version ${CUDA_VERSION} is less than the mininmum required version ${CUDA_MINIMUM_VERSION} defaulting to no-cuda build")
-    unset(CMAKE_CUDA_COMPILER)
+    if(FORCE_CUDA)
+      message(FATAL_ERROR "CUDA version ${CUDA_VERSION} is less than the mininmum required version ${CUDA_MINIMUM_VERSION} defaulting to no-cuda build")
+    else()
+      message(WARNING "CUDA version ${CUDA_VERSION} is less than the mininmum required version ${CUDA_MINIMUM_VERSION} defaulting to no-cuda build")
+      unset(CMAKE_CUDA_COMPILER)
+    endif()
   endif()
 endif()
 
@@ -52,14 +56,14 @@ endif()
 # Use clang tidy if available
 find_program(
   CLANG_TIDY_EXE
-  NAMES clang-tidy-6.0 clang-tidy-5.0 clang-tidy
+  NAMES clang-tidy
   DOC "Path to clang-tidy executable (v5+)"
   )
 if(NOT CLANG_TIDY_EXE)
   message(STATUS "clang-tidy not found.")
 else()
   message(STATUS "clang-tidy found: ${CLANG_TIDY_EXE}")
-  set(DO_CLANG_TIDY "${CLANG_TIDY_EXE}" "-checks=*,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-fuchsia-default-arguments,-hicpp-vararg,-cppcoreguidelines-pro-type-vararg")
+  set(DO_CLANG_TIDY "${CLANG_TIDY_EXE}" "-checks=*,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-fuchsia-default-arguments,-hicpp-vararg,-cppcoreguidelines-pro-type-vararg, -cppcoreguidelines-pro-bounds-constant-array-index,-google-runtime-int")
 endif()
 
 # Use clang format if available
@@ -89,11 +93,11 @@ set(
 # ----------------------------------------------------------------------------------------
 #                         ===== Compiler Configuration =====
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 
 # CUDA_CONFIG
 if (CMAKE_CUDA_COMPILER)
-  set(CMAKE_CUDA_STANDARD 11)
+  set(CMAKE_CUDA_STANDARD 14)
   include_directories(${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   set(CUDA_SEPARABLE_COMPILATION ON)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler=-fPIC -lineinfo")

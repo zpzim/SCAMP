@@ -21,12 +21,9 @@ void qt_compute_helper::init() {
       CHECK_CUFFT_ERRORS(cufftPlan1d(&fft_plan, size, CUFFT_R2C, 1))
       CHECK_CUFFT_ERRORS(cufftPlan1d(&ifft_plan, size, CUFFT_C2R, 1))
     }
-    cudaMalloc(&Q_reverse_pad, sizeof(double) * size);
-    gpuErrchk(cudaPeekAtLastError())
-        cudaMalloc(&Tc, sizeof(cuDoubleComplex) * cufft_data_size);
-    gpuErrchk(cudaPeekAtLastError())
-        cudaMalloc(&Qc, sizeof(cuDoubleComplex) * cufft_data_size);
-    gpuErrchk(cudaPeekAtLastError())
+    gpuErrchk(cudaMalloc(&Q_reverse_pad, sizeof(double) * size));
+    gpuErrchk(cudaMalloc(&Tc, sizeof(cuDoubleComplex) * cufft_data_size));
+    gpuErrchk(cudaMalloc(&Qc, sizeof(cuDoubleComplex) * cufft_data_size));
 #else
     ASSERT(false,
            "Attempted to use GPU resources in a binary not built with cuda");
@@ -37,7 +34,7 @@ void qt_compute_helper::init() {
 void qt_compute_helper::free() {
   if (_arch == CUDA_GPU_WORKER) {
 #ifdef _HAS_CUDA_
-    cudaFree(Q_reverse_pad);
+    gpuErrchk(cudaFree(Q_reverse_pad));
     gpuErrchk(cudaFree(Tc));
     gpuErrchk(cudaFree(Qc));
     CHECK_CUFFT_ERRORS(cufftDestroy(fft_plan))
@@ -93,7 +90,7 @@ SCAMPError_t qt_compute_helper::compute_QT(double *QT, const double *T,
       cufftExecD2Z(fft_plan, const_cast<double *>(T), Tc))  // NOLINT
 
   // clear last error
-  error = cudaGetLastError();
+  cudaGetLastError();
 
   // Reverse and zero pad the query
   launch_populate_reverse_pad(Q, Q_reverse_pad, qmeans, window_size, size,
@@ -121,7 +118,6 @@ SCAMPError_t qt_compute_helper::compute_QT(double *QT, const double *T,
   launch_normalized_aligned_dot_products(Q_reverse_pad, size, window_size, n,
                                          QT, fft_work_size, s);
   error = cudaGetLastError();
-
   if (error != cudaSuccess) {
     printf("Error launching normalized aligned dot products: %s\n",
            cudaGetErrorString(error));

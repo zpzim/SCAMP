@@ -14,7 +14,7 @@ void compute_statistics_cpu(const std::vector<double> &T,
                             bool high_precision_norms);
 
 CombinedStats compute_combined_stats_cpu(const std::vector<double> &A,
-                                         const std::vector<double> means_A,
+                                         const std::vector<double> &means_A,
                                          const std::vector<double> &B, size_t m,
                                          bool high_precision);
 
