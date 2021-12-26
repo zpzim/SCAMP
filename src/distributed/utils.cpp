@@ -1,12 +1,10 @@
 #include <grpcpp/grpcpp.h>
 #include <random>
 
-#include "common/common.h"
 #include "common/profile.h"
 #include "common/scamp_interface.h"
 #include "common/scamp_utils.h"
 #include "scamp.grpc.pb.h"
-#include "scamp_interface.h"
 #include "utils.h"
 
 int64_t get_current_time() {

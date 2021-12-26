@@ -1,6 +1,5 @@
 #include "distributed_tile.h"
 
-#include "common/scamp_utils.h"
 #include "scamp.pb.h"
 #include "utils.h"
 

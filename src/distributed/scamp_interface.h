@@ -1,3 +1,4 @@
+#pragma once
 
 #include <grpcpp/grpcpp.h>
 #include <scamp.grpc.pb.h>
