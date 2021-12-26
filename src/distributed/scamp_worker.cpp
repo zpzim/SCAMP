@@ -79,8 +79,8 @@ SCAMPProto::SCAMPWork SCAMPWorker::ExecuteWork(SCAMPProto::SCAMPWork work) {
   reply->mutable_timeseries_a()->Clear();
   reply->mutable_timeseries_b()->Clear();
 
-  *reply->mutable_profile_a() = std::move(ConvertProfile(args.profile_a));
-  *reply->mutable_profile_b() = std::move(ConvertProfile(args.profile_b));
+  *reply->mutable_profile_a() = ConvertProfile(args.profile_a);
+  *reply->mutable_profile_b() = ConvertProfile(args.profile_b);
 
   return work;
 }

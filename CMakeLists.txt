@@ -254,7 +254,7 @@ if (BUILD_PYTHON_MODULE)
     PREFIX "${PYTHON_MODULE_PREFIX}"
     SUFFIX "${PYTHON_MODULE_EXTENSION}"
   )
-  target_link_libraries(pyscamp PRIVATE scamp_args scamp_interface common)
+  target_link_libraries(pyscamp PRIVATE scamp_args scamp_utils scamp_interface common)
   target_link_libraries(pyscamp PRIVATE pybind11::module)
 endif()
 
@@ -297,6 +297,7 @@ if (BUILD_CLIENT_SERVER)
   include_directories(${CMAKE_CURRENT_SOURCE_DIR}/grpc/include/) 
   include_directories(${CMAKE_CURRENT_SOURCE_DIR}/grpc/third_party/gflags/include/)
   include_directories(${CMAKE_CURRENT_SOURCE_DIR}/grpc/third_party/protobuf/src/)
+  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/grpc/third_party/abseil-cpp/)
 
   # Build scamp client and scamp server
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/distributed)
