@@ -9,7 +9,7 @@ SCAMP has a client/server architecture built using grpc. Tested on `GKE <https:/
   cmake -DBUILD_CLIENT_SERVER=1 ..
   make -j8
 
-This will produce three executables in build/kubernetes:
+This will produce three executables in build/src/distributed:
     
   * "SCAMPserver": This is the SCAMP server. It accepts jobs via grpc and handles divying them up among worker clients.
   * "SCAMPclient": Run this on worker nodes, it must be configured with the hostname and port where the SCAMPserver is. This is the workhorse of the computation, it will utilize all gpus or cpus on the host system to compute work handed to it by the server. Each worker node should have only one client executable running at a time. Though not completely necessary, these clients should have high bandwidth to the server for best performance.
@@ -17,15 +17,15 @@ This will produce three executables in build/kubernetes:
  
 The server/clients can be set up to run under kubernetes pods using the Dockerfile in this repo. The docker image zpzim/scamp will contain the latest version of the code ready to deploy to kubernetes.
 
-kubernetes/config contains a sample script which will create a GKE cluster using preemptible GPUs and autoscaling as well as sample configuration files for the scamp grpc service, client, and server pods. You should edit these scripts/configuration files to suit your application.
+src/distributed/config contains a sample script which will create a GKE cluster using preemptible GPUs and autoscaling as well as sample configuration files for the scamp grpc service, client, and server pods. You should edit these scripts/configuration files to suit your application.
 
 You can use this script to run and execute your own SCAMP workload on GKE as follows::
 
-  cd kubernetes/config && ./create_gke_cluster.sh
+  cd src/distributed/config && ./create_gke_cluster.sh
   # Once cluster is up and running you can copy your desired input to the server
   kubectl cp <local SCAMP input file> <SCAMP server container name>:/
   # Now you can run SCAMP_distributed on the server and wait for the job to finish
-  kubectl exec <SCAMP server container name> -c server -- /SCAMP/build/kubernetes/SCAMP_distributed <SCAMP arguments>
+  kubectl exec <SCAMP server container name> -c server -- /SCAMP/build/src/distributed/SCAMP_distributed <SCAMP arguments>
   # Copy the results back to a local storage location
   kubectl cp <SCAMP server container name>:/mp_columns_out .
 
