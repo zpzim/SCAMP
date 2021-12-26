@@ -208,9 +208,9 @@ void ConvertProtoArgsToSCAMPArgs(const SCAMPProto::SCAMPArgs &proto_args,
   args->distance_threshold = proto_args.distance_threshold();
   args->computing_columns = proto_args.computing_columns();
   args->computing_rows = proto_args.computing_rows();
-  args->profile_a = std::move(ConvertProfile(proto_args.profile_a()));
+  args->profile_a = ConvertProfile(proto_args.profile_a());
   if (proto_args.keep_rows_separate()) {
-    args->profile_b = std::move(ConvertProfile(proto_args.profile_b()));
+    args->profile_b = ConvertProfile(proto_args.profile_b());
   }
   args->profile_type = ConvertProfileType(proto_args.profile_type());
   args->precision_type = ConvertPrecisionType(proto_args.precision_type());

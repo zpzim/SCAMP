@@ -3,7 +3,7 @@
 uint64_t JobList::add_job(const SCAMPProto::SCAMPArgs& args) {
   std::lock_guard<std::mutex> lockGuard(task_list_mutex_);
   uint64_t job_id = task_list_.size();
-  task_list_.emplace(job_id, std::move(Job(args, job_id)));
+  task_list_.emplace(job_id, Job(args, job_id));
   run_list_.emplace_back(job_id);
   return job_id;
 }
