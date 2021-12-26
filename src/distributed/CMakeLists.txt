@@ -51,17 +51,23 @@ endif()
 add_library(scamp_distributed_interface ${CMAKE_CURRENT_SOURCE_DIR}/scamp_interface.cpp)
 target_link_libraries(scamp_distributed_interface kube_utils messages )
 
+set(CURR_LIBS kube_utils distributed_tile distributed_job job_list worker scamp_distributed_interface)
 
-if (CLANG_TIDY_EXE)
-  set(KUBE_LIBS kube_utils distributed_tile distributed_job job_list worker scamp_distributed_interface)
-  foreach(lib ${KUBE_LIBS})
+if (CMAKE_CUDA_COMPILER)
+  foreach(lib ${CURR_LIBS})
+    target_compile_definitions("${lib}" PUBLIC -D_HAS_CUDA_)
+  endforeach(lib)
+endif()
+
+# Add clang tidy rules
+if(CLANG_TIDY_EXE)
+  foreach(lib ${MAIN_LIBS})
     set_target_properties(
       "${lib}" PROPERTIES
       CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
     )
   endforeach(lib)
 endif()
-
 
 add_executable(SCAMPclient ${CMAKE_CURRENT_SOURCE_DIR}/scamp_client.cc)
 add_executable(SCAMPserver ${CMAKE_CURRENT_SOURCE_DIR}/scamp_server.cc)
