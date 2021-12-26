@@ -43,13 +43,13 @@ target_link_libraries(job_list distributed_job messages)
 
 add_library(worker ${CMAKE_CURRENT_SOURCE_DIR}/scamp_worker.cpp)
 if (CMAKE_CUDA_COMPILER)
-    target_link_libraries(worker -lcudart_static common scamp_interface kube_utils messages )
+  target_link_libraries(worker -lcudart_static common scamp_interface kube_utils messages )
 else()
-    target_link_libraries(worker common scamp_interface kube_utils messages )
+  target_link_libraries(worker common scamp_interface kube_utils messages )
 endif()
 
 add_library(scamp_distributed_interface ${CMAKE_CURRENT_SOURCE_DIR}/scamp_interface.cpp)
-target_link_libraries(scamp_distributed_interface common kube_utils messages )
+target_link_libraries(scamp_distributed_interface kube_utils messages )
 
 
 if (CLANG_TIDY_EXE)
@@ -72,7 +72,7 @@ add_definitions("-D_DISTRIBUTED_EXECUTION_")
 
 add_executable(SCAMP_distributed ${CMAKE_CURRENT_SOURCE_DIR}/../main.cpp)
 if (CMAKE_CUDA_COMPILER)
-target_link_libraries(SCAMP_distributed -lcudart_static gflags common scamp_interface scamp_utils scamp_distributed_interface)
+  target_link_libraries(SCAMP_distributed -lcudart_static gflags common scamp_utils scamp_distributed_interface)
 else()
-target_link_libraries(SCAMP_distributed gflags common scamp_op scamp_utils scamp_interface)
+  target_link_libraries(SCAMP_distributed gflags common scamp_distributed_interface scamp_utils)
 endif() 

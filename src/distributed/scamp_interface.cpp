@@ -1,10 +1,10 @@
+#include "scamp_interface.h"
+
+#include "utils.h"
+
 #include <chrono>
 #include <thread>
 #include <vector>
-
-#include "common/common.h"
-#include "scamp_interface.h"
-#include "utils.h"
 
 // Worker will act as a client to the SCAMPserverWorkers, request a job and wait
 // for its completion
