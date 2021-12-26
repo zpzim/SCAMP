@@ -70,7 +70,7 @@ target_link_libraries(SCAMPclient worker)
 
 add_definitions("-D_DISTRIBUTED_EXECUTION_")
 
-add_executable(SCAMP_distributed ${CMAKE_CURRENT_SOURCE_DIR}/../src/main.cpp)
+add_executable(SCAMP_distributed ${CMAKE_CURRENT_SOURCE_DIR}/../main.cpp)
 if (CMAKE_CUDA_COMPILER)
 target_link_libraries(SCAMP_distributed -lcudart_static gflags common scamp_interface scamp_utils scamp_distributed_interface)
 else()

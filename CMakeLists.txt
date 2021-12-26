@@ -81,13 +81,15 @@ endif()
 
 set(
   PROJECT_SOURCE_FILES
-  src/*.h
-  src/*.cpp
-  src/*.cu
-  kubernetes/*.cc
-  kubernetes/*.cpp
-  kubernetes/*.h
-  python/*.cpp
+  src/core/*.cpp
+  src/core/*.cu
+  src/core/*.h
+  src/common/*.cpp
+  src/common/*.h
+  src/distributed/*.cc
+  src/distributed/*.cpp
+  src/distributed/*.h
+  src/python/*.cpp
   )
 
 # ----------------------------------------------------------------------------------------
@@ -166,52 +168,58 @@ endif()
 # ----------------------------------------------------------------------------------------
 #                              ===== Build targets =====
 
+
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/src/")
+
+
 if (BUILD_PYTHON_MODULE)
   find_package(PythonLibs)
   add_subdirectory(pybind11)
 endif()
 
-add_library(common ${CMAKE_CURRENT_SOURCE_DIR}/src/common.cpp)
+add_library(common ${CMAKE_CURRENT_SOURCE_DIR}/src/common/common.cpp)
 
 if (CMAKE_CUDA_COMPILER) 
   target_link_libraries(common ${CUDA_cudart_LIBRARY})
 endif()
 
-add_library(profile ${CMAKE_CURRENT_SOURCE_DIR}/src/profile.cpp)
+add_library(profile ${CMAKE_CURRENT_SOURCE_DIR}/src/common/profile.cpp)
 target_link_libraries(profile common)
 
-add_library(scamp_args ${CMAKE_CURRENT_SOURCE_DIR}/src/scamp_args.cpp)
+add_library(scamp_args ${CMAKE_CURRENT_SOURCE_DIR}/src/common/scamp_args.cpp)
 target_link_libraries(scamp_args profile common)
 
-add_library(scamp_interface ${CMAKE_CURRENT_SOURCE_DIR}/src/scamp_interface.cpp)
+add_library(scamp_interface ${CMAKE_CURRENT_SOURCE_DIR}/src/common/scamp_interface.cpp)
 target_link_libraries(scamp_interface scamp_args scamp_op)
 
-add_library(qt_helper ${CMAKE_CURRENT_SOURCE_DIR}/src/qt_helper.cpp)
+add_library(scamp_utils ${CMAKE_CURRENT_SOURCE_DIR}/src/common/scamp_utils.cpp)
+target_link_libraries(scamp_utils common profile)
+
+add_library(qt_helper ${CMAKE_CURRENT_SOURCE_DIR}/src/core/qt_helper.cpp)
 
 if (CMAKE_CUDA_COMPILER)
-  add_library(qt_kernels ${CMAKE_CURRENT_SOURCE_DIR}/src/qt_kernels.cu)
+  add_library(qt_kernels ${CMAKE_CURRENT_SOURCE_DIR}/src/core/qt_kernels.cu)
   target_link_libraries(qt_helper ${CUDA_CUFFT_LIBRARIES} qt_kernels common)
 else()
   target_link_libraries(qt_helper common)
 endif()
 
-add_library(kernel_common ${CMAKE_CURRENT_SOURCE_DIR}/src/kernel_common.cpp)
+add_library(kernel_common ${CMAKE_CURRENT_SOURCE_DIR}/src/core/kernel_common.cpp)
 
 if (CMAKE_CUDA_COMPILER)
-  add_library(gpu_utils ${CMAKE_CURRENT_SOURCE_DIR}/src/kernel_gpu_utils.cu)
+  add_library(gpu_utils ${CMAKE_CURRENT_SOURCE_DIR}/src/core/kernel_gpu_utils.cu)
   target_link_libraries(gpu_utils kernel_common ${CUDA_cudart_LIBRARY})
-  add_library(gpu_kernels ${CMAKE_CURRENT_SOURCE_DIR}/src/kernels.cu)
+  add_library(gpu_kernels ${CMAKE_CURRENT_SOURCE_DIR}/src/core/kernels.cu)
   target_link_libraries(gpu_kernels gpu_utils kernel_common common)
 endif()
 
-add_library(cpu_stats ${CMAKE_CURRENT_SOURCE_DIR}/src/cpu_stats.cpp)
+add_library(cpu_stats ${CMAKE_CURRENT_SOURCE_DIR}/src/core/cpu_stats.cpp)
 target_link_libraries(cpu_stats common)
 
-add_library(cpu_kernels ${CMAKE_CURRENT_SOURCE_DIR}/src/cpu_kernels.cpp)
+add_library(cpu_kernels ${CMAKE_CURRENT_SOURCE_DIR}/src/core/cpu_kernels.cpp)
 target_link_libraries(cpu_kernels kernel_common common)
 
-add_library(tile ${CMAKE_CURRENT_SOURCE_DIR}/src/tile.cpp)
-
+add_library(tile ${CMAKE_CURRENT_SOURCE_DIR}/src/core/tile.cpp)
 
 if (CMAKE_CUDA_COMPILER)
   target_link_libraries(tile common gpu_kernels cpu_kernels profile qt_helper)
@@ -219,12 +227,8 @@ else()
   target_link_libraries(tile common cpu_kernels profile qt_helper)
 endif()
 
-add_library(scamp_utils ${CMAKE_CURRENT_SOURCE_DIR}/src/scamp_utils.cpp)
-target_link_libraries(scamp_utils common profile)
-
-add_library(scamp_op ${CMAKE_CURRENT_SOURCE_DIR}/src/SCAMP.cpp)
+add_library(scamp_op ${CMAKE_CURRENT_SOURCE_DIR}/src/core/SCAMP.cpp)
 target_link_libraries(scamp_op Threads::Threads tile cpu_stats common profile qt_helper)
-
 
 if (CMAKE_CUDA_COMPILER)
   set_target_properties(gpu_kernels PROPERTIES
@@ -243,7 +247,7 @@ add_executable(SCAMP ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
 
 # Python module
 if (BUILD_PYTHON_MODULE)
-  add_library(pyscamp MODULE python/SCAMP_python.cpp)
+  add_library(pyscamp MODULE src/python/SCAMP_python.cpp)
   set_target_properties(pyscamp PROPERTIES 
     INTERPROCEDURAL_OPTIMIZATION TRUE
     CXX_VISIBILITY_PRESET "hidden"
@@ -295,7 +299,7 @@ if (BUILD_CLIENT_SERVER)
   include_directories(${CMAKE_CURRENT_SOURCE_DIR}/grpc/third_party/protobuf/src/)
 
   # Build scamp client and scamp server
-  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/kubernetes)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/distributed)
 
 endif()
 

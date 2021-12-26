@@ -1,5 +1,6 @@
 #include "scamp_interface.h"
-#include "SCAMP.h"
+
+#include "core/SCAMP.h"
 #include "scamp_exception.h"
 
 #include <thread>

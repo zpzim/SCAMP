@@ -4,8 +4,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "common.h"
-#include "profile.h"
+#include "common/common.h"
+#include "common/profile.h"
 
 using std::list;
 using std::pair;

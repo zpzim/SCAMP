@@ -7,10 +7,10 @@
 #include <cuda_runtime.h>
 #endif
 
-#include "../src/common.h"
-#include "../src/scamp_exception.h"
-#include "../src/scamp_interface.h"
-#include "../src/scamp_utils.h"
+#include "common/common.h"
+#include "common/scamp_exception.h"
+#include "common/scamp_interface.h"
+#include "common/scamp_utils.h"
 #include "scamp_worker.h"
 #include "utils.h"
 

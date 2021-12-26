@@ -2,8 +2,7 @@
 #include <thread>
 #include <vector>
 
-#include "../src/SCAMP.h"
-#include "../src/common.h"
+#include "common/common.h"
 #include "scamp_interface.h"
 #include "utils.h"
 

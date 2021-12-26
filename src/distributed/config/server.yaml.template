@@ -41,6 +41,6 @@ spec:
         # Public repository containing the image for the SCAMP master branch
         image: zpzim/scamp:latest
         # Run the server on startup
-        command: ["/SCAMP/build/kubernetes/SCAMPserver"]
+        command: ["/SCAMP/build/src/distributed/SCAMPserver"]
         ports:
         - containerPort: 30078

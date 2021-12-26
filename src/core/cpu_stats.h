@@ -1,6 +1,6 @@
 #pragma once
+#include <common/common.h>
 #include <vector>
-#include "common.h"
 
 namespace SCAMP {
 

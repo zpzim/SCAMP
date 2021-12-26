@@ -1,12 +1,12 @@
+#include <common/common.h>
+#include <common/scamp_args.h>
+#include <common/scamp_interface.h>
+#include <common/scamp_utils.h>
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <cmath>
 #include <thread>
-#include "../src/common.h"
-#include "../src/scamp_args.h"
-#include "../src/scamp_interface.h"
-#include "../src/scamp_utils.h"
 
 namespace py = pybind11;
 
