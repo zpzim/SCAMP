@@ -28,6 +28,10 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
+      - name: Configure Git
+        shell: bash
+        run: git config --global http.postBuffer 524288000
+
       - uses: actions/checkout@v2
         with:
           submodules: 'true'
@@ -72,6 +76,10 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
+      - name: Configure Git
+        shell: bash
+        run: git config --global http.postBuffer 524288000
+
       - uses: actions/checkout@v2
         with:
           submodules: 'recursive'
@@ -115,6 +123,10 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
+      - name: Configure Git
+        shell: bash
+        run: git config --global http.postBuffer 524288000
+
       - uses: actions/checkout@v2
         with:
           submodules: 'true'
@@ -157,6 +169,10 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
+      - name: Configure Git
+        shell: bash
+        run: git config --global http.postBuffer 524288000
+
       - uses: actions/checkout@v2
         with:
           submodules: 'true'
