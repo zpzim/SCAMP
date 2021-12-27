@@ -11,10 +11,10 @@
 #include <cstdlib>
 #include <iostream>
 #include <memory>
-#include <mutex>
 #include <queue>
 #include <sstream>
 #include <unordered_map>
+#include <vector>
 #include "scamp_exception.h"
 
 #ifdef _HAS_CUDA_
@@ -35,18 +35,13 @@ enum SCAMPProfileType {
   PROFILE_TYPE_INVALID = 0,
   PROFILE_TYPE_1NN_INDEX = 1,
   PROFILE_TYPE_SUM_THRESH = 2,
-  PROFILE_TYPE_FREQUENCY_THRESH = 3,
-  PROFILE_TYPE_KNN = 4,
-  PROFILE_TYPE_1NN_MULTIDIM = 5,
+  PROFILE_TYPE_FREQUENCY_THRESH = 3,  // Unused
+  PROFILE_TYPE_KNN = 4,               // Unused
+  PROFILE_TYPE_1NN_MULTIDIM = 5,      // Unused
   PROFILE_TYPE_1NN = 6,
   PROFILE_TYPE_APPROX_ALL_NEIGHBORS = 7,
   PROFILE_TYPE_MATRIX_SUMMARY = 8,
 };
-
-bool NeedsSort(SCAMPProfileType type);
-
-bool NeedsIntermittentMerge(SCAMPProfileType type);
-bool NeedsIntermittentReset(SCAMPProfileType type);
 
 // Precision modes
 enum SCAMPPrecisionType {
@@ -56,6 +51,12 @@ enum SCAMPPrecisionType {
   PRECISION_DOUBLE = 3,
   PRECISION_ULTRA = 4,
 };
+
+std::string GetPrecisionTypeString(SCAMPPrecisionType t);
+std::string GetProfileTypeString(SCAMPProfileType t);
+bool NeedsSort(SCAMPProfileType type);
+bool NeedsIntermittentMerge(SCAMPProfileType type);
+bool NeedsIntermittentReset(SCAMPProfileType type);
 
 // Enum describing worker architecture, used to switch on architecture specific
 // code
@@ -97,95 +98,6 @@ class compareMatch {
 
 void Memcopy(void *destination, const void *source, size_t bytes,
              bool from_tile, const ExecInfo *info);
-
-struct ProfileData {
-  // Only one of these should be set at once
-  std::vector<uint32_t> uint32_value;
-  std::vector<uint64_t> uint64_value;
-  std::vector<float> float_value;
-  std::vector<double> double_value;
-  std::vector<std::vector<float>> matrix_value;
-  std::vector<
-      std::priority_queue<SCAMPmatch, std::vector<SCAMPmatch>, compareMatch>>
-      match_value;
-  // Unordered version of match_value
-  std::vector<SCAMPmatch> match_value_unordered;
-};
-
-// Stores information about a matrix profile
-class Profile {
- public:
-  Profile() : type(PROFILE_TYPE_INVALID) {}
-  Profile(Profile &other) {
-    std::unique_lock<std::mutex> lock(_profile_lock);
-    type = other.type;
-    data = other.data;
-  }
-  Profile(Profile &&other) {
-    std::unique_lock<std::mutex> lock(_profile_lock);
-    type = other.type;
-    data = std::move(other.data);
-  }
-  Profile &operator=(Profile &&other) {
-    std::unique_lock<std::mutex> lock(_profile_lock);
-    type = other.type;
-    data = std::move(other.data);
-    return *this;
-  }
-  Profile(SCAMPProfileType t, size_t size, float thresh_init = 0,
-          int64_t mwidth = -1, int64_t mheight = -1)
-      : type(t) {
-    Alloc(size, mheight, mwidth, thresh_init);
-  }
-  std::vector<ProfileData> data;
-  std::vector<float> thresholds;
-  SCAMPProfileType type;
-  void MergeTileToProfile(Profile *tile_profile, const OpInfo *info,
-                          uint64_t position, uint64_t length,
-                          uint64_t index_start, bool overflowed);
-  void CopyFromDevice(const OpInfo *info, const ExecInfo *exec_info,
-                      const DeviceProfile *device_tile_profile,
-                      uint64_t length);
-  void Alloc(size_t size, int64_t matrix_height, int64_t matrix_width,
-             float default_thresh);
-
- private:
-  void threshold_merge(const std::vector<SCAMPmatch> &matches,
-                       uint64_t merge_start_col, int64_t max_matches);
-  void match_merge(const std::vector<SCAMPmatch> &matches,
-                   uint64_t merge_start_row, uint64_t merge_start_col,
-                   int64_t max_matches);
-  void matrix_merge(const std::vector<float> &values);
-  std::mutex _profile_lock;
-};
-
-// Arguments for a SCAMP operation
-// This is an external user's interface to the SCAMP library
-struct SCAMPArgs {
-  void validate();
-  void print();
-
-  std::vector<double> timeseries_a;
-  std::vector<double> timeseries_b;
-  Profile profile_a;
-  Profile profile_b;
-  bool has_b;
-  uint64_t window;
-  uint64_t max_tile_size;
-  int64_t distributed_start_row;
-  int64_t distributed_start_col;
-  double distance_threshold;
-  SCAMPPrecisionType precision_type;
-  SCAMPProfileType profile_type;
-  bool computing_rows;
-  bool computing_columns;
-  bool keep_rows_separate;
-  bool is_aligned;
-  bool silent_mode;
-  int64_t max_matches_per_column;
-  int64_t matrix_height;
-  int64_t matrix_width;
-};
 
 // Struct describing kernel arguments which are non-standard
 struct OptionalArgs {

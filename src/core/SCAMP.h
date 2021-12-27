@@ -3,7 +3,9 @@
 #include <list>
 #include <unordered_map>
 #include <vector>
-#include "common.h"
+
+#include "common/common.h"
+#include "common/profile.h"
 
 using std::list;
 using std::pair;
@@ -11,13 +13,6 @@ using std::unordered_map;
 using std::vector;
 
 namespace SCAMP {
-
-void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
-              int num_threads);
-
-void do_SCAMP(SCAMPArgs *args);
-
-int num_available_gpus();
 
 class SCAMP_Operation {
  private:

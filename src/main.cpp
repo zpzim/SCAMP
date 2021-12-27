@@ -9,13 +9,14 @@
 #include <sstream>
 #include <string>
 #include <vector>
-#include "SCAMP.h"
-#include "common.h"
-#include "scamp_exception.h"
-#include "scamp_utils.h"
-
+#include "common/common.h"
+#include "common/scamp_args.h"
+#include "common/scamp_exception.h"
+#include "common/scamp_utils.h"
 #ifdef _DISTRIBUTED_EXECUTION_
-#include "../kubernetes/scamp_interface.h"
+#include <distributed/scamp_interface.h>
+#else
+#include <common/scamp_interface.h>
 #endif
 
 #ifdef _DISTRIBUTED_EXECUTION_
@@ -216,7 +217,6 @@ int main(int argc, char **argv) {
     do_SCAMP_distributed(&args, FLAGS_hostname_port,
                          FLAGS_distributed_tile_size);
 #else
-    InitProfileMemory(&args);
     SCAMP::do_SCAMP(&args, devices, FLAGS_num_cpu_workers);
 #endif
   } catch (const SCAMPException &e) {

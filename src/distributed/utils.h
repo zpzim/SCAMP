@@ -2,7 +2,8 @@
 
 #pragma once
 
-#include "../src/common.h"
+#include "common/common.h"
+#include "common/scamp_args.h"
 #include "scamp.pb.h"
 
 int64_t get_current_time();

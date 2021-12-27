@@ -1,7 +1,9 @@
+#pragma once
 
 #include <grpcpp/grpcpp.h>
 #include <scamp.grpc.pb.h>
-#include "../src/common.h"
+
+#include "common/scamp_args.h"
 
 using grpc::Channel;
 using grpc::ClientContext;

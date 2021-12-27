@@ -222,24 +222,3 @@ bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
   }
   return true;
 }
-
-bool InitProfileMemory(SCAMP::SCAMPArgs *args) {
-  int64_t profile_a_size = args->timeseries_a.size() - args->window + 1;
-  int64_t profile_b_size = args->has_b
-                               ? args->timeseries_b.size() - args->window + 1
-                               : profile_a_size;
-  if (profile_a_size <= 0 ||
-      (args->keep_rows_separate && profile_b_size <= 0)) {
-    // Invalid input
-    return false;
-  }
-
-  args->profile_a.Alloc(profile_a_size, args->matrix_height, args->matrix_width,
-                        args->distance_threshold);
-
-  if (args->keep_rows_separate) {
-    args->profile_b.Alloc(profile_b_size, args->matrix_height,
-                          args->matrix_width, args->distance_threshold);
-  }
-  return true;
-}
