@@ -4,10 +4,7 @@ RUN apt-get update && \
     apt-get upgrade -y
 
 # SCAMP build dependancies
-RUN apt-get install zlib1g-dev -y
-RUN apt-get install cmake -y
-RUN apt-get install golang-go -y
-RUN apt-get install clang -y
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -y zlib1g-dev cmake golang-go clang
 
 COPY . /SCAMP
 
@@ -24,4 +21,3 @@ FROM nvidia/cuda:11.4.2-runtime-ubuntu20.04
 RUN mkdir /SCAMP
 COPY --from=0 /SCAMP/build /SCAMP/build
 COPY --from=0 /SCAMP/test /SCAMP/test
-

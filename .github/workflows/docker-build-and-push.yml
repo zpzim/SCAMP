@@ -1,4 +1,4 @@
-name: Docker Build and Push Release Tag
+name: Docker Build and Push On Release
 
 on:
   release:
@@ -20,7 +20,7 @@ jobs:
         with:
           images: zpzim/scamp
 
-      - name: Build and push
+      - name: Build and Push
         id: docker_build
         uses: docker/build-push-action@v2
         with:
