@@ -34,7 +34,7 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           push: false
-          tags: ${{ steps.meta.outputs.tags }} zpzim/scamp:test
+          tags: '${{ steps.meta.outputs.tags }}, zpzim/scamp:test'
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: CPU Test
