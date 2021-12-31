@@ -10,6 +10,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
+        ref: master
         submodules: 'true'
     - name: Set up Python
       uses: actions/setup-python@v2
