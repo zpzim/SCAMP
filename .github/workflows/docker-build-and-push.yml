@@ -1,12 +1,8 @@
-name: Docker Build Test
+name: Docker Build and Push Release Tag
 
 on:
-  push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
-
-  workflow_dispatch:
+  release:
+    types: [released]
 
 jobs:
   docker:
@@ -28,6 +24,6 @@ jobs:
         id: docker_build
         uses: docker/build-push-action@v2
         with:
-          push: false
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
