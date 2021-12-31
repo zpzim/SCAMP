@@ -1,15 +1,12 @@
 name: Upload Python Package
 
 on:
-  workflow_run:
-    workflows: ["Build and Test"]
-    branches: [master]
-    types: [completed]
+  release:
+    types: [released]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
     - uses: actions/checkout@v2
       with:
@@ -29,4 +26,3 @@ jobs:
       with:
         user: __token__
         password: ${{ secrets.PYPI_API_TOKEN }}
-        skip_existing: true

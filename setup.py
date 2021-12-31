@@ -123,7 +123,12 @@ class CMakeBuild(build_ext):
 
 setup(
     name='pyscamp',
-    version='0.6.1',
+    use_scm_version = {
+        "root": ".",
+        "relative_to": __file__,
+        "local_scheme": "no-local-version"
+    },
+    setup_requires=['setuptools_scm'],
     author='Zachary Zimmerman',
     author_email='zpzimmerman@gmail.com',
     description='SCAlable Matrix Profile',
