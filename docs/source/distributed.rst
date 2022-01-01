@@ -43,5 +43,5 @@ Limitations
 Sharded implementation
 **********************
 
-The original distributed implementation used `AWS batch <https://aws.amazon.com/batch/>`_ and shards the time series to Amazon S3. This approach avoids the above limitations of our in-memory SCAMPserver, however our initial implementation was very limited in scope and was not extensible to other types of SCAMP workloads, so it is mostly obsolete. However, we still provide the scripts used for posterity in the aws/ directory in the repository. Though these would be strictly for inspiration, as there are AWS account side configurations required for operation that cannot be provided. 
+The original distributed implementation used `AWS batch <https://aws.amazon.com/batch/>`_ and shards the time series to Amazon S3. This approach avoids the above limitations of our in-memory SCAMPserver, however our initial implementation was very limited in scope and was not extensible to other types of SCAMP workloads, so it is obsolete. The old scripts can be found `here <https://github.com/zpzim/SCAMP/tree/v2.1.0/aws>` for posterity. Though these would be strictly for inspiration, as there are AWS account side configurations required for operation that cannot be provided. 
 
