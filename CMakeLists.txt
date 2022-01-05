@@ -172,8 +172,8 @@ include_directories("${CMAKE_CURRENT_SOURCE_DIR}/src/")
 
 # Build pybind11 if needed
 if (BUILD_PYTHON_MODULE)
-  find_package(PythonLibs)
-  add_subdirectory(pybind11)
+  find_package(PythonLibs REQUIRED)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/pybind11)
 endif()
 
 # Add common targets.
