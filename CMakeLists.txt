@@ -172,8 +172,8 @@ include_directories("${CMAKE_CURRENT_SOURCE_DIR}/src/")
 
 # Build pybind11 if needed
 if (BUILD_PYTHON_MODULE)
-  find_package(PythonLibs)
-  add_subdirectory(pybind11)
+  find_package(PythonLibs REQUIRED)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/pybind11)
 endif()
 
 # Add common targets.
@@ -188,7 +188,7 @@ if (BUILD_PYTHON_MODULE)
 endif()
 
 if (BUILD_CLIENT_SERVER)
-  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/grpc EXCLUDE_FROM_ALL)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/grpc EXCLUDE_FROM_ALL)
   message(STATUS "Using gRPC via add_subdirectory.")
   
   # After using add_subdirectory, we can now use the grpc targets directly from
@@ -201,18 +201,18 @@ if (BUILD_CLIENT_SERVER)
   set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:grpc_cpp_plugin>)
 
   # Add include directories we will use later
-  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/grpc/include/) 
-  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/grpc/third_party/gflags/include/)
-  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/grpc/third_party/protobuf/src/)
-  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/grpc/third_party/abseil-cpp/)
+  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/grpc/include/) 
+  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/grpc/third_party/gflags/include/)
+  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/grpc/third_party/protobuf/src/)
+  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/grpc/third_party/abseil-cpp/)
 
   # Build scamp client and scamp server
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/distributed)
 endif()
 
 if(NOT TARGET gflags)
-  add_subdirectory(gflags)
-  include_directories(gflags/include/)
+  add_subdirectory(third_party/gflags)
+  include_directories(third_party/gflags/include/)
 endif()
 
 # C++/CUDA executable
