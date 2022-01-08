@@ -178,8 +178,8 @@ struct OpInfo {
   // Variables associated with the MATRIX_SUMMARY profile type
   int64_t matrix_height;
   int64_t matrix_width;
-  int64_t cols_per_cell;
-  int64_t rows_per_cell;
+  double cols_per_cell;
+  double rows_per_cell;
 };
 
 // Struct containing the precomputed statistics for an input time series

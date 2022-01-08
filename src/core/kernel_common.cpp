@@ -38,7 +38,7 @@ SCAMPKernelInputArgs<T>::SCAMPKernelInputArgs(Tile *t, bool transpose,
 }
 
 template <typename T>
-void SCAMPKernelInputArgs<T>::Print() {
+void SCAMPKernelInputArgs<T>::Print() const {
   std::cout << "cov = " << cov << std::endl;
   std::cout << "dfa = " << dfa << std::endl;
   std::cout << "dfb = " << dfb << std::endl;
@@ -51,6 +51,13 @@ void SCAMPKernelInputArgs<T>::Print() {
   std::cout << "n_y  = " << n_y << std::endl;
   std::cout << "exclusion_upper = " << exclusion_upper << std::endl;
   std::cout << "exclusion_lower = " << exclusion_lower << std::endl;
+  std::cout << "threshold = " << opt.threshold << std::endl;
+  std::cout << "matrix_width = " << matrix_width << std::endl;
+  std::cout << "matrix_height = " << matrix_height << std::endl;
+  std::cout << "rows_per_cell = " << rows_per_cell << std::endl;
+  std::cout << "cols_per_cell = " << cols_per_cell << std::endl;
+  std::cout << "global_start_col = " << global_start_col << std::endl;
+  std::cout << "global_start_row = " << global_start_row << std::endl;
 }
 
 template struct SCAMPKernelInputArgs<double>;

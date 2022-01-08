@@ -21,6 +21,19 @@ void SCAMPArgs::validate() {
         "size' "
         "in length");
   }
+  if (matrix_width > 0 && timeseries_a.size() - window + 1 < matrix_width) {
+    throw SCAMPException(
+        "Error: Output matrix must have smaller dimensions than the input time "
+        "series.");
+  }
+
+  if (matrix_height > 0 &&
+      (has_b ? timeseries_b.size() - window + 1 < matrix_height
+             : timeseries_a.size() - window + 1 < matrix_height)) {
+    throw SCAMPException(
+        "Error: Output matrix must have smaller dimensions than the input time "
+        "series.");
+  }
 }
 
 void SCAMPArgs::print() {

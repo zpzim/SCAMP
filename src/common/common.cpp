@@ -97,10 +97,10 @@ OpInfo::OpInfo(size_t Asize, size_t Bsize, size_t window_sz,
   if (profile_type == PROFILE_TYPE_MATRIX_SUMMARY) {
     computing_rows = false;
     keep_rows_separate = false;
-    cols_per_cell = std::ceil((full_ts_len_A - mp_window + 1) /
-                              static_cast<double>(matrix_width));
-    rows_per_cell = std::ceil((full_ts_len_B - mp_window + 1) /
-                              static_cast<double>(matrix_height));
+    cols_per_cell =
+        (full_ts_len_A - mp_window + 1) / static_cast<double>(matrix_width);
+    rows_per_cell =
+        (full_ts_len_B - mp_window + 1) / static_cast<double>(matrix_height);
   }
 }
 
