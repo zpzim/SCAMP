@@ -184,8 +184,8 @@ void do_tile(const SCAMPKernelInputArgs<double> &args,
         // double col_increment = 1 / args.cols_per_cell;
         // col_idx = (tile_diag + row + args.global_start_col) /
         // args.cols_per_cell; int row_idx = std::floor((row +
-        // args.global_start_row) / args.rows_per_cell); matrix_index = row_idx *
-        // args.matrix_width + col_idx; for (int local_diag = 0; local_diag <
+        // args.global_start_row) / args.rows_per_cell); matrix_index = row_idx
+        // * args.matrix_width + col_idx; for (int local_diag = 0; local_diag <
         // unrollWid; local_diag++) {
         //  update_mp<PROFILE_TYPE, PROFILE_DATA_TYPE>(profile_A,
         //  corr[local_diag], -1, std::floor(matrix_index),
