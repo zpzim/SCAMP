@@ -104,7 +104,7 @@ jobs:
           ../build/src/distributed/SCAMPclient &
           sleep 10
           ./run_tests.sh ../build/src/distributed/SCAMP_distributed /dev/null 
-          python3 ./run_tests.py --executable ../build/src/distributed/SCAMP_distributed --window_sizes 100 --extra_args "--no_gpu --num_cpu_workers=1 --distributed_tile_size=1500"
+          python3 ./run_tests.py --executable ../build/src/distributed/SCAMP_distributed --matrix_sizes --window_sizes 100 --extra_args "--no_gpu --num_cpu_workers=1 --distributed_tile_size=1500"
     
   build-and-test-cpu-pyscamp:
     strategy:

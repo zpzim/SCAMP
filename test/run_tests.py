@@ -25,11 +25,11 @@ parser.add_argument('--executable', help='SCAMP executable to test, input \'pysc
 parser.add_argument('--force_gpu', type=bool, help='Forces GPU-specific tests to run')
 parser.add_argument('--output_file', help='File for test std output')
 parser.add_argument('--extra_args', help='Extra arguments to be passed to each test invocation')
-parser.add_argument('--window_sizes', type=int, nargs='+')
-parser.add_argument('--tile_sizes', type=int, nargs='+')
-parser.add_argument('--input_sizes', type=int, nargs='+')
-parser.add_argument('--matrix_sizes', type=int, nargs='+')
-parser.add_argument('--thresholds', type=float, nargs='+')
+parser.add_argument('--window_sizes', type=int, nargs='*')
+parser.add_argument('--tile_sizes', type=int, nargs='*')
+parser.add_argument('--input_sizes', type=int, nargs='*')
+parser.add_argument('--matrix_sizes', type=int, nargs='*')
+parser.add_argument('--thresholds', type=float, nargs='*')
 args = parser.parse_args()
 
 
