@@ -247,17 +247,27 @@ def reduce_frequency_thresh(dm, thresh):
     return result.squeeze()
   
 
-def reduce_matrix(dm, rows, cols):
-    out = np.ones((rows,cols)) * -1
-    reduced_rows = math.ceil(dm.shape[0] / rows)
-    reduced_cols = math.ceil(dm.shape[1] / cols)
+def reduce_matrix(dm_orig, rows, cols, self_join):
+    dm = np.copy(dm_orig)
+    if self_join:
+      # In a self join. SCAMP only computes the upper triagnular
+      # portion of the distance matrix. We need to erase the bottom
+      # half to not get a different reduction in these cases. 
+      for col in range(dm.shape[1]):
+        if col + 1 >= dm.shape[0]:
+          break
+        dm[col + 1:, col] = np.nan
+
+    reduced_rows = dm.shape[0] / rows
+    reduced_cols = dm.shape[1] / cols
+    out = np.ones((rows,cols)) * -2
     for r in range(rows):
-      st_r = r * reduced_rows
-      ed_r = min(dm.shape[0], (r +1)* reduced_rows)
+      st_r = math.ceil(r * reduced_rows)
+      ed_r = min(dm.shape[0], math.ceil((r+1)* reduced_rows))
       for c in range(cols):
-        st_c = c * reduced_cols
-        ed_c = min(dm.shape[1], (c+1)*reduced_cols)
-        out[r, c] = np.amax(dm[st_r:ed_r, st_c:ed_c])
+        st_c = math.ceil(c * reduced_cols)
+        ed_c = min(dm.shape[1], math.ceil((c+1)*reduced_cols))
+        out[r, c] = np.nanmax(dm[st_r:ed_r, st_c:ed_c])
     out[out == -2] = np.nan
     return out
 
