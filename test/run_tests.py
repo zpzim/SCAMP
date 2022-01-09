@@ -160,6 +160,11 @@ def run_pyscamp(inputs, a, b, window, max_matches, thresh, ptype, rrows, rcols):
       mp_columns_out = mp.selfjoin_knn(inputs[a], window, max_matches, **args)
     else:
       mp_columns_out = mp.abjoin_knn(inputs[a], inputs[b], window, max_matches, **args)
+  elif ptype == "MATRIX_SUMMARY":
+    if a == b:
+      mp_columns_out = mp.selfjoin_matrix(inputs[a], window, **args)
+    else:
+      mp_columns_out = mp.abjoin_matrix(inputs[a], inputs[b], window, **args)
   else:
     raise ValueError('pyscamp does not support profile type {}'.format(ptype))
 
