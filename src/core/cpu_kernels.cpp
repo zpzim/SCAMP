@@ -26,6 +26,7 @@ inline DISTANCE_TYPE init_dist() {
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
     case PROFILE_TYPE_1NN_INDEX:
     case PROFILE_TYPE_1NN:
+    case PROFILE_TYPE_MATRIX_SUMMARY:
       // Smallest value possible is -1 so set to -2
       return static_cast<DISTANCE_TYPE>(-2);
     case PROFILE_TYPE_SUM_THRESH:
@@ -36,45 +37,66 @@ inline DISTANCE_TYPE init_dist() {
   }
 }
 
-template <SCAMPProfileType PROFILE_TYPE>
-inline void update_mp(double *mp, double corr, int row,
-                      int col,  // NOLINT(misc-unused-parameters)
-                      double thresh) {
-  if (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
-    mp[col] = corr > thresh ? mp[col] + corr : mp[col];
-  } else {
-    ASSERT(false, "No Implementation provided for updating MP in CPU KERNEL");
-  }
-}
-
-template <SCAMPProfileType PROFILE_TYPE>
-inline void update_mp(mp_entry *mp, double corr, int row, int col,
-                      double thresh) {  // NOLINT(misc-unused-parameters)
-  if (PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX) {
+template <SCAMPProfileType PROFILE_TYPE, typename PROFILE_DATA_TYPE>
+inline void update_mp(PROFILE_DATA_TYPE *mp, double corr, int row, int col,
+                      const SCAMPKernelInputArgs<double> &args) {
+  if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX) {
     if (corr > mp[col].floats[0]) {
       mp[col].floats[0] = corr;
       mp[col].ints[1] = row;
     }
+  } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN) {
+    mp[col] = mp[col] >= corr ? mp[col] : corr;
+  } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
+    mp[col] = corr > args.opt.threshold ? mp[col] + corr : mp[col];
+  } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
+    int col_idx =
+        std::floor((col + args.global_start_col) / args.cols_per_cell);
+    int row_idx =
+        std::floor((row + args.global_start_row) / args.rows_per_cell);
+    int matrix_index = row_idx * args.matrix_width + col_idx;
+    mp[matrix_index] = corr < args.opt.threshold || mp[matrix_index] >= corr
+                           ? mp[matrix_index]
+                           : corr;
   } else {
     ASSERT(false, "No Implementation provided for updating MP in CPU KERNEL");
   }
 }
 
-template <SCAMPProfileType PROFILE_TYPE>
-inline void update_mp(float *mp, double corr, int row, int col,
-                      double thresh) {  // NOLINT(misc-unused-parameters)
-  if (PROFILE_TYPE == PROFILE_TYPE_1NN) {
-    mp[col] = mp[col] >= corr ? mp[col] : corr;
-  } else {
-    ASSERT(false, "No Implementation provided for updating MP in CPU KERNEL");
-  }
+/*
+template <SCAMPProfileType PROFILE_TYPE, typename PROFILE_DATA_TYPE>
+inline void update_rowwise(PROFILE_DATA_TYPE *mp, const
+SCAMPKernelInputArgs<double> &args) { if constexpr (PROFILE_TYPE ==
+PROFILE_TYPE_MATRIX_SUMMARY) { int idx_col = (tile_diag + row +
+args.global_start_col) / args.cols_per_cell; int col_pos = (tile_diag + row +
+args.global_start_col) % args.cols_per_cell; int idx_row = (row +
+args.global_start_row) / args.rows_per_cell; for (int local_diag = 0; local_diag
+< unrollWid; local_diag++, col_pos++) { if (col_pos >= args.cols_per_cell) {
+          idx_col += 1;
+          col_pos = 0;
+        }
+        update_mp<PROFILE_TYPE, PROFILE_DATA_TYPE>(profile_B, corr[local_diag],
+idx_col, idx_row, args);
+      }
+    } else {
+      std::array<int, unrollWid / 2>
+          corrIdx;  // NOLINT(cppcoreguidelines-pro-type-member-init,
+                    // hicpp-member-init)
+      reduce_row<DIST_TYPE, PROFILE_TYPE>(corr, corrIdx, args.opt.threshold);
+      update_mp<PROFILE_TYPE, PROFILE_DATA_TYPE>(profile_B, corr[0],
+                              corrIdx[0] + tile_diag + row, row,
+                              args);
+    }
+
 }
+*/
 
 template <typename DATA_TYPE, SCAMPProfileType type>
 inline void reduce_row(std::array<DATA_TYPE, unrollWid> &corr,
                        std::array<int, unrollWid / 2> &corrIdx,
                        double thresh) {  // NOLINT
   switch (type) {
+    case PROFILE_TYPE_MATRIX_SUMMARY:
     case PROFILE_TYPE_1NN_INDEX: {
       for (int i = 0; i < unrollWid / 2; i++) {
         corrIdx[i] = corr[i] >= corr[i + unrollWid / 2] ? i : i + unrollWid / 2;
@@ -117,7 +139,7 @@ inline void reduce_row(std::array<DATA_TYPE, unrollWid> &corr,
     default:
       break;
   }
-}  // namespace SCAMP
+}
 
 template <typename DIST_TYPE, typename PROFILE_DATA_TYPE,
           SCAMPProfileType PROFILE_TYPE, bool computing_rows,
@@ -127,6 +149,7 @@ void do_tile(const SCAMPKernelInputArgs<double> &args,
              PROFILE_DATA_TYPE *__restrict profile_B) {
   auto initializer = init_dist<DIST_TYPE, PROFILE_TYPE>();
   int num_diags = args.n_x - args.exclusion_upper + 1;
+
   for (int tile_diag = args.exclusion_lower; tile_diag < num_diags;
        tile_diag += unrollWid) {
     // Determine the maximum number of iterations for this tile (includes slow
@@ -141,7 +164,6 @@ void do_tile(const SCAMPKernelInputArgs<double> &args,
       fullRowIters =
           std::max(0, std::min(args.n_x - tile_diag - unrollWid + 1, args.n_y));
     }
-
     // Fast, Unrolled, Autovectorized Case
     for (int row = 0; row < fullRowIters; row++) {
       alignas(simdByteLen) std::array<DIST_TYPE, unrollWid>
@@ -156,21 +178,54 @@ void do_tile(const SCAMPKernelInputArgs<double> &args,
             std::isfinite(correlation) ? correlation : initializer;
       }
       if (computing_cols) {
+        // if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
+        // double matrix_index;
+        // double col_idx;
+        // double col_increment = 1 / args.cols_per_cell;
+        // col_idx = (tile_diag + row + args.global_start_col) /
+        // args.cols_per_cell; int row_idx = std::floor((row +
+        // args.global_start_row) / args.rows_per_cell); matrix_index = row_idx *
+        // args.matrix_width + col_idx; for (int local_diag = 0; local_diag <
+        // unrollWid; local_diag++) {
+        //  update_mp<PROFILE_TYPE, PROFILE_DATA_TYPE>(profile_A,
+        //  corr[local_diag], -1, std::floor(matrix_index),
+        //                          args);
+        //  matrix_index += col_increment;
+        //}
+        //} else {
         for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
           int curr_diag = tile_diag + local_diag;
           int col = curr_diag + row;
-          update_mp<PROFILE_TYPE>(profile_A, corr[local_diag], row, col,
-                                  args.opt.threshold);
+          update_mp<PROFILE_TYPE, PROFILE_DATA_TYPE>(
+              profile_A, corr[local_diag], row, col, args);
         }
       }
       if (computing_rows) {
-        std::array<int, unrollWid / 2>
-            corrIdx;  // NOLINT(cppcoreguidelines-pro-type-member-init,
-                      // hicpp-member-init)
-        reduce_row<DIST_TYPE, PROFILE_TYPE>(corr, corrIdx, args.opt.threshold);
-        update_mp<PROFILE_TYPE>(profile_B, corr[0],
-                                corrIdx[0] + tile_diag + row, row,
-                                args.opt.threshold);
+        if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
+          //  double matrix_index;
+          //  double col_idx;
+          //  double col_increment = 1 / args.cols_per_cell;
+          //  col_idx = (row + args.global_start_col) / args.cols_per_cell;
+          //  int row_idx = std::floor((tile_diag + row + args.global_start_row)
+          //  / args.rows_per_cell); matrix_index = row_idx * args.matrix_width
+          //  + col_idx;
+          for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
+            int curr_diag = tile_diag + local_diag;
+            int col = curr_diag + row;
+            update_mp<PROFILE_TYPE, PROFILE_DATA_TYPE>(
+                profile_B, corr[local_diag], col, row, args);
+            //    matrix_index += col_increment;
+          }
+        } else {
+          std::array<int, unrollWid / 2>
+              corrIdx;  // NOLINT(cppcoreguidelines-pro-type-member-init,
+                        // hicpp-member-init)
+          reduce_row<DIST_TYPE, PROFILE_TYPE>(corr, corrIdx,
+                                              args.opt.threshold);
+          int col = corrIdx[0] + tile_diag + row;
+          update_mp<PROFILE_TYPE, PROFILE_DATA_TYPE>(profile_B, corr[0], col,
+                                                     row, args);
+        }
       }
       for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
         int curr_diag = tile_diag + local_diag;
@@ -179,23 +234,58 @@ void do_tile(const SCAMPKernelInputArgs<double> &args,
         args.cov[curr_diag] += args.dfb[row] * args.dga[col];
       }
     }
-
     // Slow Case
     for (int row = fullRowIters; row < rowIters; row++) {
       int diagmax = std::min(
           std::min(args.n_x - args.exclusion_upper + 1, args.n_x - row),
           tile_diag + unrollWid);
+
+      // double matrix_index;
+      // double col_idx;
+      // double col_increment = 1 / args.cols_per_cell;
+      // if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
+      //  if (computing_cols) {
+      //    col_idx = (tile_diag + row + args.global_start_col) /
+      //    args.cols_per_cell; int row_idx = std::floor((row +
+      //    args.global_start_row) / args.rows_per_cell); matrix_index = row_idx
+      //    * args.matrix_width + col_idx;
+      //  } else {
+      //    col_idx = (row + args.global_start_col) / args.cols_per_cell;
+      //    int row_idx = std::floor((tile_diag + row + args.global_start_row) /
+      //    args.rows_per_cell); matrix_index = row_idx * args.matrix_width +
+      //    col_idx;
+      //  }
+      //} else {
+      // cell_position = -1;
+      //  matrix_index = -1;
+      //}
       for (int diag = tile_diag; diag < diagmax; diag++) {
+        // if (matrix_index >= args.matrix_width * args.matrix_height) {
+        //  std::cout << "idx: " << matrix_index << std::endl;
+        //}
         int col = diag + row;
         DIST_TYPE corr = args.cov[diag] * args.normsa[col] * args.normsb[row];
         corr = std::isfinite(corr) ? corr : initializer;
         if (computing_cols) {
-          update_mp<PROFILE_TYPE>(profile_A, corr, row, col,
-                                  args.opt.threshold);
+          // if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
+          //    update_mp<PROFILE_TYPE, PROFILE_DATA_TYPE>(profile_A, corr, -1,
+          //    std::floor(matrix_index),
+          //                          args);
+          //    matrix_index += col_increment;
+          //} else {
+          update_mp<PROFILE_TYPE, PROFILE_DATA_TYPE>(profile_A, corr, row, col,
+                                                     args);
+          //}
         }
         if (computing_rows) {
-          update_mp<PROFILE_TYPE>(profile_B, corr, col, row,
-                                  args.opt.threshold);
+          // if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
+          //  update_mp<PROFILE_TYPE, PROFILE_DATA_TYPE>(profile_B, corr, -1,
+          //  std::floor(matrix_index),
+          //                        args);
+          //} else {
+          update_mp<PROFILE_TYPE, PROFILE_DATA_TYPE>(profile_B, corr, col, row,
+                                                     args);
+          //}
         }
       }
       for (int diag = tile_diag; diag < diagmax; diag++) {
@@ -282,8 +372,12 @@ SCAMPError_t compute_cpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
             args, static_cast<float *>(profile_a),
             static_cast<float *>(profile_b), t->info()->fp_type, do_rows,
             do_cols);
-      case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
       case PROFILE_TYPE_MATRIX_SUMMARY:
+        return LaunchDoTile<float, float, PROFILE_TYPE_MATRIX_SUMMARY>(
+            args, static_cast<float *>(profile_a),
+            static_cast<float *>(profile_b), t->info()->fp_type, do_rows,
+            do_cols);
+      case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
       default:
         return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
     }
@@ -319,4 +413,4 @@ SCAMPError_t cpu_kernel_ab_join_lower(Tile *t) {
       t->info()->computing_rows);
 }
 
-};  // namespace SCAMP
+}  // namespace SCAMP
