@@ -1,4 +1,5 @@
 #include "cpu_kernels.h"
+#include "defines.h"
 #include "kernel_common.h"
 
 #include <array>
@@ -20,7 +21,7 @@ constexpr int simdByteLen{32};
 // Outputs an 'initial' distance value based on the type of profile being
 // computed
 template <typename DISTANCE_TYPE, SCAMPProfileType type>
-inline DISTANCE_TYPE init_dist() {
+FORCE_INLINE inline DISTANCE_TYPE init_dist() {
   switch (type) {
     case PROFILE_TYPE_KNN:
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
@@ -37,7 +38,7 @@ inline DISTANCE_TYPE init_dist() {
 }
 
 template <SCAMPProfileType PROFILE_TYPE>
-inline void update_mp(double *mp, double corr, int row,
+FORCE_INLINE inline void update_mp(double *mp, double corr, int row,
                       int col,  // NOLINT(misc-unused-parameters)
                       double thresh) {
   if (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
@@ -48,7 +49,7 @@ inline void update_mp(double *mp, double corr, int row,
 }
 
 template <SCAMPProfileType PROFILE_TYPE>
-inline void update_mp(mp_entry *mp, double corr, int row, int col,
+FORCE_INLINE inline void update_mp(mp_entry *mp, double corr, int row, int col,
                       double thresh) {  // NOLINT(misc-unused-parameters)
   if (PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX) {
     if (corr > mp[col].floats[0]) {
@@ -61,7 +62,7 @@ inline void update_mp(mp_entry *mp, double corr, int row, int col,
 }
 
 template <SCAMPProfileType PROFILE_TYPE>
-inline void update_mp(float *mp, double corr, int row, int col,
+FORCE_INLINE inline void update_mp(float *mp, double corr, int row, int col,
                       double thresh) {  // NOLINT(misc-unused-parameters)
   if (PROFILE_TYPE == PROFILE_TYPE_1NN) {
     mp[col] = mp[col] >= corr ? mp[col] : corr;
@@ -71,7 +72,7 @@ inline void update_mp(float *mp, double corr, int row, int col,
 }
 
 template <typename DATA_TYPE, SCAMPProfileType type>
-inline void reduce_row(std::array<DATA_TYPE, unrollWid> &corr,
+FORCE_INLINE inline void reduce_row(std::array<DATA_TYPE, unrollWid> &corr,
                        std::array<int, unrollWid / 2> &corrIdx,
                        double thresh) {  // NOLINT
   switch (type) {
