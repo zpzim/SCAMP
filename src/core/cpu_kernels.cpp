@@ -67,7 +67,7 @@ FORCE_INLINE inline void update_mp(
     float *mp, double corr, int row, int col,
     double thresh) {  // NOLINT(misc-unused-parameters)
   if (PROFILE_TYPE == PROFILE_TYPE_1NN) {
-    mp[col] = mp[col] >= corr ? mp[col] : corr;
+    mp[col] = corr > mp[col] ? corr : mp[col];
   } else {
     ASSERT(false, "No Implementation provided for updating MP in CPU KERNEL");
   }
@@ -80,14 +80,12 @@ FORCE_INLINE inline void reduce_row(std::array<DATA_TYPE, unrollWid> &corr,
   switch (type) {
     case PROFILE_TYPE_1NN_INDEX: {
       for (int i = 0; i < unrollWid / 2; i++) {
-        corrIdx[i] = corr[i] >= corr[i + unrollWid / 2] ? i : i + unrollWid / 2;
-        corr[i] = corr[i] >= corr[i + unrollWid / 2] ? corr[i]
-                                                     : corr[i + unrollWid / 2];
+       	corrIdx[i] = corr[i] >= corr[i + unrollWid / 2] ? i : i + unrollWid / 2;
+        corr[i] = corr[i] >= corr[i + unrollWid / 2] ? corr[i] : corr[i + unrollWid / 2];
       }
       auto horizontal_reduction = [&corr, &corrIdx](int offset) {
         for (int i = 0; i < offset; i++) {
-          corrIdx[i] =
-              corr[i] >= corr[i + offset] ? corrIdx[i] : corrIdx[i + offset];
+          corrIdx[i] = corr[i] >= corr[i + offset] ? corrIdx[i] : corrIdx[i + offset];
           corr[i] = corr[i] >= corr[i + offset] ? corr[i] : corr[i + offset];
         }
       };
@@ -150,13 +148,23 @@ void do_tile(const SCAMPKernelInputArgs<double> &args,
       alignas(simdByteLen) std::array<DIST_TYPE, unrollWid>
           corr;  // NOLINT(cppcoreguidelines-pro-type-member-init,
                  // hicpp-member-init)
+      // MSVC and other less sophisticated compilers cannot autovectorize this
+      // loop unless all accesses appear aligned. We can trick these compilers
+      // into vectorizing this loop by avoiding the complicated indexing
+      // within the loop and rather just change the offest of each input array.
+      double *__restrict cov = args.cov + tile_diag;
+      const double *__restrict normsa = args.normsa + tile_diag + row;
+      const double *__restrict normsb = args.normsb;
       for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
-        int curr_diag = tile_diag + local_diag;
-        int col = curr_diag + row;
-        DIST_TYPE correlation =
-            args.cov[curr_diag] * args.normsa[col] * args.normsb[row];
         corr[local_diag] =
-            std::isfinite(correlation) ? correlation : initializer;
+            cov[local_diag] * normsa[local_diag] * normsb[row];
+      }
+      if (args.has_nan_input) {
+        // Remove any nan values so that they don't pollute the reduction.
+        // This is expensive on some compilers so only do it if we need to.
+        for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
+          corr[local_diag] = std::isfinite(corr[local_diag]) ? corr[local_diag] : initializer;
+        }
       }
       if (computing_cols) {
         for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
@@ -175,11 +183,15 @@ void do_tile(const SCAMPKernelInputArgs<double> &args,
                                 corrIdx[0] + tile_diag + row, row,
                                 args.opt.threshold);
       }
+      // Same as above, avoid complicated indexing within the loop to get
+      // less sophisticated compilers to vectorize it.
+      const double *__restrict dfa = args.dfa + tile_diag + row;
+      const double *__restrict dga = args.dga + tile_diag + row;
+      double dfb = args.dfb[row];
+      double dgb = args.dgb[row];
       for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
-        int curr_diag = tile_diag + local_diag;
-        int col = curr_diag + row;
-        args.cov[curr_diag] += args.dfa[col] * args.dgb[row];
-        args.cov[curr_diag] += args.dfb[row] * args.dga[col];
+        cov[local_diag] += dfa[local_diag] * dgb;
+        cov[local_diag] += dfb * dga[local_diag];
       }
     }
 
