@@ -39,8 +39,8 @@ FORCE_INLINE inline DISTANCE_TYPE init_dist() {
 
 template <SCAMPProfileType PROFILE_TYPE>
 FORCE_INLINE inline void update_mp(double *mp, double corr, int row,
-                      int col,  // NOLINT(misc-unused-parameters)
-                      double thresh) {
+                                   int col,  // NOLINT(misc-unused-parameters)
+                                   double thresh) {
   if (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
     mp[col] = corr > thresh ? mp[col] + corr : mp[col];
   } else {
@@ -49,8 +49,9 @@ FORCE_INLINE inline void update_mp(double *mp, double corr, int row,
 }
 
 template <SCAMPProfileType PROFILE_TYPE>
-FORCE_INLINE inline void update_mp(mp_entry *mp, double corr, int row, int col,
-                      double thresh) {  // NOLINT(misc-unused-parameters)
+FORCE_INLINE inline void update_mp(
+    mp_entry *mp, double corr, int row, int col,
+    double thresh) {  // NOLINT(misc-unused-parameters)
   if (PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX) {
     if (corr > mp[col].floats[0]) {
       mp[col].floats[0] = corr;
@@ -62,8 +63,9 @@ FORCE_INLINE inline void update_mp(mp_entry *mp, double corr, int row, int col,
 }
 
 template <SCAMPProfileType PROFILE_TYPE>
-FORCE_INLINE inline void update_mp(float *mp, double corr, int row, int col,
-                      double thresh) {  // NOLINT(misc-unused-parameters)
+FORCE_INLINE inline void update_mp(
+    float *mp, double corr, int row, int col,
+    double thresh) {  // NOLINT(misc-unused-parameters)
   if (PROFILE_TYPE == PROFILE_TYPE_1NN) {
     mp[col] = mp[col] >= corr ? mp[col] : corr;
   } else {
@@ -73,8 +75,8 @@ FORCE_INLINE inline void update_mp(float *mp, double corr, int row, int col,
 
 template <typename DATA_TYPE, SCAMPProfileType type>
 FORCE_INLINE inline void reduce_row(std::array<DATA_TYPE, unrollWid> &corr,
-                       std::array<int, unrollWid / 2> &corrIdx,
-                       double thresh) {  // NOLINT
+                                    std::array<int, unrollWid / 2> &corrIdx,
+                                    double thresh) {  // NOLINT
   switch (type) {
     case PROFILE_TYPE_1NN_INDEX: {
       for (int i = 0; i < unrollWid / 2; i++) {

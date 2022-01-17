@@ -197,8 +197,7 @@ size_t GetProfileTypeSize(SCAMPProfileType t) {
     case PROFILE_TYPE_FREQUENCY_THRESH:
     case PROFILE_TYPE_INVALID:
     default:
-      throw SCAMPException(
-          "Error: Profile Type Unknown");
+      throw SCAMPException("Error: Profile Type Unknown");
   }
 }
 
