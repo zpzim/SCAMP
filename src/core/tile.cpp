@@ -395,20 +395,22 @@ void Tile::InitStats(const PrecomputedInfo &a, const PrecomputedInfo &b,
   // If this tile contains nan inputs we will need to perform potentially more
   // expensive computation.
   has_nan_input_ = false;
-  for (const auto& idx : a.nan_idxs()) {
-    if (idx >= current_tile_col_ && idx < current_tile_col_ + current_tile_width_) {
+  for (const auto &idx : a.nan_idxs()) {
+    if (idx >= current_tile_col_ &&
+        idx < current_tile_col_ + current_tile_width_) {
       has_nan_input_ = true;
       break;
     }
   }
   if (!has_nan_input_) {
-    for (const auto& idx : b.nan_idxs()) {
-      if (idx >= current_tile_row_ && idx < current_tile_row_ + current_tile_height_) {
+    for (const auto &idx : b.nan_idxs()) {
+      if (idx >= current_tile_row_ &&
+          idx < current_tile_row_ + current_tile_height_) {
         has_nan_input_ = true;
         break;
       }
     }
-  } 
+  }
 
   // Initialize the tile's local stats based on global statistics "a" and "b"
   Memcopy(norms_A_.get(), a.norms().data() + current_tile_col_, bytes_a, false);

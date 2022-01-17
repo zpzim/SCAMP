@@ -80,12 +80,14 @@ FORCE_INLINE inline void reduce_row(std::array<DATA_TYPE, unrollWid> &corr,
   switch (type) {
     case PROFILE_TYPE_1NN_INDEX: {
       for (int i = 0; i < unrollWid / 2; i++) {
-       	corrIdx[i] = corr[i] >= corr[i + unrollWid / 2] ? i : i + unrollWid / 2;
-        corr[i] = corr[i] >= corr[i + unrollWid / 2] ? corr[i] : corr[i + unrollWid / 2];
+        corrIdx[i] = corr[i] >= corr[i + unrollWid / 2] ? i : i + unrollWid / 2;
+        corr[i] = corr[i] >= corr[i + unrollWid / 2] ? corr[i]
+                                                     : corr[i + unrollWid / 2];
       }
       auto horizontal_reduction = [&corr, &corrIdx](int offset) {
         for (int i = 0; i < offset; i++) {
-          corrIdx[i] = corr[i] >= corr[i + offset] ? corrIdx[i] : corrIdx[i + offset];
+          corrIdx[i] =
+              corr[i] >= corr[i + offset] ? corrIdx[i] : corrIdx[i + offset];
           corr[i] = corr[i] >= corr[i + offset] ? corr[i] : corr[i + offset];
         }
       };
@@ -156,14 +158,14 @@ void do_tile(const SCAMPKernelInputArgs<double> &args,
       const double *__restrict normsa = args.normsa + tile_diag + row;
       const double *__restrict normsb = args.normsb;
       for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
-        corr[local_diag] =
-            cov[local_diag] * normsa[local_diag] * normsb[row];
+        corr[local_diag] = cov[local_diag] * normsa[local_diag] * normsb[row];
       }
       if (args.has_nan_input) {
         // Remove any nan values so that they don't pollute the reduction.
         // This is expensive on some compilers so only do it if we need to.
         for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
-          corr[local_diag] = std::isfinite(corr[local_diag]) ? corr[local_diag] : initializer;
+          corr[local_diag] =
+              std::isfinite(corr[local_diag]) ? corr[local_diag] : initializer;
         }
       }
       if (computing_cols) {

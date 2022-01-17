@@ -193,7 +193,8 @@ struct PrecomputedInfo {
 
  public:
   void set(std::vector<double> &means, std::vector<double> &norms,
-           std::vector<double> &df, std::vector<double> &dg, std::vector<int> &nan_idxs) {
+           std::vector<double> &df, std::vector<double> &dg,
+           std::vector<int> &nan_idxs) {
     norms_ = std::move(norms);
     means_ = std::move(means);
     df_ = std::move(df);
