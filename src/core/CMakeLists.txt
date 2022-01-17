@@ -22,6 +22,13 @@ target_link_libraries(cpu_stats common)
 add_library(cpu_kernels ${CMAKE_CURRENT_SOURCE_DIR}/cpu_kernels.cpp)
 target_link_libraries(cpu_kernels kernel_common common)
 
+
+CHECK_CXX_COMPILER_FLAG("-Winline" COMPILER_OPT_WARN_INLINE_SUPPORTED)
+
+if (COMPILER_OPT_WARN_INLINE_SUPPORTED)
+  target_compile_options(cpu_kernels PRIVATE "$<$<CONFIG:Release>:-Winline>")
+endif()
+
 add_library(tile ${CMAKE_CURRENT_SOURCE_DIR}/tile.cpp)
 
 if (CMAKE_CUDA_COMPILER)

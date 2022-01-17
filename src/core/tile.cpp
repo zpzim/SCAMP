@@ -157,6 +157,8 @@ T *alloc_mem(size_t count, SCAMPArchitecture arch, int deviceid) {
     case CPU_WORKER:
       return new T[count];  // NOLINT
   }
+  ASSERT(false, "Architecture not defined");
+  return nullptr;
 }
 
 // Deleter for tile memory which can reside on the host or cuda devices
