@@ -1,0 +1,69 @@
+name: CPU Benchmarks
+on:
+  push:
+    branches:
+      - master
+      - add-benchmarks
+jobs:
+  benchmark:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        compiler: [g++, clang++, cl]
+        exclude:
+          - os: ubuntu-latest
+            compiler: cl
+          - os: macos-latest
+            compiler: cl
+          - os: windows-latest
+            compiler: g++
+          - os: windows-latest
+            compiler: clang++
+
+
+    name: CPU Benchmarks
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: 'true'
+      - name: Prep Build
+        run: echo "CXX=${{ matrix.compiler }}" >> $GITHUB_ENV
+      - name: Build SCAMP Benchmarks
+        shell: bash
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE
+          mkdir build && cd build
+          cmake -DBUILD_BENCHMARKS=1 ..
+          cmake --build . --config Release --parallel 2
+          if [ -f "./Release/SCAMP.exe" ]; then
+            cp ./Release/SCAMP.exe .
+          fi
+      - name: Run Benchmarks
+        run: ./src/scamp_benchmark --benchmark_format=json | tee benchmark_result.json
+
+      # Download previous benchmark result from cache (if exists)
+      - name: Download previous benchmark data
+        uses: actions/cache@v1
+        with:
+          path: ./cache
+          key: ${{ matrix.os }}-${{ matrix.compiler }}-benchmark
+      # Run `github-action-benchmark` action
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          # What benchmark tool the output.txt came from
+          tool: 'googlecpp'
+          # Where the output from the benchmark tool is stored
+          output-file-path: $GITHUB_WORKSPACE/build/benchmark_result.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          # Where the previous data file is stored
+          external-data-json-path: ./cache/benchmark-data.json
+          # Workflow will fail when an alert happens
+          fail-on-alert: true
+          comment-on-alert: true
+          alert-comment-cc-users: '@zpzim'
+      # Upload the updated cache file for the next job by actions/cache
