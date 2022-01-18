@@ -42,6 +42,7 @@ jobs:
             cp ./Release/src/benchmark/scamp_benchmarks.exe .
           fi
       - name: Run Benchmarks
+        shell: bash
         run: |
           set -e
           cd $GITHUB_WORKSPACE/build
@@ -62,9 +63,9 @@ jobs:
           # Where the output from the benchmark tool is stored
           output-file-path: ./build/benchmark_result.json
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          # Separate Dashboard for each combination of OS/Compiler
+          benchmark-data-dir-path: ${{ matrix.os }}/${{ matrix.compiler }}/bench
           auto-push: true
-          # Where the previous data file is stored
-          external-data-json-path: ./cache/benchmark-data.json
           # Workflow will fail when an alert happens
           fail-on-alert: true
           comment-on-alert: true
