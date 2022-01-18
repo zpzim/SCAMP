@@ -4,13 +4,12 @@
 #include "common/common.h"
 #include "common/scamp_args.h"
 #include "common/scamp_exception.h"
-#include "common/scamp_utils.h"
 #include "common/scamp_interface.h"
-
+#include "common/scamp_utils.h"
 
 double get_random() {
   static std::default_random_engine e;
-  static std::uniform_real_distribution<> dis(0,1);
+  static std::uniform_real_distribution<> dis(0, 1);
   return dis(e);
 }
 
@@ -31,10 +30,9 @@ static void benchmarkArgsCI(benchmark::internal::Benchmark* b) {
 }
 
 static void BM_1NN_INDEX_SELF_JOIN(benchmark::State& state) {
-
   // 128K random vector
-  std::vector<double> ts = get_random_vec(state.range(1));  
-  
+  std::vector<double> ts = get_random_vec(state.range(1));
+
   std::uniform_real_distribution<> dis(0, 1);
 
   SCAMP::SCAMPArgs args;
@@ -65,16 +63,14 @@ static void BM_1NN_INDEX_SELF_JOIN(benchmark::State& state) {
   for (auto _ : state) {
     SCAMP::do_SCAMP(&args, gpu_devices, num_threads);
   }
-
 }
 
 BENCHMARK(BM_1NN_INDEX_SELF_JOIN)->Apply(benchmarkArgsCI);
 
 static void BM_1NN_SELF_JOIN(benchmark::State& state) {
-
   // 128K random vector
-  std::vector<double> ts = get_random_vec(state.range(1));  
-  
+  std::vector<double> ts = get_random_vec(state.range(1));
+
   std::uniform_real_distribution<> dis(0, 1);
 
   SCAMP::SCAMPArgs args;
@@ -110,10 +106,9 @@ static void BM_1NN_SELF_JOIN(benchmark::State& state) {
 BENCHMARK(BM_1NN_SELF_JOIN)->Apply(benchmarkArgsCI);
 
 static void BM_SUM_SELF_JOIN(benchmark::State& state) {
-
   // 128K random vector
-  std::vector<double> ts = get_random_vec(state.range(1));  
-  
+  std::vector<double> ts = get_random_vec(state.range(1));
+
   std::uniform_real_distribution<> dis(0, 1);
 
   SCAMP::SCAMPArgs args;
