@@ -38,11 +38,11 @@ jobs:
           mkdir build && cd build
           cmake -DBUILD_BENCHMARKS=1 ..
           cmake --build . --config Release --parallel 2
-          if [ -f "./Release/src/scamp_benchmarks.exe" ]; then
-            cp ./Release/src/scamp_benchmarks.exe .
+          if [ -f "./Release/src/benchmark/scamp_benchmarks.exe" ]; then
+            cp ./Release/src/benchmark/scamp_benchmarks.exe .
           fi
       - name: Run Benchmarks
-        run: ./src/scamp_benchmarks --benchmark_format=json | tee benchmark_result.json
+        run: ./src/benchmark/scamp_benchmarks --benchmark_format=json | tee benchmark_result.json
 
       # Download previous benchmark result from cache (if exists)
       - name: Download previous benchmark data
