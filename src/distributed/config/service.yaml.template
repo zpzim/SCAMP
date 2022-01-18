@@ -1,0 +1,19 @@
+# Defines the SCAMP service
+# This must be applied to a cluster before starting any server/worker pods
+kind: Service
+apiVersion: v1
+metadata:
+  name: scamp-server
+  labels:
+    app: scamp-server
+spec:
+  selector:
+    run: scamp-server
+  ports:
+  - protocol: TCP
+    port: 30078
+    targetPort: 30078
+  sessionAffinity: None
+  type: ClusterIP
+status:
+  loadBalancer: {}

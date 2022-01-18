@@ -1,0 +1,45 @@
+name: Docker Build Test
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+  workflow_dispatch:
+
+jobs:
+  docker-build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          submodules: 'recursive'
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v1 
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v3
+        with:
+          images: zpzim/scamp
+
+      - name: Build
+        id: docker_build
+        uses: docker/build-push-action@v2
+        with:
+          push: false
+          tags: '${{ steps.meta.outputs.tags }}, zpzim/scamp:test'
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: CPU Test
+        shell: bash
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE/test
+          ./test_docker.sh zpzim/scamp:test 100 SampleInput/randomlist64K.txt "--no_gpu --num_cpu_workers=2"
