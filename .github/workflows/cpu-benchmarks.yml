@@ -42,7 +42,10 @@ jobs:
             cp ./Release/src/benchmark/scamp_benchmarks.exe .
           fi
       - name: Run Benchmarks
-        run: ./src/benchmark/scamp_benchmarks --benchmark_format=json | tee benchmark_result.json
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE/build
+          ./src/benchmark/scamp_benchmarks --benchmark_format=json | tee benchmark_result.json
 
       # Download previous benchmark result from cache (if exists)
       - name: Download previous benchmark data
