@@ -3,7 +3,6 @@ on:
   push:
     branches:
       - master
-      - add-benchmarks
 jobs:
   benchmark:
     strategy:
@@ -71,10 +70,8 @@ jobs:
           # Separate Dashboard for each combination of OS/Compiler
           benchmark-data-dir-path: cpu-benchmarks/${{ matrix.os }}/${{ matrix.compiler }}/bench
           auto-push: true
-          # Workflow will fail when an alert happens
           fail-on-alert: true
           comment-on-alert: true
-          comment-always: true
           alert-threshold: "150%"
           alert-comment-cc-users: '@zpzim'
       # Upload the updated cache file for the next job by actions/cache
