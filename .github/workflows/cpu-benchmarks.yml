@@ -59,12 +59,6 @@ jobs:
           cd $GITHUB_WORKSPACE/build
           ./scamp_benchmarks --benchmark_format=json | tee benchmark_result.json
 
-      # Download previous benchmark result from cache (if exists)
-      - name: Download previous benchmark data
-        uses: actions/cache@v1
-        with:
-          path: ./cache
-          key: ${{ matrix.os }}-${{ matrix.compiler }}-benchmark
       # Run `github-action-benchmark` action
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
@@ -80,5 +74,7 @@ jobs:
           # Workflow will fail when an alert happens
           fail-on-alert: true
           comment-on-alert: true
+          comment-always: true
+          alert-threshold: "150%"
           alert-comment-cc-users: '@zpzim'
       # Upload the updated cache file for the next job by actions/cache
