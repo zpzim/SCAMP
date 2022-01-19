@@ -75,7 +75,7 @@ jobs:
           output-file-path: ./build/benchmark_result.json
           github-token: ${{ secrets.GITHUB_TOKEN }}
           # Separate Dashboard for each combination of OS/Compiler
-          benchmark-data-dir-path: ${{ matrix.os }}/${{ matrix.compiler }}/bench
+          benchmark-data-dir-path: cpu-benchmarks/${{ matrix.os }}/${{ matrix.compiler }}/bench
           auto-push: true
           # Workflow will fail when an alert happens
           fail-on-alert: true
