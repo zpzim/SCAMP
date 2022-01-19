@@ -179,6 +179,7 @@ std::string getSCAMPErrorString(SCAMPError_t err) {
     case SCAMP_DIM_INCOMPATIBLE:
       return "SCAMP_DIM_INCOMPATIBLE";
   }
+  return "SCAMP_UNKNOWN_ERROR";
 }
 
 size_t GetProfileTypeSize(SCAMPProfileType t) {
@@ -196,8 +197,7 @@ size_t GetProfileTypeSize(SCAMPProfileType t) {
     case PROFILE_TYPE_FREQUENCY_THRESH:
     case PROFILE_TYPE_INVALID:
     default:
-      throw SCAMPException(
-          "Error: Could not determine size of profile elements");
+      throw SCAMPException("Error: Profile Type Unknown");
   }
 }
 
@@ -222,6 +222,7 @@ std::string GetProfileTypeString(SCAMPProfileType t) {
     case PROFILE_TYPE_MATRIX_SUMMARY:
       return "PROFILE_TYPE_MATRIX_SUMMARY";
   }
+  return "PROFILE_TYPE_UNKNOWN";
 }
 
 std::string GetPrecisionTypeString(SCAMPPrecisionType t) {
@@ -237,6 +238,7 @@ std::string GetPrecisionTypeString(SCAMPPrecisionType t) {
     case PRECISION_ULTRA:
       return "PRECISION_ULTRA";
   }
+  return "PRECISION_UNKNOWN";
 }
 
 }  // namespace SCAMP

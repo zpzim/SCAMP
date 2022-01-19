@@ -22,6 +22,34 @@ target_link_libraries(cpu_stats common)
 add_library(cpu_kernels ${CMAKE_CURRENT_SOURCE_DIR}/cpu_kernels.cpp)
 target_link_libraries(cpu_kernels kernel_common common)
 
+CHECK_CXX_COMPILER_FLAG("-Winline" COMPILER_OPT_WARN_INLINE_SUPPORTED)
+CHECK_CXX_COMPILER_FLAG("/Qvec-report:2" COMPILER_OPT_QVEC_REPORT_SUPPORTED)
+CHECK_CXX_COMPILER_FLAG("-fopt-info-vec-all" COMPILER_OPT_GCC_VEC_INFO_SUPPORTED)
+CHECK_CXX_COMPILER_FLAG("-Rpass-analysis=loop-vectorize" COMPILER_OPT_LLVM_VEC_MISSED_INFO_SUPPORTED)
+CHECK_CXX_COMPILER_FLAG("-Rpass=loop-vectorize" COMPILER_OPT_LLVM_VEC_LOOPS_INFO_SUPPORTED)
+
+
+if (COMPILER_OPT_QVEC_REPORT_SUPPORTED)
+  target_compile_options(cpu_kernels PRIVATE "/Qvec-report:2")
+endif()
+
+if (COMPILER_OPT_GCC_VEC_INFO_SUPPORTED)
+  target_compile_options(cpu_kernels PRIVATE "-fopt-info-vec-all")
+endif()
+
+if (COMPILER_OPT_LLVM_VEC_MISSED_INFO_SUPPORTED)
+  target_compile_options(cpu_kernels PRIVATE "-Rpass-analysis=loop-vectorize")
+endif()
+
+if (COMPILER_OPT_LLVM_VEC_LOOPS_INFO_SUPPORTED)
+  target_compile_options(cpu_kernels PRIVATE "-Rpass=loop-vectorize")
+endif()
+
+
+if (COMPILER_OPT_WARN_INLINE_SUPPORTED)
+  target_compile_options(cpu_kernels PRIVATE "-Winline")
+endif()
+
 add_library(tile ${CMAKE_CURRENT_SOURCE_DIR}/tile.cpp)
 
 if (CMAKE_CUDA_COMPILER)

@@ -42,6 +42,8 @@ class Tile {
   size_t current_tile_height_;
   size_t current_tile_col_;
   size_t current_tile_row_;
+  // True if this tile has nan inputs.
+  bool has_nan_input_;
 
   const OpInfo *info_;
   ExecInfo exec_info_;
@@ -90,6 +92,7 @@ class Tile {
   size_t get_tile_height() const { return current_tile_height_; }
   size_t get_tile_row() const { return current_tile_row_; }
   size_t get_tile_col() const { return current_tile_col_; }
+  bool has_nan_input() const { return has_nan_input_; }
   const OpInfo *info() const { return info_; }
   void *profile_a() { return profile_a_tile_dev_.at(info_->profile_type); };
   void *profile_b() { return profile_b_tile_dev_.at(info_->profile_type); };

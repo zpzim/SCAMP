@@ -185,28 +185,32 @@ struct OpInfo {
 // Struct containing the precomputed statistics for an input time series
 struct PrecomputedInfo {
  private:
-  std::vector<double> _norms;
-  std::vector<double> _df;
-  std::vector<double> _dg;
-  std::vector<double> _means;
+  std::vector<double> norms_;
+  std::vector<double> df_;
+  std::vector<double> dg_;
+  std::vector<double> means_;
+  std::vector<int> nan_idxs_;
 
  public:
   void set(std::vector<double> &means, std::vector<double> &norms,
-           std::vector<double> &df, std::vector<double> &dg) {
-    _norms = std::move(norms);
-    _means = std::move(means);
-    _df = std::move(df);
-    _dg = std::move(dg);
+           std::vector<double> &df, std::vector<double> &dg,
+           std::vector<int> &nan_idxs) {
+    norms_ = std::move(norms);
+    means_ = std::move(means);
+    df_ = std::move(df);
+    dg_ = std::move(dg);
+    nan_idxs_ = std::move(nan_idxs);
   }
 
-  const std::vector<double> &dg() const { return _dg; }
-  const std::vector<double> &df() const { return _df; }
-  const std::vector<double> &norms() const { return _norms; }
-  const std::vector<double> &means() const { return _means; }
-  std::vector<double> &mutable_dg() { return _dg; }
-  std::vector<double> &mutable_df() { return _df; }
-  std::vector<double> &mutable_norms() { return _norms; }
-  std::vector<double> &mutable_means() { return _means; }
+  const std::vector<double> &dg() const { return dg_; }
+  const std::vector<double> &df() const { return df_; }
+  const std::vector<double> &norms() const { return norms_; }
+  const std::vector<double> &means() const { return means_; }
+  const std::vector<int> &nan_idxs() const { return nan_idxs_; }
+  std::vector<double> &mutable_dg() { return dg_; }
+  std::vector<double> &mutable_df() { return df_; }
+  std::vector<double> &mutable_norms() { return norms_; }
+  std::vector<double> &mutable_means() { return means_; }
 };
 
 struct CombinedStats {

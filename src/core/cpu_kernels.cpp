@@ -1,4 +1,5 @@
 #include "cpu_kernels.h"
+#include "defines.h"
 #include "kernel_common.h"
 
 #include <array>
@@ -20,7 +21,7 @@ constexpr int simdByteLen{32};
 // Outputs an 'initial' distance value based on the type of profile being
 // computed
 template <typename DISTANCE_TYPE, SCAMPProfileType type>
-inline DISTANCE_TYPE init_dist() {
+FORCE_INLINE inline DISTANCE_TYPE init_dist() {
   switch (type) {
     case PROFILE_TYPE_KNN:
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
@@ -37,9 +38,9 @@ inline DISTANCE_TYPE init_dist() {
 }
 
 template <SCAMPProfileType PROFILE_TYPE>
-inline void update_mp(double *mp, double corr, int row,
-                      int col,  // NOLINT(misc-unused-parameters)
-                      double thresh) {
+FORCE_INLINE inline void update_mp(double *mp, double corr, int row,
+                                   int col,  // NOLINT(misc-unused-parameters)
+                                   double thresh) {
   if (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
     mp[col] = corr > thresh ? mp[col] + corr : mp[col];
   } else {
@@ -48,8 +49,9 @@ inline void update_mp(double *mp, double corr, int row,
 }
 
 template <SCAMPProfileType PROFILE_TYPE>
-inline void update_mp(mp_entry *mp, double corr, int row, int col,
-                      double thresh) {  // NOLINT(misc-unused-parameters)
+FORCE_INLINE inline void update_mp(
+    mp_entry *mp, double corr, int row, int col,
+    double thresh) {  // NOLINT(misc-unused-parameters)
   if (PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX) {
     if (corr > mp[col].floats[0]) {
       mp[col].floats[0] = corr;
@@ -61,19 +63,20 @@ inline void update_mp(mp_entry *mp, double corr, int row, int col,
 }
 
 template <SCAMPProfileType PROFILE_TYPE>
-inline void update_mp(float *mp, double corr, int row, int col,
-                      double thresh) {  // NOLINT(misc-unused-parameters)
+FORCE_INLINE inline void update_mp(
+    float *mp, double corr, int row, int col,
+    double thresh) {  // NOLINT(misc-unused-parameters)
   if (PROFILE_TYPE == PROFILE_TYPE_1NN) {
-    mp[col] = mp[col] >= corr ? mp[col] : corr;
+    mp[col] = corr > mp[col] ? corr : mp[col];
   } else {
     ASSERT(false, "No Implementation provided for updating MP in CPU KERNEL");
   }
 }
 
 template <typename DATA_TYPE, SCAMPProfileType type>
-inline void reduce_row(std::array<DATA_TYPE, unrollWid> &corr,
-                       std::array<int, unrollWid / 2> &corrIdx,
-                       double thresh) {  // NOLINT
+FORCE_INLINE inline void reduce_row(std::array<DATA_TYPE, unrollWid> &corr,
+                                    std::array<int, unrollWid / 2> &corrIdx,
+                                    double thresh) {  // NOLINT
   switch (type) {
     case PROFILE_TYPE_1NN_INDEX: {
       for (int i = 0; i < unrollWid / 2; i++) {
@@ -147,13 +150,23 @@ void do_tile(const SCAMPKernelInputArgs<double> &args,
       alignas(simdByteLen) std::array<DIST_TYPE, unrollWid>
           corr;  // NOLINT(cppcoreguidelines-pro-type-member-init,
                  // hicpp-member-init)
+      // MSVC and other less sophisticated compilers cannot autovectorize this
+      // loop unless all accesses appear aligned. We can trick these compilers
+      // into vectorizing this loop by avoiding the complicated indexing
+      // within the loop and rather just change the offest of each input array.
+      double *__restrict cov = args.cov + tile_diag;
+      const double *__restrict normsa = args.normsa + tile_diag + row;
+      const double *__restrict normsb = args.normsb;
       for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
-        int curr_diag = tile_diag + local_diag;
-        int col = curr_diag + row;
-        DIST_TYPE correlation =
-            args.cov[curr_diag] * args.normsa[col] * args.normsb[row];
-        corr[local_diag] =
-            std::isfinite(correlation) ? correlation : initializer;
+        corr[local_diag] = cov[local_diag] * normsa[local_diag] * normsb[row];
+      }
+      if (args.has_nan_input) {
+        // Remove any nan values so that they don't pollute the reduction.
+        // This is expensive on some compilers so only do it if we need to.
+        for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
+          corr[local_diag] =
+              std::isfinite(corr[local_diag]) ? corr[local_diag] : initializer;
+        }
       }
       if (computing_cols) {
         for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
@@ -172,11 +185,15 @@ void do_tile(const SCAMPKernelInputArgs<double> &args,
                                 corrIdx[0] + tile_diag + row, row,
                                 args.opt.threshold);
       }
+      // Same as above, avoid complicated indexing within the loop to get
+      // less sophisticated compilers to vectorize it.
+      const double *__restrict dfa = args.dfa + tile_diag + row;
+      const double *__restrict dga = args.dga + tile_diag + row;
+      double dfb = args.dfb[row];
+      double dgb = args.dgb[row];
       for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
-        int curr_diag = tile_diag + local_diag;
-        int col = curr_diag + row;
-        args.cov[curr_diag] += args.dfa[col] * args.dgb[row];
-        args.cov[curr_diag] += args.dfb[row] * args.dga[col];
+        cov[local_diag] += dfa[local_diag] * dgb;
+        cov[local_diag] += dfb * dga[local_diag];
       }
     }
 

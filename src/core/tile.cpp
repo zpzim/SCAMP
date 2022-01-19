@@ -157,6 +157,8 @@ T *alloc_mem(size_t count, SCAMPArchitecture arch, int deviceid) {
     case CPU_WORKER:
       return new T[count];  // NOLINT
   }
+  ASSERT(false, "Architecture not defined");
+  return nullptr;
 }
 
 // Deleter for tile memory which can reside on the host or cuda devices
@@ -389,6 +391,26 @@ void Tile::InitStats(const PrecomputedInfo &a, const PrecomputedInfo &b,
       (current_tile_width_ - info_->mp_window + 1) * sizeof(double);
   size_t bytes_b =
       (current_tile_height_ - info_->mp_window + 1) * sizeof(double);
+
+  // If this tile contains nan inputs we will need to perform potentially more
+  // expensive computation.
+  has_nan_input_ = false;
+  for (const auto &idx : a.nan_idxs()) {
+    if (idx >= current_tile_col_ &&
+        idx < current_tile_col_ + current_tile_width_) {
+      has_nan_input_ = true;
+      break;
+    }
+  }
+  if (!has_nan_input_) {
+    for (const auto &idx : b.nan_idxs()) {
+      if (idx >= current_tile_row_ &&
+          idx < current_tile_row_ + current_tile_height_) {
+        has_nan_input_ = true;
+        break;
+      }
+    }
+  }
 
   // Initialize the tile's local stats based on global statistics "a" and "b"
   Memcopy(norms_A_.get(), a.norms().data() + current_tile_col_, bytes_a, false);
