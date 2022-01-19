@@ -187,6 +187,11 @@ if (BUILD_PYTHON_MODULE)
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/python)
 endif()
 
+if (BUILD_BENCHMARKS)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/benchmark)
+endif()
+
+
 if (BUILD_CLIENT_SERVER)
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/grpc EXCLUDE_FROM_ALL)
   message(STATUS "Using gRPC via add_subdirectory.")
