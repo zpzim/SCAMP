@@ -10,12 +10,16 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        compiler: [g++, clang++, cl]
+        compiler: [g++, clang++, cl, clang-cl]
         exclude:
           - os: ubuntu-latest
             compiler: cl
+          - os: ubuntu-latest
+            compiler: clang-cl
           - os: macos-latest
             compiler: cl
+          - os: macos-latest
+            compiler: clang-cl
           - os: windows-latest
             compiler: g++
           - os: windows-latest
@@ -36,13 +40,17 @@ jobs:
           set -e
           cd $GITHUB_WORKSPACE
           mkdir build && cd build
-          cmake -DBUILD_BENCHMARKS=1 ..
+          if [ ${{ matrix.compiler }} = "clang-cl" ]; then
+            cmake -G"Visual Studio 16 2019" -T ClangCL -A x64 -DBUILD_BENCHMARKS=1 .. 
+          else
+            cmake -DBUILD_BENCHMARKS=1 ..
+          fi
           cmake --build . --config Release --parallel 2
           if [ -f "./src/benchmark/scamp_benchmarks" ]; then
             cp ./src/benchmark/scamp_benchmarks .
           fi
-          if [ -f "./Release/src/benchmark/scamp_benchmarks.exe" ]; then
-            cp ./Release/src/benchmark/scamp_benchmarks.exe .
+          if [ -f "./src/benchmark/Release/scamp_benchmarks.exe" ]; then
+            cp ./src/benchmark/Release/scamp_benchmarks.exe .
           fi
       - name: Run Benchmarks
         shell: bash
