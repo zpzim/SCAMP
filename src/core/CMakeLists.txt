@@ -1,3 +1,21 @@
+include(FetchContent)
+FetchContent_Declare(
+  Eigen
+  GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+  GIT_TAG master
+  GIT_SHALLOW TRUE
+  GIT_PROGRESS TRUE)
+set(EIGEN_BUILD_DOC OFF)
+# note: To disable eigen tests,
+# you should put this code in a add_subdirectory to avoid to change
+# BUILD_TESTING for your own project too since variables are directory
+# scoped
+set(BUILD_TESTING OFF)
+set(EIGEN_BUILD_PKGCONFIG OFF)
+set(OFF)
+FetchContent_MakeAvailable(Eigen)
+
+
 add_library(qt_helper ${CMAKE_CURRENT_SOURCE_DIR}/qt_helper.cpp)
 
 if (CMAKE_CUDA_COMPILER)
@@ -20,7 +38,7 @@ add_library(cpu_stats ${CMAKE_CURRENT_SOURCE_DIR}/cpu_stats.cpp)
 target_link_libraries(cpu_stats common)
 
 add_library(cpu_kernels ${CMAKE_CURRENT_SOURCE_DIR}/cpu_kernels.cpp)
-target_link_libraries(cpu_kernels kernel_common common)
+target_link_libraries(cpu_kernels kernel_common common Eigen3::Eigen)
 
 CHECK_CXX_COMPILER_FLAG("-Winline" COMPILER_OPT_WARN_INLINE_SUPPORTED)
 CHECK_CXX_COMPILER_FLAG("/Qvec-report:2" COMPILER_OPT_QVEC_REPORT_SUPPORTED)
