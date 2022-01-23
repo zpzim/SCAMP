@@ -214,8 +214,7 @@ FORCE_INLINE inline void handle_row_fast(
   const double *__restrict normsa = args.normsa + info.tile_diag + info.row;
   const double *__restrict normsb = args.normsb;
   for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
-    corr[local_diag] =
-        cov[local_diag] * normsa[local_diag] * normsb[info.row];
+    corr[local_diag] = cov[local_diag] * normsa[local_diag] * normsb[info.row];
   }
   if (args.has_nan_input) {
     // Remove any nan values so that they don't pollute the reduction.
