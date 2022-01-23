@@ -186,13 +186,24 @@ FORCE_INLINE inline void handle_row_fast(const SCAMPKernelInputArgs<double> &arg
   alignas(simdByteLen) std::array<DIST_TYPE, unrollWid>
       corr;  // NOLINT(cppcoreguidelines-pro-type-member-init,
              // hicpp-member-init)
+  // MSVC and other less sophisticated compilers cannot autovectorize this
+  // loop unless all accesses appear aligned. We can trick these compilers
+  // into vectorizing this loop by avoiding the complicated indexing
+  // within the loop and rather just change the offest of each input array.
+  double *__restrict cov = args.cov + info.tile_diag;
+  const double *__restrict normsa = args.normsa + info.tile_diag + info.row;
+  const double *__restrict normsb = args.normsb;
   for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
-    int curr_diag = info.tile_diag + local_diag;
-    int col = curr_diag + info.row;
     DIST_TYPE correlation =
-        args.cov[curr_diag] * args.normsa[col] * args.normsb[info.row];
-    corr[local_diag] =
-        std::isfinite(correlation) ? correlation : init_dist<DIST_TYPE, PROFILE_TYPE>();
+        args.cov[local_diag] * args.normsa[local_diag] * args.normsb[info.row];
+  }
+  if (args.has_nan_input) {
+    // Remove any nan values so that they don't pollute the reduction.
+    // This is expensive on some compilers so only do it if we need to.
+    for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
+      corr[local_diag] =
+          std::isfinite(corr[local_diag]) ? corr[local_diag] : init_dist<DIST_TYPE, PROFILE_TYPE>();
+    }
   }
   if constexpr (computing_cols) {
     update_columnwise<DIST_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE>(args, info, corr, profile_A);
@@ -200,11 +211,15 @@ FORCE_INLINE inline void handle_row_fast(const SCAMPKernelInputArgs<double> &arg
   if constexpr (computing_rows) {
     update_rowwise<DIST_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE>(args, info, corr, profile_B);
   }
+  // Same as above, avoid complicated indexing within the loop to get
+  // less sophisticated compilers to vectorize it.
+  const double *__restrict dfa = args.dfa + info.tile_diag + info.row;
+  const double *__restrict dga = args.dga + info.tile_diag + info.row;
+  double dfb = args.dfb[info.row];
+  double dgb = args.dgb[info.row];
   for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
-    int curr_diag = info.tile_diag + local_diag;
-    int col = curr_diag + info.row;
-    args.cov[curr_diag] += args.dfa[col] * args.dgb[info.row];
-    args.cov[curr_diag] += args.dfb[info.row] * args.dga[col];
+    args.cov[local_diag] += args.dfa[local_diag] * dgb;
+    args.cov[local_diag] += dfb * args.dga[local_diag];
   }
 }
 

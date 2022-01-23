@@ -128,6 +128,7 @@ void compute_statistics_cpu(const std::vector<double> &T,
   int n = T.size() - m + 1;
   std::vector<double> norms, df(n), dg(n);
   std::vector<double> means;
+  std::vector<int> nan_idxs;
 
   if (high_precision_norms) {
     means = brute_force_moving_mean(T, m);
@@ -141,10 +142,12 @@ void compute_statistics_cpu(const std::vector<double> &T,
     // If the subsequence includes a NaN, we define the norm as NaN
     if (nanvalues[i]) {
       norms[i] = std::nan("NaN");
+      nan_idxs.push_back(i);
       // Check if the sum of differences from the mean is too small and this
       // subsequence should be considered FLAT
     } else if (norms[i] <= FLATNESS_EPSILON) {
       norms[i] = std::nan("NaN");
+      nan_idxs.push_back(i);
     } else {
       // Compute the inverse norm from the sum of squared differences
       norms[i] = static_cast<double>(1.0) / std::sqrt(norms[i]);
@@ -156,7 +159,7 @@ void compute_statistics_cpu(const std::vector<double> &T,
     dg[i] = (T[i + m] - means[i + 1]) + (T[i] - means[i]);
   }
 
-  info->set(means, norms, df, dg);
+  info->set(means, norms, df, dg, nan_idxs);
 }
 
 CombinedStats compute_combined_stats_cpu(const std::vector<double> &A,

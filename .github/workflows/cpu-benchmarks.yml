@@ -1,0 +1,77 @@
+name: CPU Benchmarks
+on:
+  push:
+    branches:
+      - master
+jobs:
+  benchmark:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        compiler: [g++, clang++, cl, clang-cl]
+        exclude:
+          - os: ubuntu-latest
+            compiler: cl
+          - os: ubuntu-latest
+            compiler: clang-cl
+          - os: macos-latest
+            compiler: cl
+          - os: macos-latest
+            compiler: clang-cl
+          - os: windows-latest
+            compiler: g++
+          - os: windows-latest
+            compiler: clang++
+
+
+    name: CPU Benchmarks
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: 'true'
+      - name: Prep Build
+        run: echo "CXX=${{ matrix.compiler }}" >> $GITHUB_ENV
+      - name: Build SCAMP Benchmarks
+        shell: bash
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE
+          mkdir build && cd build
+          if [ ${{ matrix.compiler }} = "clang-cl" ]; then
+            cmake -G"Visual Studio 16 2019" -T ClangCL -A x64 -DBUILD_BENCHMARKS=1 .. 
+          else
+            cmake -DBUILD_BENCHMARKS=1 ..
+          fi
+          cmake --build . --config Release --parallel 2
+          if [ -f "./src/benchmark/scamp_benchmarks" ]; then
+            cp ./src/benchmark/scamp_benchmarks .
+          fi
+          if [ -f "./src/benchmark/Release/scamp_benchmarks.exe" ]; then
+            cp ./src/benchmark/Release/scamp_benchmarks.exe .
+          fi
+      - name: Run Benchmarks
+        shell: bash
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE/build
+          ./scamp_benchmarks --benchmark_format=json | tee benchmark_result.json
+
+      # Run `github-action-benchmark` action
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          # What benchmark tool the output.txt came from
+          tool: 'googlecpp'
+          # Where the output from the benchmark tool is stored
+          output-file-path: ./build/benchmark_result.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # Separate Dashboard for each combination of OS/Compiler
+          benchmark-data-dir-path: cpu-benchmarks/${{ matrix.os }}/${{ matrix.compiler }}/bench
+          auto-push: true
+          fail-on-alert: true
+          comment-on-alert: true
+          alert-threshold: "150%"
+          alert-comment-cc-users: '@zpzim'
+      # Upload the updated cache file for the next job by actions/cache
