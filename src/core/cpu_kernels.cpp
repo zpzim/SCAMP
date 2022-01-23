@@ -215,7 +215,7 @@ FORCE_INLINE inline void handle_row_fast(
   const double *__restrict normsb = args.normsb;
   for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
     DIST_TYPE correlation =
-        args.cov[local_diag] * args.normsa[local_diag] * args.normsb[info.row];
+        cov[local_diag] * normsa[local_diag] * normsb[info.row];
   }
   if (args.has_nan_input) {
     // Remove any nan values so that they don't pollute the reduction.
@@ -241,8 +241,8 @@ FORCE_INLINE inline void handle_row_fast(
   double dfb = args.dfb[info.row];
   double dgb = args.dgb[info.row];
   for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
-    args.cov[local_diag] += args.dfa[local_diag] * dgb;
-    args.cov[local_diag] += dfb * args.dga[local_diag];
+    cov[local_diag] += dfa[local_diag] * dgb;
+    cov[local_diag] += dfb * dga[local_diag];
   }
 }
 
