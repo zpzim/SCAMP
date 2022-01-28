@@ -215,7 +215,7 @@ FORCE_INLINE inline void handle_row(const SCAMPKernelInputArgs<double> &args,
   if (args.has_nan_input) {
     // Remove any nan values so that they don't pollute the reduction.
     // This is expensive on some compilers so only do it if we need to.
-    for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
+    for (int local_diag = 0; local_diag < corr.size(); local_diag++) {
       corr[local_diag] = std::isfinite(corr[local_diag])
                              ? corr[local_diag]
                              : init_dist<DIST_TYPE, PROFILE_TYPE>();
