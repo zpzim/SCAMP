@@ -21,7 +21,7 @@ void do_SCAMP(SCAMPArgs *args) {
   int num_devices = num_available_gpus();
   std::vector<int> devices(num_devices);
   for (int i = 0; i < num_devices; ++i) {
-    devices.push_back(i);
+    devices.at(i) = i;
   }
   if (devices.empty()) {
     num_threads = std::thread::hardware_concurrency();
