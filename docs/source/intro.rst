@@ -9,10 +9,10 @@ This is a much improved framework over `GPU-STOMP <https://github.com/zpzim/STOM
   * fp32 version should get good performance on GeForce cards
   * AB joins (you can produce the matrix profile from 2 different time series)
   * Distributable (we use GCP but other cloud platforms can work) with verified scalability to billions of datapoints
-  * More types of matrix profiles! See Below!
+  * More types of matrix profiles! See `Profile Types </profiles>`.
   * Extremely Efficient Implementation
   * Extensible to adding optimized versions of custom join operations.
-  * Can compute joins with the CPU (Only enabled for double precision and does not support all-neighbors joins or distance matrix summaries yet)
+  * Can compute joins with the CPU (Only enabled for double precision and does not support all-neighbors joins yet)
   * Handles NaN input values. The matrix profile will be computed while excluding any subsequence with a NaN value
 
 Motivation
