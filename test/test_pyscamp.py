@@ -59,6 +59,21 @@ else:
 dist = mp.selfjoin(arr, 1024, threads=1)
 dist = mp.selfjoin(arr, 1024, threads=2)
 
+matrix_summary = reduce_matrix(dm_self, 5, 10, True)
+matrix_out = mp.selfjoin_matrix(arr, 1024, threshold=0.05, mwidth=10, mheight=5, pearson=True)
+if compare_matrix(matrix_summary, matrix_out, 0.05):
+  print ("Matrix Summary self join pass")
+else:
+  failed = True
+  print ("Matrix Summary self join fail")
+
+matrix_summary = reduce_matrix(dm_ab, 5, 10, False)
+matrix_out = mp.abjoin_matrix(arr, arr2, 1024, threshold=0.05, mwidth=10, mheight=5, pearson=True)
+if compare_matrix(matrix_summary, matrix_out, 0.05):
+  print ("Matrix Summary AB join pass")
+else:
+  failed = True
+  print ("Matrix Summary AB join fail")
 
 if mp.gpu_supported():
   print('GPUs Supported')
@@ -77,8 +92,6 @@ if mp.gpu_supported():
   else:
     failed = True
     print("KNN AB join fail")
-  # TODO(zpzim): add a correctness check here once we have a test for that
-  matrix = mp.abjoin_matrix(arr, arr2, 1024, threshold=0.125, mwidth=10, mheight=5, pearson=True)
 
 if failed:
   exit(1)
