@@ -26,16 +26,10 @@ struct ThreadInfo {
   int tile_diag;
   int row;
   int col;
-  double matrix_index;
-  double col_increment;
-  double row_increment;
-  double row_position;
 };
 
 ThreadInfo::ThreadInfo(const SCAMPKernelInputArgs<double> &args) {
   num_diags = args.n_x - args.exclusion_upper + 1;
-  col_increment = 1 / args.cols_per_cell;
-  row_increment = 1 / args.rows_per_cell;
 }
 
 // Outputs an 'initial' distance value based on the type of profile being
@@ -77,19 +71,28 @@ FORCE_INLINE inline void update_mp(PROFILE_DATA_TYPE *mp, double corr,
     int index = rowwise ? info.row : info.col;
     mp[index] = corr > args.opt.threshold ? mp[index] + corr : mp[index];
   } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
-    int matrix_index = std::floor(info.matrix_index);
+    // There is a good amount of optimization possible here. Reusing computation
+    // across calls to update_mp will allow for good speedup. However, floating
+    // point roundoff error is a danger here, potentially causing output to the
+    // wrong cell in the matrix, so we need to be careful to handle that
+    // properly.
+    int matrix_index;
+    if constexpr (rowwise) {
+      int col_idx =
+          std::floor((info.row + args.global_start_col) / args.cols_per_cell);
+      int row_idx =
+          std::floor((info.col + args.global_start_row) / args.rows_per_cell);
+      matrix_index = row_idx * args.matrix_width + col_idx;
+    } else {
+      int col_idx =
+          std::floor((info.col + args.global_start_col) / args.cols_per_cell);
+      int row_idx =
+          std::floor((info.row + args.global_start_row) / args.rows_per_cell);
+      matrix_index = row_idx * args.matrix_width + col_idx;
+    }
     mp[matrix_index] = corr < args.opt.threshold || mp[matrix_index] >= corr
                            ? mp[matrix_index]
                            : corr;
-    if constexpr (rowwise) {
-      info.row_position += info.row_increment;
-      if (info.row_position >= 1) {
-        info.row_position--;
-        info.matrix_index += args.matrix_width;
-      }
-    } else {
-      info.matrix_index += info.col_increment;
-    }
   } else {
     ASSERT(false, "No Implementation provided for updating MP in CPU KERNEL");
   }
@@ -151,15 +154,7 @@ FORCE_INLINE inline void update_columnwise(
     const SCAMPKernelInputArgs<double> &args, ThreadInfo &info,
     std::array<DIST_TYPE, unrollWid> &corr,
     PROFILE_DATA_TYPE *__restrict profile) {
-  if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
-    double col_idx = (info.tile_diag + info.row + args.global_start_col) /
-                     args.cols_per_cell;
-    int row_idx =
-        std::floor((info.row + args.global_start_row) / args.rows_per_cell);
-    info.matrix_index = row_idx * args.matrix_width + col_idx;
-  } else {
-    info.col = info.tile_diag + info.row;
-  }
+  info.col = info.tile_diag + info.row;
   for (int local_diag = 0; local_diag < unrollWid; local_diag++, info.col++) {
     update_mp<DIST_TYPE, PROFILE_TYPE, PROFILE_DATA_TYPE, false>(
         profile, corr[local_diag], info, args);
@@ -173,15 +168,8 @@ FORCE_INLINE inline void update_rowwise(
     std::array<DIST_TYPE, unrollWid> &corr,
     PROFILE_DATA_TYPE *__restrict profile) {
   if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
-    double col_idx = (info.row + args.global_start_col) / args.cols_per_cell;
-    int row_idx =
-        std::floor((info.tile_diag + info.row + args.global_start_row) /
-                   args.rows_per_cell);
-    info.matrix_index = row_idx * args.matrix_width + col_idx;
-    info.row_position = ((info.tile_diag + info.row + args.global_start_row) /
-                         args.rows_per_cell) -
-                        row_idx;
-    for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
+    info.col = info.tile_diag + info.row;
+    for (int local_diag = 0; local_diag < unrollWid; local_diag++, info.col++) {
       update_mp<DIST_TYPE, PROFILE_TYPE, PROFILE_DATA_TYPE, true>(
           profile, corr[local_diag], info, args);
     }
@@ -255,24 +243,6 @@ FORCE_INLINE inline void handle_row_slow(
   int diagmax = std::min(
       std::min(args.n_x - args.exclusion_upper + 1, args.n_x - info.row),
       info.tile_diag + unrollWid);
-  if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
-    if constexpr (computing_cols) {
-      double col_idx = (info.tile_diag + info.row + args.global_start_col) /
-                       args.cols_per_cell;
-      int row_idx =
-          std::floor((info.row + args.global_start_row) / args.rows_per_cell);
-      info.matrix_index = row_idx * args.matrix_width + col_idx;
-    } else {
-      double col_idx = (info.row + args.global_start_col) / args.cols_per_cell;
-      int row_idx =
-          std::floor((info.tile_diag + info.row + args.global_start_row) /
-                     args.rows_per_cell);
-      info.row_position = ((info.tile_diag + info.row + args.global_start_row) /
-                           args.rows_per_cell) -
-                          row_idx;
-      info.matrix_index = row_idx * args.matrix_width + col_idx;
-    }
-  }
   for (int diag = info.tile_diag; diag < diagmax; diag++) {
     info.col = diag + info.row;
     DIST_TYPE corr =
