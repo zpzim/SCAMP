@@ -20,16 +20,10 @@ struct ThreadInfo {
   int tile_diag;
   int row;
   int col;
-  double matrix_index;
-  double col_increment;
-  double row_increment;
-  double row_position;
 };
 
 ThreadInfo::ThreadInfo(const SCAMPKernelInputArgs<double> &args) {
   num_diags = args.n_x - args.exclusion_upper + 1;
-  col_increment = 1 / args.cols_per_cell;
-  row_increment = 1 / args.rows_per_cell;
 }
 
 // Outputs an 'initial' distance value based on the type of profile being
@@ -53,42 +47,6 @@ FORCE_INLINE inline constexpr DISTANCE_TYPE init_dist() {
 }
 
 template <typename DIST_TYPE, SCAMPProfileType PROFILE_TYPE,
-          typename PROFILE_DATA_TYPE>
-FORCE_INLINE inline void update_mp_columns(
-    PROFILE_DATA_TYPE *mp, const Eigen::Array<DIST_TYPE, 256, 1> &corr,
-    ThreadInfo &info, const SCAMPKernelInputArgs<double> &args) {
-  if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX) {
-    for (int i = 0; i < unrollWid; ++i) {
-      if (corr[i] > mp[i].floats[0]) {
-        mp[i].floats[0] = corr[i];
-        mp[i].ints[1] = info.row;
-      }
-    }
-  } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN) {
-    Eigen::Map<Eigen::Array<PROFILE_DATA_TYPE, 256, 1>> mp_eig(mp);
-    mp_eig = (mp_eig >= corr).select(mp_eig, corr);
-    // int index = rowwise ? info.row : info.col;
-    // mp[index] = mp[index] >= corr ? mp[index] : corr;
-  } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
-    Eigen::Map<Eigen::Array<PROFILE_DATA_TYPE, 256, 1>> mp_eig(mp);
-    mp_eig = (corr > args.opt.threshold).select(mp_eig, mp_eig + corr);
-    // int index = rowwise ? info.row : info.col;
-    // mp[index] = corr > args.opt.threshold ? mp[index] + corr : mp[index];
-  } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
-    for (int i = 0; i < unrollWid; ++i) {
-      int matrix_index = std::floor(info.matrix_index);
-      mp[matrix_index] =
-          corr[i] < args.opt.threshold || mp[matrix_index] >= corr[i]
-              ? mp[matrix_index]
-              : corr[i];
-      info.matrix_index += info.col_increment;
-    }
-  } else {
-    ASSERT(false, "No Implementation provided for updating MP in CPU KERNEL");
-  }
-}
-
-template <typename DIST_TYPE, SCAMPProfileType PROFILE_TYPE,
           typename PROFILE_DATA_TYPE, bool rowwise>
 FORCE_INLINE inline void update_mp(PROFILE_DATA_TYPE *mp, double corr,
                                    ThreadInfo &info,
@@ -107,19 +65,28 @@ FORCE_INLINE inline void update_mp(PROFILE_DATA_TYPE *mp, double corr,
     int index = rowwise ? info.row : info.col;
     mp[index] = corr > args.opt.threshold ? mp[index] + corr : mp[index];
   } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
-    int matrix_index = std::floor(info.matrix_index);
+    // There is a good amount of optimization possible here. Reusing computation
+    // across calls to update_mp will allow for good speedup. However, floating
+    // point roundoff error is a danger here, potentially causing output to the
+    // wrong cell in the matrix, so we need to be careful to handle that
+    // properly.
+    int matrix_index;
+    if constexpr (rowwise) {
+      int col_idx =
+          std::floor((info.row + args.global_start_col) / args.cols_per_cell);
+      int row_idx =
+          std::floor((info.col + args.global_start_row) / args.rows_per_cell);
+      matrix_index = row_idx * args.matrix_width + col_idx;
+    } else {
+      int col_idx =
+          std::floor((info.col + args.global_start_col) / args.cols_per_cell);
+      int row_idx =
+          std::floor((info.row + args.global_start_row) / args.rows_per_cell);
+      matrix_index = row_idx * args.matrix_width + col_idx;
+    }
     mp[matrix_index] = corr < args.opt.threshold || mp[matrix_index] >= corr
                            ? mp[matrix_index]
                            : corr;
-    if constexpr (rowwise) {
-      info.row_position += info.row_increment;
-      if (info.row_position >= 1) {
-        info.row_position--;
-        info.matrix_index += args.matrix_width;
-      }
-    } else {
-      info.matrix_index += info.col_increment;
-    }
   } else {
     ASSERT(false, "No Implementation provided for updating MP in CPU KERNEL");
   }
@@ -157,15 +124,7 @@ template <typename DIST_TYPE, typename PROFILE_DATA_TYPE, typename EIGEN_TYPE,
 FORCE_INLINE inline void update_columnwise(
     const SCAMPKernelInputArgs<double> &args, ThreadInfo &info,
     EIGEN_TYPE &corr, PROFILE_DATA_TYPE *__restrict profile) {
-  if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
-    double col_idx = (info.tile_diag + info.row + args.global_start_col) /
-                     args.cols_per_cell;
-    int row_idx =
-        std::floor((info.row + args.global_start_row) / args.rows_per_cell);
-    info.matrix_index = row_idx * args.matrix_width + col_idx;
-  } else {
-    info.col = info.tile_diag + info.row;
-  }
+  info.col = info.tile_diag + info.row;
   for (int local_diag = 0; local_diag < corr.size(); local_diag++, info.col++) {
     update_mp<DIST_TYPE, PROFILE_TYPE, PROFILE_DATA_TYPE, false>(
         profile, corr[local_diag], info, args);
@@ -178,15 +137,8 @@ FORCE_INLINE inline void update_rowwise(
     const SCAMPKernelInputArgs<double> &args, ThreadInfo &info,
     EIGEN_TYPE &corr, PROFILE_DATA_TYPE *__restrict profile) {
   if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
-    double col_idx = (info.row + args.global_start_col) / args.cols_per_cell;
-    int row_idx =
-        std::floor((info.tile_diag + info.row + args.global_start_row) /
-                   args.rows_per_cell);
-    info.matrix_index = row_idx * args.matrix_width + col_idx;
-    info.row_position = ((info.tile_diag + info.row + args.global_start_row) /
-                         args.rows_per_cell) -
-                        row_idx;
-    for (int local_diag = 0; local_diag < corr.size(); local_diag++) {
+    info.col = info.tile_diag + info.row;
+    for (int local_diag = 0; local_diag < corr.size(); local_diag++, info.col++) {
       update_mp<DIST_TYPE, PROFILE_TYPE, PROFILE_DATA_TYPE, true>(
           profile, corr[local_diag], info, args);
     }

@@ -59,7 +59,7 @@ def compare_vectors_sum(valid, check, thresh):
 
 def compare_matrix(valid_matrix, check, thresh):
   if np.any(valid_matrix.shape != check.shape):
-    print('Compare Matrix: Output Shapes valid = {} and check = {} do not match'.format(valid.shape, check.shape))
+    print('Compare Matrix: Output Shapes valid = {} and check = {} do not match'.format(valid_matrix.shape, check.shape))
     return False
 
   if thresh is not None:

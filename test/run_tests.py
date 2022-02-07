@@ -116,7 +116,7 @@ def evaluate_result(dm_reductions, scamp_results, subtestargs):
   
   if ptype == "MATRIX_SUMMARY":
     valid_data = dm_reductions[("MATRIX_SUMMARY", None, subtestargs['rrow'], subtestargs['rcol'])] 
-    return compare_matrix(valid_data, scamp_results[0][:,:-1], 0.0)
+    return compare_matrix(valid_data, scamp_results[0], 0.0)
   
   if ptype == "ALL_NEIGHBORS":
     valid_dm = dm_reductions[("ALL_NEIGHBORS", None, None, None)]

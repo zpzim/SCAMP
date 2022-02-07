@@ -513,7 +513,7 @@ PYBIND11_MODULE(pyscamp, m) {
 
   m.def("selfjoin_matrix", self_join_MATRIX, py::arg("a"), py::arg("m"),
         R"pbdoc(
-    [GPU ONLY, EXPERIMENTAL] Returns a pooled version of the distance matrix with HxW of [mheight x mwidth]
+    [EXPERIMENTAL] Returns a pooled version of the distance matrix with HxW of [mheight x mwidth], pooling operation is max() for Pearson Correlation and min() for Euclidian Distance
 
     :param a: Time series to compute matrix profile for.
     :type a: 1D array
@@ -531,7 +531,7 @@ PYBIND11_MODULE(pyscamp, m) {
 
   m.def("abjoin_matrix", ab_join_MATRIX, py::arg("a"), py::arg("b"),
         py::arg("m"), R"pbdoc(
-    [GPU ONLY, EXPERIMENTAL] Returns a pooled version of the distance matrix with HxW of [mheight x mwidth]
+    [EXPERIMENTAL] Returns a pooled version of the distance matrix with HxW of [mheight x mwidth], pooling operation is max() for Pearson Correlation and min() for Euclidian Distance
 
     :param a: Time series corresponding to the columns of the distance matrix.
     :type a: 1D array
