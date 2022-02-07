@@ -26,20 +26,6 @@ ThreadInfo::ThreadInfo(const SCAMPKernelInputArgs<double> &args) {
   num_diags = args.n_x - args.exclusion_upper + 1;
 }
 
-struct ThreadInfo {
-  ThreadInfo(const SCAMPKernelInputArgs<double> &args);
-  int num_diags;
-  int row_iters;
-  int full_row_iters;
-  int tile_diag;
-  int row;
-  int col;
-};
-
-ThreadInfo::ThreadInfo(const SCAMPKernelInputArgs<double> &args) {
-  num_diags = args.n_x - args.exclusion_upper + 1;
-}
-
 // Outputs an 'initial' distance value based on the type of profile being
 // computed
 template <typename DISTANCE_TYPE, SCAMPProfileType type>
