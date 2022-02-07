@@ -185,6 +185,9 @@ endif()
 # Add common targets.
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/common)
 
+# Cpu Kernels depend on Eigen.
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/eigen)
+
 # Add core functional libraries.
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/core)
 
