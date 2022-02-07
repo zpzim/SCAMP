@@ -18,15 +18,30 @@ constexpr int unrollWid{256};
 // instructions are generated for the reduction steps.
 constexpr int simdByteLen{32};
 
+struct ThreadInfo {
+  ThreadInfo(const SCAMPKernelInputArgs<double> &args);
+  int num_diags;
+  int row_iters;
+  int full_row_iters;
+  int tile_diag;
+  int row;
+  int col;
+};
+
+ThreadInfo::ThreadInfo(const SCAMPKernelInputArgs<double> &args) {
+  num_diags = args.n_x - args.exclusion_upper + 1;
+}
+
 // Outputs an 'initial' distance value based on the type of profile being
 // computed
 template <typename DISTANCE_TYPE, SCAMPProfileType type>
-FORCE_INLINE inline DISTANCE_TYPE init_dist() {
+FORCE_INLINE inline constexpr DISTANCE_TYPE init_dist() {
   switch (type) {
     case PROFILE_TYPE_KNN:
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
     case PROFILE_TYPE_1NN_INDEX:
     case PROFILE_TYPE_1NN:
+    case PROFILE_TYPE_MATRIX_SUMMARY:
       // Smallest value possible is -1 so set to -2
       return static_cast<DISTANCE_TYPE>(-2);
     case PROFILE_TYPE_SUM_THRESH:
@@ -37,37 +52,47 @@ FORCE_INLINE inline DISTANCE_TYPE init_dist() {
   }
 }
 
-template <SCAMPProfileType PROFILE_TYPE>
-FORCE_INLINE inline void update_mp(double *mp, double corr, int row,
-                                   int col,  // NOLINT(misc-unused-parameters)
-                                   double thresh) {
-  if (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
-    mp[col] = corr > thresh ? mp[col] + corr : mp[col];
-  } else {
-    ASSERT(false, "No Implementation provided for updating MP in CPU KERNEL");
-  }
-}
-
-template <SCAMPProfileType PROFILE_TYPE>
-FORCE_INLINE inline void update_mp(
-    mp_entry *mp, double corr, int row, int col,
-    double thresh) {  // NOLINT(misc-unused-parameters)
-  if (PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX) {
-    if (corr > mp[col].floats[0]) {
-      mp[col].floats[0] = corr;
-      mp[col].ints[1] = row;
+template <typename DIST_TYPE, SCAMPProfileType PROFILE_TYPE,
+          typename PROFILE_DATA_TYPE, bool rowwise>
+FORCE_INLINE inline void update_mp(PROFILE_DATA_TYPE *mp, double corr,
+                                   ThreadInfo &info,
+                                   const SCAMPKernelInputArgs<double> &args) {
+  if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX) {
+    int index = rowwise ? info.row : info.col;
+    int match_index = rowwise ? info.col : info.row;
+    if (corr > mp[index].floats[0]) {
+      mp[index].floats[0] = corr;
+      mp[index].ints[1] = match_index;
     }
-  } else {
-    ASSERT(false, "No Implementation provided for updating MP in CPU KERNEL");
-  }
-}
-
-template <SCAMPProfileType PROFILE_TYPE>
-FORCE_INLINE inline void update_mp(
-    float *mp, double corr, int row, int col,
-    double thresh) {  // NOLINT(misc-unused-parameters)
-  if (PROFILE_TYPE == PROFILE_TYPE_1NN) {
-    mp[col] = corr > mp[col] ? corr : mp[col];
+  } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN) {
+    int index = rowwise ? info.row : info.col;
+    mp[index] = mp[index] >= corr ? mp[index] : corr;
+  } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
+    int index = rowwise ? info.row : info.col;
+    mp[index] = corr > args.opt.threshold ? mp[index] + corr : mp[index];
+  } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
+    // There is a good amount of optimization possible here. Reusing computation
+    // across calls to update_mp will allow for good speedup. However, floating
+    // point roundoff error is a danger here, potentially causing output to the
+    // wrong cell in the matrix, so we need to be careful to handle that
+    // properly.
+    int matrix_index;
+    if constexpr (rowwise) {
+      int col_idx =
+          std::floor((info.row + args.global_start_col) / args.cols_per_cell);
+      int row_idx =
+          std::floor((info.col + args.global_start_row) / args.rows_per_cell);
+      matrix_index = row_idx * args.matrix_width + col_idx;
+    } else {
+      int col_idx =
+          std::floor((info.col + args.global_start_col) / args.cols_per_cell);
+      int row_idx =
+          std::floor((info.row + args.global_start_row) / args.rows_per_cell);
+      matrix_index = row_idx * args.matrix_width + col_idx;
+    }
+    mp[matrix_index] = corr < args.opt.threshold || mp[matrix_index] >= corr
+                           ? mp[matrix_index]
+                           : corr;
   } else {
     ASSERT(false, "No Implementation provided for updating MP in CPU KERNEL");
   }
@@ -78,6 +103,7 @@ FORCE_INLINE inline void reduce_row(std::array<DATA_TYPE, unrollWid> &corr,
                                     std::array<int, unrollWid / 2> &corrIdx,
                                     double thresh) {  // NOLINT
   switch (type) {
+    case PROFILE_TYPE_MATRIX_SUMMARY:
     case PROFILE_TYPE_1NN_INDEX: {
       for (int i = 0; i < unrollWid / 2; i++) {
         corrIdx[i] = corr[i] >= corr[i + unrollWid / 2] ? i : i + unrollWid / 2;
@@ -120,7 +146,123 @@ FORCE_INLINE inline void reduce_row(std::array<DATA_TYPE, unrollWid> &corr,
     default:
       break;
   }
-}  // namespace SCAMP
+}
+
+template <typename DIST_TYPE, typename PROFILE_DATA_TYPE,
+          SCAMPProfileType PROFILE_TYPE>
+FORCE_INLINE inline void update_columnwise(
+    const SCAMPKernelInputArgs<double> &args, ThreadInfo &info,
+    std::array<DIST_TYPE, unrollWid> &corr,
+    PROFILE_DATA_TYPE *__restrict profile) {
+  info.col = info.tile_diag + info.row;
+  for (int local_diag = 0; local_diag < unrollWid; local_diag++, info.col++) {
+    update_mp<DIST_TYPE, PROFILE_TYPE, PROFILE_DATA_TYPE, false>(
+        profile, corr[local_diag], info, args);
+  }
+}
+
+template <typename DIST_TYPE, typename PROFILE_DATA_TYPE,
+          SCAMPProfileType PROFILE_TYPE>
+FORCE_INLINE inline void update_rowwise(
+    const SCAMPKernelInputArgs<double> &args, ThreadInfo &info,
+    std::array<DIST_TYPE, unrollWid> &corr,
+    PROFILE_DATA_TYPE *__restrict profile) {
+  if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
+    info.col = info.tile_diag + info.row;
+    for (int local_diag = 0; local_diag < unrollWid; local_diag++, info.col++) {
+      update_mp<DIST_TYPE, PROFILE_TYPE, PROFILE_DATA_TYPE, true>(
+          profile, corr[local_diag], info, args);
+    }
+  } else {
+    std::array<int, unrollWid / 2>
+        corrIdx;  // NOLINT(cppcoreguidelines-pro-type-member-init,
+                  // hicpp-member-init)
+    reduce_row<DIST_TYPE, PROFILE_TYPE>(corr, corrIdx, args.opt.threshold);
+    info.col = corrIdx[0] + info.tile_diag + info.row;
+    update_mp<DIST_TYPE, PROFILE_TYPE, PROFILE_DATA_TYPE, true>(
+        profile, corr[0], info, args);
+  }
+}
+
+template <typename DIST_TYPE, typename PROFILE_DATA_TYPE,
+          SCAMPProfileType PROFILE_TYPE, bool computing_rows,
+          bool computing_cols>
+FORCE_INLINE inline void handle_row_fast(
+    const SCAMPKernelInputArgs<double> &args, ThreadInfo &info,
+    PROFILE_DATA_TYPE *__restrict profile_A,
+    PROFILE_DATA_TYPE *__restrict profile_B) {
+  alignas(simdByteLen) std::array<DIST_TYPE, unrollWid>
+      corr;  // NOLINT(cppcoreguidelines-pro-type-member-init,
+             // hicpp-member-init)
+  // MSVC and other less sophisticated compilers cannot autovectorize this
+  // loop unless all accesses appear aligned. We can trick these compilers
+  // into vectorizing this loop by avoiding the complicated indexing
+  // within the loop and rather just change the offest of each input array.
+  double *__restrict cov = args.cov + info.tile_diag;
+  const double *__restrict normsa = args.normsa + info.tile_diag + info.row;
+  const double *__restrict normsb = args.normsb;
+  for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
+    corr[local_diag] = cov[local_diag] * normsa[local_diag] * normsb[info.row];
+  }
+  if (args.has_nan_input) {
+    // Remove any nan values so that they don't pollute the reduction.
+    // This is expensive on some compilers so only do it if we need to.
+    for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
+      corr[local_diag] = std::isfinite(corr[local_diag])
+                             ? corr[local_diag]
+                             : init_dist<DIST_TYPE, PROFILE_TYPE>();
+    }
+  }
+  if constexpr (computing_cols) {
+    update_columnwise<DIST_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE>(
+        args, info, corr, profile_A);
+  }
+  if constexpr (computing_rows) {
+    update_rowwise<DIST_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE>(args, info, corr,
+                                                               profile_B);
+  }
+  // Same as above, avoid complicated indexing within the loop to get
+  // less sophisticated compilers to vectorize it.
+  const double *__restrict dfa = args.dfa + info.tile_diag + info.row;
+  const double *__restrict dga = args.dga + info.tile_diag + info.row;
+  double dfb = args.dfb[info.row];
+  double dgb = args.dgb[info.row];
+  for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
+    cov[local_diag] += dfa[local_diag] * dgb;
+    cov[local_diag] += dfb * dga[local_diag];
+  }
+}
+
+template <typename DIST_TYPE, typename PROFILE_DATA_TYPE,
+          SCAMPProfileType PROFILE_TYPE, bool computing_rows,
+          bool computing_cols>
+FORCE_INLINE inline void handle_row_slow(
+    const SCAMPKernelInputArgs<double> &args, ThreadInfo &info,
+    PROFILE_DATA_TYPE *__restrict profile_A,
+    PROFILE_DATA_TYPE *__restrict profile_B) {
+  int diagmax = std::min(
+      std::min(args.n_x - args.exclusion_upper + 1, args.n_x - info.row),
+      info.tile_diag + unrollWid);
+  for (int diag = info.tile_diag; diag < diagmax; diag++) {
+    info.col = diag + info.row;
+    DIST_TYPE corr =
+        args.cov[diag] * args.normsa[info.col] * args.normsb[info.row];
+    corr = std::isfinite(corr) ? corr : init_dist<DIST_TYPE, PROFILE_TYPE>();
+    if constexpr (computing_cols) {
+      update_mp<DIST_TYPE, PROFILE_TYPE, PROFILE_DATA_TYPE, /*rowwise=*/false>(
+          profile_A, corr, info, args);
+    }
+    if constexpr (computing_rows) {
+      update_mp<DIST_TYPE, PROFILE_TYPE, PROFILE_DATA_TYPE, /*rowwise=*/true>(
+          profile_B, corr, info, args);
+    }
+  }
+  for (int diag = info.tile_diag; diag < diagmax; diag++) {
+    int col = diag + info.row;
+    args.cov[diag] += args.dfa[col] * args.dgb[info.row];
+    args.cov[diag] += args.dga[col] * args.dfb[info.row];
+  }
+}
 
 template <typename DIST_TYPE, typename PROFILE_DATA_TYPE,
           SCAMPProfileType PROFILE_TYPE, bool computing_rows,
@@ -128,98 +270,35 @@ template <typename DIST_TYPE, typename PROFILE_DATA_TYPE,
 void do_tile(const SCAMPKernelInputArgs<double> &args,
              PROFILE_DATA_TYPE *__restrict profile_A,
              PROFILE_DATA_TYPE *__restrict profile_B) {
-  auto initializer = init_dist<DIST_TYPE, PROFILE_TYPE>();
-  int num_diags = args.n_x - args.exclusion_upper + 1;
-  for (int tile_diag = args.exclusion_lower; tile_diag < num_diags;
-       tile_diag += unrollWid) {
+  ThreadInfo info(args);
+
+  for (info.tile_diag = args.exclusion_lower; info.tile_diag < info.num_diags;
+       info.tile_diag += unrollWid) {
     // Determine the maximum number of iterations for this tile (includes slow
     // case)
-    int rowIters = std::min(args.n_x - tile_diag, args.n_y);
+    info.row_iters = std::min(args.n_x - info.tile_diag, args.n_y);
 
     // Determine how many optimized iterations we can do before the slow case
-    int fullRowIters;
-    if (tile_diag + unrollWid >= num_diags) {
-      fullRowIters = 0;
+    if (info.tile_diag + unrollWid >= info.num_diags) {
+      info.full_row_iters = 0;
     } else {
-      fullRowIters =
-          std::max(0, std::min(args.n_x - tile_diag - unrollWid + 1, args.n_y));
+      info.full_row_iters = std::max(
+          0, std::min(args.n_x - info.tile_diag - unrollWid + 1, args.n_y));
     }
 
     // Fast, Unrolled, Autovectorized Case
-    for (int row = 0; row < fullRowIters; row++) {
-      alignas(simdByteLen) std::array<DIST_TYPE, unrollWid>
-          corr;  // NOLINT(cppcoreguidelines-pro-type-member-init,
-                 // hicpp-member-init)
-      // MSVC and other less sophisticated compilers cannot autovectorize this
-      // loop unless all accesses appear aligned. We can trick these compilers
-      // into vectorizing this loop by avoiding the complicated indexing
-      // within the loop and rather just change the offest of each input array.
-      double *__restrict cov = args.cov + tile_diag;
-      const double *__restrict normsa = args.normsa + tile_diag + row;
-      const double *__restrict normsb = args.normsb;
-      for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
-        corr[local_diag] = cov[local_diag] * normsa[local_diag] * normsb[row];
-      }
-      if (args.has_nan_input) {
-        // Remove any nan values so that they don't pollute the reduction.
-        // This is expensive on some compilers so only do it if we need to.
-        for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
-          corr[local_diag] =
-              std::isfinite(corr[local_diag]) ? corr[local_diag] : initializer;
-        }
-      }
-      if (computing_cols) {
-        for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
-          int curr_diag = tile_diag + local_diag;
-          int col = curr_diag + row;
-          update_mp<PROFILE_TYPE>(profile_A, corr[local_diag], row, col,
-                                  args.opt.threshold);
-        }
-      }
-      if (computing_rows) {
-        std::array<int, unrollWid / 2>
-            corrIdx;  // NOLINT(cppcoreguidelines-pro-type-member-init,
-                      // hicpp-member-init)
-        reduce_row<DIST_TYPE, PROFILE_TYPE>(corr, corrIdx, args.opt.threshold);
-        update_mp<PROFILE_TYPE>(profile_B, corr[0],
-                                corrIdx[0] + tile_diag + row, row,
-                                args.opt.threshold);
-      }
-      // Same as above, avoid complicated indexing within the loop to get
-      // less sophisticated compilers to vectorize it.
-      const double *__restrict dfa = args.dfa + tile_diag + row;
-      const double *__restrict dga = args.dga + tile_diag + row;
-      double dfb = args.dfb[row];
-      double dgb = args.dgb[row];
-      for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
-        cov[local_diag] += dfa[local_diag] * dgb;
-        cov[local_diag] += dfb * dga[local_diag];
-      }
+    for (info.row = 0; info.row < info.full_row_iters; info.row++) {
+      handle_row_fast<DIST_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE,
+                      computing_rows, computing_cols>(args, info, profile_A,
+                                                      profile_B);
     }
 
     // Slow Case
-    for (int row = fullRowIters; row < rowIters; row++) {
-      int diagmax = std::min(
-          std::min(args.n_x - args.exclusion_upper + 1, args.n_x - row),
-          tile_diag + unrollWid);
-      for (int diag = tile_diag; diag < diagmax; diag++) {
-        int col = diag + row;
-        DIST_TYPE corr = args.cov[diag] * args.normsa[col] * args.normsb[row];
-        corr = std::isfinite(corr) ? corr : initializer;
-        if (computing_cols) {
-          update_mp<PROFILE_TYPE>(profile_A, corr, row, col,
-                                  args.opt.threshold);
-        }
-        if (computing_rows) {
-          update_mp<PROFILE_TYPE>(profile_B, corr, col, row,
-                                  args.opt.threshold);
-        }
-      }
-      for (int diag = tile_diag; diag < diagmax; diag++) {
-        int col = diag + row;
-        args.cov[diag] += args.dfa[col] * args.dgb[row];
-        args.cov[diag] += args.dga[col] * args.dfb[row];
-      }
+    for (info.row = info.full_row_iters; info.row < info.row_iters;
+         info.row++) {
+      handle_row_slow<DIST_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE,
+                      computing_rows, computing_cols>(args, info, profile_A,
+                                                      profile_B);
     }
   }
 }
@@ -299,8 +378,12 @@ SCAMPError_t compute_cpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
             args, static_cast<float *>(profile_a),
             static_cast<float *>(profile_b), t->info()->fp_type, do_rows,
             do_cols);
-      case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
       case PROFILE_TYPE_MATRIX_SUMMARY:
+        return LaunchDoTile<float, float, PROFILE_TYPE_MATRIX_SUMMARY>(
+            args, static_cast<float *>(profile_a),
+            static_cast<float *>(profile_b), t->info()->fp_type, do_rows,
+            do_cols);
+      case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
       default:
         return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
     }
@@ -336,4 +419,4 @@ SCAMPError_t cpu_kernel_ab_join_lower(Tile *t) {
       t->info()->computing_rows);
 }
 
-};  // namespace SCAMP
+}  // namespace SCAMP

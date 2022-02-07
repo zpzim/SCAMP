@@ -14,7 +14,7 @@ static_test_cases = ['SampleInput/randomwalk1K_nan.txt', 'SampleInput/poorly_con
 window_sizes_to_test = [5, 7, 13, 25, 33, 78, 92, 100, 189, 339, 500]
 tile_sizes_to_test = [1024, 2048, 4096]
 input_sizes_to_test = [20, 100, 250, 500, 1500, 8000]
-matrix_sizes_to_test = []
+matrix_sizes_to_test = [3, 10, 101]
 thresholds_to_test = [0.0,0.125,0.5]
 
 np.set_printoptions(edgeitems=30, linewidth=100000)
@@ -25,11 +25,11 @@ parser.add_argument('--executable', help='SCAMP executable to test, input \'pysc
 parser.add_argument('--force_gpu', type=bool, help='Forces GPU-specific tests to run')
 parser.add_argument('--output_file', help='File for test std output')
 parser.add_argument('--extra_args', help='Extra arguments to be passed to each test invocation')
-parser.add_argument('--window_sizes', type=int, nargs='+')
-parser.add_argument('--tile_sizes', type=int, nargs='+')
-parser.add_argument('--input_sizes', type=int, nargs='+')
-parser.add_argument('--matrix_sizes', type=int, nargs='+')
-parser.add_argument('--thresholds', type=float, nargs='+')
+parser.add_argument('--window_sizes', type=int, nargs='*')
+parser.add_argument('--tile_sizes', type=int, nargs='*')
+parser.add_argument('--input_sizes', type=int, nargs='*')
+parser.add_argument('--matrix_sizes', type=int, nargs='*')
+parser.add_argument('--thresholds', type=float, nargs='*')
 args = parser.parse_args()
 
 
@@ -74,10 +74,6 @@ vector_match_epsilon_1NN = 0.001
 
 matrix_match_epsilon = 0.001
 
-min_reduce_ratio = 1024
-
-matrix_check_ratio = 1 * min_reduce_ratio
-
 def generate_input_arrays(input_sizes):
   arrs = []
   for s in input_sizes:
@@ -120,8 +116,7 @@ def evaluate_result(dm_reductions, scamp_results, subtestargs):
   
   if ptype == "MATRIX_SUMMARY":
     valid_data = dm_reductions[("MATRIX_SUMMARY", None, subtestargs['rrow'], subtestargs['rcol'])] 
-    valid_data[valid_data < subtestargs['threshold']] = -1.0
-    return compare_matrix(valid_data, scamp_results[0][:,:-1])
+    return compare_matrix(valid_data, scamp_results[0], 0.0)
   
   if ptype == "ALL_NEIGHBORS":
     valid_dm = dm_reductions[("ALL_NEIGHBORS", None, None, None)]
@@ -165,6 +160,11 @@ def run_pyscamp(inputs, a, b, window, max_matches, thresh, ptype, rrows, rcols):
       mp_columns_out = mp.selfjoin_knn(inputs[a], window, max_matches, **args)
     else:
       mp_columns_out = mp.abjoin_knn(inputs[a], inputs[b], window, max_matches, **args)
+  elif ptype == "MATRIX_SUMMARY":
+    if a == b:
+      mp_columns_out = mp.selfjoin_matrix(inputs[a], window, **args)
+    else:
+      mp_columns_out = mp.abjoin_matrix(inputs[a], inputs[b], window, **args)
   else:
     raise ValueError('pyscamp does not support profile type {}'.format(ptype))
 
@@ -212,12 +212,12 @@ def run_scamp(inputs, a, b, window, tilesz, max_matches, thresh, ptype, rrows, r
     args += f' --threshold={thresh}'
   
   if rrows is not None and rcols is not None:
-    args += f' --reduce_all_neighbors --reduced_height={rrows} --reduced_width={rcols}'
+    args += f' --reduced_height={rrows} --reduced_width={rcols}'
 
   if max_matches is not None:
     args += f' --max_matches_per_column={max_matches}'
 
-  #print(args)
+  print(args)
   
   ret = subprocess.call(os.path.abspath(executable) + ' ' + args, shell=True)
   
@@ -249,8 +249,12 @@ def run_test(test, inputs):
   for thresh in thresholds_to_test:
     dm_reductions[('SUM_THRESH', thresh, None, None)] = reduce_sum_thresh(dm, thresh)
   for rows in matrix_sizes_to_test:
+    if dm.shape[0] < rows:
+      continue
     for cols in matrix_sizes_to_test:
-      dm_reductions[('MATRIX_SUMMARY', None, rows, cols)] = reduce_matrix(dm, rows,cols)
+      if dm.shape[1] < cols:
+        continue
+      dm_reductions[('MATRIX_SUMMARY', None, rows, cols)] = reduce_matrix(dm, rows,cols, a == b)
   
   # We only need local files for the CLI
   if executable != 'pyscamp':
@@ -294,25 +298,20 @@ def run_test(test, inputs):
         valid = evaluate_result(dm_reductions,scamp_results,subtest_dict)
         subtests[subtest_args] = valid
       '''
-    
 
     for rrow in matrix_sizes_to_test:
-      if rrow * min_reduce_ratio > len(b_data):
+      if rrow >= len(inputs[b]) - window + 1:
         continue
       for rcol in matrix_sizes_to_test:
-        if rcol * min_reduce_ratio > len(a_data):
+        if rcol >= len(inputs[a]) - window + 1:
           continue
-        for thresh in thresholds_to_test:
-          # Matrix summary MPs are only supported when cuda devices are available and SCAMP is built with CUDA.
-          # Matrix summary not supported on both CPU/GPU yet
-          '''
-          if gpu_enabled:
-            subtest_dict = {'tilesz' : tile_sz, 'matchpercol' : None, 'threshold': thresh, 'ptype': "MATRIX_SUMMARY", 'rrow': rrow, 'rcol': rcol, 'keeprows': False, 'aligned': False}
-            subtest_args = tuple(subtest_dict.values())
-            scamp_results = run_scamp(inputs, a, b, window, tile_sz, None, thresh, "MATRIX_SUMMARY", rrow, rcol, False, False);
-            valid = evaluate_result(dm_reductions,scamp_results,subtest_dict)
-            subtests[subtest_args] = valid
-          '''
+        # GPUs do not currently output the exact matrix summary, it is not currently possible to use the current verification method on GPU output.
+        if not gpu_enabled:
+          subtest_dict = {'tilesz' : tile_sz, 'matchpercol' : None, 'threshold': None, 'ptype': "MATRIX_SUMMARY", 'rrow': rrow, 'rcol': rcol, 'keeprows': False, 'aligned': False}
+          subtest_args = tuple(subtest_dict.values())
+          scamp_results = run_scamp(inputs, a, b, window, tile_sz, None, None, "MATRIX_SUMMARY", rrow, rcol, False, False);
+          valid = evaluate_result(dm_reductions,scamp_results,subtest_dict)
+          subtests[subtest_args] = valid
 
     prev_tile_size = tile_sz
 
