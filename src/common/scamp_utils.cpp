@@ -17,10 +17,12 @@ void write_matrix(const std::string &mp, bool output_pearson,
       mp_out << std::endl;
     }
     if (output_pearson) {
-      mp_out << std::setprecision(10) << CleanupPearson(matrix[i]) << " ";
+      mp_out << std::setprecision(10) << CleanupPearson(matrix[i]);
     } else {
-      mp_out << std::setprecision(10) << ConvertToEuclidean(matrix[i], window)
-             << " ";
+      mp_out << std::setprecision(10) << ConvertToEuclidean(matrix[i], window);
+    }
+    if (count != matrix_width - 1) {
+      mp_out << " ";
     }
     count++;
   }
