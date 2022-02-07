@@ -152,7 +152,8 @@ FORCE_INLINE inline void update_rowwise(
     EIGEN_TYPE &corr, PROFILE_DATA_TYPE *__restrict profile) {
   if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
     info.col = info.tile_diag + info.row;
-    for (int local_diag = 0; local_diag < corr.size(); local_diag++, info.col++) {
+    for (int local_diag = 0; local_diag < corr.size();
+         local_diag++, info.col++) {
       update_mp<DIST_TYPE, PROFILE_TYPE, PROFILE_DATA_TYPE, true>(
           profile, corr[local_diag], info, args);
     }
