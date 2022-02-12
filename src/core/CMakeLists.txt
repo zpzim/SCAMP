@@ -20,7 +20,7 @@ add_library(cpu_stats ${CMAKE_CURRENT_SOURCE_DIR}/cpu_stats.cpp)
 target_link_libraries(cpu_stats common)
 
 add_library(cpu_kernels ${CMAKE_CURRENT_SOURCE_DIR}/cpu_kernels.cpp)
-target_link_libraries(cpu_kernels kernel_common common)
+target_link_libraries(cpu_kernels kernel_common common Eigen3::Eigen)
 
 CHECK_CXX_COMPILER_FLAG("-Winline" COMPILER_OPT_WARN_INLINE_SUPPORTED)
 CHECK_CXX_COMPILER_FLAG("/Qvec-report:2" COMPILER_OPT_QVEC_REPORT_SUPPORTED)

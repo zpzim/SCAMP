@@ -185,19 +185,6 @@ endif()
 # Add common targets.
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/common)
 
-# Add core functional libraries.
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/core)
-
-# Python module
-if (BUILD_PYTHON_MODULE)
-  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/python)
-endif()
-
-if (BUILD_BENCHMARKS)
-  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/benchmark)
-endif()
-
-
 if (BUILD_CLIENT_SERVER)
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/grpc EXCLUDE_FROM_ALL)
   message(STATUS "Using gRPC via add_subdirectory.")
@@ -220,6 +207,22 @@ if (BUILD_CLIENT_SERVER)
   # Build scamp client and scamp server
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/distributed)
 endif()
+
+# Cpu Kernels depend on Eigen.
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/eigen)
+
+# Add core functional libraries.
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/core)
+
+# Python module
+if (BUILD_PYTHON_MODULE)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/python)
+endif()
+
+if (BUILD_BENCHMARKS)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/benchmark)
+endif()
+
 
 if(NOT TARGET gflags)
   add_subdirectory(third_party/gflags)

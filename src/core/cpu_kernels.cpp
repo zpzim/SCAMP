@@ -1,3 +1,5 @@
+#include <Eigen/Core>
+
 #include "cpu_kernels.h"
 #include "defines.h"
 #include "kernel_common.h"
@@ -7,16 +9,8 @@
 
 namespace SCAMP {
 
-// this is hard coded for now. It needs to be a power of 2
-// It may be desirable to make this larger, since the compiler is generally
-// unable to fold everything into register names with either int or long long
-// based indexing.
-constexpr int unrollWid{256};
-
-// set here for now. Could be set by cmake depending on what is supported. AVX
-// and AVX2 benefit from at least 32 particularly if masked movement
-// instructions are generated for the reduction steps.
-constexpr int simdByteLen{32};
+// The amount of unrolling on the fast path.
+constexpr int unrollWid{512};
 
 struct ThreadInfo {
   ThreadInfo(const SCAMPKernelInputArgs<double> &args);
@@ -98,13 +92,12 @@ FORCE_INLINE inline void update_mp(PROFILE_DATA_TYPE *mp, double corr,
   }
 }
 
-template <typename DATA_TYPE, SCAMPProfileType type>
-FORCE_INLINE inline void reduce_row(std::array<DATA_TYPE, unrollWid> &corr,
-                                    std::array<int, unrollWid / 2> &corrIdx,
-                                    double thresh) {  // NOLINT
+template <typename EIGEN_TYPE, SCAMPProfileType type>
+FORCE_INLINE inline void reduce_row_fast(EIGEN_TYPE &corr, int &index,
+                                         double thresh) {  // NOLINT
   switch (type) {
-    case PROFILE_TYPE_MATRIX_SUMMARY:
     case PROFILE_TYPE_1NN_INDEX: {
+      Eigen::Array<int, unrollWid, 1> corrIdx;
       for (int i = 0; i < unrollWid / 2; i++) {
         corrIdx[i] = corr[i] >= corr[i + unrollWid / 2] ? i : i + unrollWid / 2;
         corr[i] = corr[i] >= corr[i + unrollWid / 2] ? corr[i]
@@ -120,6 +113,7 @@ FORCE_INLINE inline void reduce_row(std::array<DATA_TYPE, unrollWid> &corr,
       for (int i = unrollWid / 4; i > 0; i /= 2) {
         horizontal_reduction(i);
       }
+      index = corrIdx[0];
       break;
     }
     case PROFILE_TYPE_1NN: {
@@ -134,13 +128,8 @@ FORCE_INLINE inline void reduce_row(std::array<DATA_TYPE, unrollWid> &corr,
       break;
     }
     case PROFILE_TYPE_SUM_THRESH: {
-      DATA_TYPE sum = 0;
-      for (int i = 0; i < unrollWid; i++) {
-        if (corr[i] > thresh) {
-          sum += corr[i];
-        }
-      }
-      corr[0] = sum;
+      // TODO(zpzim): Provide a faster reduction implementation.
+      corr[0] = (corr > thresh).select(corr, 0).sum();
       break;
     }
     default:
@@ -148,40 +137,105 @@ FORCE_INLINE inline void reduce_row(std::array<DATA_TYPE, unrollWid> &corr,
   }
 }
 
-template <typename DIST_TYPE, typename PROFILE_DATA_TYPE,
+// These reductions are slightly slower than what we can do with loops.
+// If Eigen performance improves over time, these might end up faster.
+template <typename EIGEN_TYPE, SCAMPProfileType type>
+FORCE_INLINE inline void reduce_row_simple(EIGEN_TYPE &corr, int &index,
+                                           double thresh) {  // NOLINT
+  switch (type) {
+    case PROFILE_TYPE_1NN_INDEX: {
+      corr[0] = corr.maxCoeff(&index);
+      break;
+    }
+    case PROFILE_TYPE_1NN: {
+      corr[0] = corr.maxCoeff();
+      break;
+    }
+    case PROFILE_TYPE_SUM_THRESH: {
+      corr[0] = (corr > thresh).select(corr, 0).sum();
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+template <typename EIGEN_TYPE, SCAMPProfileType type>
+FORCE_INLINE inline void reduce_row(EIGEN_TYPE &corr, int &index,
+                                    double thresh) {  // NOLINT
+
+  if constexpr (EIGEN_TYPE::RowsAtCompileTime != Eigen::Dynamic) {
+    reduce_row_fast<EIGEN_TYPE, type>(corr, index, thresh);
+  } else {
+    reduce_row_simple<EIGEN_TYPE, type>(corr, index, thresh);
+  }
+}
+
+template <typename DIST_TYPE, typename PROFILE_DATA_TYPE, typename EIGEN_TYPE,
           SCAMPProfileType PROFILE_TYPE>
 FORCE_INLINE inline void update_columnwise(
     const SCAMPKernelInputArgs<double> &args, ThreadInfo &info,
-    std::array<DIST_TYPE, unrollWid> &corr,
-    PROFILE_DATA_TYPE *__restrict profile) {
+    EIGEN_TYPE &corr, PROFILE_DATA_TYPE *__restrict profile) {
   info.col = info.tile_diag + info.row;
-  for (int local_diag = 0; local_diag < unrollWid; local_diag++, info.col++) {
+  for (int local_diag = 0; local_diag < corr.size(); local_diag++, info.col++) {
     update_mp<DIST_TYPE, PROFILE_TYPE, PROFILE_DATA_TYPE, false>(
         profile, corr[local_diag], info, args);
   }
 }
 
-template <typename DIST_TYPE, typename PROFILE_DATA_TYPE,
+template <typename DIST_TYPE, typename PROFILE_DATA_TYPE, typename EIGEN_TYPE,
           SCAMPProfileType PROFILE_TYPE>
 FORCE_INLINE inline void update_rowwise(
     const SCAMPKernelInputArgs<double> &args, ThreadInfo &info,
-    std::array<DIST_TYPE, unrollWid> &corr,
-    PROFILE_DATA_TYPE *__restrict profile) {
+    EIGEN_TYPE &corr, PROFILE_DATA_TYPE *__restrict profile) {
   if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
     info.col = info.tile_diag + info.row;
-    for (int local_diag = 0; local_diag < unrollWid; local_diag++, info.col++) {
+    for (int local_diag = 0; local_diag < corr.size();
+         local_diag++, info.col++) {
       update_mp<DIST_TYPE, PROFILE_TYPE, PROFILE_DATA_TYPE, true>(
           profile, corr[local_diag], info, args);
     }
   } else {
-    std::array<int, unrollWid / 2>
-        corrIdx;  // NOLINT(cppcoreguidelines-pro-type-member-init,
-                  // hicpp-member-init)
-    reduce_row<DIST_TYPE, PROFILE_TYPE>(corr, corrIdx, args.opt.threshold);
-    info.col = corrIdx[0] + info.tile_diag + info.row;
+    int index = 0;
+    reduce_row<EIGEN_TYPE, PROFILE_TYPE>(corr, index, args.opt.threshold);
+    info.col = index + info.tile_diag + info.row;
     update_mp<DIST_TYPE, PROFILE_TYPE, PROFILE_DATA_TYPE, true>(
         profile, corr[0], info, args);
   }
+}
+
+template <typename DIST_TYPE, typename PROFILE_DATA_TYPE,
+          typename EIGEN_CORR_TYPE, typename EIGEN_INPUT_TYPE,
+          typename EIGEN_INPUT_TYPE_CONST, SCAMPProfileType PROFILE_TYPE,
+          bool computing_rows, bool computing_cols>
+FORCE_INLINE inline void handle_row(const SCAMPKernelInputArgs<double> &args,
+                                    ThreadInfo &info, EIGEN_CORR_TYPE &corr,
+                                    EIGEN_INPUT_TYPE &cov,
+                                    EIGEN_INPUT_TYPE_CONST &normsa,
+                                    EIGEN_INPUT_TYPE_CONST &dfa,
+                                    EIGEN_INPUT_TYPE_CONST &dga,
+                                    PROFILE_DATA_TYPE *__restrict profile_A,
+                                    PROFILE_DATA_TYPE *__restrict profile_B) {
+  corr = (cov * normsa * args.normsb[info.row]).template cast<DIST_TYPE>();
+  if (args.has_nan_input) {
+    // Remove any nan values so that they don't pollute the reduction.
+    // This is expensive on some compilers so only do it if we need to.
+    for (int local_diag = 0; local_diag < corr.size(); local_diag++) {
+      corr[local_diag] = std::isfinite(corr[local_diag])
+                             ? corr[local_diag]
+                             : init_dist<DIST_TYPE, PROFILE_TYPE>();
+    }
+  }
+  if constexpr (computing_cols) {
+    update_columnwise<DIST_TYPE, PROFILE_DATA_TYPE, EIGEN_CORR_TYPE,
+                      PROFILE_TYPE>(args, info, corr, profile_A);
+  }
+  if constexpr (computing_rows) {
+    update_rowwise<DIST_TYPE, PROFILE_DATA_TYPE, EIGEN_CORR_TYPE, PROFILE_TYPE>(
+        args, info, corr, profile_B);
+  }
+  cov += dfa * args.dgb[info.row];
+  cov += dga * args.dfb[info.row];
 }
 
 template <typename DIST_TYPE, typename PROFILE_DATA_TYPE,
@@ -191,46 +245,17 @@ FORCE_INLINE inline void handle_row_fast(
     const SCAMPKernelInputArgs<double> &args, ThreadInfo &info,
     PROFILE_DATA_TYPE *__restrict profile_A,
     PROFILE_DATA_TYPE *__restrict profile_B) {
-  alignas(simdByteLen) std::array<DIST_TYPE, unrollWid>
-      corr;  // NOLINT(cppcoreguidelines-pro-type-member-init,
-             // hicpp-member-init)
-  // MSVC and other less sophisticated compilers cannot autovectorize this
-  // loop unless all accesses appear aligned. We can trick these compilers
-  // into vectorizing this loop by avoiding the complicated indexing
-  // within the loop and rather just change the offest of each input array.
-  double *__restrict cov = args.cov + info.tile_diag;
-  const double *__restrict normsa = args.normsa + info.tile_diag + info.row;
-  const double *__restrict normsb = args.normsb;
-  for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
-    corr[local_diag] = cov[local_diag] * normsa[local_diag] * normsb[info.row];
-  }
-  if (args.has_nan_input) {
-    // Remove any nan values so that they don't pollute the reduction.
-    // This is expensive on some compilers so only do it if we need to.
-    for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
-      corr[local_diag] = std::isfinite(corr[local_diag])
-                             ? corr[local_diag]
-                             : init_dist<DIST_TYPE, PROFILE_TYPE>();
-    }
-  }
-  if constexpr (computing_cols) {
-    update_columnwise<DIST_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE>(
-        args, info, corr, profile_A);
-  }
-  if constexpr (computing_rows) {
-    update_rowwise<DIST_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE>(args, info, corr,
-                                                               profile_B);
-  }
-  // Same as above, avoid complicated indexing within the loop to get
-  // less sophisticated compilers to vectorize it.
-  const double *__restrict dfa = args.dfa + info.tile_diag + info.row;
-  const double *__restrict dga = args.dga + info.tile_diag + info.row;
-  double dfb = args.dfb[info.row];
-  double dgb = args.dgb[info.row];
-  for (int local_diag = 0; local_diag < unrollWid; local_diag++) {
-    cov[local_diag] += dfa[local_diag] * dgb;
-    cov[local_diag] += dfb * dga[local_diag];
-  }
+  Eigen::Array<DIST_TYPE, unrollWid, 1> corr;
+  Eigen::Map<Eigen::Array<double, unrollWid, 1>> cov(args.cov + info.tile_diag);
+  Eigen::Map<const Eigen::Array<double, unrollWid, 1>> normsa(
+      args.normsa + info.tile_diag + info.row);
+  Eigen::Map<const Eigen::Array<double, unrollWid, 1>> dfa(
+      args.dfa + info.tile_diag + info.row);
+  Eigen::Map<const Eigen::Array<double, unrollWid, 1>> dga(
+      args.dga + info.tile_diag + info.row);
+  handle_row<DIST_TYPE, PROFILE_DATA_TYPE, decltype(corr), decltype(cov),
+             decltype(normsa), PROFILE_TYPE, computing_rows, computing_cols>(
+      args, info, corr, cov, normsa, dfa, dga, profile_A, profile_B);
 }
 
 template <typename DIST_TYPE, typename PROFILE_DATA_TYPE,
@@ -243,25 +268,18 @@ FORCE_INLINE inline void handle_row_slow(
   int diagmax = std::min(
       std::min(args.n_x - args.exclusion_upper + 1, args.n_x - info.row),
       info.tile_diag + unrollWid);
-  for (int diag = info.tile_diag; diag < diagmax; diag++) {
-    info.col = diag + info.row;
-    DIST_TYPE corr =
-        args.cov[diag] * args.normsa[info.col] * args.normsb[info.row];
-    corr = std::isfinite(corr) ? corr : init_dist<DIST_TYPE, PROFILE_TYPE>();
-    if constexpr (computing_cols) {
-      update_mp<DIST_TYPE, PROFILE_TYPE, PROFILE_DATA_TYPE, /*rowwise=*/false>(
-          profile_A, corr, info, args);
-    }
-    if constexpr (computing_rows) {
-      update_mp<DIST_TYPE, PROFILE_TYPE, PROFILE_DATA_TYPE, /*rowwise=*/true>(
-          profile_B, corr, info, args);
-    }
-  }
-  for (int diag = info.tile_diag; diag < diagmax; diag++) {
-    int col = diag + info.row;
-    args.cov[diag] += args.dfa[col] * args.dgb[info.row];
-    args.cov[diag] += args.dga[col] * args.dfb[info.row];
-  }
+  Eigen::Array<DIST_TYPE, Eigen::Dynamic, 1> corr(diagmax - info.tile_diag);
+  Eigen::Map<Eigen::Array<double, Eigen::Dynamic, 1>> cov(
+      args.cov + info.tile_diag, diagmax - info.tile_diag);
+  Eigen::Map<const Eigen::Array<double, Eigen::Dynamic, 1>> normsa(
+      args.normsa + info.tile_diag + info.row, diagmax - info.tile_diag);
+  Eigen::Map<const Eigen::Array<double, Eigen::Dynamic, 1>> dfa(
+      args.dfa + info.tile_diag + info.row, diagmax - info.tile_diag);
+  Eigen::Map<const Eigen::Array<double, Eigen::Dynamic, 1>> dga(
+      args.dga + info.tile_diag + info.row, diagmax - info.tile_diag);
+  handle_row<DIST_TYPE, PROFILE_DATA_TYPE, decltype(corr), decltype(cov),
+             decltype(normsa), PROFILE_TYPE, computing_rows, computing_cols>(
+      args, info, corr, cov, normsa, dfa, dga, profile_A, profile_B);
 }
 
 template <typename DIST_TYPE, typename PROFILE_DATA_TYPE,
@@ -286,14 +304,14 @@ void do_tile(const SCAMPKernelInputArgs<double> &args,
           0, std::min(args.n_x - info.tile_diag - unrollWid + 1, args.n_y));
     }
 
-    // Fast, Unrolled, Autovectorized Case
+    // Fast case where we can unroll fully.
     for (info.row = 0; info.row < info.full_row_iters; info.row++) {
       handle_row_fast<DIST_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE,
                       computing_rows, computing_cols>(args, info, profile_A,
                                                       profile_B);
     }
 
-    // Slow Case
+    // Slow case where we are too close to the edge to unroll fully.
     for (info.row = info.full_row_iters; info.row < info.row_iters;
          info.row++) {
       handle_row_slow<DIST_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE,
