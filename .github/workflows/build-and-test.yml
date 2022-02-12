@@ -255,3 +255,65 @@ jobs:
           mkdir build && cd build
           cmake -DFORCE_CUDA=1 ..
           cmake --build . --config Release --parallel 2
+
+  build-and-test-cuda:
+    runs-on: self-hosted
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: 'true'
+
+      - name: Build SCAMP with CUDA
+        shell: bash
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE
+          mkdir build && cd build
+          cmake -DFORCE_CUDA=1 ..
+          cmake --build . --config Release --parallel 2
+          
+      - name: Basic CUDA Tests SCAMP
+        shell: bash
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE/test
+          ./run_tests.sh ../build/SCAMP /dev/null
+          
+      - name: Extended Tests SCAMP
+        shell: bash
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE/test
+          python3 ./run_tests.py --executable "../build/SCAMP"
+
+      - name: Build pyscamp
+        shell: bash
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE
+          conda create -n github-test-env python=3.7
+          conda activate github-test-env
+          FORCE_CUDA=1 python3 -m pip install .
+          python3 -m pip install numpy pandas tqdm
+
+      - name: Extended Tests pyscamp
+        shell: bash
+        run:
+          set -e
+          cd $GITHUB_WORKSPACE/test
+          python3 ./run_tests.py --executable pyscamp
+          python3 test_pyscamp.py
+        
+
+  clean-runner:
+    runs-on: self-hosted    
+    needs: build-and-test-cuda
+    steps:
+      - name: Cleanup Working Directory
+        shell: bash
+        run: |
+          cd $RUNNER_WORKSPACE
+          cd ..
+          rm -rf *
+          conda remove --name github-test-env --all
