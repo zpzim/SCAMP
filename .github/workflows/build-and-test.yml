@@ -285,7 +285,7 @@ jobs:
         run: |
           set -e
           cd $GITHUB_WORKSPACE/test
-          python3 ./run_tests.py --executable "../build/SCAMP"
+          python3 ./run_tests.py --executable "../build/SCAMP" --extra_args " --force_gpu"
 
       - name: Build pyscamp
         shell: bash
