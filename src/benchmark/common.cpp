@@ -7,7 +7,6 @@
 #include "common/scamp_interface.h"
 #include "common/scamp_utils.h"
 
-
 double get_random() {
   static std::default_random_engine e;
   static std::uniform_real_distribution<> dis(0, 1);
@@ -21,7 +20,6 @@ std::vector<double> get_random_vec(size_t size) {
   }
   return out;
 }
-
 
 void BM_1NN_INDEX_SELF_JOIN(benchmark::State& state) {
   std::vector<double> ts = get_random_vec(state.range(1));
@@ -62,7 +60,6 @@ void BM_1NN_INDEX_SELF_JOIN(benchmark::State& state) {
   }
 }
 
-
 void BM_1NN_SELF_JOIN(benchmark::State& state) {
   std::vector<double> ts = get_random_vec(state.range(1));
 
@@ -101,7 +98,6 @@ void BM_1NN_SELF_JOIN(benchmark::State& state) {
     SCAMP::do_SCAMP(&args, gpu_devices, num_threads);
   }
 }
-
 
 void BM_SUM_SELF_JOIN(benchmark::State& state) {
   std::vector<double> ts = get_random_vec(state.range(1));
@@ -180,4 +176,3 @@ void BM_MATRIX_SELF_JOIN(benchmark::State& state) {
     SCAMP::do_SCAMP(&args, gpu_devices, num_threads);
   }
 }
-
