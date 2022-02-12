@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1644197559226,
+  "lastUpdate": 1644709010535,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -1188,6 +1188,138 @@ window.BENCHMARK_DATA = {
             "value": 15107420214.99999,
             "unit": "ns/iter",
             "extra": "iterations: 1\ncpu: 15473000.000000015 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "Zach Zimmerman",
+            "username": "zpzim"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "e1335e2c753c67ee1d1777118eb7a1e05379607c",
+          "message": "Use Eigen to improve maintainability and cross-platform performance of CPU kernels. (#86)\n\n* Refactored CPU Kernels to use Eigen.\r\n\r\n* Revert Windows CUDA build to windows-2019 due to Action incompatibility with windows-2022",
+          "timestamp": "2022-02-12T15:28:55-08:00",
+          "tree_id": "7e187e3230cb419e471a7261867093c03326a774",
+          "url": "https://github.com/zpzim/SCAMP/commit/e1335e2c753c67ee1d1777118eb7a1e05379607c"
+        },
+        "date": 1644709009718,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/32768",
+            "value": 992574788.3999975,
+            "unit": "ns/iter",
+            "extra": "iterations: 10\ncpu: 2005700 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/65536",
+            "value": 3905397297.000036,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 6714999.999999999 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/131072",
+            "value": 15684214764.999979,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 12770000.000000004 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/2/32768",
+            "value": 731525479.1999905,
+            "unit": "ns/iter",
+            "extra": "iterations: 10\ncpu: 2129999.999999999 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/2/65536",
+            "value": 2905454325.0001645,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 7544999.999999996 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/2/131072",
+            "value": 11527088045.000029,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 16362000.000000002 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/32768",
+            "value": 634066796.8999923,
+            "unit": "ns/iter",
+            "extra": "iterations: 10\ncpu: 2146999.999999999 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/65536",
+            "value": 2519040748.9999413,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 6461999.999999995 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/131072",
+            "value": 10626750124.999945,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 13295000.000000002 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/2/32768",
+            "value": 455812251.1999954,
+            "unit": "ns/iter",
+            "extra": "iterations: 10\ncpu: 2113300.000000001 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/2/65536",
+            "value": 1801852054.3000023,
+            "unit": "ns/iter",
+            "extra": "iterations: 10\ncpu: 3827000 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/2/131072",
+            "value": 7140088631.000026,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 14863000.000000043 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/32768",
+            "value": 1175232059.5999892,
+            "unit": "ns/iter",
+            "extra": "iterations: 10\ncpu: 2117099.9999999995 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/65536",
+            "value": 4719521009.999881,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 6710000.000000049 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/131072",
+            "value": 18754531320.00007,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 12889000.00000004 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/2/32768",
+            "value": 865824770.3999904,
+            "unit": "ns/iter",
+            "extra": "iterations: 10\ncpu: 2072999.999999997 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/2/65536",
+            "value": 3468815636.000045,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 7491000.000000025 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/2/131072",
+            "value": 13897211588.000118,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 14747000.000000065 ns\nthreads: 1"
           }
         ]
       }
