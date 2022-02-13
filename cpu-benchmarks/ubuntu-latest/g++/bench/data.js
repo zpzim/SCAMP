@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1644780405904,
+  "lastUpdate": 1644783195415,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -1500,6 +1500,54 @@ window.BENCHMARK_DATA = {
             "value": 50160445186.99999,
             "unit": "ns/iter",
             "extra": "iterations: 1\ncpu: 14374999.999999998 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "Zach Zimmerman",
+            "username": "zpzim"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "98b089b14c3f51de0a729419e586d52c04c716b9",
+          "message": "Add various improvements to compile options. Including Automatic AVX detection for MSVC. (#91)\n\n* Add various improvements to compile options. Adds automatic AVX detection for MSVC.",
+          "timestamp": "2022-02-13T11:40:41-08:00",
+          "tree_id": "7fa6d66af821da480935020a421cf503470dc817",
+          "url": "https://github.com/zpzim/SCAMP/commit/98b089b14c3f51de0a729419e586d52c04c716b9"
+        },
+        "date": 1644783194749,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/131072",
+            "value": 13149070945.999994,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 15015100 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/131072",
+            "value": 7601836047.999995,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 13958499.999999998 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/131072",
+            "value": 23553752862.00001,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 13360100 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/1/131072",
+            "value": 83124511855.00003,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 14063600.000000002 ns\nthreads: 1"
           }
         ]
       }
