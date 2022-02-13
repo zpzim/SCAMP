@@ -22,7 +22,7 @@ np.random.seed(13)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--executable', help='SCAMP executable to test, input \'pyscamp\' to use pyscamp', required=True)
-parser.add_argument('--force_gpu', type=bool, help='Forces GPU-specific tests to run')
+parser.add_argument('--force_gpu', dest='force_gpu', action='store_true', help='Forces GPU-specific tests to run')
 parser.add_argument('--output_file', help='File for test std output')
 parser.add_argument('--extra_args', help='Extra arguments to be passed to each test invocation')
 parser.add_argument('--window_sizes', type=int, nargs='*')

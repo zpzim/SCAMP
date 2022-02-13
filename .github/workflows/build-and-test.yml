@@ -308,6 +308,7 @@ jobs:
 
   clean-runner:
     runs-on: self-hosted    
+    if: ${{ always() }}
     needs: build-and-test-cuda
     steps:
       - name: Cleanup Working Directory
