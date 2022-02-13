@@ -122,9 +122,7 @@ if (CMAKE_CUDA_COMPILER)
 endif()
 
 # AVX Config for MSVC
-if (MSVC)
-  find_package(AVX)
-endif()
+find_package(AVX)
 
 CHECK_CXX_COMPILER_FLAG("-march=native" COMPILER_OPT_ARCH_NATIVE_SUPPORTED)
 CHECK_CXX_COMPILER_FLAG("-xHost" COMPILER_OPT_XHOST_SUPPORTED)
