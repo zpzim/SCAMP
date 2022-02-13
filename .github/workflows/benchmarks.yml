@@ -1,8 +1,11 @@
-name: CPU Benchmarks
+name: Benchmarks
 on:
   push:
     branches:
       - master
+
+  workflow_dispatch:
+
 jobs:
   benchmark:
     strategy:
@@ -40,23 +43,23 @@ jobs:
           cd $GITHUB_WORKSPACE
           mkdir build && cd build
           if [ ${{ matrix.compiler }} = "clang-cl" ]; then
-            cmake -G"Visual Studio 16 2019" -T ClangCL -A x64 -DBUILD_BENCHMARKS=1 .. 
+            cmake -G"Visual Studio 17 2022" -T ClangCL -A x64 -DBUILD_BENCHMARKS=1 .. 
           else
             cmake -DBUILD_BENCHMARKS=1 ..
           fi
           cmake --build . --config Release --parallel 2
-          if [ -f "./src/benchmark/scamp_benchmarks" ]; then
-            cp ./src/benchmark/scamp_benchmarks .
+          if [ -f "./src/benchmark/scamp_cpu_benchmarks" ]; then
+            cp ./src/benchmark/scamp_cpu_benchmarks .
           fi
-          if [ -f "./src/benchmark/Release/scamp_benchmarks.exe" ]; then
-            cp ./src/benchmark/Release/scamp_benchmarks.exe .
+          if [ -f "./src/benchmark/Release/scamp_cpu_benchmarks.exe" ]; then
+            cp ./src/benchmark/Release/scamp_cpu_benchmarks.exe .
           fi
       - name: Run Benchmarks
         shell: bash
         run: |
           set -e
           cd $GITHUB_WORKSPACE/build
-          ./scamp_benchmarks --benchmark_format=json | tee benchmark_result.json
+          ./scamp_cpu_benchmarks --benchmark_format=json | tee benchmark_result.json
 
       # Run `github-action-benchmark` action
       - name: Store benchmark result
@@ -75,3 +78,44 @@ jobs:
           alert-threshold: "150%"
           alert-comment-cc-users: '@zpzim'
       # Upload the updated cache file for the next job by actions/cache
+
+  benchmark-gpu:
+    name: GPU Benchmarks
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: 'true'
+      - name: Build SCAMP Benchmarks
+        shell: bash
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE
+          mkdir build && cd build
+          cmake -DFORCE_CUDA=1 -DBUILD_BENCHMARKS=1 ..
+          cmake --build . --config Release --parallel 2
+          if [ -f "./src/benchmark/scamp_gpu_benchmarks" ]; then
+            cp ./src/benchmark/scamp_gpu_benchmarks .
+          fi
+      - name: Run Benchmarks
+        shell: bash
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE/build
+          ./scamp_gpu_benchmarks --benchmark_format=json | tee benchmark_result.json
+
+      # Run `github-action-benchmark` action
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          # What benchmark tool the output.txt came from
+          tool: 'googlecpp'
+          # Where the output from the benchmark tool is stored
+          output-file-path: ./build/benchmark_result.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          benchmark-data-dir-path: gpu-benchmarks/bench
+          auto-push: true
+          fail-on-alert: true
+          comment-on-alert: true
+          alert-threshold: "150%"
+          alert-comment-cc-users: '@zpzim'
