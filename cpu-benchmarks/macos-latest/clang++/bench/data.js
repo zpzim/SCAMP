@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1644783539286,
+  "lastUpdate": 1644793683692,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -1548,6 +1548,54 @@ window.BENCHMARK_DATA = {
             "value": 43559332822.99998,
             "unit": "ns/iter",
             "extra": "iterations: 1\ncpu: 10333999.999999996 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "Zach Zimmerman",
+            "username": "zpzim"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "3e7d3b8cb92cd7c09ac2233e46dc0fcd2e9ef5ac",
+          "message": "Remove 'fast' reduction path for CPU kernels and go with the Eigen path. (#92)\n\nIt appears to almost always be faster.",
+          "timestamp": "2022-02-13T15:00:45-08:00",
+          "tree_id": "696158b8b6b58f0fb83e433729609c07c054397c",
+          "url": "https://github.com/zpzim/SCAMP/commit/3e7d3b8cb92cd7c09ac2233e46dc0fcd2e9ef5ac"
+        },
+        "date": 1644793682802,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/131072",
+            "value": 23449495941.000008,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 13582999.999999998 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/131072",
+            "value": 9618796777.999933,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 6784999.999999999 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/131072",
+            "value": 18383334226.999977,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 7134999.999999995 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/1/131072",
+            "value": 42333166699.99999,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 6715999.999999993 ns\nthreads: 1"
           }
         ]
       }
