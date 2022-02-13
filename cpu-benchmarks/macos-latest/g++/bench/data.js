@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1644709010535,
+  "lastUpdate": 1644722116361,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -1320,6 +1320,138 @@ window.BENCHMARK_DATA = {
             "value": 13897211588.000118,
             "unit": "ns/iter",
             "extra": "iterations: 1\ncpu: 14747000.000000065 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "Zach Zimmerman",
+            "username": "zpzim"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "2b94acd64d074207debd201a682d82a378ce61b5",
+          "message": "Fix pyscamp sdist to include the appropriate files to build the distribution. (#90)\n\nAlso modifies tests to verify the sdist can be built from the archive before a release.",
+          "timestamp": "2022-02-12T19:07:07-08:00",
+          "tree_id": "6837c153f8b3fdfcd5fe3be3c0acd46b443c59c2",
+          "url": "https://github.com/zpzim/SCAMP/commit/2b94acd64d074207debd201a682d82a378ce61b5"
+        },
+        "date": 1644722115393,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/32768",
+            "value": 973171775.6999842,
+            "unit": "ns/iter",
+            "extra": "iterations: 10\ncpu: 1863399.9999999995 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/65536",
+            "value": 3945181396.9999423,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 6737999.999999997 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/131072",
+            "value": 15582699173.000038,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 13007999.999999998 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/2/32768",
+            "value": 730462660.6000056,
+            "unit": "ns/iter",
+            "extra": "iterations: 10\ncpu: 2093800 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/2/65536",
+            "value": 2902551872.999993,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 7147000.000000001 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/2/131072",
+            "value": 11360981524.999943,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 14208000.000000013 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/32768",
+            "value": 629567756.5000006,
+            "unit": "ns/iter",
+            "extra": "iterations: 10\ncpu: 2143499.9999999995 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/65536",
+            "value": 2515993946.000003,
+            "unit": "ns/iter",
+            "extra": "iterations: 10\ncpu: 4225199.999999998 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/131072",
+            "value": 10072872601.999962,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 15129999.999999978 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/2/32768",
+            "value": 453938643.6000086,
+            "unit": "ns/iter",
+            "extra": "iterations: 10\ncpu: 2023300 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/2/65536",
+            "value": 1794048791.6999927,
+            "unit": "ns/iter",
+            "extra": "iterations: 10\ncpu: 4258700.000000002 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/2/131072",
+            "value": 7162142973.0000725,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 13784000.000000019 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/32768",
+            "value": 1159608245.9999933,
+            "unit": "ns/iter",
+            "extra": "iterations: 10\ncpu: 2557399.9999999986 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/65536",
+            "value": 4657211613.999834,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 6805999.999999924 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/131072",
+            "value": 18684097038.99988,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 13846999.999999998 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/2/32768",
+            "value": 861612816.999991,
+            "unit": "ns/iter",
+            "extra": "iterations: 10\ncpu: 2020400 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/2/65536",
+            "value": 3449742501.9999356,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 7245000.000000002 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/2/131072",
+            "value": 13828297423.000095,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 14504000.000000073 ns\nthreads: 1"
           }
         ]
       }
