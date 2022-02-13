@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1644784389885,
+  "lastUpdate": 1644793569603,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -96,6 +96,54 @@ window.BENCHMARK_DATA = {
             "value": 5774162684.101611,
             "unit": "ns/iter",
             "extra": "iterations: 1\ncpu: 64769753.999999955 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "Zach Zimmerman",
+            "username": "zpzim"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "3e7d3b8cb92cd7c09ac2233e46dc0fcd2e9ef5ac",
+          "message": "Remove 'fast' reduction path for CPU kernels and go with the Eigen path. (#92)\n\nIt appears to almost always be faster.",
+          "timestamp": "2022-02-13T15:00:45-08:00",
+          "tree_id": "696158b8b6b58f0fb83e433729609c07c054397c",
+          "url": "https://github.com/zpzim/SCAMP/commit/3e7d3b8cb92cd7c09ac2233e46dc0fcd2e9ef5ac"
+        },
+        "date": 1644793557885,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/-1/1048576",
+            "value": 3478062147.2746134,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 70729308 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/-1/1048576",
+            "value": 2940256823.785603,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 64213896.00000002 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/-1/1048576",
+            "value": 7928797485.77252,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 66503232.00000002 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/-1/1048576",
+            "value": 5770040878.094732,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 62029115.99999999 ns\nthreads: 1"
           }
         ]
       }
