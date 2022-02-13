@@ -1,5 +1,6 @@
 global-include CMakeLists.txt
 
 graft src
-graft pybind11
-graft gflags
+graft third_party/gflags
+graft third_party/pybind11
+graft third_party/eigen
