@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1644793569603,
+  "lastUpdate": 1644827080782,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -144,6 +144,54 @@ window.BENCHMARK_DATA = {
             "value": 5770040878.094732,
             "unit": "ns/iter",
             "extra": "iterations: 1\ncpu: 62029115.99999999 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "Zach Zimmerman",
+            "username": "zpzim"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "4db3e253c1ed87927cec18f7e2ec7bb138dc418a",
+          "message": "Apply optimizations to CPU Kernel reductions to improve performance on various toolchains. (#93)\n\n* Optimize CPU Kernel Reductions for Various compilers.",
+          "timestamp": "2022-02-14T00:21:30-08:00",
+          "tree_id": "a1624d0c1d5d3440e4103798610d734eeb050301",
+          "url": "https://github.com/zpzim/SCAMP/commit/4db3e253c1ed87927cec18f7e2ec7bb138dc418a"
+        },
+        "date": 1644827069007,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/-1/1048576",
+            "value": 3428735576.104373,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 71640073 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/-1/1048576",
+            "value": 2939002492.9307404,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 62837767.000000015 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/-1/1048576",
+            "value": 7926826410.926878,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 65526906.99999999 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/-1/1048576",
+            "value": 5770686085.801572,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 62763673.99999999 ns\nthreads: 1"
           }
         ]
       }
