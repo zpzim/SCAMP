@@ -292,7 +292,7 @@ jobs:
         run: |
           set -e
           cd $GITHUB_WORKSPACE
-          conda create -n github-test-env python=3.7
+          conda create -y -n github-test-env python=3.7
           conda activate github-test-env
           FORCE_CUDA=1 python3 -m pip install .
           python3 -m pip install numpy pandas tqdm
