@@ -97,6 +97,12 @@ FORCE_INLINE inline void reduce_row_fast(EIGEN_TYPE &corr, int &index,
                                          double thresh) {  // NOLINT
   switch (type) {
     case PROFILE_TYPE_1NN_INDEX: {
+#if defined(_WIN32) || defined(__INTEL_COMPILER) || \
+    defined(__INTEL_LLVM_COMPILER)
+      // cl, clang-cl, and intel compilers work better using Eigen's reduction.
+      corr[0] = corr.maxCoeff(&index);
+#else
+      // gcc and clang work better using a manual reduction loop.
       Eigen::Array<int, unrollWid, 1> corrIdx;
       for (int i = 0; i < unrollWid / 2; i++) {
         corrIdx[i] = corr[i] >= corr[i + unrollWid / 2] ? i : i + unrollWid / 2;
@@ -114,17 +120,12 @@ FORCE_INLINE inline void reduce_row_fast(EIGEN_TYPE &corr, int &index,
         horizontal_reduction(i);
       }
       index = corrIdx[0];
+#endif
       break;
     }
     case PROFILE_TYPE_1NN: {
-      auto horizontal_reduction = [&corr](int offset) {
-        for (int i = 0; i < offset; i++) {
-          corr[i] = corr[i] >= corr[i + offset] ? corr[i] : corr[i + offset];
-        }
-      };
-      for (int i = unrollWid / 2; i > 0; i /= 2) {
-        horizontal_reduction(i);
-      }
+      // Eigen's reduction is faster in all cases here.
+      corr[0] = corr.maxCoeff();
       break;
     }
     case PROFILE_TYPE_SUM_THRESH: {
@@ -140,8 +141,8 @@ FORCE_INLINE inline void reduce_row_fast(EIGEN_TYPE &corr, int &index,
 // These reductions are slightly slower than what we can do with loops.
 // If Eigen performance improves over time, these might end up faster.
 template <typename EIGEN_TYPE, SCAMPProfileType type>
-FORCE_INLINE inline void reduce_row_simple(EIGEN_TYPE &corr, int &index,
-                                           double thresh) {  // NOLINT
+FORCE_INLINE inline void reduce_row_eigen(EIGEN_TYPE &corr, int &index,
+                                          double thresh) {  // NOLINT
   switch (type) {
     case PROFILE_TYPE_1NN_INDEX: {
       corr[0] = corr.maxCoeff(&index);
@@ -167,7 +168,7 @@ FORCE_INLINE inline void reduce_row(EIGEN_TYPE &corr, int &index,
   if constexpr (EIGEN_TYPE::RowsAtCompileTime != Eigen::Dynamic) {
     reduce_row_fast<EIGEN_TYPE, type>(corr, index, thresh);
   } else {
-    reduce_row_simple<EIGEN_TYPE, type>(corr, index, thresh);
+    reduce_row_eigen<EIGEN_TYPE, type>(corr, index, thresh);
   }
 }
 
