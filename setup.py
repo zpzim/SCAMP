@@ -61,6 +61,7 @@ class CMakeBuild(build_ext):
         # This is a workaround for some brittle behavior on Windows where the cmake generator
         # is incorrectly determined as Visual Studio. If this error is hit, we can set the
         # following environment variable to prevent build errors.
+        do_not_auto_select_cmake_generator = os.environ.get("PYSCAMP_NO_GENERATOR_AUTOSELECT", "")
         do_not_auto_select_cmake_platform = os.environ.get("PYSCAMP_NO_PLATFORM_AUTOSELECT", "")
 
         build_type = os.environ.get("BUILD_TYPE", "Release")
@@ -97,6 +98,9 @@ class CMakeBuild(build_ext):
             if 'Visual Studio' in cmake_generator:
               print('Visual Studio generator was selected by the environment.')
               generator_is_vs = True
+            elif not cmake_generator and do_not_auto_select_cmake_generator:
+              print('CMake Generator was not specified. Assuming Generator is makefile-like')
+              generator_is_vs = False
             elif not cmake_generator and self.cmake_vs_default_generator:
               print('Visual Studio generator was selected by default.')
               generator_is_vs = True
