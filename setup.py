@@ -34,6 +34,7 @@ class CMakeBuild(build_ext):
 
         # Check if visual studio is the default cmake generator
         if '* Visual Studio' in cmake_help.decode():
+          print('Visual Studio is the default cmake generator on this system')
           self.cmake_vs_default_generator = True
         else:
           self.cmake_vs_default_generator = False
@@ -57,6 +58,10 @@ class CMakeBuild(build_ext):
         cmake_cuda_compiler = os.environ.get("CMAKE_CUDA_COMPILER", "")
         cmake_generator = os.environ.get("CMAKE_GENERATOR", "")     
         cmake_toolset = os.environ.get("CMAKE_GENERATOR_TOOLSET", "")        
+        # This is a workaround for some brittle behavior on Windows where the cmake generator
+        # is incorrectly determined as Visual Studio. If this error is hit, we can set the
+        # following environment variable to prevent build errors.
+        do_not_auto_select_cmake_platform = os.environ.get("PYSCAMP_NO_PLATFORM_AUTOSELECT", "")
 
         build_type = os.environ.get("BUILD_TYPE", "Release")
         build_args = ['--config', build_type]
@@ -83,7 +88,6 @@ class CMakeBuild(build_ext):
 
         if cmake_toolset:
           cmake_args += ["-DCMAKE_GENERATOR_TOOLSET={}".format(cmake_toolset)]
-          
 
 
         if platform.system() == "Windows":
@@ -91,8 +95,10 @@ class CMakeBuild(build_ext):
             # If the user specified a visual studio generator OR the default generator is visual studio
             # then we need to specify the correct options for the visual studio generator
             if 'Visual Studio' in cmake_generator:
+              print('Visual Studio generator was selected by the environment.')
               generator_is_vs = True
             elif not cmake_generator and self.cmake_vs_default_generator:
+              print('Visual Studio generator was selected by default.')
               generator_is_vs = True
 
             if generator_is_vs:
@@ -102,7 +108,7 @@ class CMakeBuild(build_ext):
               cmake_args += ['-DCMAKE_BUILD_TYPE=' + build_type]
               build_args += ['--', '-j4']
           
-            if sys.maxsize > 2**32 and generator_is_vs:
+            if not do_not_auto_select_cmake_platform and sys.maxsize > 2**32 and generator_is_vs:
                 cmake_args += ['-A', 'x64']
 
         else:
