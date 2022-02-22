@@ -74,7 +74,7 @@ class CMakeBuild(build_ext):
           # On older versions of Visual Studio, we may need to specify the generator platform manually
           # as it defaults to 32-bit compilation.
           cmake_generator_platform = os.environ.get("CMAKE_GENERATOR_PLATFORM", "")
-          if not cmake_generator_platform and sys.maxsize > 2**32 and not do_not_autoselect_cmake_platform:
+          if not cmake_generator_platform and sys.maxsize > 2**32 and not do_not_auto_select_cmake_platform:
             env['CMAKE_GENERATOR_PLATFORM'] = 'x64'
 
 
