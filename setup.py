@@ -50,9 +50,7 @@ class CMakeBuild(build_ext):
 
         # This environment variable is a way to opt out of platform auto-selection on windows.
         # It may be useful if build errors occur on windows related to setting CMAKE_GENERATOR_PLATFORM.
-        do_not_auto_select_cmake_platform = os.environ.get("SCAMP_NO_PLATFORM_AUTOSELECT", "")
-        if do_not_auto_select_cmake_platform:
-          cmake_args += ["-DSCAMP_NO_PLATFORM_AUTOSELECT={}".format(do_not_auto_select_cmake_platform)]
+        do_not_auto_select_cmake_platform = os.environ.get("PYSCAMP_NO_PLATFORM_AUTOSELECT", "")
 
         # Default to release build.
         build_type = os.environ.get("PYSCAMP_BUILD_TYPE", "Release")
@@ -73,6 +71,12 @@ class CMakeBuild(build_ext):
         if platform.system() == "Windows":
           # Make sure the libraries get placed in the extdir on Windows VS builds.
           cmake_args += ['-DCMAKE_LIBRARY_OUTPUT_DIRECTORY_{}={}'.format(build_type.upper(), extdir)]
+          # On older versions of Visual Studio, we may need to specify the generator platform manually
+          # as it defaults to 32-bit compilation. Note that we can set this here regardless of the
+          # generator used because SCAMP's CMakeLists.txt will remove the setting if it is unused.
+          cmake_generator_platform = os.environ.get("CMAKE_GENERATOR_PLATFORM", "")
+          if not cmake_generator_platform and sys.maxsize > 2**32 and not do_not_auto_select_cmake_platform:
+            env['CMAKE_GENERATOR_PLATFORM'] = 'x64'
 
         if not os.path.exists(self.build_temp):
             os.makedirs(self.build_temp)

@@ -4,18 +4,20 @@ include(CheckLanguage)
 include(CheckCXXCompilerFlag)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
-if (CMAKE_SIZEOF_VOID_P EQUAL 4)
-  message(WARNING "Detected a 32-bit system. 32-bit operation is unsupported and may not work correctly.")
-endif()
-
-if (CMAKE_GENERATOR MATCHES "Visual Studio")
-  # On older versions of Visual Studio, we may need to specify the generator platform manually
-  # as it defaults to 32-bit compilation.
-  if (CMAKE_SIZEOF_VOID_P EQUAL 8)
-    if (NOT SCAMP_NO_PLATFORM_AUTOSELECT)
-      message(STATUS "Detected 64-bit system building with Visual Studio, forcing 64-bit build. This can be disabled by setting SCAMP_NO_PLATFORM_AUTOSELECT in your environment when building pyscamp, or by passing -DSCAMP_NO_PLATFORM_AUTOSELECT to cmake.")
-      set(CMAKE_GENERATOR_PLATFORM x64)
-    endif()
+if ((NOT CMAKE_GENERATOR) OR (NOT (CMAKE_GENERATOR MATCHES "Visual Studio")))
+  # CMAKE_GENERATOR_PLATFORM is only needed when building with Visual Studio.
+  # Checking and removing the variable if it does not apply allows for us to
+  # set "-A x64" as an option to cmake regardless of the generator we are using.
+  # We only apply this variable if generating with visual studio.
+  # This prevents some issues with building pyscamp on Windows and makes it
+  # unnecessary for us to determine what generator cmake will use before
+  # invoking it.
+  # Note: this could break on other generators which make use of
+  # CMAKE_GENERATOR_PLATFORM in the future.
+  if (CMAKE_GENERATOR_PLATFORM OR ENV{CMAKE_GENERATOR_PLATFORM})
+    unset(CMAKE_GENERATOR_PLATFORM CACHE)
+    unset(ENV{CMAKE_GENERATOR_PLATFORM})
+    message(WARNING "unset CMAKE_GENERATOR_PLATFORM because it is meaningless for generator ${CMAKE_GENERATOR}")
   endif()
 endif()
 
@@ -30,6 +32,10 @@ set(CUDA_MINIMUM_VERSION "9.0")
 # Release build by default
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
+endif()
+
+if (CMAKE_SIZEOF_VOID_P EQUAL 4)
+  message(WARNING "Detected a 32-bit system. 32-bit operation is unsupported and may not work correctly.")
 endif()
 
 # Thread libraries
