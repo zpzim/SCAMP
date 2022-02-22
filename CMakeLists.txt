@@ -3,6 +3,22 @@ cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
 include(CheckLanguage)
 include(CheckCXXCompilerFlag)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
+
+if (CMAKE_SIZEOF_VOID_P EQUAL 4)
+  message(WARNING "Detected a 32-bit system. 32-bit operation is unsupported and may not work correctly.")
+endif()
+
+if (CMAKE_GENERATOR MATCHES "Visual Studio")
+  # On older versions of Visual Studio, we may need to specify the generator platform manually
+  # as it defaults to 32-bit compilation.
+  if (CMAKE_SIZEOF_VOID_P EQUAL 8)
+    if (NOT SCAMP_NO_PLATFORM_AUTOSELECT)
+      message(STATUS "Detected 64-bit system building with Visual Studio, forcing 64-bit build. This can be disabled by setting SCAMP_NO_PLATFORM_AUTOSELECT in your environment when building pyscamp, or by passing -DSCAMP_NO_PLATFORM_AUTOSELECT to cmake.")
+      set(CMAKE_GENERATOR_PLATFORM x64)
+    endif()
+  endif()
+endif()
+
 # ----------------------------------------------------------------------------------------
 #                              ===== Project Setup =====
 project(SCAMPmain LANGUAGES CXX)
