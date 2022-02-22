@@ -17,59 +17,49 @@ class CMakeExtension(Extension):
 class CMakeBuild(build_ext):
     def run(self):
         try:
-            out = subprocess.check_output(['cmake', '--version'])
+          out = subprocess.check_output(['cmake', '--version'])
         except OSError:
-            raise RuntimeError("CMake must be installed to build the following extensions: " +
-                               ", ".join(e.name for e in self.extensions))
+          raise RuntimeError("CMake must be installed to build the following extensions: " +
+                             ", ".join(e.name for e in self.extensions))
 
         cmake_version = LooseVersion(re.search(r'version\s*([\d.]+)', out.decode()).group(1))
-        if cmake_version < LooseVersion('3.12.0'):
-            raise RuntimeError("CMake >= 3.12.0 is required")
-
-        cmake_help = ''
-        try:
-            cmake_help = subprocess.check_output(['cmake', '--help'])
-        except OSError:
-            raise RuntimeError("Cmake could not be queried for its default generator")
-
-        # Check if visual studio is the default cmake generator
-        if '* Visual Studio' in cmake_help.decode():
-          print('Visual Studio is the default cmake generator on this system')
-          self.cmake_vs_default_generator = True
-        else:
-          self.cmake_vs_default_generator = False
+        if cmake_version < LooseVersion('3.15.0'):
+          raise RuntimeError("CMake >= 3.15.0 is required")
 
         try:
             out = subprocess.check_output(['nvcc', '--version'])
         except OSError:
-           print('CUDA was not found on the system, to build with CUDA, verify nvcc can be found in the PATH')
-        
+          print('WARNING: CUDA was not found on the system, to build with CUDA, verify nvcc can be found in the PATH')
+ 
+        if sys.maxsize <= 2**32:
+          print('WARNING: building/using pyscamp on a 32 bit platform is unsupported.')
+
         for ext in self.extensions:
-            self.build_extension(ext)
+          self.build_extension(ext)
 
     def build_extension(self, ext):
+        env = os.environ.copy()
+        env['CXXFLAGS'] = '{} -DVERSION_INFO=\\"{}\\"'.format(env.get('CXXFLAGS', ''),
+                                                              self.distribution.get_version())
         extdir = os.path.abspath(os.path.dirname(self.get_ext_fullpath(ext.name)))
-        cmake_args = ['-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=' + extdir,
-                      '-DPYTHON_EXECUTABLE=' + sys.executable]
+        cmake_args = ['-DPYTHON_EXECUTABLE=' + sys.executable]
+        cmake_args += ['-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=' + extdir]
 
         force_cuda = os.environ.get("FORCE_CUDA", "")
         force_no_cuda = os.environ.get("FORCE_NO_CUDA", "")
-        cmake_cpp_compiler = os.environ.get("CMAKE_CXX_COMPILER", "")
-        cmake_cuda_compiler = os.environ.get("CMAKE_CUDA_COMPILER", "")
-        cmake_generator = os.environ.get("CMAKE_GENERATOR", "")     
-        cmake_toolset = os.environ.get("CMAKE_GENERATOR_TOOLSET", "")        
-        # This is a workaround for some brittle behavior on Windows where the cmake generator
-        # is incorrectly determined as Visual Studio. If this error is hit, we can set the
-        # following environment variable to prevent build errors.
-        do_not_auto_select_cmake_generator = os.environ.get("PYSCAMP_NO_GENERATOR_AUTOSELECT", "")
+
+        # This environment variable is a way to opt out of platform auto-selection on windows.
+        # It may be useful if build errors occur on windows related to setting CMAKE_GENERATOR_PLATFORM.
         do_not_auto_select_cmake_platform = os.environ.get("PYSCAMP_NO_PLATFORM_AUTOSELECT", "")
 
-        build_type = os.environ.get("BUILD_TYPE", "Release")
-        build_args = ['--config', build_type]
+        # Default to release build.
+        build_type = os.environ.get("PYSCAMP_BUILD_TYPE", "Release")
 
         # Pile all .so in one place and use $ORIGIN as RPATH
         cmake_args += ["-DCMAKE_BUILD_WITH_INSTALL_RPATH=TRUE"]
         cmake_args += ["-DCMAKE_INSTALL_RPATH={}".format("$ORIGIN")]
+
+        # Build pyscamp module.
         cmake_args += ["-DBUILD_PYTHON_MODULE=TRUE"]
 
         if force_cuda:
@@ -78,58 +68,25 @@ class CMakeBuild(build_ext):
         if force_no_cuda:
           cmake_args += ["-DFORCE_NO_CUDA={}".format(force_no_cuda)]
 
-        if cmake_cpp_compiler:
-          cmake_args += ["-DCMAKE_CXX_COMPILER={}".format(cmake_cpp_compiler)]
-
-        if cmake_cuda_compiler:
-          cmake_args += ["-DCMAKE_CUDA_COMPILER={}".format(cmake_cuda_compiler)]      
-
-        if cmake_generator:
-          cmake_args += ["-DCMAKE_GENERATOR={}".format(cmake_generator)]
-
-        if cmake_toolset:
-          cmake_args += ["-DCMAKE_GENERATOR_TOOLSET={}".format(cmake_toolset)]
-
-
         if platform.system() == "Windows":
-            generator_is_vs = False
-            # If the user specified a visual studio generator OR the default generator is visual studio
-            # then we need to specify the correct options for the visual studio generator
-            if 'Visual Studio' in cmake_generator:
-              print('Visual Studio generator was selected by the environment.')
-              generator_is_vs = True
-            elif not cmake_generator and do_not_auto_select_cmake_generator:
-              print('CMake Generator was not specified. Assuming Generator is makefile-like')
-              generator_is_vs = False
-            elif not cmake_generator and self.cmake_vs_default_generator:
-              print('Visual Studio generator was selected by default.')
-              generator_is_vs = True
+          # Make sure the libraries get placed in the extdir on Windows VS builds.
+          cmake_args += ['-DCMAKE_LIBRARY_OUTPUT_DIRECTORY_{}={}'.format(build_type.upper(), extdir)]
+          # On older versions of Visual Studio, we may need to specify the generator platform manually
+          # as it defaults to 32-bit compilation.
+          cmake_generator_platform = os.environ.get("CMAKE_GENERATOR_PLATFORM", "")
+          if not cmake_generator_platform and sys.maxsize > 2**32 and not do_not_autoselect_cmake_platform:
+            env['CMAKE_GENERATOR_PLATFORM'] = 'x64'
 
-            if generator_is_vs:
-              cmake_args += ['-DCMAKE_LIBRARY_OUTPUT_DIRECTORY_{}={}'.format(build_type.upper(), extdir)]
-              build_args += ['--', '/m']
-            else:
-              cmake_args += ['-DCMAKE_BUILD_TYPE=' + build_type]
-              build_args += ['--', '-j4']
-          
-            if not do_not_auto_select_cmake_platform and sys.maxsize > 2**32 and generator_is_vs:
-                cmake_args += ['-A', 'x64']
 
-        else:
-            cmake_args += ['-DCMAKE_BUILD_TYPE=' + build_type]
-            build_args += ['--', '-j4']
-
-        env = os.environ.copy()
-        env['CXXFLAGS'] = '{} -DVERSION_INFO=\\"{}\\"'.format(env.get('CXXFLAGS', ''),
-                                                              self.distribution.get_version())
         if not os.path.exists(self.build_temp):
             os.makedirs(self.build_temp)
+
         subprocess.check_call(['cmake', ext.sourcedir] + cmake_args, cwd=self.build_temp, env=env)
         subprocess.check_call(['cmake',
                                '--build', '.',
-                               '--target', ext.name
-                               ] + build_args,
-                              cwd=self.build_temp)
+                               '--target', ext.name,
+                               '--config', build_type,
+                               '--parallel', '4'], cwd=self.build_temp)
 
 setup(
     name='pyscamp',
