@@ -18,7 +18,7 @@ pyscamp allows you to specify certain build options to pip using environment var
 
   * ``FORCE_CUDA=1`` will allow you to force pyscamp to build with cuda (or fail if it can't find CUDA)
   * ``FORCE_NO_CUDA=1`` will force pyscamp to build without cuda, even if it is found on the system.
-  * ``CC=<compiler>`` will force pyscampe to use a c compiler other than the default compiler detected by cmake, this works only for builds not using visual studio tools.
+  * ``CC=<compiler>`` will force pyscamp to use a c compiler other than the default compiler detected by cmake, this works only for builds not using visual studio tools.
   * ``CXX=<compiler>`` will force pyscamp to use a c++ compiler other than the default compiler detected by cmake, this works only for builds not using visual studio tools
   * ``CUDACXX=<nvcc location>`` will point pyscamp to the specified cuda compiler to build with, useful if your cuda compiler is not detected. This works only for builds not using visual studio tools
   * ``CMAKE_GENERATOR=<generator tag ("Ninja", etc.)>`` useful for windows builds to specify a generator other than visual studio tools
