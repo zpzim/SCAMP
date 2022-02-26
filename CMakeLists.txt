@@ -1,17 +1,33 @@
-# cmake file to build the project and tests
+
 cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
 include(CheckLanguage)
 include(CheckCXXCompilerFlag)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
-if ((NOT CMAKE_GENERATOR) OR (NOT (CMAKE_GENERATOR MATCHES "Visual Studio")))
-  # CMAKE_GENERATOR_PLATFORM is only needed when building with Visual Studio.
-  # Checking and removing the variable if it does not apply allows for us to
-  # set "-A x64" as an option to cmake regardless of the generator we are using.
-  # We only apply this variable if generating with visual studio.
-  # This prevents some issues with building pyscamp on Windows and makes it
-  # unnecessary for us to determine what generator cmake will use before
-  # invoking it.
+# Determine if we are using a VS generator where Win64 is specified in the name
+# of the generator. We do not want to specify CMAKE_GENERATOR_PLATFORM in that case.
+if (CMAKE_GENERATOR MATCHES "Visual Studio" AND CMAKE_GENERATOR MATCHES "Win64")
+  set(USING_WIN64_VS_GENERATOR "True")
+endif()
+
+if ((NOT CMAKE_GENERATOR) OR (NOT CMAKE_GENERATOR MATCHES "Visual Studio") OR USING_WIN64_VS_GENERATOR)
+  # CMAKE_GENERATOR_PLATFORM is only needed when building with Visual Studio, and the
+  # Visual Studio Generator is not configured by-name to already be building for a
+  # particular platform, this generator-name-based selection of platform is only
+  # supported on older versions of visual studio but some of these older versions are
+  # still in wide use.
+  # See: https://cmake.org/cmake/help/latest/generator/Visual%20Studio%2015%202017.html
+
+  # Unfortunately, it is nearly impossible to determine what generator cmake will
+  # use by default before invoking it, on Windows, cmake checks the registry to
+  # figure out what generator to use.
+
+  # Since we do not want to do 32-bit builds when 64-bit is available, checking and
+  # removing the CMAKE_GENERATOR_PLATFORM variable if it does not apply allows for
+  # us to set "-A x64" as an option to cmake regardless of the generator we are using.
+  # This prevents some issues with building on Windows and makes it unnecessary for us
+  # to determine what generator cmake will use before invoking it.
+
   # Note: this could break on other generators which make use of
   # CMAKE_GENERATOR_PLATFORM in the future.
   if (CMAKE_GENERATOR_PLATFORM OR ENV{CMAKE_GENERATOR_PLATFORM})
