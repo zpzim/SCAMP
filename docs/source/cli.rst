@@ -158,31 +158,27 @@ Build Configuration Options
 Specifying a Compliler
 ************************************
 
-On Linux or Mac, if you need to specify a specific compiler or cuda toolkit if you have multiple installed, you can use the following defines. By default cmake will look for cuda at the /usr/local/cuda symlink on linux::
+You can set the environment variables ``CUDACXX=/path/to/nvcc``, ``CXX=/path/to/cpp/compiler``, and ``CC=/path/to/c/compiler`` to manually specify a compiler. By default cmake will look for cuda at the /usr/local/cuda symlink on linux and mac.
 
-  cmake -D CMAKE_CUDA_COMPILER=/path/to/nvcc \
-        -D CMAKE_CXX_COMPILER=/path/to/cpp/compiler \
-        -D CMAKE_C_COMPILER=/path/to/c/compiler ..
-
-On Windows this is slightly different as you need to specify the generator to cmake::
+On Windows you may also need to specify the generator to cmake::
 
   # Build with Visual Studio 2015 tools
   cmake -G "Visual Studio 14 2015" ..
   # Build with Ninja (requires ninja)
-  cmake -G "Ninja" -DCMAKE_CXX_COMPILER=/path/to/compiler
+  cmake -G "Ninja"
 
-Windows CUDA builds will only work using visual studio tools (and the CUDA visual studio extensions). This is due to the fact that the visual studio toolchain is the only suppored toolchain for compiling cuda on windows, changing the C++ compiler will cause nvcc to fail. Therefore you can only use other generators for C++ only builds.
+Windows CUDA builds will only work using Visual Studio tools (and the CUDA visual studio extensions). This is due to the fact that the visual studio toolchain is the only suppored toolchain for compiling cuda on windows, changing the C++ compiler will cause nvcc to fail. Therefore you can only use other generators for C++ only builds.
 
 Forcing CUDA (or No CUDA)
 ************************************
 
 If you desire explicit CUDA support, you can make the build fail using the flag FORCE_CUDA=1 if cuda is not found::
   
-  cmake -D FORCE_CUDA=1 ..
+  cmake -DFORCE_CUDA=1 ..
 
 The same is true if you want to disable CUDA support using FORCE_NO_CUDA=1, this will cause CUDA not to be used, even if it is found on the system::
 
-  cmake -D FORCE_NO_CUDA=1 ..
+  cmake -DFORCE_NO_CUDA=1 ..
 
 
 

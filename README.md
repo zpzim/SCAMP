@@ -41,14 +41,14 @@ This is a much improved framework over [GPU-STOMP](https://github.com/zpzim/STOM
 SCAMP's documentation can be found at [readthedocs](https://scamp-docs.readthedocs.io/en/latest/).
 
 ## Performance
-SCAMP is extremely fast, especially on Tesla series GPUs. I belive this repository contains the fastest code in existance for computing the matrix profile. If you find a way to improve the speed of SCAMP, or compute matrix profiles any faster than SCAMP does, please let me know, I would be glad to point to your work and incorporate any improvements that can be made to SCAMP.
+SCAMP is extremely fast, especially on Tesla series GPUs. I believe this repository contains the fastest code in existance for computing the matrix profile. If you find a way to improve the speed of SCAMP, or compute matrix profiles any faster than SCAMP does, please let me know, I would be glad to point to your work and incorporate any improvements that can be made to SCAMP.
 
 More details on the performance of SCAMP can be found in the documentation.
 
 ## Python module
 A source distribution for a python3 module using pybind11 is available on pypi.org to install run:
 ~~~
-# Python 3; python 2 can work but is unsupported
+# Python 3 and a c/c++ compiler is required.
 # cmake is required (if you don't have it you can pip install cmake)
 pip install pyscamp
 ~~~
@@ -57,7 +57,7 @@ then you can use SCAMP in Python as follows:
 ~~~
 import pyscamp as mp # Uses GPU if available and CUDA was available during the build
 
-# Allows checking if pyscamp was built with CUDA and has GPU support
+# Allows checking if pyscamp was built with CUDA and has GPU support.
 has_gpu_support = mp.gpu_supported()
 
 # Self join

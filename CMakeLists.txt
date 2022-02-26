@@ -1,8 +1,44 @@
-# cmake file to build the project and tests
+
 cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
 include(CheckLanguage)
 include(CheckCXXCompilerFlag)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
+
+# Determine if we are using a VS generator where the platform is specified in the name
+# of the generator. We do not want to specify CMAKE_GENERATOR_PLATFORM in that case.
+if (CMAKE_GENERATOR MATCHES "Visual Studio")
+  if (CMAKE_GENERATOR MATCHES "Win64" OR CMAKE_GENERATOR MATCHES "ARM")
+    set(USING_PLATFORM_SPECIFIC_VS_GENERATOR "True")
+  endif()
+endif()
+
+if ((NOT CMAKE_GENERATOR) OR (NOT CMAKE_GENERATOR MATCHES "Visual Studio") OR USING_PLATFORM_SPECIFIC_VS_GENERATOR)
+  # CMAKE_GENERATOR_PLATFORM is only needed when building with Visual Studio, and the
+  # Visual Studio Generator is not configured by-name to already be building for a
+  # particular platform, this generator-name-based selection of platform is only
+  # supported on older versions of visual studio but some of these older versions are
+  # still in wide use.
+  # See: https://cmake.org/cmake/help/latest/generator/Visual%20Studio%2015%202017.html
+
+  # Unfortunately, it is nearly impossible to determine what generator cmake will
+  # use by default before invoking it, on Windows, cmake checks the registry to
+  # figure out what generator to use.
+
+  # Since we do not want to do 32-bit builds when 64-bit is available, checking and
+  # removing the CMAKE_GENERATOR_PLATFORM variable if it does not apply allows for
+  # us to set "-A x64" as an option to cmake regardless of the generator we are using.
+  # This prevents some issues with building on Windows and makes it unnecessary for us
+  # to determine what generator cmake will use before invoking it.
+
+  # Note: this could break on other generators which make use of
+  # CMAKE_GENERATOR_PLATFORM in the future.
+  if (CMAKE_GENERATOR_PLATFORM OR ENV{CMAKE_GENERATOR_PLATFORM})
+    unset(CMAKE_GENERATOR_PLATFORM CACHE)
+    unset(ENV{CMAKE_GENERATOR_PLATFORM})
+    message(WARNING "unset CMAKE_GENERATOR_PLATFORM because it is meaningless for generator ${CMAKE_GENERATOR}")
+  endif()
+endif()
+
 # ----------------------------------------------------------------------------------------
 #                              ===== Project Setup =====
 project(SCAMPmain LANGUAGES CXX)
@@ -14,6 +50,10 @@ set(CUDA_MINIMUM_VERSION "9.0")
 # Release build by default
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
+endif()
+
+if (CMAKE_SIZEOF_VOID_P EQUAL 4)
+  message(WARNING "Detected a 32-bit system. 32-bit operation is unsupported and may not work correctly.")
 endif()
 
 # Thread libraries
