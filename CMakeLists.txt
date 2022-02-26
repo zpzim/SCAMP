@@ -4,13 +4,15 @@ include(CheckLanguage)
 include(CheckCXXCompilerFlag)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
-# Determine if we are using a VS generator where Win64 is specified in the name
+# Determine if we are using a VS generator where the platform is specified in the name
 # of the generator. We do not want to specify CMAKE_GENERATOR_PLATFORM in that case.
-if (CMAKE_GENERATOR MATCHES "Visual Studio" AND CMAKE_GENERATOR MATCHES "Win64")
-  set(USING_WIN64_VS_GENERATOR "True")
+if (CMAKE_GENERATOR MATCHES "Visual Studio")
+  if (CMAKE_GENERATOR MATCHES "Win64" OR CMAKE_GENERATOR MATCHES "ARM")
+    set(USING_PLATFORM_SPECIFIC_VS_GENERATOR "True")
+  endif()
 endif()
 
-if ((NOT CMAKE_GENERATOR) OR (NOT CMAKE_GENERATOR MATCHES "Visual Studio") OR USING_WIN64_VS_GENERATOR)
+if ((NOT CMAKE_GENERATOR) OR (NOT CMAKE_GENERATOR MATCHES "Visual Studio") OR USING_PLATFORM_SPECIFIC_VS_GENERATOR)
   # CMAKE_GENERATOR_PLATFORM is only needed when building with Visual Studio, and the
   # Visual Studio Generator is not configured by-name to already be building for a
   # particular platform, this generator-name-based selection of platform is only
