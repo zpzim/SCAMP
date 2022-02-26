@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1644828064675,
+  "lastUpdate": 1645899802878,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -1114,6 +1114,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BM_MATRIX_SELF_JOIN/1/131072",
             "value": 47478174100.00016,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 15625000 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "Zach Zimmerman",
+            "username": "zpzim"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "8d40eb8bb81038df0a4a11277148511c5d2f1404",
+          "message": "Clean up pyscamp build logic in setup.py (#96)\n\n* Stop trying to detect visual studio in setup.py.\r\n* Increases the required cmake version for pyscamp to be 3.15 or more.\r\n* Move autoselection of CMAKE_GENERATOR_PLATFORM to inside CMakeLists.txt\r\n* Pass CMAKE_GENERATOR_PLATFORM on Windows when compiling pyscamp. Remove it in SCAMP's CMakeLists.txt if it is not needed.\r\n* Change recommendations for how to specify environment variables to set compilers/generators for SCAMP and pyscamp, This should be more aligned with the normal usage of cmake.\r\n* Update documentation.",
+          "timestamp": "2022-02-26T10:08:58-08:00",
+          "tree_id": "4aae813ae8b1a4130dd6da85648e908b4ed2670b",
+          "url": "https://github.com/zpzim/SCAMP/commit/8d40eb8bb81038df0a4a11277148511c5d2f1404"
+        },
+        "date": 1645899799639,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/131072",
+            "value": 31238035799.999805,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 0 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/131072",
+            "value": 6973123299.999997,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 31250000 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/131072",
+            "value": 24566242500.000046,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 0 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/1/131072",
+            "value": 52447993699.99987,
             "unit": "ns/iter",
             "extra": "iterations: 1\ncpu: 15625000 ns\nthreads: 1"
           }
