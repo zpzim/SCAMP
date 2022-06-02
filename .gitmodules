@@ -10,3 +10,6 @@
 [submodule "third_party/eigen"]
 	path = third_party/eigen
 	url = https://gitlab.com/libeigen/eigen
+[submodule "third_party/cpu_features"]
+	path = third_party/cpu_features
+	url = https://github.com/google/cpu_features

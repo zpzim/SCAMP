@@ -1,13 +1,22 @@
-#include <Eigen/Core>
-
 #include "cpu_kernels.h"
-#include "defines.h"
-#include "kernel_common.h"
+
+#include "core/defines.h"
+#include "core/kernel_common.h"
+#include <Eigen/Core>
 
 #include <array>
 #include <vector>
 
 namespace SCAMP {
+
+// This file is compiled multple times with various compiler options and linked into a single binary. Namespaces are used to verify we are compiling all symbols in this file in each configuration.
+#if defined(_SCAMP_USE_AVX_)
+namespace AVX {
+#elif defined(_SCAMP_USE_AVX2_)
+namespace AVX2 {
+#else
+namespace BASELINE {
+#endif
 
 // The amount of unrolling on the fast path.
 constexpr int unrollWid{512};
@@ -375,6 +384,7 @@ SCAMPError_t LaunchDoTile(const SCAMPKernelInputArgs<double> &args,
   return SCAMP_NO_ERROR;
 }
 
+
 SCAMPError_t compute_cpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
                                               Tile *t, void *profile_a,
                                               void *profile_b, bool do_rows,
@@ -410,32 +420,6 @@ SCAMPError_t compute_cpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
   return SCAMP_NO_ERROR;
 }
 
-SCAMPError_t cpu_kernel_self_join_upper(Tile *t) {
-  SCAMPKernelInputArgs<double> tile_args(t, false, false);
-  return compute_cpu_resources_and_launch(
-      tile_args, t, t->profile_a(), t->profile_b(), t->info()->computing_rows,
-      t->info()->computing_cols);
-}
-
-SCAMPError_t cpu_kernel_self_join_lower(Tile *t) {
-  SCAMPKernelInputArgs<double> tile_args(t, true, false);
-  return compute_cpu_resources_and_launch(
-      tile_args, t, t->profile_b(), t->profile_a(), t->info()->computing_cols,
-      t->info()->computing_rows);
-}
-
-SCAMPError_t cpu_kernel_ab_join_upper(Tile *t) {
-  SCAMPKernelInputArgs<double> tile_args(t, false, true);
-  return compute_cpu_resources_and_launch(
-      tile_args, t, t->profile_a(), t->profile_b(), t->info()->computing_rows,
-      t->info()->computing_cols);
-}
-
-SCAMPError_t cpu_kernel_ab_join_lower(Tile *t) {
-  SCAMPKernelInputArgs<double> tile_args(t, true, true);
-  return compute_cpu_resources_and_launch(
-      tile_args, t, t->profile_b(), t->profile_a(), t->info()->computing_cols,
-      t->info()->computing_rows);
-}
+}  // namespace (AVX/AVX2/BASELINE)
 
 }  // namespace SCAMP
