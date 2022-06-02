@@ -1,8 +1,8 @@
 #include "cpu_kernels.h"
 
+#include <Eigen/Core>
 #include "core/defines.h"
 #include "core/kernel_common.h"
-#include <Eigen/Core>
 
 #include <array>
 #include <vector>
@@ -11,8 +11,10 @@
 
 namespace SCAMP {
 
-// This file is compiled multple times with various compiler options and linked into a single binary. Namespaces are used to verify we are compiling all symbols in this file in each configuration.
-// unrollWid is the amount of unrolling on the fast path.
+// This file is compiled multple times with various compiler options and linked
+// into a single binary. Namespaces are used to verify we are compiling all
+// symbols in this file in each configuration. unrollWid is the amount of
+// unrolling on the fast path.
 #if defined(_SCAMP_USE_AVX_)
 constexpr int unrollWid{512};
 namespace AVX {
@@ -23,7 +25,6 @@ namespace AVX2 {
 constexpr int unrollWid{128};
 namespace BASELINE {
 #endif
-
 
 struct ThreadInfo {
   ThreadInfo(const SCAMPKernelInputArgs<double> &args);
@@ -387,7 +388,6 @@ SCAMPError_t LaunchDoTile(const SCAMPKernelInputArgs<double> &args,
   }
   return SCAMP_NO_ERROR;
 }
-
 
 SCAMPError_t compute_cpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
                                               Tile *t, void *profile_a,
