@@ -7,19 +7,23 @@
 #include <array>
 #include <vector>
 
+#pragma STDC FP_CONTRACT ON
+
 namespace SCAMP {
 
 // This file is compiled multple times with various compiler options and linked into a single binary. Namespaces are used to verify we are compiling all symbols in this file in each configuration.
+// unrollWid is the amount of unrolling on the fast path.
 #if defined(_SCAMP_USE_AVX_)
+constexpr int unrollWid{512};
 namespace AVX {
 #elif defined(_SCAMP_USE_AVX2_)
+constexpr int unrollWid{256};
 namespace AVX2 {
 #else
+constexpr int unrollWid{128};
 namespace BASELINE {
 #endif
 
-// The amount of unrolling on the fast path.
-constexpr int unrollWid{512};
 
 struct ThreadInfo {
   ThreadInfo(const SCAMPKernelInputArgs<double> &args);

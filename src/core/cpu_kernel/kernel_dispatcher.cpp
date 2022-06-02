@@ -17,13 +17,13 @@ SCAMPError_t dispatch(SCAMPKernelInputArgs<double> args,
                                               void *profile_b, bool do_rows,
                                               bool do_cols) {
 #if defined(CPU_FEATURES_ARCH_X86)
-  if (features.avx2) {
+  if (features.avx2 && features.fma3) {
     if (!t->info()->silent_mode) {
       std::cout << "Launching AVX2 kernel." << std::endl;
     }
     return dispatch_kernel_avx2(args, t, profile_a, profile_b, do_rows, do_cols);
   }
-  if (features.avx) {
+  if (features.avx && features.fma3) {
     if (!t->info()->silent_mode) {
       std::cout << "Launching AVX kernel." << std::endl;
     }
