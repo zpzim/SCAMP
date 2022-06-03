@@ -6,7 +6,7 @@
 #pragma STDC FP_CONTRACT ON
 
 // When building a redistributable binary with runtime dispatch of AVX
-// we need to make sure that each version of the binary we generate is 
+// we need to make sure that each version of the binary we generate is
 // ABI compatible with one another. Eigen detects the compile time availability
 // of AVX and sets different alignments on memory allocations based on this.
 #ifdef _SCAMP_DISTRIBUTABLE_
@@ -14,7 +14,6 @@
 #endif
 
 #include <Eigen/Core>
-
 
 #if defined(_SCAMP_USE_AVX_)
 #define DISPATCHED_NAMESPACE AVX
