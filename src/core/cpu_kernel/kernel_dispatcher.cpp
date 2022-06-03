@@ -1,7 +1,9 @@
 #include "kernel_dispatcher.h"
 
+#ifdef _SCAMP_DISTRIBUTABLE_
 #include "avx/dispatch_avx.h"
 #include "avx2/dispatch_avx2.h"
+#endif
 #include "baseline/dispatch_baseline.h"
 #include "cpu_features_macros.h"
 
@@ -16,7 +18,13 @@ namespace SCAMP {
 SCAMPError_t dispatch(SCAMPKernelInputArgs<double> args, Tile *t,
                       void *profile_a, void *profile_b, bool do_rows,
                       bool do_cols) {
-#if defined(CPU_FEATURES_ARCH_X86)
+#ifndef _SCAMP_DISTRIBUTABLE_
+  if (!t->info()->silent_mode) {
+    std::cout << "Launching kernel optimized for the platform SCAMP was built on." << std::endl;
+  }
+  return dispatch_kernel_baseline(args, t, profile_a, profile_b, do_rows,
+                                  do_cols);
+#elif defined(CPU_FEATURES_ARCH_X86)
   if (features.avx2 && features.fma3) {
     if (!t->info()->silent_mode) {
       std::cout << "Launching AVX2 kernel." << std::endl;
@@ -32,7 +40,7 @@ SCAMPError_t dispatch(SCAMPKernelInputArgs<double> args, Tile *t,
   }
 #endif
   if (!t->info()->silent_mode) {
-    std::cout << "Launching baseline kernel (no AVX)." << std::endl;
+    std::cout << "Launching baseline kernel." << std::endl;
   }
   return dispatch_kernel_baseline(args, t, profile_a, profile_b, do_rows,
                                   do_cols);

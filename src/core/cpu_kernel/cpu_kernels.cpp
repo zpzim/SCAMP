@@ -3,8 +3,10 @@
 #include "core/defines.h"
 #include "core/kernel_common.h"
 
+#ifndef _SCAMP_DISTRIBUTABLE_
 #define EIGEN_MAX_ALIGN_BYTES 32
-#define EIGEN_STATIC_MAX_ALIGN_BYTES 32
+#endif
+
 #include <Eigen/Core>
 
 #pragma STDC FP_CONTRACT ON
@@ -15,10 +17,12 @@
 #elif defined(_SCAMP_USE_AVX2_)
 #define DISPATCHED_NAMESPACE AVX2
 #define UNROLL_WIDTH 256
-#elif defined(_SCAMP_USE_AVX2_)
-#else
+#elif defined(_SCAMP_DISTRIBUTABLE_)
 #define DISPATCHED_NAMESPACE BASELINE
 #define UNROLL_WIDTH 128
+#else
+#define DISPATCHED_NAMESPACE BASELINE
+#define UNROLL_WIDTH 512
 #endif
 
 namespace SCAMP {
