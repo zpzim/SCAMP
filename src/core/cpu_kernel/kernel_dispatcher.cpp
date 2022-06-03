@@ -20,7 +20,9 @@ SCAMPError_t dispatch(SCAMPKernelInputArgs<double> args, Tile *t,
                       bool do_cols) {
 #ifndef _SCAMP_DISTRIBUTABLE_
   if (!t->info()->silent_mode) {
-    std::cout << "Launching kernel optimized for the platform SCAMP was built on." << std::endl;
+    std::cout
+        << "Launching kernel optimized for the platform SCAMP was built on."
+        << std::endl;
   }
   return dispatch_kernel_baseline(args, t, profile_a, profile_b, do_rows,
                                   do_cols);
