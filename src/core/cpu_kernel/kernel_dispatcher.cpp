@@ -27,7 +27,7 @@ SCAMPError_t dispatch(SCAMPKernelInputArgs<double> args, Tile *t,
   return dispatch_kernel_baseline(args, t, profile_a, profile_b, do_rows,
                                   do_cols);
 #elif defined(CPU_FEATURES_ARCH_X86)
-  if (features.avx2 && features.fma3) {
+  if (features.avx && features.avx2 && features.fma3) {
     if (!t->info()->silent_mode) {
       std::cout << "Launching AVX2 kernel." << std::endl;
     }
