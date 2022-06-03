@@ -94,6 +94,11 @@ else()
   message(STATUS "Using cufft libraries: ${CUDA_CUFFT_LIBRARIES}")
 endif()
 
+if (DEFINED ENV{SCAMP_ENABLE_BINARY_DISTRIBUTION})
+  message(STATUS "Building REDISTRIBUTABLE SCAMP Binary.")
+  set(SCAMP_ENABLE_BINARY_DISTRIBUTION ENV{SCAMP_ENABLE_BINARY_DISTRIBUTION})
+endif()
+
 # Use clang tidy if available
 find_program(
   CLANG_TIDY_EXE
