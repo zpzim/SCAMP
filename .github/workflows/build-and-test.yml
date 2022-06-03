@@ -173,10 +173,10 @@ jobs:
       - uses: actions/checkout@v2
         with:
           submodules: 'true'
-      - uses: Jimver/cuda-toolkit@v0.2.5
+      - uses: Jimver/cuda-toolkit@v0.2.6
         id: cuda-toolkit
         with:
-          cuda: '11.5.1'
+          cuda: '11.7.0'
 
       - name: Prep Build
         run: echo "CXX=${{ matrix.compiler }}" >> $GITHUB_ENV
