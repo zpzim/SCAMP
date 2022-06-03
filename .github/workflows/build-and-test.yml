@@ -34,6 +34,7 @@ jobs:
           submodules: 'true'
 
       - name: Prep Build
+        shell: bash
         run: |
           set -e
           echo "CXX=${{ matrix.compiler }}" >> $GITHUB_ENV
@@ -130,6 +131,7 @@ jobs:
           python-version: '3.x'
 
       - name: Prep Build
+        shell: bash
         run: |
           set -e
           echo "SCAMP_ENABLE_BINARY_DISTRIBUTION=${{ matrix.redistributable }}" >> $GITHUB_ENV
