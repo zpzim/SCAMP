@@ -27,7 +27,7 @@ namespace SCAMP {
 // into a single binary. Namespaces are used to verify we are compiling all
 // symbols in this file in each configuration. unrollWid is the amount of
 // unrolling on the fast path.
-namespace DISPATCHED_NAMESPACE { 
+namespace DISPATCHED_NAMESPACE {
 
 // unrollWid is the amount of unrolling on the fast path.
 constexpr int unrollWid{UNROLL_WIDTH};
@@ -430,6 +430,6 @@ SCAMPError_t compute_cpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
   return SCAMP_NO_ERROR;
 }
 
-}  // namespace (AVX/AVX2/BASELINE)
+}  // namespace DISPATCHED_NAMESPACE
 
 }  // namespace SCAMP
