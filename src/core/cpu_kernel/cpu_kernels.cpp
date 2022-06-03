@@ -3,13 +3,14 @@
 #include "core/defines.h"
 #include "core/kernel_common.h"
 
-#ifndef _SCAMP_DISTRIBUTABLE_
+#pragma STDC FP_CONTRACT ON
+
+#ifdef _SCAMP_DISTRIBUTABLE_
 #define EIGEN_MAX_ALIGN_BYTES 32
 #endif
 
 #include <Eigen/Core>
 
-#pragma STDC FP_CONTRACT ON
 
 #if defined(_SCAMP_USE_AVX_)
 #define DISPATCHED_NAMESPACE AVX
