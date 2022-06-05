@@ -3,7 +3,7 @@
 SCAMP_EXECUTABLE=$1
 SDE_EXECUTABLE=$2
 
-ARCHS=("-snb -ivb -hsw -bdw -slt -slm -glm -glp -tnt -snr -skl -cnl -icl -skx -clx -cpx -icx -knl -knm -tgl -adl -spr") 
+ARCHS=("-p4p -mrm -pnr -nhm -wsm -snb -ivb -hsw -bdw -slt -slm -glm -glp -tnt -snr -skl -cnl -icl -skx -clx -cpx -icx -knl -knm -tgl -adl -spr") 
 PROFILES=("1NN_INDEX 1NN SUM_THRESH MATRIX_SUMMARY")
 PASSED=""
 FAILED=""
