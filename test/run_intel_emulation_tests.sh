@@ -11,7 +11,7 @@ for ARCH in $ARCHS;
 do
   for PROFILE in $PROFILES;
   do
-    CMD="${SDE_EXECUTABLE} $ARCH -- ${SCAMP_EXECUTABLE} --window=100 --input_a_file_name=../test/SampleInput/randomwalk8K.txt --profile_type=$PROFILE --no_gpu --num_cpu_workers=1 --print_debug_info"
+    CMD="${SDE_EXECUTABLE} -chip-check-exe-only -chip_check_call_stack $ARCH -- ${SCAMP_EXECUTABLE} --window=100 --input_a_file_name=../test/SampleInput/randomwalk8K.txt --profile_type=$PROFILE --no_gpu --num_cpu_workers=1 --print_debug_info"
     echo $CMD
     `$CMD`
     ret=$?
