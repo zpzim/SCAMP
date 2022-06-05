@@ -107,6 +107,11 @@ jobs:
           set -e
           echo "CXX=${{ matrix.compiler }}" >> $GITHUB_ENV
           echo "SCAMP_ENABLE_BINARY_DISTRIBUTION=ON" >> $GITHUB_ENV
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            echo "SDE_BINARY_PATH=${SDE_PATH}/sde.exe" >> $GITHUB_ENV
+          else
+            echo "SDE_BINARY_PATH=${SDE_PATH}/sde64" >> $GITHUB_ENV
+          fi
 
       - name: Build SCAMP
         shell: bash
@@ -125,7 +130,7 @@ jobs:
         run: |
           set -e
           cd $GITHUB_WORKSPACE/test
-          ./run_intel_emulation_tests.sh "../build/SCAMP" ${SDE_PATH}/sde
+          ./run_intel_emulation_tests.sh "../build/SCAMP" ${SDE_BINARY_PATH}
 
   build-and-test-cpu-distributed:
     strategy:
