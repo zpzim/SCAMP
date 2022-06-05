@@ -34,7 +34,7 @@ SCAMPError_t dispatch(SCAMPKernelInputArgs<double> args, Tile *t,
     return dispatch_kernel_avx2(args, t, profile_a, profile_b, do_rows,
                                 do_cols);
   }
-  if (features.avx && features.fma3) {
+  if (features.avx) {
     if (!t->info()->silent_mode) {
       std::cout << "Launching AVX kernel." << std::endl;
     }

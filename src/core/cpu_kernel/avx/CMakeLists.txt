@@ -11,9 +11,9 @@ add_library(kernel_avx ${CMAKE_SOURCE_DIR}/src/core/cpu_kernel/cpu_kernels.cpp)
 target_compile_definitions(kernel_avx PRIVATE "-D_SCAMP_USE_AVX_")
 target_compile_definitions(dispatch_avx PRIVATE "-D_SCAMP_USE_AVX_")
 
-if (COMPILER_OPT_AVX_SUPPORTED AND COMPILER_OPT_FMA_SUPPORTED)
-  target_compile_options(kernel_avx PRIVATE "-mavx" PRIVATE "-mfma")
-  target_compile_options(dispatch_avx PRIVATE "-mavx" PRIVATE "-mfma")
+if (COMPILER_OPT_AVX_SUPPORTED)
+  target_compile_options(kernel_avx PRIVATE "-mavx")
+  target_compile_options(dispatch_avx PRIVATE "-mavx")
 endif()
 
 if (COMPILER_OPT_ARCH_AVX_SUPPORTED)
