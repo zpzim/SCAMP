@@ -21,6 +21,8 @@ jobs:
             compiler: cl
           - os: macos-latest
             compiler: cl
+          - os: macos-latest
+            compiler: g++
           - os: windows-latest
             compiler: g++
           - os: windows-latest
@@ -67,6 +69,63 @@ jobs:
           cd $GITHUB_WORKSPACE/test
           python3 ./run_tests.py --executable "../build/SCAMP" --extra_args "--no_gpu --num_cpu_workers=2"
                
+
+  build-and-test-arch-emulation:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        compiler: [g++, clang++, cl]
+        exclude:
+          - os: ubuntu-latest
+            compiler: cl
+          - os: macos-latest
+            compiler: cl
+          - os: macos-latest
+            compiler: g++
+          - os: windows-latest
+            compiler: g++
+          - os: windows-latest
+            compiler: clang++
+    
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: 'true'
+
+      - name: Setup SDE binaries
+        uses: petarpetrovt/setup-sde@v1.2
+        with:
+          sdeVersion: 8.69.1-2021-07-18
+
+      
+      - name: Prep Build
+        shell: bash
+        run: |
+          set -e
+          echo "CXX=${{ matrix.compiler }}" >> $GITHUB_ENV
+          echo "SCAMP_ENABLE_BINARY_DISTRIBUTION=ON" >> $GITHUB_ENV
+
+      - name: Build SCAMP
+        shell: bash
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE
+          mkdir build && cd build
+          cmake ..
+          cmake --build . --config Release --parallel 2
+          if [ -f "./Release/SCAMP.exe" ]; then
+            cp ./Release/SCAMP.exe .
+          fi
+
+      - name: Intel x86 Emulation Tests
+        shell: bash
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE/test
+          ./run_intel_emulation_tests.sh "../build/SCAMP" ${SDE_PATH}
+
   build-and-test-cpu-distributed:
     strategy:
       fail-fast: false
