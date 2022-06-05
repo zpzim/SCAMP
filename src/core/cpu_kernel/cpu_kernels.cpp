@@ -17,7 +17,7 @@
 
 #if defined(_SCAMP_USE_AVX_)
 #define DISPATCHED_NAMESPACE AVX
-#define UNROLL_WIDTH 512
+#define UNROLL_WIDTH 256
 #elif defined(_SCAMP_USE_AVX2_)
 #define DISPATCHED_NAMESPACE AVX2
 #define UNROLL_WIDTH 256
@@ -25,8 +25,9 @@
 #define DISPATCHED_NAMESPACE BASELINE
 #define UNROLL_WIDTH 128
 #else
+// Non resdistributable binary with march=native
 #define DISPATCHED_NAMESPACE BASELINE
-#define UNROLL_WIDTH 512
+#define UNROLL_WIDTH 256
 #endif
 
 namespace SCAMP {
