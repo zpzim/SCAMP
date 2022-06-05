@@ -13,7 +13,9 @@ do
   do
     CMD="${SDE_EXECUTABLE} $ARCH -- ${SCAMP_EXECUTABLE} --window=100 --input_a_file_name=../test/SampleInput/randomwalk8K.txt --profile_type=$PROFILE --no_gpu --num_cpu_workers=1 --print_debug_info"
     echo $CMD
-    if $CMD ; then
+    `$CMD`
+    ret=$?
+    if [ $ret -eq 0 ] ; then
       echo "PASS"
       PASSED="${PASSED} $PROFILE/$ARCH"
     else
@@ -28,4 +30,3 @@ if [ $FAILED ]; then
   exit 1
 fi
 exit 0
-
