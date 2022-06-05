@@ -125,7 +125,7 @@ jobs:
         run: |
           set -e
           cd $GITHUB_WORKSPACE/test
-          ./run_intel_emulation_tests.sh "../build/SCAMP" ${SDE_PATH}
+          ./run_intel_emulation_tests.sh "../build/SCAMP" ${SDE_PATH}/sde
 
   build-and-test-cpu-distributed:
     strategy:
