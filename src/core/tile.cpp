@@ -4,7 +4,7 @@
 #ifdef _HAS_CUDA_
 #include "kernels.h"
 #endif
-#include "cpu_kernels.h"
+#include "cpu_kernel/kernel_dispatcher.h"
 
 namespace SCAMP {
 

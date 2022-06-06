@@ -12,7 +12,7 @@ COPY . /SCAMP
 RUN rm -rf /SCAMP/build
 
 # Build SCAMP
-RUN mkdir /SCAMP/build && cd /SCAMP/build && cmake -DBUILD_CLIENT_SERVER=1 -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang .. && make -j8
+RUN mkdir /SCAMP/build && cd /SCAMP/build && cmake -DSCAMP_ENABLE_BINARY_DISTRIBUTION=1 -DBUILD_CLIENT_SERVER=1 -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang .. && make -j8
 
 # We only need the CUDA runtime for the final container
 FROM nvidia/cuda:11.4.2-runtime-ubuntu20.04

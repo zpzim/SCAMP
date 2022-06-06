@@ -1,16 +1,45 @@
+#include "cpu_kernels.h"
+
+#include "core/defines.h"
+#include "core/kernel_common.h"
+
+#pragma STDC FP_CONTRACT ON
+
+// When building a redistributable binary with runtime dispatch of AVX
+// we need to make sure that each version of the binary we generate is
+// ABI compatible with one another. Eigen detects the compile time availability
+// of AVX and sets different alignments on memory allocations based on this.
+#ifdef _SCAMP_DISTRIBUTABLE_
+#define EIGEN_MAX_ALIGN_BYTES 32
+#endif
+
 #include <Eigen/Core>
 
-#include "cpu_kernels.h"
-#include "defines.h"
-#include "kernel_common.h"
-
-#include <array>
-#include <vector>
+#if defined(_SCAMP_USE_AVX_)
+#define DISPATCHED_NAMESPACE AVX
+#define UNROLL_WIDTH 256
+#elif defined(_SCAMP_USE_AVX2_)
+#define DISPATCHED_NAMESPACE AVX2
+#define UNROLL_WIDTH 256
+#elif defined(_SCAMP_DISTRIBUTABLE_)
+#define DISPATCHED_NAMESPACE BASELINE
+#define UNROLL_WIDTH 128
+#else
+// Non resdistributable binary with march=native
+#define DISPATCHED_NAMESPACE BASELINE
+#define UNROLL_WIDTH 256
+#endif
 
 namespace SCAMP {
 
-// The amount of unrolling on the fast path.
-constexpr int unrollWid{512};
+// This file is compiled multple times with various compiler options and linked
+// into a single binary. Namespaces are used to verify we are compiling all
+// symbols in this file in each configuration. unrollWid is the amount of
+// unrolling on the fast path.
+namespace DISPATCHED_NAMESPACE {
+
+// unrollWid is the amount of unrolling on the fast path.
+constexpr int unrollWid{UNROLL_WIDTH};
 
 struct ThreadInfo {
   ThreadInfo(const SCAMPKernelInputArgs<double> &args);
@@ -410,32 +439,6 @@ SCAMPError_t compute_cpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
   return SCAMP_NO_ERROR;
 }
 
-SCAMPError_t cpu_kernel_self_join_upper(Tile *t) {
-  SCAMPKernelInputArgs<double> tile_args(t, false, false);
-  return compute_cpu_resources_and_launch(
-      tile_args, t, t->profile_a(), t->profile_b(), t->info()->computing_rows,
-      t->info()->computing_cols);
-}
-
-SCAMPError_t cpu_kernel_self_join_lower(Tile *t) {
-  SCAMPKernelInputArgs<double> tile_args(t, true, false);
-  return compute_cpu_resources_and_launch(
-      tile_args, t, t->profile_b(), t->profile_a(), t->info()->computing_cols,
-      t->info()->computing_rows);
-}
-
-SCAMPError_t cpu_kernel_ab_join_upper(Tile *t) {
-  SCAMPKernelInputArgs<double> tile_args(t, false, true);
-  return compute_cpu_resources_and_launch(
-      tile_args, t, t->profile_a(), t->profile_b(), t->info()->computing_rows,
-      t->info()->computing_cols);
-}
-
-SCAMPError_t cpu_kernel_ab_join_lower(Tile *t) {
-  SCAMPKernelInputArgs<double> tile_args(t, true, true);
-  return compute_cpu_resources_and_launch(
-      tile_args, t, t->profile_b(), t->profile_a(), t->info()->computing_cols,
-      t->info()->computing_rows);
-}
+}  // namespace DISPATCHED_NAMESPACE
 
 }  // namespace SCAMP

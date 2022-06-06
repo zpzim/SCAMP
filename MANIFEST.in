@@ -1,7 +1,11 @@
-global-include CMakeLists.txt
-
 graft src
+graft test
 graft cmake
+graft third_party/cpu_features
 graft third_party/gflags
 graft third_party/pybind11
 graft third_party/eigen
+prune .github
+prune docs
+prune test/SampleInput
+prune test/SampleOutput
