@@ -205,7 +205,7 @@ jobs:
           set -e
           cd $GITHUB_WORKSPACE
           python3 setup.py sdist
-          python3 -m pip install dist/*
+          python3 -m pip install -v dist/*
           python3 -m pip install numpy pandas tqdm
 
       - name: pyscamp Test
