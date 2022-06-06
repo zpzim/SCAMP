@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1645899354766,
+  "lastUpdate": 1654484781521,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -1692,6 +1692,54 @@ window.BENCHMARK_DATA = {
             "value": 50935797181,
             "unit": "ns/iter",
             "extra": "iterations: 1\ncpu: 6525000.000000003 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "Zach Zimmerman",
+            "username": "zpzim"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "ae79670ead75043a8b246b6626f49a69b54fa8e0",
+          "message": "Allow SCAMP binaries to be optionally redistributable (#99)\n\n* Added runtime dispatch of AVX/AVX2-based CPU kernels. These are conditionally compiled only if they are needed to produce a redistributable binary.\r\n\r\n* Add option to disable -march=native configurations and make the SCAMP binary redistributable. This is specified via the environment variable SCAMP_ENABLE_BINARY_DISTRIBUTION=ON\r\n\r\n* Adds some flags to increase the chance a compiler will use FMA instructions when they are available.\r\n\r\n* Add testing coverage for redistributable binary builds. Including emulation tests with Intel SDE to verify SIMD dispatch runs on various CPU configurations.\r\n\r\n* Update main CMakeLists.txt to better specify global compile flags for different build types.\r\n\r\n* Update docker container to build in a redistributable way. \r\n\r\n* Update CUDA build tests to use updated action to build on windows-latest.\r\n\r\n* Minor performance tuning of CPU kernel unroll widths.\r\n\r\n* Prevent unnecessary files from being packaged with pyscamp",
+          "timestamp": "2022-06-05T19:59:41-07:00",
+          "tree_id": "09d6ffee8145b7738ee7142f89546e754abacc37",
+          "url": "https://github.com/zpzim/SCAMP/commit/ae79670ead75043a8b246b6626f49a69b54fa8e0"
+        },
+        "date": 1654484778955,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/131072",
+            "value": 22153382284.99996,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 13821000 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/131072",
+            "value": 15309438701.999966,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 6962000.000000003 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/131072",
+            "value": 27057738755.000004,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 7314999.999999998 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/1/131072",
+            "value": 43844660726.00003,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 6595000.000000004 ns\nthreads: 1"
           }
         ]
       }
