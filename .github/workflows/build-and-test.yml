@@ -74,15 +74,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest]
         compiler: [g++, clang++, cl]
         exclude:
           - os: ubuntu-latest
             compiler: cl
-          - os: macos-latest
-            compiler: cl
-          - os: macos-latest
-            compiler: g++
           - os: windows-latest
             compiler: g++
           - os: windows-latest
@@ -108,6 +104,8 @@ jobs:
           echo "CXX=${{ matrix.compiler }}" >> $GITHUB_ENV
           echo "SCAMP_ENABLE_BINARY_DISTRIBUTION=ON" >> $GITHUB_ENV
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            echo "/$SDE_PATH" | sed 's/\\/\//g' | sed 's/://' >> $SDE_PATH
+            echo $SDE_PATH
             echo "SDE_BINARY_PATH=${SDE_PATH}/sde.exe" >> $GITHUB_ENV
           else
             echo "SDE_BINARY_PATH=${SDE_PATH}/sde64" >> $GITHUB_ENV
