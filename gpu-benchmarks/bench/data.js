@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1654484613619,
+  "lastUpdate": 1654540506663,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -288,6 +288,54 @@ window.BENCHMARK_DATA = {
             "value": 5982052383.013069,
             "unit": "ns/iter",
             "extra": "iterations: 1\ncpu: 63898169.00000001 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "Zach Zimmerman",
+            "username": "zpzim"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "392c2e43c99f6807d8fb3d05b94577671e33cafb",
+          "message": "Fix linker errors that can occur when building pyscamp shared libs. (#100)",
+          "timestamp": "2022-06-06T11:31:28-07:00",
+          "tree_id": "201dfd18c8c58da88dfd61c69a49928907937be8",
+          "url": "https://github.com/zpzim/SCAMP/commit/392c2e43c99f6807d8fb3d05b94577671e33cafb"
+        },
+        "date": 1654540495186,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/-1/1048576",
+            "value": 3568158294.0742373,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 73751663 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/-1/1048576",
+            "value": 3048313431.907445,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 64887439.99999999 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/-1/1048576",
+            "value": 8257551052.607595,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 67755806.00000003 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/-1/1048576",
+            "value": 5983201299.794018,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 64283032.99999999 ns\nthreads: 1"
           }
         ]
       }
