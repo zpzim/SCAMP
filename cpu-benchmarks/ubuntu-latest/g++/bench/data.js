@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1654540607303,
+  "lastUpdate": 1654554089195,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -1788,6 +1788,54 @@ window.BENCHMARK_DATA = {
             "value": 61083185286.99999,
             "unit": "ns/iter",
             "extra": "iterations: 1\ncpu: 11922599.999999998 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "zpzim",
+            "username": "zpzim"
+          },
+          "committer": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "zpzim",
+            "username": "zpzim"
+          },
+          "distinct": true,
+          "id": "83c8e32c9e78f64f3f3936d999b054d43530a46e",
+          "message": "Add verbosity to pyscamp builds in CI tests.",
+          "timestamp": "2022-06-06T14:54:36-07:00",
+          "tree_id": "5343818d68962f10d3a7f37abf4bfcddd776e137",
+          "url": "https://github.com/zpzim/SCAMP/commit/83c8e32c9e78f64f3f3936d999b054d43530a46e"
+        },
+        "date": 1654554088340,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/131072",
+            "value": 15488544681.999996,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 17555200 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/131072",
+            "value": 6838876225.000035,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 13719500.000000002 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/131072",
+            "value": 26618710764.000015,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 16294799.999999998 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/1/131072",
+            "value": 60598600674.00007,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 13973399.999999996 ns\nthreads: 1"
           }
         ]
       }
