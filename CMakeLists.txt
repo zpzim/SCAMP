@@ -298,26 +298,25 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/core)
 # Python module
 if (BUILD_PYTHON_MODULE)
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/python)
-endif()
-
-if (BUILD_BENCHMARKS)
-  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/benchmark)
-endif()
-
-
-if(NOT TARGET gflags)
-  add_subdirectory(third_party/gflags)
-  include_directories(third_party/gflags/include/)
-endif()
-
-# C++/CUDA executable
-add_executable(SCAMP ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
-if (CMAKE_CUDA_COMPILER)
-  target_compile_definitions(SCAMP PUBLIC -D_HAS_CUDA_)
-  target_link_libraries(SCAMP ${CUDA_cudart_LIBRARY} gflags common scamp_interface scamp_utils)
 else()
-  target_link_libraries(SCAMP gflags common scamp_interface scamp_utils)
-endif() 
+  if (BUILD_BENCHMARKS)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/benchmark)
+  endif()
+
+  if(NOT TARGET gflags)
+    add_subdirectory(third_party/gflags)
+    include_directories(third_party/gflags/include/)
+  endif()
+
+  # C++/CUDA executable
+  add_executable(SCAMP ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
+  if (CMAKE_CUDA_COMPILER)
+    target_compile_definitions(SCAMP PUBLIC -D_HAS_CUDA_)
+    target_link_libraries(SCAMP ${CUDA_cudart_LIBRARY} gflags common scamp_interface scamp_utils)
+  else()
+    target_link_libraries(SCAMP gflags common scamp_interface scamp_utils)
+  endif() 
+endif()
 
 # clang-format target
 function(prepend var prefix)
