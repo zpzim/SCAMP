@@ -15,7 +15,7 @@ do
     echo $CMD
     eval $CMD
     ret=$?
-    if [ $ret -eq 0 ] ; then
+    if [[ $ret -eq 0 ]]; then
       echo "PASS"
       PASSED="${PASSED} $PROFILE/$ARCH"
     else
@@ -25,7 +25,7 @@ do
   done
 done
 
-if [ $FAILED ]; then
+if [[ -z "$FAILED" ]]; then
   echo "Detected Failed Architectures: ${FAILED}"
   exit 1
 fi
