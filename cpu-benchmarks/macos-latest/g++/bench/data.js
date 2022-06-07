@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1654554161984,
+  "lastUpdate": 1654586874809,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -1836,6 +1836,54 @@ window.BENCHMARK_DATA = {
             "value": 45370669754.00001,
             "unit": "ns/iter",
             "extra": "iterations: 1\ncpu: 6901999.999999998 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "Zach Zimmerman",
+            "username": "zpzim"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "4cc2208c7f620b796f83c81d5a8cb62e22e2c277",
+          "message": "Fix some build issues with redistributable binaries on windows and mac (#102)\n\n* Disable clang-tidy when building by default for now.\r\n\r\nThere are some issues with newer versions of clang-tidy which can cause broken builds.\r\n\r\n* Only depend on cpu_features when building a redistributable binary.\r\n\r\nMove Eigen dependency into the cpu_kernels module.\r\n\r\n* Add message during configuration when clang-tidy isn't enabled.\r\n\r\n* Add Action to publish dev packages to test pypi.",
+          "timestamp": "2022-06-07T00:05:03-07:00",
+          "tree_id": "b17c0d4ab66ca4954c3e83e058cc110e0aa5729a",
+          "url": "https://github.com/zpzim/SCAMP/commit/4cc2208c7f620b796f83c81d5a8cb62e22e2c277"
+        },
+        "date": 1654586870070,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/131072",
+            "value": 15703233695.000051,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 12350000 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/131072",
+            "value": 9500376565.00001,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 6675000 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/131072",
+            "value": 18569978720.999985,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 7826999.999999997 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/1/131072",
+            "value": 43798035102.00003,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 7182999.999999995 ns\nthreads: 1"
           }
         ]
       }
