@@ -81,12 +81,15 @@ class CMakeBuild(build_ext):
         if not os.path.exists(self.build_temp):
             os.makedirs(self.build_temp)
 
-        subprocess.check_call(['cmake', ext.sourcedir] + cmake_args, cwd=self.build_temp, env=env)
-        subprocess.check_call(['cmake',
-                               '--build', '.',
-                               '--target', ext.name,
-                               '--config', build_type,
-                               '--parallel', '4'], cwd=self.build_temp)
+        configure_cmd = ['cmake', ext.sourcedir] + cmake_args
+        print("Configuring SCAMP")
+        print(' '.join(configure_cmd))
+        subprocess.check_call(configure_cmd, cwd=self.build_temp, env=env)
+
+        build_cmd = ['cmake', '--build', '.', '--target', ext.name, '--config', build_type, '--parallel', '4']
+        print("Building SCAMP")
+        print(' '.join(build_cmd))
+        subprocess.check_call(build_cmd, cwd=self.build_temp)
 
 setup(
     name='pyscamp',
