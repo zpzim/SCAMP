@@ -54,6 +54,8 @@ class CMakeBuild(build_ext):
 
         # Default to release build.
         build_type = os.environ.get("PYSCAMP_BUILD_TYPE", "Release")
+        # We need to set CMAKE_BUILD_TYPE here in case we aren't using a multi-config generator (e.g. Ninja)
+        env['CMAKE_BUILD_TYPE'] = build_type
 
         # Pile all .so in one place and use $ORIGIN as RPATH
         cmake_args += ["-DCMAKE_BUILD_WITH_INSTALL_RPATH=TRUE"]
