@@ -42,7 +42,8 @@ class CMakeBuild(build_ext):
         env['CXXFLAGS'] = '{} -DVERSION_INFO=\\"{}\\"'.format(env.get('CXXFLAGS', ''),
                                                               self.distribution.get_version())
         extdir = os.path.abspath(os.path.dirname(self.get_ext_fullpath(ext.name)))
-        cmake_args = ['-DPYTHON_EXECUTABLE=' + sys.executable]
+        python_exe = os.environ.get('PYSCAMP_PYTHON_EXECUTABLE_PATH', sys.executable)
+        cmake_args = ['-DPYTHON_EXECUTABLE=' + python_exe]
         cmake_args += ['-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=' + extdir]
 
         force_cuda = os.environ.get("FORCE_CUDA", "")
@@ -54,6 +55,8 @@ class CMakeBuild(build_ext):
 
         # Default to release build.
         build_type = os.environ.get("PYSCAMP_BUILD_TYPE", "Release")
+        # We need to set CMAKE_BUILD_TYPE here in case we aren't using a multi-config generator (e.g. Ninja)
+        env['CMAKE_BUILD_TYPE'] = build_type
 
         # Pile all .so in one place and use $ORIGIN as RPATH
         cmake_args += ["-DCMAKE_BUILD_WITH_INSTALL_RPATH=TRUE"]
@@ -81,12 +84,15 @@ class CMakeBuild(build_ext):
         if not os.path.exists(self.build_temp):
             os.makedirs(self.build_temp)
 
-        subprocess.check_call(['cmake', ext.sourcedir] + cmake_args, cwd=self.build_temp, env=env)
-        subprocess.check_call(['cmake',
-                               '--build', '.',
-                               '--target', ext.name,
-                               '--config', build_type,
-                               '--parallel', '4'], cwd=self.build_temp)
+        configure_cmd = ['cmake', ext.sourcedir] + cmake_args
+        print("Configuring SCAMP")
+        print(' '.join(configure_cmd))
+        subprocess.check_call(configure_cmd, cwd=self.build_temp, env=env)
+
+        build_cmd = ['cmake', '--build', '.', '--target', ext.name, '--config', build_type, '--parallel', '4']
+        print("Building SCAMP")
+        print(' '.join(build_cmd))
+        subprocess.check_call(build_cmd, cwd=self.build_temp)
 
 setup(
     name='pyscamp',

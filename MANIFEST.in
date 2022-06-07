@@ -1,8 +1,9 @@
-graft src
+graft src/common
+graft src/core
+graft src/python
 graft test
 graft cmake
 graft third_party/cpu_features
-graft third_party/gflags
 graft third_party/pybind11
 graft third_party/eigen
 prune .github
