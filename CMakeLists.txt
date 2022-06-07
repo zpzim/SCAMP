@@ -102,17 +102,18 @@ if (SCAMP_ENABLE_BINARY_DISTRIBUTION)
   message(STATUS "Building REDISTRIBUTABLE SCAMP Binary.")
 endif()
 
-# Use clang tidy if available
-find_program(
-  CLANG_TIDY_EXE
-  NAMES clang-tidy
-  DOC "Path to clang-tidy executable (v5+)"
-  )
-if(NOT CLANG_TIDY_EXE)
-  message(STATUS "clang-tidy not found.")
-else()
-  message(STATUS "clang-tidy found: ${CLANG_TIDY_EXE}")
-  set(DO_CLANG_TIDY "${CLANG_TIDY_EXE}" "-checks=*,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-fuchsia-default-arguments,-hicpp-vararg,-cppcoreguidelines-pro-type-vararg, -cppcoreguidelines-pro-bounds-constant-array-index,-google-runtime-int")
+if (SCAMP_USE_CLANG_TIDY)
+  find_program(
+    CLANG_TIDY_EXE
+    NAMES clang-tidy
+    DOC "Path to clang-tidy executable (v5+)"
+    )
+  if(NOT CLANG_TIDY_EXE)
+    message(STATUS "clang-tidy not found.")
+  else()
+    message(STATUS "clang-tidy found: ${CLANG_TIDY_EXE}")
+    set(DO_CLANG_TIDY "${CLANG_TIDY_EXE}" "-checks=*,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-fuchsia-default-arguments,-hicpp-vararg,-cppcoreguidelines-pro-type-vararg, -cppcoreguidelines-pro-bounds-constant-array-index,-google-runtime-int")
+  endif()
 endif()
 
 # Use clang format if available
