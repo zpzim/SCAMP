@@ -42,7 +42,8 @@ class CMakeBuild(build_ext):
         env['CXXFLAGS'] = '{} -DVERSION_INFO=\\"{}\\"'.format(env.get('CXXFLAGS', ''),
                                                               self.distribution.get_version())
         extdir = os.path.abspath(os.path.dirname(self.get_ext_fullpath(ext.name)))
-        cmake_args = ['-DPYTHON_EXECUTABLE=' + sys.executable]
+        python_exe = os.environ.get('PYSCAMP_PYTHON_EXECUTABLE_PATH', sys.executable)
+        cmake_args = ['-DPYTHON_EXECUTABLE=' + python_exe]
         cmake_args += ['-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=' + extdir]
 
         force_cuda = os.environ.get("FORCE_CUDA", "")
