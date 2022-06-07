@@ -25,7 +25,7 @@ do
   done
 done
 
-if [[ -z "$FAILED" ]]; then
+if [[ -n "$FAILED" ]]; then
   echo "Detected Failed Architectures: ${FAILED}"
   exit 1
 fi
