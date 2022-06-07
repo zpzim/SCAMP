@@ -114,6 +114,8 @@ if (SCAMP_USE_CLANG_TIDY)
     message(STATUS "clang-tidy found: ${CLANG_TIDY_EXE}")
     set(DO_CLANG_TIDY "${CLANG_TIDY_EXE}" "-checks=*,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-fuchsia-default-arguments,-hicpp-vararg,-cppcoreguidelines-pro-type-vararg, -cppcoreguidelines-pro-bounds-constant-array-index,-google-runtime-int")
   endif()
+else()
+  message(STATUS "clang-tidy is not enabled. To use clang-tidy checks pass -DSCAMP_USE_CLANG_TIDY=ON to cmake")
 endif()
 
 # Use clang format if available
