@@ -102,17 +102,20 @@ if (SCAMP_ENABLE_BINARY_DISTRIBUTION)
   message(STATUS "Building REDISTRIBUTABLE SCAMP Binary.")
 endif()
 
-# Use clang tidy if available
-find_program(
-  CLANG_TIDY_EXE
-  NAMES clang-tidy
-  DOC "Path to clang-tidy executable (v5+)"
-  )
-if(NOT CLANG_TIDY_EXE)
-  message(STATUS "clang-tidy not found.")
+if (SCAMP_USE_CLANG_TIDY)
+  find_program(
+    CLANG_TIDY_EXE
+    NAMES clang-tidy
+    DOC "Path to clang-tidy executable (v5+)"
+    )
+  if(NOT CLANG_TIDY_EXE)
+    message(STATUS "clang-tidy not found.")
+  else()
+    message(STATUS "clang-tidy found: ${CLANG_TIDY_EXE}")
+    set(DO_CLANG_TIDY "${CLANG_TIDY_EXE}" "-checks=*,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-fuchsia-default-arguments,-hicpp-vararg,-cppcoreguidelines-pro-type-vararg, -cppcoreguidelines-pro-bounds-constant-array-index,-google-runtime-int")
+  endif()
 else()
-  message(STATUS "clang-tidy found: ${CLANG_TIDY_EXE}")
-  set(DO_CLANG_TIDY "${CLANG_TIDY_EXE}" "-checks=*,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-fuchsia-default-arguments,-hicpp-vararg,-cppcoreguidelines-pro-type-vararg, -cppcoreguidelines-pro-bounds-constant-array-index,-google-runtime-int")
+  message(STATUS "clang-tidy is not enabled. To use clang-tidy checks pass -DSCAMP_USE_CLANG_TIDY=ON to cmake")
 endif()
 
 # Use clang format if available
@@ -287,19 +290,6 @@ if (BUILD_CLIENT_SERVER)
 
   # Build scamp client and scamp server
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/distributed)
-endif()
-
-if (BUILD_TESTING)
-  set(STORED_BUILD_TESTING ${BUILD_TESTING})
-endif()
-set(BUILD_TESTING OFF)
-# Cpu Kernels depend on Eigen and cpu_features
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/eigen)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/cpu_features)
-if (STORED_BUILD_TESTING)
-  set(BUILD_TESTING ${STORED_BUILD_TESTING})
-else()
-  unset(BUILD_TESTING)
 endif()
 
 # Add core functional libraries.

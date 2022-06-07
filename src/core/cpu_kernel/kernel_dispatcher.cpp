@@ -5,12 +5,14 @@
 #include "avx2/dispatch_avx2.h"
 #endif
 #include "baseline/dispatch_baseline.h"
-#include "cpu_features_macros.h"
 
+#if defined(_SCAMP_DISTRIBUTABLE_)
+#include "cpu_features_macros.h"
 #if defined(CPU_FEATURES_ARCH_X86)
 #include "cpuinfo_x86.h"
 static const cpu_features::X86Features features =
     cpu_features::GetX86Info().features;
+#endif
 #endif
 
 namespace SCAMP {
