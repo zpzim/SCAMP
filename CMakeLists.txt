@@ -290,19 +290,6 @@ if (BUILD_CLIENT_SERVER)
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/distributed)
 endif()
 
-if (BUILD_TESTING)
-  set(STORED_BUILD_TESTING ${BUILD_TESTING})
-endif()
-set(BUILD_TESTING OFF)
-# Cpu Kernels depend on Eigen and cpu_features
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/eigen)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/cpu_features)
-if (STORED_BUILD_TESTING)
-  set(BUILD_TESTING ${STORED_BUILD_TESTING})
-else()
-  unset(BUILD_TESTING)
-endif()
-
 # Add core functional libraries.
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/core)
 
