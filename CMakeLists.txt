@@ -261,6 +261,9 @@ set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} ${SCAMP_ALL_BUILD_
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} ${SCAMP_ALL_BUILD_FLAGS} ${SCAMP_OPTIMIZED_BUILD_FLAGS}")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${SCAMP_ALL_BUILD_FLAGS}")
 
+# Only include Eigen code licensed under MPL2
+add_definitions("-DEIGEN_MPL2_ONLY")
+
 # ----------------------------------------------------------------------------------------
 #                              ===== Build targets =====
 
