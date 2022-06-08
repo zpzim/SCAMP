@@ -74,15 +74,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        compiler: [g++, clang++, cl]
-        exclude:
-          - os: ubuntu-latest
-            compiler: cl
-          - os: windows-latest
-            compiler: g++
-          - os: windows-latest
-            compiler: clang++
+        # TODO(zpzim): Windows is disabled for now because it is flaky.
+        #os: [ubuntu-latest, windows-latest]
+        #compiler: [g++, clang++, cl]
+        os: [ubuntu-latest]
+        compiler: [g++, clang++]
+        #exclude:
+        #  - os: ubuntu-latest
+        #    compiler: cl
+        #  - os: windows-latest
+        #    compiler: g++
+        #  - os: windows-latest
+        #    compiler: clang++
     
     runs-on: ${{ matrix.os }}
 
