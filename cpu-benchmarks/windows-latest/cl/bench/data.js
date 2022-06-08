@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1654587351739,
+  "lastUpdate": 1654646871013,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -1620,6 +1620,54 @@ window.BENCHMARK_DATA = {
             "value": 55561294099.99994,
             "unit": "ns/iter",
             "extra": "iterations: 1\ncpu: 15625000 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "Zach Zimmerman",
+            "username": "zpzim"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "47ab9235124f2d03961064473505491af513a8dd",
+          "message": "Clean up python module (#103)\n\n* Enable publishing intermetiate versions of SCAMP between releases to test pypi.\r\n\r\n* Only build the SCAMP executable if we aren't building the python module.\r\n\r\n* Only include relevant source files in pyscamp.\r\n\r\n* Bump pybind11 to v2.9.2\r\n\r\n* Add verbose messages indicating how cmake is invoked by pyscamp's setup.py\r\n\r\n* Fix failure detection in architecture emulation test.\r\n\r\n* Reduce warning spam from MSVC. Stop using -Wall on MSVC use W4 instead.\r\n\r\n* Fix pyscamp build issues that occur when CMAKE_BUILD_TYPE is set incorrectly and we aren't using a multi-config generator. Should fix some issues with using Ninja.\r\n\r\n* Allow a custom Python executable path to be provided when building pyscamp.",
+          "timestamp": "2022-06-07T16:51:15-07:00",
+          "tree_id": "09aef9b0ef24eb0bd5600b39cc6068cb4dce7df5",
+          "url": "https://github.com/zpzim/SCAMP/commit/47ab9235124f2d03961064473505491af513a8dd"
+        },
+        "date": 1654646867451,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/131072",
+            "value": 21633348099.99992,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 0 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/131072",
+            "value": 17635637800.000042,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 15625000 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/131072",
+            "value": 22222029700.000122,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 15625000 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/1/131072",
+            "value": 52987094899.99988,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 0 ns\nthreads: 1"
           }
         ]
       }
