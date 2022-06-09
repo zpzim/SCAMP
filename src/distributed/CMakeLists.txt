@@ -1,3 +1,21 @@
+include(SCAMPMacros)
+
+add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/grpc ${CMAKE_CURRENT_BINARY_DIR}/grpc EXCLUDE_FROM_ALL)
+
+# After using add_subdirectory, we can now use the grpc targets directly from
+# this build.
+set(_PROTOBUF_LIBPROTOBUF libprotobuf)
+set(_PROTOBUF_PROTOC $<TARGET_FILE:protoc>)
+set(_GRPC_GRPCPP_UNSECURE grpc++_unsecure)
+set(_GRPC_GRPCPP grpc++)
+set(_GRPC_GRPC grpc)
+set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:grpc_cpp_plugin>)
+
+# Add include directories we will use later
+include_directories(${CMAKE_SOURCE_DIR}/third_party/grpc/include/) 
+include_directories(${CMAKE_SOURCE_DIR}/third_party/grpc/third_party/gflags/include/)
+include_directories(${CMAKE_SOURCE_DIR}/third_party/grpc/third_party/protobuf/src/)
+include_directories(${CMAKE_SOURCE_DIR}/third_party/grpc/third_party/abseil-cpp/)
 
 get_filename_component(hw_proto "${CMAKE_CURRENT_SOURCE_DIR}/scamp.proto" ABSOLUTE)
 get_filename_component(hw_proto_path "${hw_proto}" PATH)
@@ -51,24 +69,6 @@ endif()
 add_library(scamp_distributed_interface ${CMAKE_CURRENT_SOURCE_DIR}/scamp_interface.cpp)
 target_link_libraries(scamp_distributed_interface kube_utils messages )
 
-set(CURR_LIBS kube_utils distributed_tile distributed_job job_list worker scamp_distributed_interface)
-
-if (CMAKE_CUDA_COMPILER)
-  foreach(lib ${CURR_LIBS})
-    target_compile_definitions("${lib}" PUBLIC -D_HAS_CUDA_)
-  endforeach(lib)
-endif()
-
-# Add clang tidy rules
-if(CLANG_TIDY_EXE)
-  foreach(lib ${MAIN_LIBS})
-    set_target_properties(
-      "${lib}" PROPERTIES
-      CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
-    )
-  endforeach(lib)
-endif()
-
 add_executable(SCAMPclient ${CMAKE_CURRENT_SOURCE_DIR}/scamp_client.cc)
 add_executable(SCAMPserver ${CMAKE_CURRENT_SOURCE_DIR}/scamp_server.cc)
 target_link_libraries(SCAMPserver kube_utils job_list distributed_job messages -Wl,--whole-archive grpc++_reflection -Wl,--no-whole-archive)
@@ -82,3 +82,6 @@ if (CMAKE_CUDA_COMPILER)
 else()
   target_link_libraries(SCAMP_distributed gflags common scamp_distributed_interface scamp_utils)
 endif() 
+
+mark_cuda_if_available()
+mark_clang_tidy()

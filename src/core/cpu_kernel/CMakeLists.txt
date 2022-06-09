@@ -9,9 +9,13 @@ if (SCAMP_ENABLE_BINARY_DISTRIBUTION)
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/avx2)
 endif()
 
+fetch_env(SCAMP_USE_EXTERNAL_EIGEN)
 
-# Cpu Kernels depend on Eigen.
-add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/eigen ${CMAKE_CURRENT_BINARY_DIR}/eigen)
+if (SCAMP_USE_EXTERNAL_EIGEN)
+  find_package(Eigen3 3.4.0 REQUIRED NO_MODULE)
+else()
+  add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/eigen ${CMAKE_CURRENT_BINARY_DIR}/eigen)
+endif()
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/baseline)
 

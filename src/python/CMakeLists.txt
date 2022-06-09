@@ -1,3 +1,15 @@
+include(SCAMPMacros)
+
+fetch_env(PYSCAMP_USE_EXTERNAL_PYBIND11)
+
+set(PYBIND11_FIND_PYTHON ON)
+
+if (PYSCAMP_USE_EXTERNAL_PYBIND11)
+  find_package(pybind11 2.9.2 CONFIG REQUIRED)
+else()
+  add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/pybind11 ${CMAKE_CURRENT_BINARY_DIR}/pybind11)
+endif()
+
 add_library(pyscamp MODULE SCAMP_python.cpp)
 set_target_properties(pyscamp PROPERTIES 
   INTERPROCEDURAL_OPTIMIZATION TRUE
@@ -8,20 +20,6 @@ set_target_properties(pyscamp PROPERTIES
 target_link_libraries(pyscamp PRIVATE scamp_args scamp_utils scamp_interface common)
 target_link_libraries(pyscamp PRIVATE pybind11::module)
 
-set(CURR_LIBS pyscamp)
 
-if (CMAKE_CUDA_COMPILER)
-  foreach(lib ${CURR_LIBS})
-    target_compile_definitions("${lib}" PUBLIC -D_HAS_CUDA_)
-  endforeach(lib)
-endif()
-
-# Add clang tidy rules
-if(CLANG_TIDY_EXE)
-  foreach(lib ${MAIN_LIBS})
-    set_target_properties(
-      "${lib}" PROPERTIES
-      CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
-    )
-  endforeach(lib)
-endif()
+mark_cuda_if_available()
+mark_clang_tidy()
