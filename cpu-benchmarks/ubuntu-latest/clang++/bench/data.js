@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1654668219188,
+  "lastUpdate": 1654791497843,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -1980,6 +1980,54 @@ window.BENCHMARK_DATA = {
             "value": 52903562623,
             "unit": "ns/iter",
             "extra": "iterations: 1\ncpu: 14021300 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "Zach Zimmerman",
+            "username": "zpzim"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "82b2d4329be76cf9089dbbd7847b3260558c4c2d",
+          "message": "Cleanup to support conda packaging of pyscamp (#105)\n\n* Prevent SCAMP from using non-MPL-licenced code from EIGEN.\r\n\r\n* Add option to build pyscamp with external installs of pybind11 and eigen\r\n\r\n* Moves CMake dependencies closer to where they are used in the project.\r\n\r\n* Only configure the python module when building pyscamp.",
+          "timestamp": "2022-06-09T09:14:37-07:00",
+          "tree_id": "a5c9ef494ccf75d05f0d5780534a5daaa63852f8",
+          "url": "https://github.com/zpzim/SCAMP/commit/82b2d4329be76cf9089dbbd7847b3260558c4c2d"
+        },
+        "date": 1654791497089,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/131072",
+            "value": 14466352228.000006,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 13727300.000000002 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/131072",
+            "value": 7274901396.999979,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 11798600.000000006 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/131072",
+            "value": 22222241954.99999,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 11951000.000000004 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/1/131072",
+            "value": 45060567271,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 11917900.00000001 ns\nthreads: 1"
           }
         ]
       }
