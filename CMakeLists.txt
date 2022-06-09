@@ -1,4 +1,3 @@
-
 cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
 include(CheckLanguage)
 include(CheckCXXCompilerFlag)
@@ -46,6 +45,7 @@ set(VERSION_MAJOR 1)
 set(VERSION_MINOR 1)
 
 set(CUDA_MINIMUM_VERSION "9.0")
+include(SCAMPMacros)
 
 # Release build by default
 if(NOT CMAKE_BUILD_TYPE)
@@ -94,9 +94,11 @@ else()
   message(STATUS "Using cufft libraries: ${CUDA_CUFFT_LIBRARIES}")
 endif()
 
-if (DEFINED ENV{SCAMP_ENABLE_BINARY_DISTRIBUTION})
-  set(SCAMP_ENABLE_BINARY_DISTRIBUTION "$ENV{SCAMP_ENABLE_BINARY_DISTRIBUTION}")
-endif()
+fetch_env(SCAMP_ENABLE_BINARY_DISTRIBUTION)
+fetch_env(BUILD_PYTHON_MODULE)
+fetch_env(BUILD_CLIENT_SERVER)
+fetch_env(SCAMP_USE_CLANG_TIDY)
+fetch_env(BUILDING_PYSCAMP)
 
 if (SCAMP_ENABLE_BINARY_DISTRIBUTION)
   message(STATUS "Building REDISTRIBUTABLE SCAMP Binary.")
@@ -136,6 +138,14 @@ set(
   src/core/*.cpp
   src/core/*.cu
   src/core/*.h
+  src/core/cpu_kernel/*.cpp
+  src/core/cpu_kernel/*.h
+  src/core/cpu_kernel/baseline/*.cpp
+  src/core/cpu_kernel/baseline/*.h
+  src/core/cpu_kernel/avx/*.cpp
+  src/core/cpu_kernel/avx/*.h
+  src/core/cpu_kernel/avx2/*.cpp
+  src/core/cpu_kernel/avx2/*.h
   src/common/*.cpp
   src/common/*.h
   src/distributed/*.cc
@@ -261,39 +271,18 @@ set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} ${SCAMP_ALL_BUILD_
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} ${SCAMP_ALL_BUILD_FLAGS} ${SCAMP_OPTIMIZED_BUILD_FLAGS}")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${SCAMP_ALL_BUILD_FLAGS}")
 
+# Only include Eigen code licensed under MPL2
+add_definitions("-DEIGEN_MPL2_ONLY")
+
 # ----------------------------------------------------------------------------------------
 #                              ===== Build targets =====
 
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/src/")
 
-# Build pybind11 if needed
-if (BUILD_PYTHON_MODULE)
-  find_package(PythonLibs REQUIRED)
-  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/pybind11)
-endif()
-
 # Add common targets.
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/common)
 
 if (BUILD_CLIENT_SERVER)
-  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/grpc EXCLUDE_FROM_ALL)
-  message(STATUS "Using gRPC via add_subdirectory.")
-  
-  # After using add_subdirectory, we can now use the grpc targets directly from
-  # this build.
-  set(_PROTOBUF_LIBPROTOBUF libprotobuf)
-  set(_PROTOBUF_PROTOC $<TARGET_FILE:protoc>)
-  set(_GRPC_GRPCPP_UNSECURE grpc++_unsecure)
-  set(_GRPC_GRPCPP grpc++)
-  set(_GRPC_GRPC grpc)
-  set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:grpc_cpp_plugin>)
-
-  # Add include directories we will use later
-  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/grpc/include/) 
-  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/grpc/third_party/gflags/include/)
-  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/grpc/third_party/protobuf/src/)
-  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/grpc/third_party/abseil-cpp/)
-
   # Build scamp client and scamp server
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/distributed)
 endif()
@@ -303,26 +292,34 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/core)
 
 # Python module
 if (BUILD_PYTHON_MODULE)
+  message(STATUS "Configure Python Module")
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/python)
-else()
-  if (BUILD_BENCHMARKS)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/benchmark)
+  # If we are building pyscamp from setup.py we only care about the python module.
+  if (BUILDING_PYSCAMP)
+    return()
   endif()
-
-  if(NOT TARGET gflags)
-    add_subdirectory(third_party/gflags)
-    include_directories(third_party/gflags/include/)
-  endif()
-
-  # C++/CUDA executable
-  add_executable(SCAMP ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
-  if (CMAKE_CUDA_COMPILER)
-    target_compile_definitions(SCAMP PUBLIC -D_HAS_CUDA_)
-    target_link_libraries(SCAMP ${CUDA_cudart_LIBRARY} gflags common scamp_interface scamp_utils)
-  else()
-    target_link_libraries(SCAMP gflags common scamp_interface scamp_utils)
-  endif() 
 endif()
+
+if (BUILD_BENCHMARKS)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/benchmark)
+endif()
+
+if(NOT TARGET gflags)
+  add_subdirectory(third_party/gflags)
+  include_directories(third_party/gflags/include/)
+else()
+  # We already produced gflags target from building the SCAMP client and server
+  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/grpc/third_party/gflags/include/)
+endif()
+
+# C++/CUDA executable
+add_executable(SCAMP ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
+if (CMAKE_CUDA_COMPILER)
+  target_compile_definitions(SCAMP PUBLIC -D_HAS_CUDA_)
+  target_link_libraries(SCAMP ${CUDA_cudart_LIBRARY} gflags common scamp_interface scamp_utils)
+else()
+  target_link_libraries(SCAMP gflags common scamp_interface scamp_utils)
+endif() 
 
 # clang-format target
 function(prepend var prefix)

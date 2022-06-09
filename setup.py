@@ -64,6 +64,7 @@ class CMakeBuild(build_ext):
 
         # Build pyscamp module.
         cmake_args += ["-DBUILD_PYTHON_MODULE=TRUE"]
+        env['BUILDING_PYSCAMP'] = 'ON'
 
         if force_cuda:
           cmake_args += ["-DFORCE_CUDA={}".format(force_cuda)]
