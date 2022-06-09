@@ -98,6 +98,7 @@ fetch_env(SCAMP_ENABLE_BINARY_DISTRIBUTION)
 fetch_env(BUILD_PYTHON_MODULE)
 fetch_env(BUILD_CLIENT_SERVER)
 fetch_env(SCAMP_USE_CLANG_TIDY)
+fetch_env(BUILDING_PYSCAMP)
 
 if (SCAMP_ENABLE_BINARY_DISTRIBUTION)
   message(STATUS "Building REDISTRIBUTABLE SCAMP Binary.")
@@ -293,6 +294,10 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/core)
 if (BUILD_PYTHON_MODULE)
   message(STATUS "Configure Python Module")
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/python)
+  # If we are building pyscamp from setup.py we only care about the python module.
+  if (BUILDING_PYSCAMP)
+    return()
+  endif()
 endif()
 
 if (BUILD_BENCHMARKS)
