@@ -48,6 +48,7 @@ class CMakeBuild(build_ext):
 
         force_cuda = os.environ.get("FORCE_CUDA", "")
         force_no_cuda = os.environ.get("FORCE_NO_CUDA", "")
+        additional_cmake_args = os.environ.get("PYSCAMP_ADD_CMAKE_ARGS", "")
 
         # This environment variable is a way to opt out of platform auto-selection on windows.
         # It may be useful if build errors occur on windows related to setting CMAKE_GENERATOR_PLATFORM.
@@ -85,7 +86,7 @@ class CMakeBuild(build_ext):
         if not os.path.exists(self.build_temp):
             os.makedirs(self.build_temp)
 
-        configure_cmd = ['cmake', ext.sourcedir] + cmake_args
+        configure_cmd = ['cmake', ext.sourcedir] + cmake_args + additional_cmake_args.split()
         print("Configuring SCAMP")
         print(' '.join(configure_cmd))
         subprocess.check_call(configure_cmd, cwd=self.build_temp, env=env)
