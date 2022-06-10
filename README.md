@@ -33,9 +33,12 @@ This is a much improved framework over [GPU-STOMP](https://github.com/zpzim/STOM
  * More types of matrix profiles! KNN, Matrix Summary, Sum, and 1NN without index! See the Docs!
  * Extremely Efficient Implementation
  * Extensible to adding optimized versions of custom join operations.
- * Can compute joins with the CPU (Only enabled for double precision and does not support KNN joins yet)
+ * CPU Support (Only enabled for double precision; does not support KNN joins yet)
  * Handles NaN input values. The matrix profile will be computed while excluding any subsequence with a NaN value
  * Python module: Use SCAMP in Python with pyscamp
+ * conda-forge integration: Install pyscamp seamlessly with conda.
+ * Extensive testing: SCAMP has thousands of input configurations tested with every PR.
+ * Automatic benchmarking: Helps ensure performance doesn't slip with future updates.
 
 ## Documentation
 SCAMP's documentation can be found at [readthedocs](https://scamp-docs.readthedocs.io/en/latest/).
@@ -46,23 +49,33 @@ SCAMP is extremely fast, especially on Tesla series GPUs. I believe this reposit
 More details on the performance of SCAMP can be found in the documentation.
 
 ## Python module
-A source distribution for a python3 module using pybind11 is available on pypi.org to install run:
+`pyscamp` is available through conda-forge:
+~~~
+# To install pyscamp with cpu/gpu support on Linux and Windows.
+conda install -c conda-forge pyscamp-gpu
+
+# To install pyscamp with cpu support only on Windows, Linux, or MacOS.
+conda install -c conda-forge pyscamp-cpu
+~~~
+
+If you want you can build pyscamp from source which will have improved performance. A source distribution for a python3 module using pybind11 is available on pypi.org to install run:
 ~~~
 # Python 3 and a c/c++ compiler is required.
 # cmake is required (if you don't have it you can pip install cmake)
 pip install pyscamp
 ~~~
 
-then you can use SCAMP in Python as follows:
+Once installed you can use SCAMP in Python as follows:
 ~~~
-import pyscamp as mp # Uses GPU if available and CUDA was available during the build
+import pyscamp as mp
 
 # Allows checking if pyscamp was built with CUDA and has GPU support.
 has_gpu_support = mp.gpu_supported()
 
 # Self join
 profile, index = mp.selfjoin(a, sublen)
-# AB join using 4 threads, outtputing pearson correlation.
+
+# AB join using 4 threads, outputting pearson correlation.
 profile, index = mp.abjoin(a, b, sublen, pearson=True, threads=4)
 ~~~
 
