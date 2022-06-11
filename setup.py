@@ -1,5 +1,6 @@
 import os
 import re
+import shlex
 import sys
 import platform
 import subprocess
@@ -86,7 +87,7 @@ class CMakeBuild(build_ext):
         if not os.path.exists(self.build_temp):
             os.makedirs(self.build_temp)
 
-        configure_cmd = ['cmake', ext.sourcedir] + cmake_args + additional_cmake_args.split()
+        configure_cmd = ['cmake', ext.sourcedir] + cmake_args + shlex.split(additional_cmake_args)
         print("Configuring SCAMP")
         print(' '.join(configure_cmd))
         subprocess.check_call(configure_cmd, cwd=self.build_temp, env=env)
