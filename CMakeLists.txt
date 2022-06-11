@@ -3,6 +3,10 @@ include(CheckLanguage)
 include(CheckCXXCompilerFlag)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
+# Continue to use the old policy of not setting CMAKE_CUDA_ARCHITECTURES for now.
+# TODO(zpzim): Update the cuda builds to use the new policy.
+cmake_policy(SET CMP0104 OLD)
+
 # Determine if we are using a VS generator where the platform is specified in the name
 # of the generator. We do not want to specify CMAKE_GENERATOR_PLATFORM in that case.
 if (CMAKE_GENERATOR MATCHES "Visual Studio")
