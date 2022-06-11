@@ -2,12 +2,8 @@ cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
 include(CheckLanguage)
 include(CheckCXXCompilerFlag)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
+include(SCAMPMacros)
 
-# Continue to use the old policy of not setting CMAKE_CUDA_ARCHITECTURES for now.
-# TODO(zpzim): Update the cuda builds to use the new policy.
-if (CMAKE_VERSION VERSION_GREATER_EQUAL 3.18)
-  cmake_policy(SET CMP0104 OLD)
-endif()
 
 # Determine if we are using a VS generator where the platform is specified in the name
 # of the generator. We do not want to specify CMAKE_GENERATOR_PLATFORM in that case.
@@ -51,7 +47,6 @@ set(VERSION_MAJOR 1)
 set(VERSION_MINOR 1)
 
 set(CUDA_MINIMUM_VERSION "9.0")
-include(SCAMPMacros)
 
 # Release build by default
 if(NOT CMAKE_BUILD_TYPE)
@@ -64,6 +59,10 @@ endif()
 
 # Thread libraries
 find_package(Threads REQUIRED)
+
+if (NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+  set(CMAKE_CUDA_ARCHITECTURES 50 52 60 61 62)
+endif()
 
 if(FORCE_NO_CUDA)
   unset(CMAKE_CUDA_COMPILER)
@@ -171,29 +170,7 @@ if (CMAKE_CUDA_COMPILER)
   include_directories(${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   set(CUDA_SEPARABLE_COMPILATION ON)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -lineinfo")
-  if (CUDA_VERSION VERSION_GREATER_EQUAL "12.0")
-    set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_90,code=sm_90")
-  endif()
-  if (CUDA_VERSION VERSION_GREATER_EQUAL "11.1")
-    set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_86,code=sm_86")
-  endif()
-  if (CUDA_VERSION VERSION_GREATER_EQUAL "11.0")
-    set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_80,code=sm_80")
-  endif()
-  if (CUDA_VERSION VERSION_GREATER_EQUAL "10.0")
-    set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_75,code=sm_75")
-  endif()
-  set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_60,code=sm_70")
-  set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_61,code=sm_61")
-  set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_60,code=sm_60")
-  if (CUDA_VERSION VERSION_LESS "12.0")
-    set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_50,code=sm_50")
-    set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_50,code=sm_50")
-    set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_37,code=sm_37")
-    set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_35,code=sm_35")
-  if (CUDA_VERSION VERSION_LESS "11.0")
-    set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_30,code=sm_30")
-  endif()
+  set_cuda_architectures()
 endif()
 
 if (NOT SCAMP_ENABLE_BINARY_DISTRIBUTION)
