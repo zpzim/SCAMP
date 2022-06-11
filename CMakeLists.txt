@@ -66,7 +66,10 @@ endif()
 
 if(FORCE_NO_CUDA)
   unset(CMAKE_CUDA_COMPILER)
-else()
+elseif(FORCE_CUDA)
+  enable_language(CUDA)
+  find_package(CUDA ${CMAKE_CUDA_VERSION} REQUIRED)
+else() 
   # Use cuda if available
   check_language(CUDA)
   if(CMAKE_CUDA_COMPILER)
