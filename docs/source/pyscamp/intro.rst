@@ -24,6 +24,7 @@ pyscamp allows you to specify certain build options to pip using environment var
   * ``CMAKE_GENERATOR=<generator tag ("Ninja", etc.)>`` useful for windows builds to specify a generator other than visual studio tools
   * ``CMAKE_GENERATOR_TOOLSET=<toolset tag ("llvm", etc.)>`` for specifying a non-default compiler toolchain when using visual studio tools
   * ``CMAKE_GENERATOR_PLATFORM=<platform tag (x64)>`` for specifying a non-default platform arch when using visual studio tools.
+  * ``PYSCAMP_ADD_CMAKE_ARGS=<args>`` Allows for passing additional cmake arguments during pyscamp's build.
 
 .. highlight:: console
 
