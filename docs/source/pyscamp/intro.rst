@@ -65,7 +65,8 @@ If you have problems building the module (or getting GPU support to work) please
   * If you installed pyscamp previously and you have since installed cuda, make sure to add the ``-I`` and ``--no-cache-dir`` flags to pip install just to make sure you are reinstalling correctly.
   * Use ``pip install -v`` to get more information about the build configuration and make sure it is using the compilers and cuda like you expect.
   * On Mac/Linux make sure nvcc (the CUDA compiler, usually located at /usr/local/cuda/bin), is in your PATH. You can also specify a cuda compiler using ``CUDACXX=/path/to/cuda/compiler pip install pyscamp``
-  * On Windows, CUDA will only work using using the visual studio toochains **with the appropriate visual studio plugins installed** so make sure cuda is installed with these plugins. (see :doc:`GPU support </environment>` for more information and links to the cuda installation guide)
+  * On Windows, I have only gotten CUDA to work using using the visual studio toochains **with the appropriate visual studio plugins installed** so make sure cuda is installed with these plugins. (see :doc:`GPU support </environment>` for more information and links to the cuda installation guide)
+    * This means that it is not currently possible to use a compiler other than MSVC to build SCAMP with CUDA support on Windows.
 
 **Using a different compiler**:
 
