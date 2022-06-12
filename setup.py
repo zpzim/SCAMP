@@ -23,14 +23,10 @@ class CMakeBuild(build_ext):
           raise RuntimeError("CMake must be installed to build the following extensions: " +
                              ", ".join(e.name for e in self.extensions))
 
-        cmake_version = LooseVersion(re.search(r'version\s*([\d.]+)', out.decode()).group(1))
-        if cmake_version < LooseVersion('3.15.0'):
-          raise RuntimeError("CMake >= 3.15.0 is required")
-
         try:
             out = subprocess.check_output(['nvcc', '--version'])
         except OSError:
-          print('WARNING: CUDA was not found on the system, to build with CUDA, verify nvcc can be found in the PATH')
+          print('WARNING: CUDA was not found on the system PATH, the CUDA build might not work correctly. Please check cmake logs to verify.')
  
         if sys.maxsize <= 2**32:
           print('WARNING: building/using pyscamp on a 32 bit platform is unsupported.')
