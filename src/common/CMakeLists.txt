@@ -1,7 +1,7 @@
 add_library(common ${CMAKE_CURRENT_SOURCE_DIR}/common.cpp)
 
 if (CMAKE_CUDA_COMPILER) 
-  target_link_libraries(common ${CUDA_cudart_LIBRARY})
+  target_link_libraries(common CUDA::cudart)
 endif()
 
 add_library(profile ${CMAKE_CURRENT_SOURCE_DIR}/profile.cpp)

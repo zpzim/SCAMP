@@ -100,7 +100,7 @@ if(NOT CMAKE_CUDA_COMPILER)
   endif()
 else()
   message(STATUS "CUDA compiler found: ${CMAKE_CUDA_COMPILER}")
-  message(STATUS "Using cufft libraries: ${CUDA_CUFFT_LIBRARIES}")
+  message(STATUS "Using cufft libraries: ${CUDAToolkit_LIBRARY_DIR}")
 endif()
 
 fetch_env(SCAMP_ENABLE_BINARY_DISTRIBUTION)
