@@ -311,7 +311,7 @@ endif()
 add_executable(SCAMP ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
 if (CMAKE_CUDA_COMPILER)
   target_compile_definitions(SCAMP PUBLIC -D_HAS_CUDA_)
-else()
+endif()
 target_link_libraries(SCAMP gflags common scamp_interface scamp_utils)
 
 # clang-format target
