@@ -37,18 +37,5 @@ endif()
 add_library(scamp_op ${CMAKE_CURRENT_SOURCE_DIR}/SCAMP.cpp)
 target_link_libraries(scamp_op Threads::Threads tile cpu_stats common profile qt_helper)
 
-# Set the correct compile/gencode flags for CUDA libraries.
-if (CMAKE_CUDA_COMPILER)
-  set_target_properties(gpu_kernels PROPERTIES
-    COMPILE_FLAGS "${COMPILE_FLAGS} ${CUDA_GENCODE_FLAGS}"
-  )
-  set_target_properties(qt_kernels PROPERTIES
-    COMPILE_FLAGS "${COMPILE_FLAGS} ${CUDA_GENCODE_FLAGS}"
-  )
-  set_target_properties(gpu_utils PROPERTIES
-    COMPILE_FLAGS "${COMPILE_FLAGS} ${CUDA_GENCODE_FLAGS}"
-  )
-endif()
-
 mark_cuda_if_available()
 mark_clang_tidy()
