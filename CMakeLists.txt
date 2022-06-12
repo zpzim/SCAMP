@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.10 FATAL_ERROR)
 include(CheckLanguage)
 include(CheckCXXCompilerFlag)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
@@ -46,7 +46,7 @@ project(SCAMPmain LANGUAGES CXX)
 set(VERSION_MAJOR 1)
 set(VERSION_MINOR 1)
 
-set(CUDA_MINIMUM_VERSION "9.0")
+set(CUDA_MINIMUM_VERSION "11.0")
 
 # Release build by default
 if(NOT CMAKE_BUILD_TYPE)
@@ -169,7 +169,7 @@ set(CMAKE_CXX_STANDARD 17)
 
 # CUDA_CONFIG
 if (CMAKE_CUDA_COMPILER)
-  set(CMAKE_CUDA_STANDARD 14)
+  set(CMAKE_CUDA_STANDARD 17)
   include_directories(${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   set(CUDA_SEPARABLE_COMPILATION ON)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -lineinfo")
