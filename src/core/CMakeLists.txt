@@ -15,7 +15,7 @@ add_library(kernel_common ${CMAKE_CURRENT_SOURCE_DIR}/kernel_common.cpp)
 
 if (CMAKE_CUDA_COMPILER)
   add_library(gpu_utils ${CMAKE_CURRENT_SOURCE_DIR}/kernel_gpu_utils.cu)
-  target_link_libraries(gpu_utils kernel_common CUDA::cudart)
+  target_link_libraries(gpu_utils kernel_common)
   add_library(gpu_kernels ${CMAKE_CURRENT_SOURCE_DIR}/kernels.cu)
   target_link_libraries(gpu_kernels gpu_utils kernel_common common)
 endif()

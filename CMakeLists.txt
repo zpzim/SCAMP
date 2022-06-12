@@ -311,10 +311,8 @@ endif()
 add_executable(SCAMP ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
 if (CMAKE_CUDA_COMPILER)
   target_compile_definitions(SCAMP PUBLIC -D_HAS_CUDA_)
-  target_link_libraries(SCAMP ${CUDA_cudart_LIBRARY} gflags common scamp_interface scamp_utils)
 else()
-  target_link_libraries(SCAMP gflags common scamp_interface scamp_utils)
-endif() 
+target_link_libraries(SCAMP gflags common scamp_interface scamp_utils)
 
 # clang-format target
 function(prepend var prefix)
