@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.18 FATAL_ERROR)
 include(CheckLanguage)
 include(CheckCXXCompilerFlag)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
@@ -60,28 +60,29 @@ endif()
 # Thread libraries
 find_package(Threads REQUIRED)
 
+# We need to set some default architectures if there were none set in order for enable_language(CUDA) to pass.
 if (NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-  set(CMAKE_CUDA_ARCHITECTURES 50 52 60 61 62)
+  set(CMAKE_CUDA_ARCHITECTURES 60 61)
 endif()
 
 if(FORCE_NO_CUDA)
   unset(CMAKE_CUDA_COMPILER)
 elseif(FORCE_CUDA)
   enable_language(CUDA)
-  find_package(CUDA ${CMAKE_CUDA_VERSION} REQUIRED)
+  find_package(CUDAToolkit ${CMAKE_CUDA_COMPILER_VERSION} REQUIRED)
 else() 
   # Use cuda if available
   check_language(CUDA)
   if(CMAKE_CUDA_COMPILER)
     enable_language(CUDA)
     # For CUFFT libraries
-    find_package(CUDA ${CMAKE_CUDA_VERSION} REQUIRED)
+    find_package(CUDAToolkit ${CMAKE_CUDA_COMPILER_VERSION} REQUIRED)
   endif()
 endif()
 
 # Do not use an unsupported cuda version
 if (CMAKE_CUDA_COMPILER)
-  if (CUDA_VERSION VERSION_LESS ${CUDA_MINIMUM_VERSION})
+  if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS ${CUDA_MINIMUM_VERSION})
     if(FORCE_CUDA)
       message(FATAL_ERROR "CUDA version ${CUDA_VERSION} is less than the mininmum required version ${CUDA_MINIMUM_VERSION} defaulting to no-cuda build")
     else()

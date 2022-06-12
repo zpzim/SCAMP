@@ -4,7 +4,7 @@ RUN apt-get update && \
     apt-get upgrade -y
 
 # SCAMP build dependancies
-RUN DEBIAN_FRONTEND=noninteractive apt-get install -y zlib1g-dev cmake golang-go clang
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -y python3-pip zlib1g-dev cmake golang-go clang && pip install --no-input cmake
 
 COPY . /SCAMP
 
