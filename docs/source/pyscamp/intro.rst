@@ -43,8 +43,6 @@ pyscamp allows you to specify certain build options to pip using environment var
   * ``PYSCAMP_USE_EXTERNAL_PYBIND11=ON`` pyscamp will install using the pybind11 package installed on the system. Used to build the conda-forge package.
   * ``PYSCAMP_PYTHON_EXECUTABLE_PATH=<Path to the python executable to build for>`` defaults to the execuatable invoking setup.py. If you want to build pyscamp for a specific python executable you can point this env variable to it.
   * ``PYSCAMP_ADD_CMAKE_ARGS=<args>`` Allows for passing additional cmake arguments during pyscamp's build.
-  * ``PYSCAMP_USE_EXTERNAL_PYBIND11=ON`` pyscamp will install using the pybind11 package installed on the system. Used to build the conda-forge package.
-  * ``PYSCAMP_PYTHON_EXECUTABLE_PATH=<Path to the python executable to build for>`` defaults to the execuatable invoking setup.py. If you want to build pyscamp for a specific python executable you can point this env variable to it.
 
 .. highlight:: console
 
