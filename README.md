@@ -9,11 +9,11 @@
 ![PyPI](https://img.shields.io/pypi/v/pyscamp?label=pyscamp%20version)
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/pyscamp?label=pypi%20downloads)
 
-![Conda (channel only)](https://img.shields.io/conda/vn/conda-forge/pyscamp-gpu?label=pyscamp-gpu)
+![Conda (channel only)](https://img.shields.io/conda/vn/conda-forge/pyscamp-gpu?label=conda-forge::pyscamp-gpu)
 ![Conda](https://img.shields.io/conda/pn/conda-forge/pyscamp-gpu?label=pyscamp-gpu)
 ![Conda](https://img.shields.io/conda/dn/conda-forge/pyscamp-gpu?label=Downloads%3A%20pyscamp-gpu)
 
-![Conda (channel only)](https://img.shields.io/conda/vn/conda-forge/pyscamp-cpu?label=pyscamp-cpu)
+![Conda (channel only)](https://img.shields.io/conda/vn/conda-forge/pyscamp-cpu?label=conda-forge::pyscamp-cpu)
 ![Conda](https://img.shields.io/conda/pn/conda-forge/pyscamp-cpu?label=pyscamp-cpu)
 ![Conda](https://img.shields.io/conda/dn/conda-forge/pyscamp-cpu?label=Downloads%3A%20pyscamp-cpu)
 
