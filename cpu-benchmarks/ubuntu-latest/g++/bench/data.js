@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1655086446556,
+  "lastUpdate": 1655162063363,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -2172,6 +2172,54 @@ window.BENCHMARK_DATA = {
             "value": 61166680192,
             "unit": "ns/iter",
             "extra": "iterations: 1\ncpu: 11738499.999999998 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "Zach Zimmerman",
+            "username": "zpzim"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "005ffa35e66d46167f07beded35af58a54056b7e",
+          "message": "Add issue templates (#114)",
+          "timestamp": "2022-06-13T15:56:48-07:00",
+          "tree_id": "f472c1452e8311795f945d34caee23de15a7c892",
+          "url": "https://github.com/zpzim/SCAMP/commit/005ffa35e66d46167f07beded35af58a54056b7e"
+        },
+        "date": 1655162062179,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/131072",
+            "value": 13485699412.999992,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 13991600 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/131072",
+            "value": 5908474792.999982,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 12354800.000000002 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/131072",
+            "value": 23157940878.000004,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 12642700 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/1/131072",
+            "value": 52043227580.00001,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 12268499.999999994 ns\nthreads: 1"
           }
         ]
       }
