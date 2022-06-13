@@ -1,10 +1,10 @@
 Environment
 ===========
 
-Currently builds under Windows/Mac/Linux using msvc/gcc/clang and nvcc (if CUDA is available) with cmake (3.8+ for cuda support)
+Currently builds under Windows/Mac/Linux using msvc/gcc/clang and nvcc (if CUDA is available) with cmake.
 
 Base dependancies (required for all builds of SCAMP):
-  * cmake 3.8 or greater (3.15 for pyscamp)
+  * cmake 3.18 or greater
   
     * This version is not available directly from all package managers so you may need to install it manually, the easist way to do this is with python via ``pip install cmake`` or you can download it manually from `here <https://cmake.org/download/>`_
 
@@ -14,14 +14,14 @@ Base dependancies (required for all builds of SCAMP):
 
  
 For GPU support (required for any SCAMP build which will use a GPU):
-  * cuda toolkit v9.0 or greater
+  * cuda toolkit v11.0 or greater
 
     * Available `here <https://developer.nvidia.com/cuda-toolkit>`_ 
 
-  * NVIDIA GPU with CUDA (compute capability 3.0+) support.
+  * NVIDIA GPU with CUDA (compute capability 3.5+) support.
 
     * You can find a list of CUDA compatible GPUs `here <https://developer.nvidia.com/cuda-gpus>`_
-    * Highly recommend using a Pascal/Volta GPU as they are much better (V100 is ~10x faster than a K80 for SCAMP, V100 is ~2-3x faster than a P100)
+    * Highly recommend using a Pascal/Volta or newer GPU as they are much better (V100 is ~10x faster than a K80 for SCAMP, V100 is ~2-3x faster than a P100)
 
  
 For python support:
