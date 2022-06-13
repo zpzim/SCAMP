@@ -1,5 +1,6 @@
 import os
 import re
+import shlex
 import sys
 import platform
 import subprocess
@@ -22,14 +23,10 @@ class CMakeBuild(build_ext):
           raise RuntimeError("CMake must be installed to build the following extensions: " +
                              ", ".join(e.name for e in self.extensions))
 
-        cmake_version = LooseVersion(re.search(r'version\s*([\d.]+)', out.decode()).group(1))
-        if cmake_version < LooseVersion('3.15.0'):
-          raise RuntimeError("CMake >= 3.15.0 is required")
-
         try:
             out = subprocess.check_output(['nvcc', '--version'])
         except OSError:
-          print('WARNING: CUDA was not found on the system, to build with CUDA, verify nvcc can be found in the PATH')
+          print('WARNING: CUDA was not found on the system PATH, the CUDA build might not work correctly. Please check cmake logs to verify.')
  
         if sys.maxsize <= 2**32:
           print('WARNING: building/using pyscamp on a 32 bit platform is unsupported.')
@@ -48,6 +45,7 @@ class CMakeBuild(build_ext):
 
         force_cuda = os.environ.get("FORCE_CUDA", "")
         force_no_cuda = os.environ.get("FORCE_NO_CUDA", "")
+        additional_cmake_args = os.environ.get("PYSCAMP_ADD_CMAKE_ARGS", "")
 
         # This environment variable is a way to opt out of platform auto-selection on windows.
         # It may be useful if build errors occur on windows related to setting CMAKE_GENERATOR_PLATFORM.
@@ -85,7 +83,7 @@ class CMakeBuild(build_ext):
         if not os.path.exists(self.build_temp):
             os.makedirs(self.build_temp)
 
-        configure_cmd = ['cmake', ext.sourcedir] + cmake_args
+        configure_cmd = ['cmake', ext.sourcedir] + cmake_args + shlex.split(additional_cmake_args)
         print("Configuring SCAMP")
         print(' '.join(configure_cmd))
         subprocess.check_call(configure_cmd, cwd=self.build_temp, env=env)

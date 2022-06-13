@@ -1,7 +1,9 @@
-cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.18 FATAL_ERROR)
 include(CheckLanguage)
 include(CheckCXXCompilerFlag)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
+include(SCAMPMacros)
+
 
 # Determine if we are using a VS generator where the platform is specified in the name
 # of the generator. We do not want to specify CMAKE_GENERATOR_PLATFORM in that case.
@@ -44,8 +46,7 @@ project(SCAMPmain LANGUAGES CXX)
 set(VERSION_MAJOR 1)
 set(VERSION_MINOR 1)
 
-set(CUDA_MINIMUM_VERSION "9.0")
-include(SCAMPMacros)
+set(CUDA_MINIMUM_VERSION "11.0")
 
 # Release build by default
 if(NOT CMAKE_BUILD_TYPE)
@@ -59,21 +60,29 @@ endif()
 # Thread libraries
 find_package(Threads REQUIRED)
 
+# We need to set some default architectures if there were none set in order for enable_language(CUDA) to pass.
+if (NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+  set(CMAKE_CUDA_ARCHITECTURES 60 61)
+endif()
+
 if(FORCE_NO_CUDA)
   unset(CMAKE_CUDA_COMPILER)
-else()
+elseif(FORCE_CUDA)
+  enable_language(CUDA)
+  find_package(CUDAToolkit ${CMAKE_CUDA_COMPILER_VERSION} REQUIRED)
+else() 
   # Use cuda if available
   check_language(CUDA)
   if(CMAKE_CUDA_COMPILER)
     enable_language(CUDA)
     # For CUFFT libraries
-    find_package(CUDA ${CMAKE_CUDA_VERSION} REQUIRED)
+    find_package(CUDAToolkit ${CMAKE_CUDA_COMPILER_VERSION} REQUIRED)
   endif()
 endif()
 
 # Do not use an unsupported cuda version
 if (CMAKE_CUDA_COMPILER)
-  if (CUDA_VERSION VERSION_LESS ${CUDA_MINIMUM_VERSION})
+  if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS ${CUDA_MINIMUM_VERSION})
     if(FORCE_CUDA)
       message(FATAL_ERROR "CUDA version ${CUDA_VERSION} is less than the mininmum required version ${CUDA_MINIMUM_VERSION} defaulting to no-cuda build")
     else()
@@ -91,7 +100,7 @@ if(NOT CMAKE_CUDA_COMPILER)
   endif()
 else()
   message(STATUS "CUDA compiler found: ${CMAKE_CUDA_COMPILER}")
-  message(STATUS "Using cufft libraries: ${CUDA_CUFFT_LIBRARIES}")
+  message(STATUS "Using cufft libraries: ${CUDAToolkit_LIBRARY_DIR}")
 endif()
 
 fetch_env(SCAMP_ENABLE_BINARY_DISTRIBUTION)
@@ -161,25 +170,11 @@ set(CMAKE_CXX_STANDARD 17)
 
 # CUDA_CONFIG
 if (CMAKE_CUDA_COMPILER)
-  set(CMAKE_CUDA_STANDARD 14)
+  set(CMAKE_CUDA_STANDARD 17)
   include_directories(${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   set(CUDA_SEPARABLE_COMPILATION ON)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -lineinfo")
-  if (CUDA_VERSION VERSION_GREATER_EQUAL "11.0")
-    set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_80,code=sm_80")
-  endif()
-  if (CUDA_VERSION VERSION_GREATER_EQUAL "10.0")
-    set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_75,code=sm_75")
-  endif()
-  set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_60,code=sm_70")
-  set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_61,code=sm_61")
-  set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_60,code=sm_60")
-  set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_50,code=sm_50")
-  if (CUDA_VERSION VERSION_LESS "11.0")
-    set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_37,code=sm_37")
-    set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_35,code=sm_35")
-    set(CUDA_GENCODE_FLAGS "${CUDA_GENCODE_FLAGS} -gencode arch=compute_30,code=sm_30")
-  endif()
+  set_cuda_architectures()
 endif()
 
 if (NOT SCAMP_ENABLE_BINARY_DISTRIBUTION)
@@ -316,10 +311,8 @@ endif()
 add_executable(SCAMP ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
 if (CMAKE_CUDA_COMPILER)
   target_compile_definitions(SCAMP PUBLIC -D_HAS_CUDA_)
-  target_link_libraries(SCAMP ${CUDA_cudart_LIBRARY} gflags common scamp_interface scamp_utils)
-else()
-  target_link_libraries(SCAMP gflags common scamp_interface scamp_utils)
-endif() 
+endif()
+target_link_libraries(SCAMP gflags common scamp_interface scamp_utils)
 
 # clang-format target
 function(prepend var prefix)
