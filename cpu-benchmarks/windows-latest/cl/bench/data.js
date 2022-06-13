@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1655086822414,
+  "lastUpdate": 1655162803673,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -1908,6 +1908,54 @@ window.BENCHMARK_DATA = {
             "value": 51838438499.99994,
             "unit": "ns/iter",
             "extra": "iterations: 1\ncpu: 15625000 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "Zach Zimmerman",
+            "username": "zpzim"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "005ffa35e66d46167f07beded35af58a54056b7e",
+          "message": "Add issue templates (#114)",
+          "timestamp": "2022-06-13T15:56:48-07:00",
+          "tree_id": "f472c1452e8311795f945d34caee23de15a7c892",
+          "url": "https://github.com/zpzim/SCAMP/commit/005ffa35e66d46167f07beded35af58a54056b7e"
+        },
+        "date": 1655162800497,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/131072",
+            "value": 22248889500.00002,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 15625000 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/131072",
+            "value": 18622857200,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 15625000 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/131072",
+            "value": 22290851500.00003,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 15625000 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/1/131072",
+            "value": 55360536600.000046,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 0 ns\nthreads: 1"
           }
         ]
       }
