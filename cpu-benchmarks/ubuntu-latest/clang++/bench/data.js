@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1655082225832,
+  "lastUpdate": 1655086413637,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -2124,6 +2124,54 @@ window.BENCHMARK_DATA = {
             "value": 42067449704.000015,
             "unit": "ns/iter",
             "extra": "iterations: 1\ncpu: 11878500 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "zpzim",
+            "username": "zpzim"
+          },
+          "committer": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "zpzim",
+            "username": "zpzim"
+          },
+          "distinct": true,
+          "id": "b29a2a96798b667e77eb1d8b110a866f9b1efa9e",
+          "message": "Update requirements.txt to match SCAMP required cmake.",
+          "timestamp": "2022-06-12T19:08:52-07:00",
+          "tree_id": "bebc057bdd167a764a50a57152cbb13506917d55",
+          "url": "https://github.com/zpzim/SCAMP/commit/b29a2a96798b667e77eb1d8b110a866f9b1efa9e"
+        },
+        "date": 1655086412575,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/131072",
+            "value": 13290266138.000021,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 13285800.000000002 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/131072",
+            "value": 6468159941.0000105,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 11696999.999999998 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/131072",
+            "value": 19861397269.999996,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 11506500.000000004 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/1/131072",
+            "value": 41675327294,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 11511200 ns\nthreads: 1"
           }
         ]
       }
