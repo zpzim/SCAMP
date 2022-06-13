@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1655079897563,
+  "lastUpdate": 1655082205060,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -624,6 +624,54 @@ window.BENCHMARK_DATA = {
             "value": 5771458715.025802,
             "unit": "ns/iter",
             "extra": "iterations: 1\ncpu: 63760560.00000002 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "Zach Zimmerman",
+            "username": "zpzim"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "c1ed842d5ba957c62c77d08dc820fdf594964feb",
+          "message": "Update docs with information on conda package availability (#111)\n\n* Update pyscamp docs with info about conda package.\r\n\r\n* Update build instructions for windows CUDA builds. Add disclaimer that 32-bit builds are unsupported and non x86_64 configurations are untested.\r\n\r\n* Add pointer to automated GPU benchmarks in documentation.",
+          "timestamp": "2022-06-12T17:59:38-07:00",
+          "tree_id": "5268a66d5aaa797f8c3c5b677244a896cd82395d",
+          "url": "https://github.com/zpzim/SCAMP/commit/c1ed842d5ba957c62c77d08dc820fdf594964feb"
+        },
+        "date": 1655082193618,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/-1/1048576",
+            "value": 3438374161.021784,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 72834491 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/-1/1048576",
+            "value": 2938638278.981671,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 63972336.000000015 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/-1/1048576",
+            "value": 7961725763.976574,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 66646693.00000001 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/-1/1048576",
+            "value": 5771189212.973695,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 63884942.99999997 ns\nthreads: 1"
           }
         ]
       }
