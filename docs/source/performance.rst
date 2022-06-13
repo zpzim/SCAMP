@@ -15,6 +15,14 @@ When enabling the ``--ultra_precision`` flag in the SCAMP CLI, or specifying the
 
 The timing results below do not use this option. All experiments were performed in double precision.
 
+Benchmarks
+**********
+
+SCAMP has automated benchmarks running. Here is a link to recent GPU performance results:
+
+ `GPU NVIDIA Tesla P100 (1x), Input length 1M datapoints, default parameters<https://zpzim.github.io/SCAMP/gpu-benchmarks/bench>`_ 
+
+Note that the charts are not totally optimized for human consumption yet. But you can see a benchmark of each profile type (except PROFILE_TYPE_ALL_NEIGHBORS), the y-axis is nanoseconds.
 
 Performance Comparisons
 ***********************
