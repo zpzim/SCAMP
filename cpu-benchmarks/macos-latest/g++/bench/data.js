@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1654791958404,
+  "lastUpdate": 1655080147185,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -2028,6 +2028,54 @@ window.BENCHMARK_DATA = {
             "value": 58665352875.99993,
             "unit": "ns/iter",
             "extra": "iterations: 1\ncpu: 6770999.999999999 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "Zach Zimmerman",
+            "username": "zpzim"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "b40a3f419d7eeb0b39c11cdaf6fd250fe7de1b86",
+          "message": "Update SCAMP to require CUDA 11.0 or greater. Update CUDA builds to use updated CMake Modules. (#109)\n\n* Add the ability to specify arbitrary arguments to cmake from the environment during pyscamp setup.\r\n\r\n* Add explicit support for GeForce Ampere and GeForce Maxwell GPUs.\r\n\r\n* Use CMAKE_CUDA_ARCHITECTURES. Remove deprecated usage of FindCUDA and use FindCUDAToolkit instead.\r\n\r\n* Avoid using check_language if we are requiring CUDA and instead directly enable the language. It is broken in some rare circumstances.\r\n\r\n* Drop support for CUDA versions less than 11. Update CMake minimum requirement to 3.18.\r\n\r\n* Dockerfile now installs new version of cmake via pip.\r\n\r\n* Remove multiply linked libcudart. Just link it once in libcommon if needed.",
+          "timestamp": "2022-06-12T17:21:08-07:00",
+          "tree_id": "2f270dc98d71b4bf12f2eaa98c3646de6854aee2",
+          "url": "https://github.com/zpzim/SCAMP/commit/b40a3f419d7eeb0b39c11cdaf6fd250fe7de1b86"
+        },
+        "date": 1655080146395,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/131072",
+            "value": 16184753140.000055,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 14148999.999999996 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/131072",
+            "value": 11157352333.999939,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 6834999.999999997 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/131072",
+            "value": 26503621640.000008,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 7939999.999999995 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/1/131072",
+            "value": 50468684723.00002,
+            "unit": "ns/iter",
+            "extra": "iterations: 1\ncpu: 7366999.999999998 ns\nthreads: 1"
           }
         ]
       }
