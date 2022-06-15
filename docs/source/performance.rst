@@ -65,7 +65,7 @@ Note: Both CPUs have SSE2/AVX/AVX2/FMA enabled.
 pyscamp vs stumpy Performance
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-`stumpy<https://github.com/TDAmeritrade/stumpy>`_ is a very popular matrix profile library which has reimplemented many of the algorithms published by Eamonn's time series lab at UC Riverside.
+`stumpy <https://github.com/TDAmeritrade/stumpy>`_ is a very popular matrix profile library which has reimplemented many of the algorithms published by Eamonn's time series lab at UC Riverside.
 
 stumpy claims to have superior performance for the matrix profile algorithms they have reimplemented. However, these performance comparisons are done in bad faith. They compare across several generations of GPU/CPU hardware instead of making a fair apples to apples comparison, they simply copy numbers published in our papers and use hardware that is multiple generations newer, and throw many more times more resources at the problem.
 
@@ -77,18 +77,18 @@ Both systems are using the following dependencies installed from conda-forge: ``
 
 .. csv-table:: pyscamp vs stumpy (System 1)
    :file: /data/pyscamp-vs-stumpy-cpu-and-geforce.csv
-   :widths: 30, 70
+   :widths: auto
    :header-rows: 1
 
 .. csv-table:: pyscamp vs stumpy (System 2)
    :file: /data/pyscamp-vs-stumpy-cpu-and-multi-p100.csv
-   :widths: 30, 70
+   :widths: auto
    :header-rows: 1
 
 pyscamp vs MPF
 ^^^^^^^^^^^^^^
 
-Matrix Profile Foundation's `matrixprofile<https://github.com/matrix-profile-foundation/matrixprofile>`_ is a python library which implements many of the matrix profile algorithms. It only supports CPU computation.
+Matrix Profile Foundation's `matrixprofile <https://github.com/matrix-profile-foundation/matrixprofile>`_ is a python library which implements many of the matrix profile algorithms. It only supports CPU computation.
 
 There are two algorithms in this library compared against:
 
@@ -97,5 +97,5 @@ There are two algorithms in this library compared against:
 
 .. csv-table:: pyscamp vs mpf (System 1)
    :file: /data/pyscamp-vs-mpf-cpu.csv
-   :widths: 30, 70
+   :widths: auto
    :header-rows: 1
