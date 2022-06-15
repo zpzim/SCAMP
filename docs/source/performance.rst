@@ -20,7 +20,7 @@ Benchmarks
 
 SCAMP has automated benchmarks running. Here is a link to recent GPU performance results:
 
- `GPU NVIDIA Tesla P100 (1x), Input length 1M datapoints, default parameters<https://zpzim.github.io/SCAMP/gpu-benchmarks/bench>`_ 
+ `GPU NVIDIA Tesla P100 (1x), Input length 1M datapoints, default parameters <https://zpzim.github.io/SCAMP/gpu-benchmarks/bench>`_ 
 
 Note that the charts are not totally optimized for human consumption yet. But you can see a benchmark of each profile type (except PROFILE_TYPE_ALL_NEIGHBORS), the y-axis is nanoseconds.
 
@@ -29,12 +29,12 @@ Performance Comparisons
 
 The included performance tests showcase SCAMP's performance up to an input size of 16M datapoints; however, as we have shown in our publications SCAMP is scalable to hundreds of millions of datapoints and even billions of datapoints with the right hardware.
 
-.. image:: /images/SCAMP_Profile_Performance_Comparison.png
+.. image:: images/SCAMP_Profile_Performance_Comparison.png
   :alt: SCAMP GPU Performance
 
 In the figure above we show the runtime in seconds for SCAMP's various profile types (self-join) on 2 P100 GPUs.
 
-.. image:: /images/KNN.png
+.. image:: images/KNN.png
   :alt: SCAMP KNN Performance
 
 In the figure above we show the runtime in seconds for SCAMP's approximate KNN (``--profile_type=ALL_NEIGHBORS``) matrix profile, while varying K and the input size on 2 P100 GPUs.
@@ -46,7 +46,7 @@ You can see that SCAMP maintains good performance relative to the baseline 1NN_I
 Performance Comparisons with other Matrix Profile Libraries
 ***********************************************************
 
-As mentioned before, SCAMP is extremely fast. This section contains experiments comparing other libraries to SCAMP in terms of performance to show quantitatively how fast SCAMP is. Note that these numbers reflect the performance of these libraries at a snapshot in time (June 2022) and implementations can change. If you want to reproduce these results, or generate new performance numbers in the future, the scripts used to generate the tables below are provided in the SCAMP repository `here<https://github.com/zpzim/SCAMP/blob/master/docs/source/scripts>`_.
+As mentioned before, SCAMP is extremely fast. This section contains experiments comparing other libraries to SCAMP in terms of performance to show quantitatively how fast SCAMP is. Note that these numbers reflect the performance of these libraries at a snapshot in time (June 2022) and implementations can change. If you want to reproduce these results, or generate new performance numbers in the future, the scripts used to generate the tables below are provided in the SCAMP repository `here <https://github.com/zpzim/SCAMP/blob/master/docs/source/scripts>`_.
 
 
 .. System 1::
@@ -76,12 +76,12 @@ The tables below shows that pyscamp is faster than stumpy by a factor of 20x or 
 Both systems are using the following dependencies installed from conda-forge: ``pyscamp-gpu v4.0.0`` ``stumpy v1.11.1`` ``python v3.9.12`` ``cudatoolkit v11.6.0`` ``numba v0.55.1`` ``numpy v1.21.6`` ``scipy v1.8.1``
 
 .. csv-table:: pyscamp vs stumpy (System 1)
-   :file: /data/pyscamp-vs-stumpy-cpu-and-geforce.csv
+   :file: data/pyscamp-vs-stumpy-cpu-and-geforce.csv
    :widths: auto
    :header-rows: 1
 
 .. csv-table:: pyscamp vs stumpy (System 2)
-   :file: /data/pyscamp-vs-stumpy-cpu-and-multi-p100.csv
+   :file: data/pyscamp-vs-stumpy-cpu-and-multi-p100.csv
    :widths: auto
    :header-rows: 1
 
@@ -96,6 +96,6 @@ There are two algorithms in this library compared against:
 * SCRIMP++: I show SCRIMP++ performance here for comparison even though it is an approximate algorithm and could be made faster by changing parameters. It is a common misconception that SCRIMP++ is always faster than exact algorithms like mpx and pyscamp. There are overheads assoicated with SCRIMP++ that have high constant factor overhead (e.g. repeated FFT computation) which high-performing exact algorithms like pyscamp don't have. This can make pyscamp competetive with SCRMP++ in all but the most highly approximated scenarios.
 
 .. csv-table:: pyscamp vs mpf (System 1)
-   :file: /data/pyscamp-vs-mpf-cpu.csv
+   :file: data/pyscamp-vs-mpf-cpu.csv
    :widths: auto
    :header-rows: 1
