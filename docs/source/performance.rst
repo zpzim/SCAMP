@@ -76,12 +76,12 @@ The tables below shows that pyscamp is faster than stumpy by a factor of 20x or 
 Both systems are using the following dependencies installed from conda-forge: ``pyscamp-gpu v4.0.0`` ``stumpy v1.11.1`` ``python v3.9.12`` ``cudatoolkit v11.6.0`` ``numba v0.55.1`` ``numpy v1.21.6`` ``scipy v1.8.1``
 
 .. csv-table:: pyscamp vs stumpy (System 1)
-   :file: data/pyscamp-vs-stumpy-cpu-and-geforce.csv
+   :file: images/pyscamp-vs-stumpy-cpu-and-geforce.csv
    :widths: auto
    :header-rows: 1
 
 .. csv-table:: pyscamp vs stumpy (System 2)
-   :file: data/pyscamp-vs-stumpy-cpu-and-multi-p100.csv
+   :file: images/pyscamp-vs-stumpy-cpu-and-multi-p100.csv
    :widths: auto
    :header-rows: 1
 
@@ -96,6 +96,6 @@ There are two algorithms in this library compared against:
 * SCRIMP++: I show SCRIMP++ performance here for comparison even though it is an approximate algorithm and could be made faster by changing parameters. It is a common misconception that SCRIMP++ is always faster than exact algorithms like mpx and pyscamp. There are overheads assoicated with SCRIMP++ that have high constant factor overhead (e.g. repeated FFT computation) which high-performing exact algorithms like pyscamp don't have. This can make pyscamp competetive with SCRMP++ in all but the most highly approximated scenarios.
 
 .. csv-table:: pyscamp vs mpf (System 1)
-   :file: data/pyscamp-vs-mpf-cpu.csv
+   :file: images/pyscamp-vs-mpf-cpu.csv
    :widths: auto
    :header-rows: 1
