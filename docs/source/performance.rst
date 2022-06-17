@@ -48,17 +48,15 @@ Performance Comparisons with other Matrix Profile Libraries
 
 As mentioned before, SCAMP is extremely fast. This section contains experiments comparing other libraries to SCAMP in terms of performance to show quantitatively how fast SCAMP is. Note that these numbers reflect the performance of these libraries at a snapshot in time (June 2022) and implementations can change. If you want to reproduce these results, or generate new performance numbers in the future, the scripts used to generate the tables below are provided in the SCAMP repository `here <https://github.com/zpzim/SCAMP/blob/master/docs/source/scripts>`_.
 
-
-.. System 1::
-  WSL Ubuntu under Windows 11
-  CPU: Intel(R) Core(TM) i9-10850K CPU @ 3.60GHz
-  GPU: NVIDIA GeForce RTX 3080
-
-
-.. System 2:
-  Linux Ubuntu 18.04
-  CPU: Intel(R) Core(TM) i7-8700K CPU @ 3.70GHz
-  GPU: 2x NVIDIA Tesla P100
++============================================================+
+| System 1   | WSL Ubuntu under Windows 11                   |
+|            | CPU: Intel(R) Core(TM) i9-10850K CPU @ 3.60GHz|
+|            | GPU: NVIDIA GeForce RTX 3080                  |
++------------------------------------------------------------+
+| System 1   | WSL Ubuntu under Windows 11                   |
+|            | CPU: Intel(R) Core(TM) i7-8700K CPU @ 3.70GHz |
+|            | GPU: 2x NVIDIA Tesla P100                     |
++------------------------------------------------------------+
 
 Note: Both CPUs have SSE2/AVX/AVX2/FMA enabled.
 
