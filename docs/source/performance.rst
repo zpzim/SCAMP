@@ -76,14 +76,14 @@ Both systems are using the following dependencies installed from conda-forge: ``
 pyscamp vs stumpy (System 1: 20 logical cores, 1x GeForce RTX 3080)
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
-.. image:: images/pyscamp-vs-stumpy-cpu-and-geforce.png
+.. image:: images/pyscamp-vs-stumpy-cpu-and-geforce.svg
   :alt: pyscamp vs stumpy System 1 comparison
 
 
 pyscamp vs stumpy (System 2: 12 logical cores, 2x Tesla P100)
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
-.. image:: images/pyscamp-vs-stumpy-cpu-and-multi-p100.png
+.. image:: images/pyscamp-vs-stumpy-cpu-and-multi-p100.svg
   :alt: pyscamp vs stumpy System 2 comparison
 
 pyscamp vs MPF
