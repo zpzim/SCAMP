@@ -44,12 +44,12 @@ This is a much improved framework over [GPU-STOMP](https://github.com/zpzim/STOM
   * Handles NaN input values. The matrix profile will be computed while excluding any subsequence with a NaN value
   * Python module: Use SCAMP in Python with pyscamp
   * conda-forge integration: Install pyscamp seamlessly with conda.
-  * Extensive testing: SCAMP has thousands of input configurations tested with every PR.
+  * Extensive integration testing: SCAMP has thousands of input configurations tested with every PR.
   * Automatic benchmarking: Helps ensure performance doesn't slip with future updates.
 
 ## Why use SCAMP?
 
-  * It is [faster](https://scamp-docs.readthedocs.io/en/latest/performance.html) than any other matrix profile library. It is **10x** to **100x** faster than almost all other implementations out there currently.
+  * It is [faster](https://scamp-docs.readthedocs.io/en/latest/performance.html) than other matrix profile libraries. For example, it is **20x** to **100x** faster than stumpy.
   * It is very easy to install using conda and has very few dependencies.
   * It handles real data: very large inputs, missing values, and flat regions with little issue.
   * It can compute various other types of matrix profiles, including efficiently computing KNN matrix profiles, and matrix summaries (a.k.a. mplots). And can be extended to compute other types of profile efficiently.

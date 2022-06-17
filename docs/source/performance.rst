@@ -6,7 +6,7 @@ SCAMP is extremely fast, especially on Tesla series GPUs. I belive this reposito
 Notes on CPU performance
 ************************
 
-SCAMP's CPU performance is very good. However, how performant it is depends heavily on the compiler and compiler flags used to build the SCAMP binary. Newer compilers are better at autovectorization, clang newer than v6 and gcc newer than v7 are best. MSVC tends to be much slower. Even with microoptimizations to generate better code based on the comiler, there can be up to a 10x (perhaps more) difference depending on the compiler you use. Though most of the time the variance is in the ballpark of less than 2x-3x difference.
+SCAMP's CPU performance is very good. However, how performant it is depends heavily on the compiler and compiler flags used to build the SCAMP binary. Newer compilers are better at autovectorization, clang newer than v6 and gcc newer than v7 are best. MSVC tends to be much slower. Even with microoptimizations to generate better code based on the compiler, there can be up to a 10x (perhaps more) difference depending on the compiler you use. Though most of the time the variance is in the ballpark of less than 2x-3x difference.
 
 The distributed pyscamp-gpu and pyscamp-cpu conda packages should have consistent good performance, as they are built with a modern compiler.
 
