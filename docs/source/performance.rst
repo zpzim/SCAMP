@@ -75,15 +75,18 @@ The tables below shows that pyscamp is faster than stumpy by a factor of 20x or 
 
 Both systems are using the following dependencies installed from conda-forge: ``pyscamp-gpu v4.0.0`` ``stumpy v1.11.1`` ``python v3.9.12`` ``cudatoolkit v11.6.0`` ``numba v0.55.1`` ``numpy v1.21.6`` ``scipy v1.8.1``
 
-.. csv-table:: pyscamp vs stumpy (System 1)
-   :file: images/pyscamp-vs-stumpy-cpu-and-geforce.csv
-   :widths: auto
-   :header-rows: 1
+pyscamp vs stumpy (System 1: 20 logical cores, 1x GeForce RTX 3080)
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
-.. csv-table:: pyscamp vs stumpy (System 2)
-   :file: images/pyscamp-vs-stumpy-cpu-and-multi-p100.csv
-   :widths: auto
-   :header-rows: 1
+.. image:: images/pyscamp-vs-stumpy-cpu-and-geforce.png
+  :alt: pyscamp vs stumpy System 1 comparison
+
+
+pyscamp vs stumpy (System 2: 12 logical cores, 2x Tesla P100)
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+.. image:: images/pyscamp-vs-stumpy-cpu-and-multi-p100.png
+  :alt: pyscamp vs stumpy System 2 comparison
 
 pyscamp vs MPF
 ^^^^^^^^^^^^^^
