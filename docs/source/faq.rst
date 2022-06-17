@@ -20,6 +20,8 @@ CUDA/GPUs won't work
 
 A common issue is that CUDA does not get picked up properly when building SCAMP or pyscamp. There are tips on how to deal with this in the documentation but some common tips are:
 
+- Make sure your NVIDIA drivers are up to date.
+
 - Make sure your :doc:`environment </environment>` is set up properly and wherever CUDA is installed is on your PATH. For example on linux usually this is: /usr/local/cuda/bin
 
 - Set FORCE_CUDA=1 (See CLI and pyscamp docs for more information) to validate that CUDA is being detected during installation.

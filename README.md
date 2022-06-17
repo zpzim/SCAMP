@@ -1,4 +1,5 @@
 [![Build and Test](https://github.com/zpzim/SCAMP/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/zpzim/SCAMP/actions/workflows/build-and-test.yml)
+[![RTD Build Status](https://img.shields.io/readthedocs/scamp-docs)](https://scamp-docs.readthedocs.io/en/latest/)
 
 [![Docker Build and Push](https://github.com/zpzim/SCAMP/actions/workflows/docker-build.yml/badge.svg)](https://github.com/zpzim/SCAMP/actions/workflows/docker-build.yml)
 ![Docker Image Version (latest semver)](https://img.shields.io/docker/v/zpzim/scamp?label=Docker%20Version)
@@ -8,7 +9,13 @@
 ![PyPI](https://img.shields.io/pypi/v/pyscamp?label=pyscamp%20version)
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/pyscamp?label=pypi%20downloads)
 
-[![RTD Build Status](https://img.shields.io/readthedocs/scamp-docs)](https://scamp-docs.readthedocs.io/en/latest/)
+![Conda (channel only)](https://img.shields.io/conda/vn/conda-forge/pyscamp-gpu?label=conda-forge::pyscamp-gpu)
+![Conda](https://img.shields.io/conda/pn/conda-forge/pyscamp-gpu?label=pyscamp-gpu)
+![Conda](https://img.shields.io/conda/dn/conda-forge/pyscamp-gpu?label=Downloads%3A%20pyscamp-gpu)
+
+![Conda (channel only)](https://img.shields.io/conda/vn/conda-forge/pyscamp-cpu?label=conda-forge::pyscamp-cpu)
+![Conda](https://img.shields.io/conda/pn/conda-forge/pyscamp-cpu?label=pyscamp-cpu)
+![Conda](https://img.shields.io/conda/dn/conda-forge/pyscamp-cpu?label=Downloads%3A%20pyscamp-cpu)
 
 
 # SCAMP: SCAlable Matrix Profile
@@ -25,28 +32,30 @@
 ## Overview
 This is a GPU/CPU implementation of the SCAMP algorithm. SCAMP takes a time series as input and computes the matrix profile for a particular window size. You can read more at the [Matrix Profile Homepage](http://www.cs.ucr.edu/~eamonn/MatrixProfile.html)
 This is a much improved framework over [GPU-STOMP](https://github.com/zpzim/STOMPSelfJoin) which has the following additional features:
- * Tiling for large inputs 
- * Computation in fp32, mixed fp32/fp64, or fp64 (double is recommended for most datasets, single precision will work for some)
- * fp32 version should get good performance on GeForce cards
- * AB joins (you can produce the matrix profile from 2 different time series)
- * Distributable (we use GCP but other cloud platforms can work) with verified scalability to billions of datapoints
- * More types of matrix profiles! KNN, Matrix Summary, Sum, and 1NN without index! See the Docs!
- * Extremely Efficient Implementation
- * Extensible to adding optimized versions of custom join operations.
- * CPU Support (Only enabled for double precision; does not support KNN joins yet)
- * Handles NaN input values. The matrix profile will be computed while excluding any subsequence with a NaN value
- * Python module: Use SCAMP in Python with pyscamp
- * conda-forge integration: Install pyscamp seamlessly with conda.
- * Extensive testing: SCAMP has thousands of input configurations tested with every PR.
- * Automatic benchmarking: Helps ensure performance doesn't slip with future updates.
+  * Tiling for large inputs 
+  * Computation in fp32, mixed fp32/fp64, or fp64 (double is recommended for most datasets, single precision will work for some)
+  * fp32 version should get good performance on GeForce cards
+  * AB joins (you can produce the matrix profile from 2 different time series)
+  * Distributable (we use GCP but other cloud platforms can work) with verified scalability to billions of datapoints
+  * More types of matrix profiles! KNN, Matrix Summary, Sum, and 1NN without index! See the Docs!
+  * Extremely Efficient Implementation
+  * Extensible to adding optimized versions of custom join operations.
+  * CPU Support (Only enabled for double precision; does not support KNN joins yet)
+  * Handles NaN input values. The matrix profile will be computed while excluding any subsequence with a NaN value
+  * Python module: Use SCAMP in Python with pyscamp
+  * conda-forge integration: Install pyscamp seamlessly with conda.
+  * Extensive integration testing: SCAMP has thousands of input configurations tested with every PR.
+  * Automatic benchmarking: Helps ensure performance doesn't slip with future updates.
+
+## Why use SCAMP?
+
+  * It is [faster](https://scamp-docs.readthedocs.io/en/latest/performance.html) than other matrix profile libraries. For example, it is **20x** to **100x** faster than stumpy.
+  * It is very easy to install using conda and has very few dependencies.
+  * It handles real data: very large inputs, missing values, and flat regions with little issue.
+  * It can compute various other types of matrix profiles, including efficiently computing KNN matrix profiles, and matrix summaries (a.k.a. mplots). And can be extended to compute other types of profile efficiently.
 
 ## Documentation
 SCAMP's documentation can be found at [readthedocs](https://scamp-docs.readthedocs.io/en/latest/).
-
-## Performance
-SCAMP is extremely fast, especially on Tesla series GPUs. I believe this repository contains the fastest code in existance for computing the matrix profile. If you find a way to improve the speed of SCAMP, or compute matrix profiles any faster than SCAMP does, please let me know, I would be glad to point to your work and incorporate any improvements that can be made to SCAMP.
-
-More details on the performance of SCAMP can be found in the documentation.
 
 ## Python module
 `pyscamp` is available through conda-forge:
@@ -57,6 +66,12 @@ conda install -c conda-forge pyscamp-gpu
 # To install pyscamp with cpu support only on Windows, Linux, or MacOS.
 conda install -c conda-forge pyscamp-cpu
 ~~~
+
+Note that `pyscamp-gpu` can be installed and used even if you don't have a GPU, it will simply fall back to using your CPU. However, `pyscamp-cpu` is preferrable if you don't have a GPU because it builds with a newer compiler and does not require installing the `cudatoolkit` depencency.
+
+If you run into problems using GPUs with `pyscamp-gpu` make sure your NVIDIA drivers are up to date. This is the most common cause of issues.
+
+### Installing from source
 
 If you want you can build pyscamp from source which will have improved performance. A source distribution for a python3 module using pybind11 is available on pypi.org to install run:
 ~~~
