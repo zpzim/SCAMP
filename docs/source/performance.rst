@@ -69,9 +69,11 @@ stumpy claims to have superior performance for the matrix profile algorithms the
 
 I contacted the stumpy maintainer years ago asking for these bad faith comparisons to be removed, but they refused. To set the record straight, here is a fair comparison of pyscamp and stumpy done on the same system.
 
-The tables below shows that pyscamp is faster than stumpy by a factor of 20x or more on the CPU, 6x faster on GeForce GPUs, and 60x faster using Tesla Series GPUs (pyscamp is even faster here because the bottleneck on GeForce cards is fp64 compute, GeForce cards are optimized for lower precision computation). As you can see if we switch to single precision in pyscamp the GeForce performance signifigantly increases.
+The tables below shows that pyscamp is faster than stumpy by a factor of 20x or more on the CPU, 6x faster on GeForce GPUs, and 60x faster using Tesla Series GPUs (pyscamp is even faster here because the bottleneck on GeForce cards is fp64 compute, GeForce cards are optimized for lower precision computation). Pyscamp has a single precision mode for GPU compute which makes GeForce performance better, but this is not reported to keep the playing field level.
 
 Both systems are using the following dependencies installed from conda-forge: ``pyscamp-gpu v4.0.0`` ``stumpy v1.11.1`` ``python v3.9.12`` ``cudatoolkit v11.6.0`` ``numba v0.55.1`` ``numpy v1.21.6`` ``scipy v1.8.1``
+
+All GPU compute is done in FP64, FP32 numbers aren't reported.
 
 pyscamp vs stumpy (System 1: 20 logical cores, 1x GeForce RTX 3080)
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -96,7 +98,12 @@ There are two algorithms in this library compared against:
 * mpx: The mpx algorithm implemented in this library is very similar to what SCAMP uses and is also highly optimized, hence performance is similar here.
 * SCRIMP++: I show SCRIMP++ performance here for comparison even though it is an approximate algorithm and could be made faster by changing parameters. It is a common misconception that SCRIMP++ is always faster than exact algorithms like mpx and pyscamp. There are overheads assoicated with SCRIMP++ that have high constant factor overhead (e.g. repeated FFT computation) which high-performing exact algorithms like pyscamp don't have. This can make pyscamp competetive with SCRMP++ in all but the most highly approximated scenarios.
 
-.. csv-table:: pyscamp vs mpf (System 1)
-   :file: images/pyscamp-vs-mpf-cpu.csv
-   :widths: auto
-   :header-rows: 1
+Comparisons were done with 20 threads, SCRIMP++ was configured with 10% sampling and 25% step.
+
+Packages installed: ``pyscamp-gpu v4.0.0`` ``matrixprofile v1.1.10`` ``python v3.8.13`` ``numpy v1.22.4`` ``scipy v1.8.1``
+
+pyscamp vs mpf (System 1: 20 logical cores, 1x GeForce RTX 3080)
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+.. image:: images/pyscamp-vs-mpf-cpu.png
+  :alt: pyscamp vs mpf System 1 comparison
