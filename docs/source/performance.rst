@@ -6,7 +6,9 @@ SCAMP is extremely fast, especially on Tesla series GPUs. I belive this reposito
 Notes on CPU performance
 ************************
 
-SCAMP's CPU performance is very good. However, how performant it is depends heavily on the compiler you use. Newer compilers are better, clang v6 or greater tends to work best. Newer versions of GCC can work as well. MSVC tends to be slower. There can be up to a 10x (perhaps more) difference depending on the compiler you use. This is related to how different compilers have varying levels of support for autovectorization.
+SCAMP's CPU performance is very good. However, how performant it is depends heavily on the compiler and compiler flags used to build the SCAMP binary. Newer compilers are better at autovectorization, clang newer than v6 and gcc newer than v7 are best. MSVC tends to be much slower. Even with microoptimizations to generate better code based on the comiler, there can be up to a 10x (perhaps more) difference depending on the compiler you use. Though most of the time the variance is in the ballpark of less than 2x-3x difference.
+
+The distributed pyscamp-gpu and pyscamp-cpu conda packages should have consistent good performance, as they are built with a modern compiler.
 
 Precomputation performance
 **************************
@@ -22,7 +24,9 @@ SCAMP has automated benchmarks running. Here is a link to recent GPU performance
 
  `GPU NVIDIA Tesla P100 (1x), Input length 1M datapoints, default parameters <https://zpzim.github.io/SCAMP/gpu-benchmarks/bench>`_ 
 
-Note that the charts are not totally optimized for human consumption yet. But you can see a benchmark of each profile type (except PROFILE_TYPE_ALL_NEIGHBORS), the y-axis is nanoseconds.
+Note that the charts are not totally optimized for human consumption yet. But you can see a benchmark of each profile type, the y-axis is nanoseconds.
+
+More charts will be added here once there are more stable benchmarks for CPU code.
 
 Performance Comparisons
 ***********************
@@ -65,7 +69,7 @@ pyscamp vs stumpy Performance
 
 `stumpy <https://github.com/TDAmeritrade/stumpy>`_ is a very popular matrix profile library which has reimplemented many of the algorithms published by Eamonn's time series lab at UC Riverside.
 
-stumpy claims to have superior performance for the matrix profile algorithms they have reimplemented. However, these performance comparisons are done in bad faith. They compare across several generations of GPU/CPU hardware instead of making a fair apples to apples comparison, they simply copy numbers published in our papers and use hardware that is multiple generations newer, and throw many more times more resources at the problem.
+stumpy claims to have superior performance for the matrix profile algorithms they have reimplemented. However, these performance comparisons are done in bad faith. They compare across several generations of GPU/CPU hardware instead of making a fair apples to apples comparison, they simply copy numbers published in our papers and use hardware that is multiple generations newer, and throw many times more resources at the problem.
 
 I contacted the stumpy maintainer years ago asking for these bad faith comparisons to be removed, but they refused. To set the record straight, here is a fair comparison of pyscamp and stumpy done on the same system.
 
@@ -95,8 +99,8 @@ Matrix Profile Foundation's `matrixprofile <https://github.com/matrix-profile-fo
 
 There are two algorithms in this library compared against:
 
-* mpx: The mpx algorithm implemented in this library is very similar to what SCAMP uses and is also highly optimized, hence performance is similar here.
-* SCRIMP++: I show SCRIMP++ performance here for comparison even though it is an approximate algorithm and could be made faster by changing parameters. It is a common misconception that SCRIMP++ is always faster than exact algorithms like mpx and pyscamp. There are overheads assoicated with SCRIMP++ that have high constant factor overhead (e.g. repeated FFT computation) which high-performing exact algorithms like pyscamp don't have. This can make pyscamp competetive with SCRMP++ in all but the most highly approximated scenarios.
+* **MPX**: The mpx algorithm implemented in this library is very similar to what SCAMP uses and is also highly optimized, hence performance is similar here.
+* **SCRIMP++**: I show SCRIMP++ performance here for comparison even though it is an approximate algorithm and could be made faster by changing parameters. It is a common misconception that SCRIMP++ is always faster than exact algorithms like mpx and pyscamp. There are overheads assoicated with SCRIMP++ that have high constant factor overhead (e.g. repeated FFT computation) which high-performing exact algorithms like pyscamp don't have. This can make pyscamp competetive with SCRMP++ in all but the most highly approximated scenarios.
 
 Comparisons were done with 20 threads, SCRIMP++ was configured with 10% sampling and 25% step.
 
