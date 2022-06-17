@@ -1,7 +1,7 @@
 pyscamp
 =======
 
-pyscamp is a python module which uses the SCAMP CUDA/C++ library to compute the matrix profile efficiently, inheriting the speed and functionality of SCAMP.
+``pyscamp`` is a python module which uses the SCAMP CUDA/C++ library to compute the matrix profile efficiently, inheriting the speed and functionality of SCAMP.
 
 
 Installation
@@ -15,6 +15,10 @@ In an anaconda environment, you can install the pyscamp conda packages as follow
 To install pyscamp with gpu support (Windows/Linux) ``conda install -c conda-forge pyscamp-gpu``.
 
 To install pyscamp without gpu support (Windows/Linux/MacOS) ``conda install -c conda-forge pyscamp-cpu``.
+
+Note that ``pyscamp-gpu`` can be installed and used even if you don't have a GPU, it will simply fall back to using your CPU. However, ``pyscamp-cpu`` is preferrable if you don't have a GPU because it builds with a newer compiler and does not require installing the ``cudatoolkit`` depencency.
+
+If you run into problems using GPUs with ``pyscamp-gpu`` make sure your NVIDIA drivers are up to date. This is the most common cause of issues.
 
 Installing from source
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -61,7 +65,11 @@ If you have problems building the module (or getting GPU support to work) please
 
 **Figuring out what went wrong**: You can use ``pip install -v pyscamp`` to print the output of the cmake configuration and build.
 
-**Getting CUDA to work**: Ensure pyscamp is built with cuda using ``FORCE_CUDA=1 pip install -I --no-cache-dir pyscamp``. If this fails, that means cmake was unable to detect your cuda installation or it wasn't new enough (see :doc:`environment setup guide </environment>` for which versions of cuda are supported). Some general troubleshooting steps you can try are:
+**Getting CUDA to work**: 
+
+**When installing from conda-forge**: If you have installed the ``pyscamp-gpu`` conda-forge package and you are having trouble with CUDA the most common issue is that the NVIDIA drivers on the system need to be updated to work with the newest versions of CUDA. Please try to update your GPU drivers.
+
+**When building from source**: Ensure pyscamp is built with cuda using ``FORCE_CUDA=1 pip install -I --no-cache-dir pyscamp``. If this fails, that means cmake was unable to detect your cuda installation or it wasn't new enough (see :doc:`environment setup guide </environment>` for which versions of cuda are supported). Some general troubleshooting steps you can try are:
 
   * If you installed pyscamp previously and you have since installed cuda, make sure to add the ``-I`` and ``--no-cache-dir`` flags to pip install just to make sure you are reinstalling correctly.
   * Use ``pip install -v`` to get more information about the build configuration and make sure it is using the compilers and cuda like you expect.
