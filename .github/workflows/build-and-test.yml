@@ -255,3 +255,34 @@ jobs:
           mkdir build && cd build
           cmake -DFORCE_CUDA=1 ..
           cmake --build . --config Release --parallel 2
+
+  build-and-test-cuda:
+    runs-on: self-hosted
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: 'true'
+
+      - name: Build SCAMP with CUDA
+        shell: bash
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE
+          mkdir build && cd build
+          cmake -DFORCE_CUDA=1 ..
+          cmake --build . --config Release --parallel 2
+          
+      - name: Basic CUDA Tests SCAMP
+        shell: bash
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE/test
+          ./run_tests.sh ../build/SCAMP /dev/null "--num_cpu_workers=0"
+          
+      - name: Extended Tests SCAMP
+        shell: bash
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE/test
+          python3 ./run_tests.py --executable "../build/SCAMP" --force_gpu --extra_args " --num_cpu_workers=0"
