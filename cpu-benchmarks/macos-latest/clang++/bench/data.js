@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1655486796918,
+  "lastUpdate": 1655512866426,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -2268,6 +2268,52 @@ window.BENCHMARK_DATA = {
             "value": 44866909657.00001,
             "unit": "ns/iter",
             "extra": "iterations: 1\ncpu: 6888000.000000006 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "github-actions",
+            "username": "github-actions[bot]",
+            "email": "41898282+github-actions[bot]@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub Actions",
+            "username": "actions-user",
+            "email": "actions@github.com"
+          },
+          "id": "ca9ca3c5156be404e3fd33ad842196d31f6c8b89",
+          "message": "Committing clang-format changes",
+          "timestamp": "2022-06-18T00:32:44Z",
+          "url": "https://github.com/zpzim/SCAMP/commit/ca9ca3c5156be404e3fd33ad842196d31f6c8b89"
+        },
+        "date": 1655512863794,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/32768",
+            "value": 1.1552926615000048,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0019623 s\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/32768",
+            "value": 0.6267507655000031,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0019454 s\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/32768",
+            "value": 1.4256312897999976,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0019770000000000005 s\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/1/32768",
+            "value": 3.5555594499999756,
+            "unit": "s/iter",
+            "extra": "iterations: 1\ncpu: 0.00224400000000001 s\nthreads: 1"
           }
         ]
       }
