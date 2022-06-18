@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1655486625881,
+  "lastUpdate": 1655512678446,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -2268,6 +2268,52 @@ window.BENCHMARK_DATA = {
             "value": 42198551444.99999,
             "unit": "ns/iter",
             "extra": "iterations: 1\ncpu: 12261700 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "github-actions",
+            "username": "github-actions[bot]",
+            "email": "41898282+github-actions[bot]@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub Actions",
+            "username": "actions-user",
+            "email": "actions@github.com"
+          },
+          "id": "ca9ca3c5156be404e3fd33ad842196d31f6c8b89",
+          "message": "Committing clang-format changes",
+          "timestamp": "2022-06-18T00:32:44Z",
+          "url": "https://github.com/zpzim/SCAMP/commit/ca9ca3c5156be404e3fd33ad842196d31f6c8b89"
+        },
+        "date": 1655512677208,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/32768",
+            "value": 1.0830831557000011,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.00382971 s\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/32768",
+            "value": 0.6734532994000005,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.00384448 s\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/32768",
+            "value": 1.3832200008000028,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.00377672 s\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/1/32768",
+            "value": 3.0475164989999826,
+            "unit": "s/iter",
+            "extra": "iterations: 1\ncpu: 0.0036380000000000023 s\nthreads: 1"
           }
         ]
       }
