@@ -286,35 +286,3 @@ jobs:
           set -e
           cd $GITHUB_WORKSPACE/test
           python3 ./run_tests.py --executable "../build/SCAMP" --force_gpu
-
-      - name: Build pyscamp
-        shell: bash
-        run: |
-          set -e
-          cd $GITHUB_WORKSPACE
-          conda create -y -n github-test-env python=3.7
-          conda activate github-test-env
-          FORCE_CUDA=1 python3 -m pip install .
-          python3 -m pip install numpy pandas tqdm
-
-      - name: Extended Tests pyscamp
-        shell: bash
-        run:
-          set -e
-          cd $GITHUB_WORKSPACE/test
-          python3 ./run_tests.py --executable pyscamp
-          python3 test_pyscamp.py
-        
-
-  clean-runner:
-    runs-on: self-hosted    
-    if: ${{ always() }}
-    needs: build-and-test-cuda
-    steps:
-      - name: Cleanup Working Directory
-        shell: bash
-        run: |
-          cd $RUNNER_WORKSPACE
-          cd ..
-          rm -rf *
-          conda remove --name github-test-env --all
