@@ -73,11 +73,58 @@ jobs:
           # Separate Dashboard for each combination of OS/Compiler
           benchmark-data-dir-path: cpu-benchmarks/${{ matrix.os }}/${{ matrix.compiler }}/bench
           auto-push: true
-          fail-on-alert: true
+          fail-on-alert: false
           comment-on-alert: true
-          alert-threshold: "150%"
+          alert-threshold: "200%"
           alert-comment-cc-users: '@zpzim'
-      # Upload the updated cache file for the next job by actions/cache
+
+  benchmark-stable:
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [g++, clang++]
+    name: CPU Benchmarks Stable
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: 'true'
+      - name: Prep Build
+        run: echo "CXX=${{ matrix.compiler }}" >> $GITHUB_ENV
+      - name: Build SCAMP Benchmarks
+        shell: bash
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE
+          mkdir build && cd build
+          cmake -DBUILD_BENCHMARKS=1 ..
+          cmake --build . --config Release --parallel 2
+          if [ -f "./src/benchmark/scamp_cpu_benchmarks" ]; then
+            cp ./src/benchmark/scamp_cpu_benchmarks .
+          fi
+      - name: Run Benchmarks
+        shell: bash
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE/build
+          ./scamp_cpu_benchmarks --benchmark_format=json | tee benchmark_result.json
+     
+      # Run `github-action-benchmark` action
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          # What benchmark tool the output.txt came from
+          tool: 'googlecpp'
+          # Where the output from the benchmark tool is stored
+          output-file-path: ./build/benchmark_result.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # Separate Dashboard for each combination of OS/Compiler
+          benchmark-data-dir-path: cpu-benchmarks/linux-stable/${{ matrix.compiler }}/bench
+          auto-push: true
+          fail-on-alert: false
+          comment-on-alert: true
+          alert-threshold: "115%"
+          alert-comment-cc-users: '@zpzim'
 
   benchmark-gpu:
     name: GPU Benchmarks
@@ -117,5 +164,5 @@ jobs:
           auto-push: true
           fail-on-alert: true
           comment-on-alert: true
-          alert-threshold: "150%"
+          alert-threshold: "115%"
           alert-comment-cc-users: '@zpzim'
