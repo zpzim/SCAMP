@@ -75,11 +75,10 @@ jobs:
           auto-push: true
           fail-on-alert: false
           comment-on-alert: true
-          alert-threshold: "150%"
+          alert-threshold: "200%"
           alert-comment-cc-users: '@zpzim'
-      # Upload the updated cache file for the next job by actions/cache
 
-  benchmark-ubuntu-stable:
+  benchmark-stable:
     strategy:
       fail-fast: false
       matrix:
@@ -126,7 +125,6 @@ jobs:
           comment-on-alert: true
           alert-threshold: "115%"
           alert-comment-cc-users: '@zpzim'
-      # Upload the updated cache file for the next job by actions/cache
 
   benchmark-gpu:
     name: GPU Benchmarks
