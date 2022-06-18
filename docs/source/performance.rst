@@ -23,7 +23,7 @@ Benchmarks
 SCAMP has automated benchmarks running. Here is a link to recent GPU performance results:
 
  - `GPU NVIDIA Tesla P100 (1x), Input length 512K datapoints, default parameters <https://zpzim.github.io/SCAMP/gpu-benchmarks/bench>`_ 
- - `CPU: Intel(R) Core(TM) i7-8700K CPU @ 3.70GHz, Single Thread, Input length 32K datapoints, default parameters <https://zpzim.github.io/SCAMP/cpu-benchmarks/linux-stable/clang++-10/bench>`_ 
+ - `CPU: Intel(R) Core(TM) i7-8700K CPU @ 3.70GHz, Single Thread, Input length 32K datapoints, default parameters <https://zpzim.github.io/SCAMP/cpu-benchmarks/linux-stable/clang++/bench>`_ 
 
 Note that the charts are not totally optimized for human consumption yet. But you can see a benchmark of each profile type.
 
