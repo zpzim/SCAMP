@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1655575267598,
+  "lastUpdate": 1655586180827,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -46,6 +46,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BM_MATRIX_SELF_JOIN/1/32768",
             "value": 2.5544936999999663,
+            "unit": "s/iter",
+            "extra": "iterations: 1\ncpu: 0 s\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "Zach Zimmerman",
+            "username": "zpzim"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "ba40129d7615c06a2cc186b720e25183f4b5c20a",
+          "message": "Add GPU integration tests. (#81)\n\nAdds GPU integration tests to verify output correctness of GPU kernels.",
+          "timestamp": "2022-06-18T13:37:28-07:00",
+          "tree_id": "4f69ab291f6b937e5b36b8aae3bb2c4ae203ed4f",
+          "url": "https://github.com/zpzim/SCAMP/commit/ba40129d7615c06a2cc186b720e25183f4b5c20a"
+        },
+        "date": 1655586178596,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/32768",
+            "value": 1.5047732100000075,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0015625 s\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/32768",
+            "value": 0.32724287999999435,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0046875 s\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/32768",
+            "value": 1.196060239999997,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.003125 s\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/1/32768",
+            "value": 2.534464099999923,
             "unit": "s/iter",
             "extra": "iterations: 1\ncpu: 0 s\nthreads: 1"
           }
