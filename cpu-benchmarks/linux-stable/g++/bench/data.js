@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1655575560327,
+  "lastUpdate": 1655587012182,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -48,6 +48,54 @@ window.BENCHMARK_DATA = {
             "value": 1.7697053762967698,
             "unit": "s/iter",
             "extra": "iterations: 10\ncpu: 0.0017345934999999993 s\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "Zach Zimmerman",
+            "username": "zpzim"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "ba40129d7615c06a2cc186b720e25183f4b5c20a",
+          "message": "Add GPU integration tests. (#81)\n\nAdds GPU integration tests to verify output correctness of GPU kernels.",
+          "timestamp": "2022-06-18T13:37:28-07:00",
+          "tree_id": "4f69ab291f6b937e5b36b8aae3bb2c4ae203ed4f",
+          "url": "https://github.com/zpzim/SCAMP/commit/ba40129d7615c06a2cc186b720e25183f4b5c20a"
+        },
+        "date": 1655587001146,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/32768",
+            "value": 0.6725292164017447,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0017119373000000003 s\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/32768",
+            "value": 0.29109297939576206,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0016856915000000006 s\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/32768",
+            "value": 1.3970766910002568,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0017540803999999994 s\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/1/32768",
+            "value": 1.722790054208599,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0017357102000000013 s\nthreads: 1"
           }
         ]
       }
