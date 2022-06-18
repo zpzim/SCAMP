@@ -285,4 +285,4 @@ jobs:
         run: |
           set -e
           cd $GITHUB_WORKSPACE/test
-          python3 ./run_tests.py --executable "../build/SCAMP" --force_gpu --extra_args "--num_cpu_workers=0"
+          python3 ./run_tests.py --executable "../build/SCAMP" --force_gpu --extra_args " --num_cpu_workers=0"
