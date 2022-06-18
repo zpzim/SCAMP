@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1655486204375,
+  "lastUpdate": 1655512747145,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -816,6 +816,52 @@ window.BENCHMARK_DATA = {
             "value": 5771297381.957993,
             "unit": "ns/iter",
             "extra": "iterations: 1\ncpu: 63816310.000000045 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "github-actions",
+            "username": "github-actions[bot]",
+            "email": "41898282+github-actions[bot]@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub Actions",
+            "username": "actions-user",
+            "email": "actions@github.com"
+          },
+          "id": "ca9ca3c5156be404e3fd33ad842196d31f6c8b89",
+          "message": "Committing clang-format changes",
+          "timestamp": "2022-06-18T00:32:44Z",
+          "url": "https://github.com/zpzim/SCAMP/commit/ca9ca3c5156be404e3fd33ad842196d31f6c8b89"
+        },
+        "date": 1655512735708,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/-1/524288",
+            "value": 0.7766239187098108,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.031863704199999995 s\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/-1/524288",
+            "value": 0.7273535875952802,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.031873157799999996 s\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/-1/524288",
+            "value": 2.0136727427016012,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.03194951749999999 s\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/-1/524288",
+            "value": 1.4446204569074326,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.03173536510000001 s\nthreads: 1"
           }
         ]
       }
