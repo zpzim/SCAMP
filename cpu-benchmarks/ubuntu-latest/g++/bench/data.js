@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1655486702568,
+  "lastUpdate": 1655512637197,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -2268,6 +2268,52 @@ window.BENCHMARK_DATA = {
             "value": 61088826335.00002,
             "unit": "ns/iter",
             "extra": "iterations: 1\ncpu: 11347200.000000002 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "github-actions",
+            "username": "github-actions[bot]",
+            "email": "41898282+github-actions[bot]@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub Actions",
+            "username": "actions-user",
+            "email": "actions@github.com"
+          },
+          "id": "ca9ca3c5156be404e3fd33ad842196d31f6c8b89",
+          "message": "Committing clang-format changes",
+          "timestamp": "2022-06-18T00:32:44Z",
+          "url": "https://github.com/zpzim/SCAMP/commit/ca9ca3c5156be404e3fd33ad842196d31f6c8b89"
+        },
+        "date": 1655512636435,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/32768",
+            "value": 0.8696000169000001,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.003231 s\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/32768",
+            "value": 0.3699612199000001,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.00330552 s\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/32768",
+            "value": 1.7114275787999986,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0032861600000000006 s\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/1/32768",
+            "value": 3.167430803000002,
+            "unit": "s/iter",
+            "extra": "iterations: 1\ncpu: 0.0028807 s\nthreads: 1"
           }
         ]
       }
