@@ -278,11 +278,11 @@ jobs:
         run: |
           set -e
           cd $GITHUB_WORKSPACE/test
-          ./run_tests.sh ../build/SCAMP /dev/null
+          ./run_tests.sh ../build/SCAMP /dev/null "--num_cpu_workers=0"
           
       - name: Extended Tests SCAMP
         shell: bash
         run: |
           set -e
           cd $GITHUB_WORKSPACE/test
-          python3 ./run_tests.py --executable "../build/SCAMP" --force_gpu
+          python3 ./run_tests.py --executable "../build/SCAMP" --force_gpu --extra_args "--num_cpu_workers=0"
