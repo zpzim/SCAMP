@@ -2,6 +2,7 @@
 #include "common/common.h"
 #include "tile.h"
 
+
 #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 600
 // Double atomicAdd is implemented
 #else
@@ -42,80 +43,6 @@ HOST_DEVICE_FUNCTION constexpr bool NeedsCheckIfDone(
   return profile_type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS;
 }
 
-// Structure which manages shared memory on the GPU and automatically allocates
-// appropriate segments in memory for variables used by the kernel
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, SCAMPProfileType type>
-struct SCAMPSmem {
-  __device__ SCAMPSmem(char *smem, bool compute_rows, bool compute_columns,
-                       int tile_width, int tile_height, int extra_operands);
-  DATA_TYPE *__restrict__ df_col;
-  DATA_TYPE *__restrict__ dg_col;
-  DATA_TYPE *__restrict__ inorm_col;
-  DATA_TYPE *__restrict__ df_row;
-  DATA_TYPE *__restrict__ dg_row;
-  DATA_TYPE *__restrict__ inorm_row;
-
-  PROFILE_DATA_TYPE *__restrict__ local_mp_col;
-  PROFILE_DATA_TYPE *__restrict__ local_mp_row;
-
-  uint64_t *profile_a_length;
-  uint64_t *profile_b_length;
-};
-
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, SCAMPProfileType type>
-__device__ SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, type>::SCAMPSmem(
-    char *smem, bool compute_rows, bool compute_columns, int tile_width,
-    int tile_height, int extra_operands) {
-  constexpr int data_size = sizeof(DATA_TYPE);
-  constexpr int profile_size = sizeof(PROFILE_DATA_TYPE);
-  int curr_byte = 0;
-  df_col = (DATA_TYPE *)(smem);
-  curr_byte += tile_width * data_size;
-  dg_col = (DATA_TYPE *)(smem + curr_byte);
-  curr_byte += tile_width * data_size;
-  inorm_col = (DATA_TYPE *)(smem + curr_byte);
-  curr_byte += tile_width * data_size;
-  df_row = (DATA_TYPE *)(smem + curr_byte);
-  curr_byte += tile_height * data_size;
-  dg_row = (DATA_TYPE *)(smem + curr_byte);
-  curr_byte += tile_height * data_size;
-  inorm_row = (DATA_TYPE *)(smem + curr_byte);
-  curr_byte += tile_height * data_size;
-
-  if (compute_columns) {
-    local_mp_col = (PROFILE_DATA_TYPE *)(smem + curr_byte);
-    curr_byte += tile_width * profile_size;
-  } else {
-    local_mp_col = nullptr;
-  }
-  if (compute_rows) {
-    local_mp_row = (PROFILE_DATA_TYPE *)(smem + curr_byte);
-    curr_byte += tile_height * profile_size;
-  } else {
-    local_mp_row = nullptr;
-  }
-  if (NeedsCheckIfDone(type)) {
-    profile_a_length = (uint64_t *)(smem + curr_byte);
-    curr_byte += sizeof(uint64_t);
-    profile_b_length = (uint64_t *)(smem + curr_byte);
-    curr_byte += sizeof(uint64_t);
-  } else {
-    profile_a_length = nullptr;
-    profile_b_length = nullptr;
-  }
-}
-
-template <typename ACCUM_TYPE>
-struct SCAMPThreadInfo {
-  ACCUM_TYPE cov1;
-  ACCUM_TYPE cov2;
-  ACCUM_TYPE cov3;
-  ACCUM_TYPE cov4;
-  uint32_t local_row;
-  uint32_t local_col;
-  uint32_t global_row;
-  uint32_t global_col;
-};
 
 // Gets the profile element size as used by the GPU kernels
 // This can be different than what is used in the CPU case

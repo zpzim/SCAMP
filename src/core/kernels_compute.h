@@ -22,93 +22,45 @@
 // ...
 //////////////////////////////////////////////////////
 
-// UPDATE_ROW when PROFILE_TYPE == PROFILE_TYPE_1NN
-template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
-          typename ACCUM_TYPE, typename DISTANCE_TYPE>
+
+template <int iter, SCAMPProfileType PROFILE_TYPE, typename DISTANCE_TYPE, typename PROFILE_DATA_TYPE, typename DATA_TYPE, typename SMEM_TYPE, typename DerivedDist>
 __device__ inline void update_row(
-    const SCAMPThreadInfo<ACCUM_TYPE> info,
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_1NN> smem,
-    const DISTANCE_TYPE dist[4], const float curr_mp_row_val,
+    const SCAMPThreadInfo<DATA_TYPE> info,
+    SMEM_TYPE smem,
+    const Eigen::ArrayBase<DerivedDist>& dist, const float curr_mp_row_val,
     const OptionalArgs args) {
-  DISTANCE_TYPE d = max4(dist[0], dist[1], dist[2], dist[3]);
-  fAtomicMax_check<ATOMIC_BLOCK>(smem.local_mp_row + info.local_row + iter, d,
+  if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN) {
+    DISTANCE_TYPE d = dist.maxCoeff();
+    fAtomicMax_check<ATOMIC_BLOCK>(smem.local_mp_row.data() + info.local_row + iter, d,
                                  curr_mp_row_val);
-}
-
-// UPDATE_ROW when PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS
-template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
-          typename ACCUM_TYPE, typename DISTANCE_TYPE>
-__device__ inline void update_row(
-    const SCAMPThreadInfo<ACCUM_TYPE> info,
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_APPROX_ALL_NEIGHBORS>
-        smem,
-    const DISTANCE_TYPE dist[4], const float curr_mp_row_val,
-    const OptionalArgs args) {
-  uint32_t idx;
-  DISTANCE_TYPE d = max4_index<DISTANCE_TYPE>(
-      dist[0], dist[1], dist[2], dist[3], info.global_col + iter, idx);
-  MPatomicMax_check<ATOMIC_BLOCK>(
-      (uint64_t *)(smem.local_mp_row + info.local_row + iter), d, idx,
-      curr_mp_row_val);
-}
-
-// UPDATE_ROW when PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY
-template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
-          typename ACCUM_TYPE, typename DISTANCE_TYPE>
-__device__ inline void update_row(
-    const SCAMPThreadInfo<ACCUM_TYPE> info,
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_MATRIX_SUMMARY> smem,
-    const DISTANCE_TYPE dist[4], const float curr_mp_row_val,
-    const OptionalArgs args) {
-  uint32_t idx;
-  DISTANCE_TYPE d = max4_index<DISTANCE_TYPE>(
-      dist[0], dist[1], dist[2], dist[3], info.global_col + iter, idx);
-  MPatomicMax_check<ATOMIC_BLOCK>(
-      (uint64_t *)(smem.local_mp_row + info.local_row + iter), d, idx,
-      curr_mp_row_val);
-}
-
-// UPDATE_ROW when PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX
-template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
-          typename ACCUM_TYPE, typename DISTANCE_TYPE>
-__device__ inline void update_row(
-    const SCAMPThreadInfo<ACCUM_TYPE> info,
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_1NN_INDEX> smem,
-    const DISTANCE_TYPE dist[4], const float curr_mp_row_val,
-    const OptionalArgs args) {
-  uint32_t idx;
-  DISTANCE_TYPE d = max4_index<DISTANCE_TYPE>(
-      dist[0], dist[1], dist[2], dist[3], info.global_col + iter, idx);
-  MPatomicMax_check<ATOMIC_BLOCK>(
-      (uint64_t *)(smem.local_mp_row + info.local_row + iter), d, idx,
-      curr_mp_row_val);
-}
-
-// UPDATE_ROW when PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH
-template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
-          typename ACCUM_TYPE, typename DISTANCE_TYPE>
-__device__ inline void update_row(
-    const SCAMPThreadInfo<ACCUM_TYPE> info,
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_SUM_THRESH> smem,
-    const DISTANCE_TYPE dist[4], const float curr_mp_row_val,
-    const OptionalArgs args) {
-  // Coalesce all row updates to lane 0 of each warp and atomically update
-  // This way is more efficient than atomics when we expect a lot of updates
-  DISTANCE_TYPE sum = 0;
-#pragma unroll 4
-  for (int i = 0; i < 4; ++i) {
-    if (dist[i] > args.threshold) {
-      sum += dist[i];
+  } else if constexpr(PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX || PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY || PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
+    unsigned int idx;
+    DISTANCE_TYPE d = dist.maxCoeff(&idx);
+    idx += info.global_col + iter;
+    MPatomicMax_check<ATOMIC_BLOCK>(
+        (uint64_t *)(smem.local_mp_row.data() + info.local_row + iter), d, idx,
+        curr_mp_row_val);
+  } else if constexpr(PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
+    // Coalesce all row updates to lane 0 of each warp and atomically update
+    // This way is more efficient than atomics when we expect a lot of updates
+    DISTANCE_TYPE sum = 0;
+    #pragma unroll 4
+    for (int i = 0; i < 4; ++i) {
+      if (dist[i] > args.threshold) {
+        sum += dist[i];
+      }
     }
-  }
-#pragma unroll
-  for (int i = 16; i >= 1; i /= 2) {
-    sum += __shfl_down_sync(0xffffffff, sum, i);
-  }
-  if ((threadIdx.x & 0x1f) == 0) {
-    do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_BLOCK>(
-        smem.local_mp_row + info.local_row + iter,
-        static_cast<PROFILE_DATA_TYPE>(sum));
+    #pragma unroll
+    for (int i = 16; i >= 1; i /= 2) {
+      sum += __shfl_down_sync(0xffffffff, sum, i);
+    }
+    if ((threadIdx.x & 0x1f) == 0) {
+      do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_BLOCK>(
+          smem.local_mp_row.data() + info.local_row + iter,
+          static_cast<PROFILE_DATA_TYPE>(sum));
+    }
+  } else {
+    // Missing implementation.   
   }
 }
 
@@ -117,9 +69,9 @@ __device__ inline void update_row(
 
 // UPDATE_ROW when PROFILE_TYPE == PROFILE_TYPE_???
 template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
-          typename ACCUM_TYPE, typename DISTANCE_TYPE>
+          typename DATA_TYPE, typename DISTANCE_TYPE>
 __device__ inline void update_row(
-    const SCAMPThreadInfo<ACCUM_TYPE> info,
+    const SCAMPThreadInfo<DATA_TYPE> info,
     SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_???> smem,
     const DISTANCE_TYPE dist[4], const float curr_mp_row_val,
     const OptionalArgs args) {
@@ -154,89 +106,33 @@ __device__ inline void update_row(
 // ...
 /////////////////////////////////////////////////////////////////////////
 
-// MERGE_TO_COLUMN when PROFILE_TYPE == PROFILE_TYPE_1NN
-template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
-          typename ACCUM_TYPE, typename DISTANCE_TYPE>
+template <int iter, SCAMPProfileType PROFILE_TYPE, typename DATA_TYPE, typename SMEM_TYPE, typename Derived7Dist, typename Derived4Dist, typename Derived7uint>
 __device__ inline void merge_to_column(
-    const SCAMPThreadInfo<ACCUM_TYPE> info,
-    const SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_1NN> smem,
-    DISTANCE_TYPE best_so_far[7], const DISTANCE_TYPE dists_to_merge[4],
-    unsigned int best_so_far_index[7], const OptionalArgs args) {
-#pragma unroll 4
-  for (int i = 0; i < 4; ++i) {
-    if (dists_to_merge[i] > best_so_far[iter + i]) {
-      best_so_far[iter + i] = dists_to_merge[i];
+    const SCAMPThreadInfo<DATA_TYPE>& info,
+    SMEM_TYPE smem,
+    Eigen::ArrayBase<Derived7Dist>& best_so_far, const Eigen::ArrayBase<Derived4Dist>& dists_to_merge,
+    Eigen::ArrayBase<Derived7uint>& best_so_far_index, const OptionalArgs& args) {
+  if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN) {
+    auto slicer = Eigen::seqN(Eigen::fix<iter>, Eigen::fix<4>);
+    best_so_far(slicer) = dists_to_merge.cwiseMax(best_so_far(slicer));
+  } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX || PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY || PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
+    #pragma unroll 4
+    for (int i = 0; i < 4; ++i) {
+      if (dists_to_merge[i] > best_so_far[iter + i]) {
+        best_so_far[iter + i] = dists_to_merge[i];
+        best_so_far_index[iter + i] = info.global_row + iter;
+      }
     }
-  }
-}
-
-// MERGE_TO_COLUMN when PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX
-template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
-          typename ACCUM_TYPE, typename DISTANCE_TYPE>
-__device__ inline void merge_to_column(
-    const SCAMPThreadInfo<ACCUM_TYPE> info,
-    const SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_1NN_INDEX> smem,
-    DISTANCE_TYPE best_so_far[7], const DISTANCE_TYPE dists_to_merge[4],
-    unsigned int best_so_far_index[7], const OptionalArgs args) {
-#pragma unroll 4
-  for (int i = 0; i < 4; ++i) {
-    if (dists_to_merge[i] > best_so_far[iter + i]) {
-      best_so_far[iter + i] = dists_to_merge[i];
-      best_so_far_index[iter + i] = info.global_row + iter;
+  } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
+    #pragma unroll 4
+    for (int i = 0; i < 4; ++i) {
+      if (dists_to_merge[i] > args.threshold) {
+        best_so_far[iter + i] += dists_to_merge[i];
+      }
     }
-  }
-}
-
-// MERGE_TO_COLUMN when PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY
-template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
-          typename ACCUM_TYPE, typename DISTANCE_TYPE>
-__device__ inline void merge_to_column(
-    const SCAMPThreadInfo<ACCUM_TYPE> info,
-    const SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_MATRIX_SUMMARY>
-        smem,
-    DISTANCE_TYPE best_so_far[7], const DISTANCE_TYPE dists_to_merge[4],
-    unsigned int best_so_far_index[7], const OptionalArgs args) {
-#pragma unroll 4
-  for (int i = 0; i < 4; ++i) {
-    if (dists_to_merge[i] > best_so_far[iter + i]) {
-      best_so_far[iter + i] = dists_to_merge[i];
-      best_so_far_index[iter + i] = info.global_row + iter;
-    }
-  }
-}
-
-// MERGE_TO_COLUMN when PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS
-template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
-          typename ACCUM_TYPE, typename DISTANCE_TYPE>
-__device__ inline void merge_to_column(
-    const SCAMPThreadInfo<ACCUM_TYPE> info,
-    const SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE,
-                    PROFILE_TYPE_APPROX_ALL_NEIGHBORS>
-        smem,
-    DISTANCE_TYPE best_so_far[7], const DISTANCE_TYPE dists_to_merge[4],
-    unsigned int best_so_far_index[7], const OptionalArgs args) {
-#pragma unroll 4
-  for (int i = 0; i < 4; ++i) {
-    if (dists_to_merge[i] > best_so_far[iter + i]) {
-      best_so_far[iter + i] = dists_to_merge[i];
-      best_so_far_index[iter + i] = info.global_row + iter;
-    }
-  }
-}
-
-// MERGE_TO_COLUMN when PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH
-template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
-          typename ACCUM_TYPE, typename DISTANCE_TYPE>
-__device__ inline void merge_to_column(
-    const SCAMPThreadInfo<ACCUM_TYPE> info,
-    const SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_SUM_THRESH> smem,
-    DISTANCE_TYPE best_so_far[7], const DISTANCE_TYPE dists_to_merge[4],
-    unsigned int best_so_far_index[7], const OptionalArgs args) {
-#pragma unroll 4
-  for (int i = 0; i < 4; ++i) {
-    if (dists_to_merge[i] > args.threshold) {
-      best_so_far[iter + i] += dists_to_merge[i];
-    }
+  } else {
+    // Unimplemented
+    //static_assert(false, "merge_to_column not implemented for profile type: PROFILE_TYPE")
   }
 }
 
@@ -245,9 +141,9 @@ __device__ inline void merge_to_column(
 
 // MERGE_TO_COLUMN when PROFILE_TYPE == PROFILE_TYPE_???
 template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
-          typename ACCUM_TYPE, typename DISTANCE_TYPE>
+          typename DATA_TYPE, typename DISTANCE_TYPE>
 __device__ inline void merge_to_column(
-    const SCAMPThreadInfo<ACCUM_TYPE> info,
+    const SCAMPThreadInfo<DATA_TYPE> info,
     const SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_???> smem,
     DISTANCE_TYPE best_so_far[7], const DISTANCE_TYPE dists_to_merge[4],
     unsigned int best_so_far_index[7], const OptionalArgs args) {
@@ -269,129 +165,54 @@ storing the result in 'best_so_far[iter+i]'
 // (0,1,2,3,4,5,and 6) and merges them with the shared-memory MP for each
 //////////////////////////////////////////////////////////////////
 
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
-          typename DISTANCE_TYPE, SCAMPProfileType PROFILE_TYPE>
-__device__ inline void update_cols_std(
-    SCAMPThreadInfo<ACCUM_TYPE> info,
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> smem,
-    DISTANCE_TYPE distc[7], unsigned int idxc[7]) {
-  int c = info.local_col >> 2;
+template <SCAMPProfileType PROFILE_TYPE, typename PROFILE_DATA_TYPE, typename DerivedInputDataType, typename DerivedSmemType, typename Derived7Dist, typename Derived7Uint>
+__device__ inline void update_cols(
+    SCAMPThreadInfo<DerivedInputDataType> info,
+    DerivedSmemType smem,
+    Eigen::ArrayBase<Derived7Dist>& distc, Eigen::ArrayBase<Derived7Uint>& idxc) {
+  if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN) {
+    Eigen::Array<float, 7, 1> mp_col_check = smem.local_mp_col.segment<7>(info.local_col);
 
-  ulonglong4 mp_col_check1, mp_col_check2;
-  float mp_col_check[7];
+    // Check the best-so-far column and update distance if necessary
+    #pragma unroll 7
+    for (int i = 0; i < 7; ++i) {
+      fAtomicMax_check<ATOMIC_BLOCK>(smem.local_mp_col.data() + info.local_col + i,
+                                     distc[i], mp_col_check[i]);
+    }
+  } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX || PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY || PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
+    Eigen::Array<float, 7, 1> mp_col_check;
+    {
+      Eigen::Array<uint64_t, 7, 1> temp = smem.local_mp_col.segment<7>(info.local_col);
+      mp_entry e;
+      #pragma unroll 7
+      for (int i = 0; i < 7; ++i) {
+        e.ulong = temp[i];
+        mp_col_check[i] = e.floats[0];
+      }
+    }
+   
+    // Check the best-so-far column and update distance/index if necessary
+    #pragma unroll 7
+    for (int i = 0; i < 7; ++i) {
+      MPatomicMax_check<ATOMIC_BLOCK>(smem.local_mp_col.data() + info.local_col + i,
+                                      distc[i], idxc[i], mp_col_check[i]);
+    }
 
-  // Load the best-so-far values 4 at a time to reduce shared memory
-  // transactions We are preloading these values to recuce the number of atomic
-  // operations in MPatomicMax_check this is a 'test-and-test-and-set' strategy
-  mp_col_check1 = reinterpret_cast<ulonglong4 *>(smem.local_mp_col)[c];
-  mp_col_check2 = reinterpret_cast<ulonglong4 *>(smem.local_mp_col)[c + 1];
+  } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
+    // Add the current sum that this thread has computed to the shared sum across
+    // the entire thread block
+    #pragma unroll 7
+    for (int i = 0; i < 7; ++i) {
+      do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_BLOCK>(
+          smem.local_mp_col.data() + info.local_col + i, distc[i]);
+    }
 
-  // Rename to array layout for loop
-  mp_entry e;
-  e.ulong = mp_col_check1.x;
-  mp_col_check[0] = e.floats[0];
-  e.ulong = mp_col_check1.y;
-  mp_col_check[1] = e.floats[0];
-  e.ulong = mp_col_check1.z;
-  mp_col_check[2] = e.floats[0];
-  e.ulong = mp_col_check1.w;
-  mp_col_check[3] = e.floats[0];
-  e.ulong = mp_col_check2.x;
-  mp_col_check[4] = e.floats[0];
-  e.ulong = mp_col_check2.y;
-  mp_col_check[5] = e.floats[0];
-  e.ulong = mp_col_check2.z;
-  mp_col_check[6] = e.floats[0];
-
-// Check the best-so-far column and update distance/index if necessary
-#pragma unroll 7
-  for (int i = 0; i < 7; ++i) {
-    MPatomicMax_check<ATOMIC_BLOCK>(smem.local_mp_col + info.local_col + i,
-                                    distc[i], idxc[i], mp_col_check[i]);
+  } else {
+    //static_assert(false, "update_cols not implemented for profile type: PROFILE_TYPE")
+    // Unimplemented.
   }
 }
 
-// UPDATE COLS where PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
-          typename DISTANCE_TYPE>
-__device__ inline void update_cols(
-    SCAMPThreadInfo<ACCUM_TYPE> info,
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_1NN_INDEX> smem,
-    DISTANCE_TYPE distc[7], unsigned int idxc[7]) {
-  update_cols_std<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-                  PROFILE_TYPE_1NN_INDEX>(info, smem, distc, idxc);
-}
-
-// UPDATE COLS where PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
-          typename DISTANCE_TYPE>
-__device__ inline void update_cols(
-    SCAMPThreadInfo<ACCUM_TYPE> info,
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_MATRIX_SUMMARY> smem,
-    DISTANCE_TYPE distc[7], unsigned int idxc[7]) {
-  update_cols_std<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-                  PROFILE_TYPE_MATRIX_SUMMARY>(info, smem, distc, idxc);
-}
-
-// UPDATE COLS where PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
-          typename DISTANCE_TYPE>
-__device__ inline void update_cols(
-    SCAMPThreadInfo<ACCUM_TYPE> info,
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_APPROX_ALL_NEIGHBORS>
-        smem,
-    DISTANCE_TYPE distc[7], unsigned int idxc[7]) {
-  update_cols_std<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-                  PROFILE_TYPE_APPROX_ALL_NEIGHBORS>(info, smem, distc, idxc);
-}
-
-// UPDATE_COLS where PROFILE_TYPE == PROFILE_TYPE_1NN
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
-          typename DISTANCE_TYPE>
-__device__ inline void update_cols(
-    SCAMPThreadInfo<ACCUM_TYPE> info,
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_1NN> smem,
-    DISTANCE_TYPE distc[7], unsigned int idxc[7]) {
-  int c = info.local_col >> 2;
-  float4 mp_col_check1, mp_col_check2;
-  float mp_col_check[7];
-
-  // Load the best-so-far values 4 at a time to reduce latency
-  mp_col_check1 = reinterpret_cast<float4 *>(smem.local_mp_col)[c];
-  mp_col_check2 = reinterpret_cast<float4 *>(smem.local_mp_col)[c + 1];
-
-  // Rename to array layout for loop
-  mp_col_check[0] = mp_col_check1.x;
-  mp_col_check[1] = mp_col_check1.y;
-  mp_col_check[2] = mp_col_check1.z;
-  mp_col_check[3] = mp_col_check1.w;
-  mp_col_check[4] = mp_col_check2.x;
-  mp_col_check[5] = mp_col_check2.y;
-  mp_col_check[6] = mp_col_check2.z;
-
-// Check the best-so-far column and update distance if necessary
-#pragma unroll 7
-  for (int i = 0; i < 7; ++i) {
-    fAtomicMax_check<ATOMIC_BLOCK>(smem.local_mp_col + info.local_col + i,
-                                   distc[i], mp_col_check[i]);
-  }
-}
-
-// UPDATE COLS where PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
-          typename DISTANCE_TYPE>
-__device__ inline void update_cols(
-    SCAMPThreadInfo<ACCUM_TYPE> info,
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_SUM_THRESH> smem,
-    DISTANCE_TYPE distc[7], unsigned int idxc[7]) {
-// Add the current sum that this thread has computed to the shared sum across
-// the entire thread block
-#pragma unroll 7
-  for (int i = 0; i < 7; ++i) {
-    do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_BLOCK>(
-        smem.local_mp_col + info.local_col + i, distc[i]);
-  }
-}
 
 /////////////////////////////////////////////////////
 // DO_ROW:
@@ -409,44 +230,31 @@ __device__ inline void update_cols(
 // you are sure you know what you are doing as it is templated and used by ALL
 // profile computations.
 //////////////////////////////////////////////////////////
-template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
-          typename ACCUM_TYPE, typename DISTANCE_TYPE, bool COMPUTE_ROWS,
-          bool COMPUTE_COLS, SCAMPProfileType PROFILE_TYPE>
+template <int iter, SCAMPProfileType PROFILE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS, typename PROFILE_DATA_TYPE, typename DISTANCE_TYPE, typename DATA_TYPE, typename SMEM_TYPE, typename Derived7Dist, typename Derived7, typename Derived4, typename Derived4f, typename Derived7uint>
 __device__ inline FORCE_INLINE void do_row(
-    SCAMPThreadInfo<ACCUM_TYPE> &info, DISTANCE_TYPE distc[7],
-    const DATA_TYPE inormc[7], const DATA_TYPE dfc[7], const DATA_TYPE dgc[7],
-    const DATA_TYPE inormr[4], const DATA_TYPE dfr[4], const DATA_TYPE dgr[4],
-    const float curr_mp_row_val[4], unsigned int idxc[7],
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> smem,
+    SCAMPThreadInfo<DATA_TYPE> &info, Eigen::ArrayBase<Derived7Dist>& distc,
+    const Eigen::ArrayBase<Derived7>& inormc, const Eigen::ArrayBase<Derived7>& dfc, const Eigen::ArrayBase<Derived7>& dgc,
+    const Eigen::ArrayBase<Derived4>& inormr, const Eigen::ArrayBase<Derived4>& dfr, const Eigen::ArrayBase<Derived4>& dgr,
+    const Eigen::ArrayBase<Derived4f>& curr_mp_row_val, Eigen::ArrayBase<Derived7uint>& idxc,
+    SMEM_TYPE smem,
     OptionalArgs args) {
-  DISTANCE_TYPE dist[4];
-
   // Compute the correlation values for the current tile row
-  dist[0] = info.cov1 * inormc[iter] * inormr[iter];
-  dist[1] = info.cov2 * inormc[iter + 1] * inormr[iter];
-  dist[2] = info.cov3 * inormc[iter + 2] * inormr[iter];
-  dist[3] = info.cov4 * inormc[iter + 3] * inormr[iter];
+  auto dist = (info.cov * inormc.segment<4>(iter) * inormr[iter]).template cast<DISTANCE_TYPE>();
+  // Compute the next covariance values and update for the next iteration.
+  info.cov += dfc.segment<4>(iter) * dgr[iter] + dgc.segment<4>(iter) * dfr[iter];
 
-  // Compute the next covariance values and update our registers for the next
-  // iteration
-  info.cov1 = info.cov1 + dfc[iter] * dgr[iter] + dgc[iter] * dfr[iter];
-  info.cov2 = info.cov2 + dfc[iter + 1] * dgr[iter] + dgc[iter + 1] * dfr[iter];
-  info.cov3 = info.cov3 + dfc[iter + 2] * dgr[iter] + dgc[iter + 2] * dfr[iter];
-  info.cov4 = info.cov4 + dfc[iter + 3] * dgr[iter] + dgc[iter + 3] * dfr[iter];
-
-  // Perform any profile-specific distance calculations
   // Update the column best-so-far values
   if (COMPUTE_COLS) {
-    merge_to_column<iter, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE,
-                    DISTANCE_TYPE>(info, smem, distc, dist, idxc, args);
+    merge_to_column<iter, PROFILE_TYPE>(info, smem, distc, dist, idxc, args);
   }
 
   // Perform any updates for this tile row and commit to the shared-memory
   // matrix profile
   if (COMPUTE_ROWS) {
-    update_row<iter, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE>(
+    update_row<iter, PROFILE_TYPE, DISTANCE_TYPE, PROFILE_DATA_TYPE>(
         info, smem, dist, curr_mp_row_val[iter], args);
   }
+
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -476,142 +284,57 @@ __device__ inline FORCE_INLINE void do_row(
 // computation. If you have an optimization for this segment of code, it will
 // make ALL profiles faster.
 
-template <typename DATA_TYPE, typename VEC2_DATA_TYPE, typename VEC4_DATA_TYPE,
-          typename ACCUM_TYPE, typename PROFILE_DATA_TYPE,
+
+
+template <typename SMEM_TYPE, typename DATA_TYPE,
+          typename PROFILE_DATA_TYPE,
           typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
           SCAMPProfileType PROFILE_TYPE>
 void __device__
-do_iteration_fast(SCAMPThreadInfo<ACCUM_TYPE> &info,
-                  SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
+do_iteration_fast(SCAMPThreadInfo<DATA_TYPE> &info,
+                  SMEM_TYPE &smem,
                   OptionalArgs &args) {
-  // Load row values 4 at a time, load column values 4 at a time
-  int r = info.local_row >> 2;
-  int c = info.local_col >> 2;
-
   // Arrays to store thread local variables, 7 columns, 4 rows
-  DATA_TYPE dfc[7], dgc[7], inormc[7];
-  DATA_TYPE dgr[4], dfr[4], inormr[4];
-  float mp_row_check[4];
+  Eigen::Array<DATA_TYPE, 7, 1> dfc, dgc, inormc;
+  Eigen::Array4<DATA_TYPE> dgr, dfr, inormr;
+  Eigen::Array4<float> mp_row_check;
   DISTANCE_TYPE init = init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
-  DISTANCE_TYPE distc[7] = {init, init, init, init, init, init, init};
-  unsigned int idxc[7];
+  Eigen::Array<DISTANCE_TYPE, 7, 1> distc = Eigen::Array<DISTANCE_TYPE, 7, 1>::Constant(init);
+  Eigen::Array<unsigned int, 7 , 1> idxc;
 
-  // Preload the shared memory values we will use into registers using
-  // vectorized loads
-  VEC4_DATA_TYPE dfc_temp = reinterpret_cast<VEC4_DATA_TYPE *>(smem.df_col)[c];
-  VEC4_DATA_TYPE dgc_temp = reinterpret_cast<VEC4_DATA_TYPE *>(smem.dg_col)[c];
-  VEC4_DATA_TYPE inormc_temp =
-      (reinterpret_cast<VEC4_DATA_TYPE *>(smem.inorm_col)[c]);
+  dfc = smem.df_col.segment<7>(info.local_col);
+  dgc = smem.dg_col.segment<7>(info.local_col);
+  inormc = smem.inorm_col.segment<7>(info.local_col);
 
-  // Rename to array structure for ease of use
-  dfc[0] = dfc_temp.x;
-  dfc[1] = dfc_temp.y;
-  dfc[2] = dfc_temp.z;
-  dfc[3] = dfc_temp.w;
-  dgc[0] = dgc_temp.x;
-  dgc[1] = dgc_temp.y;
-  dgc[2] = dgc_temp.z;
-  dgc[3] = dgc_temp.w;
-  inormc[0] = inormc_temp.x;
-  inormc[1] = inormc_temp.y;
-  inormc[2] = inormc_temp.z;
-  inormc[3] = inormc_temp.w;
-
-  // Preload the shared memory values we will use into registers using
-  // vectorized loads
-  dfc_temp = reinterpret_cast<VEC4_DATA_TYPE *>(smem.df_col)[c + 1];
-  dgc_temp = reinterpret_cast<VEC4_DATA_TYPE *>(smem.dg_col)[c + 1];
-  inormc_temp = reinterpret_cast<VEC4_DATA_TYPE *>(smem.inorm_col)[c + 1];
-
-  // Rename to array structure for ease of use
-  dfc[4] = dfc_temp.x;
-  dfc[5] = dfc_temp.y;
-  dfc[6] = dfc_temp.z;
-  dgc[4] = dgc_temp.x;
-  dgc[5] = dgc_temp.y;
-  dgc[6] = dgc_temp.z;
-  inormc[4] = inormc_temp.x;
-  inormc[5] = inormc_temp.y;
-  inormc[6] = inormc_temp.z;
-
-  // Preload the shared memory values we will use into registers using
-  // vectorized loads
-  VEC4_DATA_TYPE dgr_temp = reinterpret_cast<VEC4_DATA_TYPE *>(smem.dg_row)[r];
-  VEC4_DATA_TYPE dfr_temp = reinterpret_cast<VEC4_DATA_TYPE *>(smem.df_row)[r];
-  VEC4_DATA_TYPE inormr_temp =
-      reinterpret_cast<VEC4_DATA_TYPE *>(smem.inorm_row)[r];
-
-  // Rename to array structure
-  dfr[0] = dfr_temp.x;
-  dfr[1] = dfr_temp.y;
-  dfr[2] = dfr_temp.z;
-  dfr[3] = dfr_temp.w;
-  dgr[0] = dgr_temp.x;
-  dgr[1] = dgr_temp.y;
-  dgr[2] = dgr_temp.z;
-  dgr[3] = dgr_temp.w;
-  inormr[0] = inormr_temp.x;
-  inormr[1] = inormr_temp.y;
-  inormr[2] = inormr_temp.z;
-  inormr[3] = inormr_temp.w;
+  dfr = smem.df_row.segment<4>(info.local_row);
+  dgr = smem.dg_row.segment<4>(info.local_row);
+  inormr = smem.inorm_row.segment<4>(info.local_row);
 
   // For NN profiles we need to do a vectorized load to pull the best-so-far
   // values from cache
-  if (COMPUTE_ROWS) {
-    switch (PROFILE_TYPE) {
-      case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
-      case PROFILE_TYPE_MATRIX_SUMMARY:
-      case PROFILE_TYPE_1NN_INDEX: {
-        ulonglong4 mp_row_check_temp;
-        mp_row_check_temp =
-            reinterpret_cast<ulonglong4 *>(smem.local_mp_row)[r];
+  if constexpr (COMPUTE_ROWS) {
+    if constexpr (PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS || PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY || PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX) {
+      Eigen::Array4<PROFILE_DATA_TYPE> temp = smem.local_mp_row.segment<4>(info.local_row);
+      for (int i = 0; i < 4; ++i) {
         mp_entry e;
-        e.ulong = mp_row_check_temp.x;
-        mp_row_check[0] = e.floats[0];
-        e.ulong = mp_row_check_temp.y;
-        mp_row_check[1] = e.floats[0];
-        e.ulong = mp_row_check_temp.z;
-        mp_row_check[2] = e.floats[0];
-        e.ulong = mp_row_check_temp.w;
-        mp_row_check[3] = e.floats[0];
+        e.ulong = temp[i];
+        mp_row_check[i] = e.floats[0];
         break;
       }
-      case PROFILE_TYPE_1NN: {
-        float4 mp_row_check_temp;
-        mp_row_check_temp = reinterpret_cast<float4 *>(smem.local_mp_row)[r];
-        mp_row_check[0] = mp_row_check_temp.x;
-        mp_row_check[1] = mp_row_check_temp.y;
-        mp_row_check[2] = mp_row_check_temp.z;
-        mp_row_check[3] = mp_row_check_temp.w;
-        break;
-      }
-      case PROFILE_TYPE_SUM_THRESH:
-      default:
-        break;
+    } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN) {
+      mp_row_check = smem.local_mp_row.segment<4>(info.local_row);
     }
   }
 
   // Generate and coalesce distances into profile
-  do_row<0, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-         COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE>(
-      info, distc, inormc, dfc, dgc, inormr, dfr, dgr, mp_row_check, idxc, smem,
-      args);
-  do_row<1, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-         COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE>(
-      info, distc, inormc, dfc, dgc, inormr, dfr, dgr, mp_row_check, idxc, smem,
-      args);
-  do_row<2, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-         COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE>(
-      info, distc, inormc, dfc, dgc, inormr, dfr, dgr, mp_row_check, idxc, smem,
-      args);
-  do_row<3, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-         COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE>(
-      info, distc, inormc, dfc, dgc, inormr, dfr, dgr, mp_row_check, idxc, smem,
-      args);
+  do_row<0, PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, PROFILE_DATA_TYPE, DISTANCE_TYPE>(info, distc, inormc, dfc, dgc, inormr, dfr, dgr, mp_row_check, idxc, smem, args);
+  do_row<1, PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, PROFILE_DATA_TYPE, DISTANCE_TYPE>(info, distc, inormc, dfc, dgc, inormr, dfr, dgr, mp_row_check, idxc, smem, args);
+  do_row<2, PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, PROFILE_DATA_TYPE, DISTANCE_TYPE>(info, distc, inormc, dfc, dgc, inormr, dfr, dgr, mp_row_check, idxc, smem, args);
+  do_row<3, PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, PROFILE_DATA_TYPE, DISTANCE_TYPE>(info, distc, inormc, dfc, dgc, inormr, dfr, dgr, mp_row_check, idxc, smem, args);
 
   // Update the column wise matrix profile with the best-so-far
   if (COMPUTE_COLS) {
-    update_cols<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE>(
+    update_cols<PROFILE_TYPE, PROFILE_DATA_TYPE>(
         info, smem, distc, idxc);
   }
 
@@ -626,202 +349,104 @@ do_iteration_fast(SCAMPThreadInfo<ACCUM_TYPE> &info,
 //  EDGE COMPUTATION
 //////////////////////////////////////////////////////////////////////
 
-template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
-          typename ACCUM_TYPE, typename DISTANCE_TYPE, bool COMPUTE_ROWS,
-          bool COMPUTE_COLS, SCAMPProfileType PROFILE_TYPE>
-__device__ inline void reduce_edge_std(
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
-    SCAMPThreadInfo<ACCUM_TYPE> &info, DISTANCE_TYPE dist[4],
-    DISTANCE_TYPE &dist_row, uint32_t &idx_row, int diag, int num_diags, int n,
-    OptionalArgs &args) {
-  if (info.global_col + iter < n && diag + iter < num_diags) {
-    if (COMPUTE_ROWS) {
-      if (dist[iter] > dist_row) {
-        dist_row = dist[iter];
-        idx_row = info.global_col + iter;
-      }
-    }
-    if (COMPUTE_COLS) {
-      MPatomicMax<ATOMIC_BLOCK>(
-          (uint64_t *)(smem.local_mp_col + info.local_col + iter), dist[iter],
-          info.global_row);
-    }
-  }
-}
-
-template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
-          typename ACCUM_TYPE, typename DISTANCE_TYPE, bool COMPUTE_ROWS,
-          bool COMPUTE_COLS>
-__device__ inline void reduce_edge(
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_1NN> &smem,
-    SCAMPThreadInfo<ACCUM_TYPE> &info, DISTANCE_TYPE dist[4],
-    DISTANCE_TYPE &dist_row, uint32_t &idx_row, int diag, int num_diags, int n,
-    OptionalArgs &args) {
-  if (info.global_col + iter < n && diag + iter < num_diags &&
-      !isnan(dist[iter])) {
-    if (COMPUTE_ROWS) {
-      dist_row = fmaxf(dist_row, dist[iter]);
-    }
-    if (COMPUTE_COLS) {
-      fAtomicMax<ATOMIC_BLOCK>(
-          (float *)(smem.local_mp_col + info.local_col + iter), dist[iter]);
-    }
-  }
-}
-
-template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
-          typename ACCUM_TYPE, typename DISTANCE_TYPE, bool COMPUTE_ROWS,
-          bool COMPUTE_COLS>
-__device__ inline void reduce_edge(
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_1NN_INDEX> &smem,
-    SCAMPThreadInfo<ACCUM_TYPE> &info, DISTANCE_TYPE dist[4],
-    DISTANCE_TYPE &dist_row, uint32_t &idx_row, int diag, int num_diags, int n,
-    OptionalArgs &args) {
-  reduce_edge_std<iter, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-                  COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE_1NN_INDEX>(
-      smem, info, dist, dist_row, idx_row, diag, num_diags, n, args);
-}
-
-template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
-          typename ACCUM_TYPE, typename DISTANCE_TYPE, bool COMPUTE_ROWS,
-          bool COMPUTE_COLS>
-__device__ inline void reduce_edge(
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_MATRIX_SUMMARY> &smem,
-    SCAMPThreadInfo<ACCUM_TYPE> &info, DISTANCE_TYPE dist[4],
-    DISTANCE_TYPE &dist_row, uint32_t &idx_row, int diag, int num_diags, int n,
-    OptionalArgs &args) {
-  reduce_edge_std<iter, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-                  COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE_MATRIX_SUMMARY>(
-      smem, info, dist, dist_row, idx_row, diag, num_diags, n, args);
-}
-
-template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
-          typename ACCUM_TYPE, typename DISTANCE_TYPE, bool COMPUTE_ROWS,
-          bool COMPUTE_COLS>
-__device__ inline void reduce_edge(
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_APPROX_ALL_NEIGHBORS>
-        &smem,
-    SCAMPThreadInfo<ACCUM_TYPE> &info, DISTANCE_TYPE dist[4],
-    DISTANCE_TYPE &dist_row, uint32_t &idx_row, int diag, int num_diags, int n,
-    OptionalArgs &args) {
-  reduce_edge_std<iter, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-                  COMPUTE_ROWS, COMPUTE_COLS,
-                  PROFILE_TYPE_APPROX_ALL_NEIGHBORS>(
-      smem, info, dist, dist_row, idx_row, diag, num_diags, n, args);
-}
-
-template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
-          typename ACCUM_TYPE, typename DISTANCE_TYPE, bool COMPUTE_ROWS,
-          bool COMPUTE_COLS>
-__device__ inline void reduce_edge(
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_SUM_THRESH> &smem,
-    SCAMPThreadInfo<ACCUM_TYPE> &info, DISTANCE_TYPE dist[4],
-    DISTANCE_TYPE &dist_row, uint32_t &idx_row, int diag, int num_diags, int n,
-    OptionalArgs &args) {
-  if (info.global_col + iter < n && diag + iter < num_diags) {
-    if (dist[iter] > args.threshold) {
-      if (COMPUTE_ROWS) {
-        dist_row += dist[iter];
-      }
-      if (COMPUTE_COLS) {
-        do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_BLOCK>(
-            smem.local_mp_col + info.local_col + iter, dist[iter]);
-      }
-    }
-  }
-}
-
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE,
-          typename DISTANCE_TYPE>
+template <SCAMPProfileType PROFILE_TYPE, typename PROFILE_DATA_TYPE, typename DerivedDist, typename DerivedSmemType>
 __device__ inline void reduce_row(
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_SUM_THRESH> &smem,
-    int row, DISTANCE_TYPE dist_row, uint32_t idx_row) {
-  do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_BLOCK>(smem.local_mp_row + row,
+    DerivedSmemType smem,
+    int row, DerivedDist dist_row, uint32_t idx_row) {
+  if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN) {
+    fAtomicMax<ATOMIC_BLOCK>((float *)(smem.local_mp_row.data() + row), dist_row);
+  } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX || PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY || PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
+    MPatomicMax<ATOMIC_BLOCK>((uint64_t *)(smem.local_mp_row.data() + row), dist_row,
+                            idx_row);
+  } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
+    do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_BLOCK>(smem.local_mp_row.data() + row,
                                                 dist_row);
+  } else {
+    // Unimplemented.
+  }
 }
 
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE,
-          typename DISTANCE_TYPE>
-__device__ inline void reduce_row(
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_1NN> &smem, int row,
-    DISTANCE_TYPE dist_row, uint32_t idx_row) {
-  fAtomicMax<ATOMIC_BLOCK>((float *)(smem.local_mp_row + row), dist_row);
+template <int iter, SCAMPProfileType PROFILE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS, typename PROFILE_DATA_TYPE,
+          typename DerivedSmemType, typename DerivedDataType, typename DerivedDist, typename DerivedDist4>
+__device__ inline void reduce_edge(
+    DerivedSmemType smem,
+    SCAMPThreadInfo<DerivedDataType> &info, Eigen::ArrayBase<DerivedDist4>& dist,
+    DerivedDist &dist_row, uint32_t &idx_row, int diag, int num_diags, int n,
+    OptionalArgs &args) {
+  // Check if it is safe to do this iteration (we may have gone over the edge)
+  if (info.global_col + iter < n && diag + iter < num_diags) {
+    if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN) {
+      if (!isnan(dist[iter])) {
+        if constexpr (COMPUTE_ROWS) {
+          dist_row = fmaxf(dist_row, dist[iter]);
+        }
+        if constexpr (COMPUTE_COLS) {
+          fAtomicMax<ATOMIC_BLOCK>(
+              (float *)(smem.local_mp_col.data() + info.local_col + iter), dist[iter]);
+        }
+      }
+    } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX || PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY || PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
+      if constexpr (COMPUTE_ROWS) {
+        if (dist[iter] > dist_row) {
+          dist_row = dist[iter];
+          idx_row = info.global_col + iter;
+        }
+      }
+      if constexpr (COMPUTE_COLS) {
+        MPatomicMax<ATOMIC_BLOCK>(
+            (uint64_t *)(smem.local_mp_col.data() + info.local_col + iter), dist[iter],
+            info.global_row);
+      }
+    } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
+      if (dist[iter] > args.threshold) {
+        if constexpr (COMPUTE_ROWS) {
+          dist_row += dist[iter];
+        }
+        if constexpr (COMPUTE_COLS) {
+          do_atomicAdd<PROFILE_DATA_TYPE, ATOMIC_BLOCK>(
+              smem.local_mp_col.data() + info.local_col + iter, dist[iter]);
+        }
+      }
+    } else {
+      // Unimplemented.
+    }
+
+  }
+
 }
 
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE,
-          typename DISTANCE_TYPE>
-__device__ inline void reduce_row(
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_1NN_INDEX> &smem,
-    int row, DISTANCE_TYPE dist_row, uint32_t idx_row) {
-  MPatomicMax<ATOMIC_BLOCK>((uint64_t *)(smem.local_mp_row + row), dist_row,
-                            idx_row);
-}
 
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE,
-          typename DISTANCE_TYPE>
-__device__ inline void reduce_row(
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_MATRIX_SUMMARY> &smem,
-    int row, DISTANCE_TYPE dist_row, uint32_t idx_row) {
-  MPatomicMax<ATOMIC_BLOCK>((uint64_t *)(smem.local_mp_row + row), dist_row,
-                            idx_row);
-}
 
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE,
-          typename DISTANCE_TYPE>
-__device__ inline void reduce_row(
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE_APPROX_ALL_NEIGHBORS>
-        &smem,
-    int row, DISTANCE_TYPE dist_row, uint32_t idx_row) {
-  MPatomicMax<ATOMIC_BLOCK>((uint64_t *)(smem.local_mp_row + row), dist_row,
-                            idx_row);
-}
-
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
-          typename DISTANCE_TYPE, SCAMPProfileType PROFILE_TYPE,
-          bool COMPUTE_ROWS, bool COMPUTE_COLS>
+template <SCAMPProfileType PROFILE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS, typename DISTANCE_TYPE, typename PROFILE_DATA_TYPE, typename DerivedSmemType, typename DerivedDataType>
 __device__ inline void do_row_edge(
-    SCAMPThreadInfo<ACCUM_TYPE> &info,
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem, int n,
+    SCAMPThreadInfo<DerivedDataType> &info,
+    DerivedSmemType smem, int n,
     int diag, int num_diags, OptionalArgs &args) {
   DISTANCE_TYPE dist_row = init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
-  DISTANCE_TYPE dist[4];
+  auto distc = Eigen::Array4<DISTANCE_TYPE>::Constant(dist_row);
+  Eigen::Array4<DISTANCE_TYPE> dist;
   int col = info.local_col;
   int row = info.local_row;
   uint32_t idx_row = 0;
-  DATA_TYPE inormr = smem.inorm_row[row];
-  DATA_TYPE dgr = smem.dg_row[row];
-  DATA_TYPE dfr = smem.df_row[row];
+
+
+  DerivedDataType inormr = smem.inorm_row[row];
+  DerivedDataType dgr = smem.dg_row[row];
+  DerivedDataType dfr = smem.df_row[row];
 
   // Compute the next set of distances (row y)
-  dist[0] = info.cov1 * smem.inorm_col[col] * inormr;
-  dist[1] = info.cov2 * smem.inorm_col[col + 1] * inormr;
-  dist[2] = info.cov3 * smem.inorm_col[col + 2] * inormr;
-  dist[3] = info.cov4 * smem.inorm_col[col + 3] * inormr;
+  dist = (info.cov * smem.inorm_col.segment<4>(col) * inormr).template cast<DISTANCE_TYPE>();
 
   // Update cov and compute the next distance values (row y)
-  info.cov1 = info.cov1 + smem.df_col[col] * dgr + smem.dg_col[col] * dfr;
-  info.cov2 =
-      info.cov2 + smem.df_col[col + 1] * dgr + smem.dg_col[col + 1] * dfr;
-  info.cov3 =
-      info.cov3 + smem.df_col[col + 2] * dgr + smem.dg_col[col + 2] * dfr;
-  info.cov4 =
-      info.cov4 + smem.df_col[col + 3] * dgr + smem.dg_col[col + 3] * dfr;
+  info.cov += smem.df_col.segment<4>(col) * dgr + smem.dg_col.segment<4>(col) * dfr;
 
-  reduce_edge<0, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-              COMPUTE_ROWS, COMPUTE_COLS>(smem, info, dist, dist_row, idx_row,
-                                          diag, num_diags, n, args);
-  reduce_edge<1, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-              COMPUTE_ROWS, COMPUTE_COLS>(smem, info, dist, dist_row, idx_row,
-                                          diag, num_diags, n, args);
-  reduce_edge<2, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-              COMPUTE_ROWS, COMPUTE_COLS>(smem, info, dist, dist_row, idx_row,
-                                          diag, num_diags, n, args);
-  reduce_edge<3, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-              COMPUTE_ROWS, COMPUTE_COLS>(smem, info, dist, dist_row, idx_row,
-                                          diag, num_diags, n, args);
+  reduce_edge<0, PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, PROFILE_DATA_TYPE>(smem, info, dist, dist_row, idx_row, diag, num_diags, n, args);
+  reduce_edge<1, PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, PROFILE_DATA_TYPE>(smem, info, dist, dist_row, idx_row, diag, num_diags, n, args);
+  reduce_edge<2, PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, PROFILE_DATA_TYPE>(smem, info, dist, dist_row, idx_row, diag, num_diags, n, args);
+  reduce_edge<3, PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, PROFILE_DATA_TYPE>(smem, info, dist, dist_row, idx_row, diag, num_diags, n, args);
 
   if (COMPUTE_ROWS) {
-    reduce_row<DATA_TYPE, PROFILE_DATA_TYPE, DISTANCE_TYPE>(smem, row, dist_row,
+    reduce_row<PROFILE_TYPE, PROFILE_DATA_TYPE>(smem, row, dist_row,
                                                             idx_row);
   }
 }

@@ -7,7 +7,108 @@
 #include "kernel_gpu_utils.h"
 #include "kernels.h"
 
+#include <Eigen/Core>
+
 namespace SCAMP {
+
+template<class T, std::size_t alignment>
+__device__
+T* align_array(std::size_t n_elements, char*& ptr,
+      std::size_t* space=nullptr) noexcept
+{
+    const std::uintptr_t intptr = reinterpret_cast<uintptr_t>(ptr);
+    const std::uintptr_t aligned = (intptr + alignment - 1) & -alignment;
+    const std::uintptr_t end = aligned + n_elements * sizeof(T);
+    if(space)
+        *space += static_cast<std::size_t>(end - intptr);
+    ptr = reinterpret_cast<char*>(end);
+    return reinterpret_cast<T*>(aligned);
+}
+
+template<typename T>
+__device__ constexpr int getAlignment() {
+  return sizeof(T) * 4;
+}
+
+template<typename T>
+__device__ constexpr Eigen::AlignmentType getEigenAlignment() {
+  constexpr int align = getAlignment<T>();
+  if constexpr (align == 128) {
+    return Eigen::Aligned128;
+  } else if constexpr (align == 64) {
+    return Eigen::Aligned64;
+  } else if constexpr (align == 32) {
+    return Eigen::Aligned32;
+  } else if constexpr (align == 16) {
+    return Eigen::Aligned16;
+  } else if constexpr (align == 8) {
+    return Eigen::Aligned8;
+  } else {
+    return Eigen::Unaligned;
+  }
+}
+
+// Structure which manages shared memory on the GPU and automatically allocates
+// appropriate segments in memory for variables used by the kernel
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, SCAMPProfileType type, int tile_width, int tile_height>
+struct SCAMPSmem {
+  __device__ SCAMPSmem(char *smem, bool compute_rows, bool compute_columns, int extra_operands);
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>, getEigenAlignment<DATA_TYPE>()> df_col;
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>, getEigenAlignment<DATA_TYPE>()> dg_col;
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>, getEigenAlignment<DATA_TYPE>()> inorm_col;
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>, getEigenAlignment<DATA_TYPE>()> df_row;
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>, getEigenAlignment<DATA_TYPE>()> dg_row;
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>, getEigenAlignment<DATA_TYPE>()> inorm_row;
+  Eigen::Map<Eigen::Array<PROFILE_DATA_TYPE, tile_width, 1>, getEigenAlignment<PROFILE_DATA_TYPE>()> local_mp_col;
+  Eigen::Map<Eigen::Array<PROFILE_DATA_TYPE, tile_height, 1>, getEigenAlignment<PROFILE_DATA_TYPE>()> local_mp_row;
+
+  uint64_t *profile_a_length;
+  uint64_t *profile_b_length;
+};
+
+
+
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, SCAMPProfileType type, int tile_width, int tile_height>
+__device__ SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, type, tile_width, tile_height>::SCAMPSmem(
+    char *smem, bool compute_rows, bool compute_columns, int extra_operands) :
+  df_col(nullptr), dg_col(nullptr), inorm_col(nullptr), df_row(nullptr), dg_row(nullptr), inorm_row(nullptr), local_mp_col(nullptr), local_mp_row(nullptr) {
+  typedef decltype(df_col) WideArray;
+  typedef decltype(df_row) TallArray;
+
+  constexpr int align_data_bytes = getEigenAlignment<DATA_TYPE>();
+  constexpr int align_profile_bytes = getEigenAlignment<PROFILE_DATA_TYPE>();
+
+  new (&df_col) WideArray(align_array<DATA_TYPE, align_data_bytes>(tile_width, smem));
+  new (&dg_col) WideArray(align_array<DATA_TYPE, align_data_bytes>(tile_width, smem));
+  new (&inorm_col) WideArray(align_array<DATA_TYPE, align_data_bytes>(tile_width, smem));
+  new (&df_row) TallArray(align_array<DATA_TYPE, align_data_bytes>(tile_height, smem));
+  new (&dg_row) TallArray(align_array<DATA_TYPE, align_data_bytes>(tile_height, smem));
+  new (&inorm_row) TallArray(align_array<DATA_TYPE, align_data_bytes>(tile_height, smem));
+
+  if (compute_columns) {
+    new (&local_mp_col) decltype(local_mp_col)(align_array<PROFILE_DATA_TYPE, align_profile_bytes>(tile_width, smem));
+  }
+  if (compute_rows) {
+    new (&local_mp_row) decltype(local_mp_row)(align_array<PROFILE_DATA_TYPE, align_profile_bytes>(tile_height, smem));
+  }
+  if (NeedsCheckIfDone(type)) {
+    profile_a_length = reinterpret_cast<uint64_t*>(smem);
+    smem += sizeof(uint64_t);
+    profile_b_length = reinterpret_cast<uint64_t*>(smem);
+  } else {
+    profile_a_length = nullptr;
+    profile_b_length = nullptr;
+  }
+}
+
+template <typename DATA_TYPE>
+struct SCAMPThreadInfo {
+  Eigen::Array<DATA_TYPE, 4, 1> cov;
+  uint32_t local_row;
+  uint32_t local_col;
+  uint32_t global_row;
+  uint32_t global_col;
+};
 
 /////////////////////////////////////////////////////////////////////////////////////
 //     THESE HEADERS DEFINE COMPUTE STRATEGIES USED TO COMPUTE VARIOUS
@@ -19,8 +120,7 @@ namespace SCAMP {
 
 // Computes the matrix profile given the sliding dot products for the first
 // query and the precomputed data statisics
-template <typename DATA_TYPE, typename VEC2_DATA_TYPE, typename VEC4_DATA_TYPE,
-          typename ACCUM_TYPE, typename PROFILE_OUTPUT_TYPE,
+template <typename DATA_TYPE, typename PROFILE_OUTPUT_TYPE,
           typename PROFILE_DATA_TYPE, typename DISTANCE_TYPE, bool COMPUTE_ROWS,
           bool COMPUTE_COLS, SCAMPProfileType PROFILE_TYPE, int blocks_per_sm,
           int tile_height, int BLOCKSZ>
@@ -29,15 +129,14 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
             PROFILE_OUTPUT_TYPE *profile_B) {
   constexpr int tile_width = tile_height + BLOCKSZ * DIAGS_PER_THREAD;
 
-  SCAMPThreadInfo<ACCUM_TYPE> thread_info;
+  SCAMPThreadInfo<DATA_TYPE> thread_info;
 
   extern __shared__ char smem_raw[];
 
   // Wrap the shared memory in  a struct which contains handles shared memory
   // accesses
-  SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> smem(
-      smem_raw, COMPUTE_ROWS, COMPUTE_COLS, tile_width, tile_height,
-      args.opt.num_extra_operands);
+  SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE, tile_width, tile_height> smem(
+      smem_raw, COMPUTE_ROWS, COMPUTE_COLS, args.opt.num_extra_operands);
 
   // Find the starting diagonal of the distance matrix
   const unsigned int start_diag = args.exclusion_lower +
@@ -47,7 +146,7 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
   // This is the index of the meta-diagonal that this thread block will work on
   const unsigned int meta_diagonal_idx = blockIdx.x;
 
-  // The first diagonals constitiure a trivial match between the same
+  // The first diagonals constitiute a trivial match between the same
   // subsequence, we must exclude these from the calculation according to
   // args.exclusion_lower
   uint32_t tile_start_col =
@@ -64,19 +163,19 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
 
   // Load the first dot product values
   if (thread_info.global_col < args.n_x) {
-    thread_info.cov1 = args.cov[thread_info.global_col];
+    thread_info.cov[0] = args.cov[thread_info.global_col];
   }
 
   if (thread_info.global_col + 1 < args.n_x) {
-    thread_info.cov2 = args.cov[thread_info.global_col + 1];
+    thread_info.cov[1] = args.cov[thread_info.global_col + 1];
   }
 
   if (thread_info.global_col + 2 < args.n_x) {
-    thread_info.cov3 = args.cov[thread_info.global_col + 2];
+    thread_info.cov[2] = args.cov[thread_info.global_col + 2];
   }
 
   if (thread_info.global_col + 3 < args.n_x) {
-    thread_info.cov4 = args.cov[thread_info.global_col + 3];
+    thread_info.cov[3] = args.cov[thread_info.global_col + 3];
   }
 
   /////////////////////////////////////
@@ -90,8 +189,8 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
   // matrix
   while (tile_start_col < args.n_x && tile_start_row < args.n_y) {
     // Initialize the next tile's shared memory
-    init_smem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_OUTPUT_TYPE, COMPUTE_ROWS,
-              COMPUTE_COLS, tile_width, tile_height, BLOCKSZ>(
+    init_smem<decltype(smem), PROFILE_DATA_TYPE, PROFILE_OUTPUT_TYPE, COMPUTE_ROWS,
+              COMPUTE_COLS, tile_width, tile_height, BLOCKSZ, PROFILE_TYPE>(
         args, smem, profile_A, profile_B, tile_start_col, tile_start_row);
     thread_info.local_col = threadIdx.x * DIAGS_PER_THREAD;
     thread_info.local_row = 0;
@@ -107,19 +206,17 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
         start_diag + DIAGS_PER_THREAD <= num_diags) {
       // Fast Path
       while (thread_info.local_row < tile_height) {
-        do_iteration_fast<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
+        do_iteration_fast<decltype(smem), DATA_TYPE, 
                           PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS,
                           COMPUTE_COLS, PROFILE_TYPE>(thread_info, smem,
                                                       args.opt);
       }
-
     } else if (start_diag < num_diags) {
       // Slow Path
       while (thread_info.global_col < args.n_x &&
              thread_info.global_row < args.n_y &&
              thread_info.local_row < tile_height) {
-        do_row_edge<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-                    PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS>(
+        do_row_edge<PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, DISTANCE_TYPE, PROFILE_DATA_TYPE>(
             thread_info, smem, args.n_x, start_diag, num_diags, args.opt);
         ++thread_info.global_col;
         ++thread_info.global_row;
@@ -133,8 +230,7 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
     __syncthreads();
 
     // Write back our best-so-far computed for this tile to global memory
-    write_back<DATA_TYPE, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE, COMPUTE_COLS,
-               COMPUTE_ROWS, tile_width, tile_height, BLOCKSZ>(
+    write_back<PROFILE_TYPE, COMPUTE_COLS, COMPUTE_ROWS, BLOCKSZ, tile_width, tile_height>(
         args, smem, tile_start_col, tile_start_row, args.n_x, args.n_y,
         profile_A, profile_B);
 
@@ -183,27 +279,20 @@ SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
     switch (fp_type) {
       case PRECISION_ULTRA:
       case PRECISION_DOUBLE: {
-        do_tile<double, double2, double4, double, PROFILE_OUTPUT_TYPE,
+        do_tile<double, PROFILE_OUTPUT_TYPE,
                 PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
                 PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_DP, BLOCKSZ_DP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
-      case PRECISION_MIXED: {
-        do_tile<float, float2, float4, double, PROFILE_OUTPUT_TYPE,
-                PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
-                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP>
-            <<<grid, block, smem, s>>>(args, profile_A, profile_B);
-        break;
-      }
       case PRECISION_SINGLE: {
-        do_tile<float, float2, float4, float, PROFILE_OUTPUT_TYPE,
+        do_tile<float, PROFILE_OUTPUT_TYPE,
                 PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
                 PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
-
+      case PRECISION_MIXED:
       default:
         return SCAMP_CUDA_ERROR;
     }
@@ -214,26 +303,20 @@ SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
     switch (fp_type) {
       case PRECISION_ULTRA:
       case PRECISION_DOUBLE: {
-        do_tile<double, double2, double4, double, PROFILE_OUTPUT_TYPE,
+        do_tile<double, PROFILE_OUTPUT_TYPE,
                 PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
                 PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_DP, BLOCKSZ_DP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
-      case PRECISION_MIXED: {
-        do_tile<float, float2, float4, double, PROFILE_OUTPUT_TYPE,
-                PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
-                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP>
-            <<<grid, block, smem, s>>>(args, profile_A, profile_B);
-        break;
-      }
       case PRECISION_SINGLE: {
-        do_tile<float, float2, float4, float, PROFILE_OUTPUT_TYPE,
+        do_tile<float, PROFILE_OUTPUT_TYPE,
                 PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
                 PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
+      case PRECISION_MIXED:
       default:
         return SCAMP_CUDA_ERROR;
     }
@@ -243,26 +326,20 @@ SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
     switch (fp_type) {
       case PRECISION_ULTRA:
       case PRECISION_DOUBLE: {
-        do_tile<double, double2, double4, double, PROFILE_OUTPUT_TYPE,
+        do_tile<double, PROFILE_OUTPUT_TYPE,
                 PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
                 PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_DP, BLOCKSZ_DP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
-      case PRECISION_MIXED: {
-        do_tile<float, float2, float4, double, PROFILE_OUTPUT_TYPE,
-                PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
-                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP>
-            <<<grid, block, smem, s>>>(args, profile_A, profile_B);
-        break;
-      }
       case PRECISION_SINGLE: {
-        do_tile<float, float2, float4, float, PROFILE_OUTPUT_TYPE,
+        do_tile<float, PROFILE_OUTPUT_TYPE,
                 PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
                 PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
+      case PRECISION_MIXED:
       default:
         return SCAMP_CUDA_ERROR;
     }

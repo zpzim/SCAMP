@@ -1,5 +1,13 @@
 include(SCAMPMacros)
 
+fetch_env(SCAMP_USE_EXTERNAL_EIGEN)
+
+if (SCAMP_USE_EXTERNAL_EIGEN)
+  find_package(Eigen3 3.4.0 REQUIRED NO_MODULE)
+else()
+  add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/eigen ${CMAKE_CURRENT_BINARY_DIR}/eigen)
+endif()
+
 # Build targets for computing Sliding Dot Product.
 add_library(qt_helper ${CMAKE_CURRENT_SOURCE_DIR}/qt_helper.cpp)
 
@@ -17,7 +25,7 @@ if (CMAKE_CUDA_COMPILER)
   add_library(gpu_utils ${CMAKE_CURRENT_SOURCE_DIR}/kernel_gpu_utils.cu)
   target_link_libraries(gpu_utils kernel_common)
   add_library(gpu_kernels ${CMAKE_CURRENT_SOURCE_DIR}/kernels.cu)
-  target_link_libraries(gpu_kernels gpu_utils kernel_common common)
+  target_link_libraries(gpu_kernels gpu_utils kernel_common common Eigen3::Eigen)
 endif()
 
 add_library(cpu_stats ${CMAKE_CURRENT_SOURCE_DIR}/cpu_stats.cpp)
