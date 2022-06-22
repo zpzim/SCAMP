@@ -9,7 +9,6 @@
 #include "common/scamp_exception.h"
 
 #ifdef _CUFFT_H_
-
 // cuFFT API errors
 static const char *_cudaGetErrorEnum(cufftResult error) {
   switch (error) {

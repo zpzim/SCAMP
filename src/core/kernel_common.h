@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/common.h"
+#include "defines.h"
 #include "tile.h"
 
 namespace SCAMP {

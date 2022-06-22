@@ -2,8 +2,8 @@
 #include <thrust/execution_policy.h>
 #include <thrust/sort.h>
 #include <unordered_map>
-#include "defines.h"
-#include "kernel_common.h"
+#include "core/defines.h"
+#include "core/kernel_common.h"
 #include "kernel_gpu_utils.h"
 #include "kernels.h"
 
@@ -353,7 +353,7 @@ SCAMPError_t compute_gpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
                                               void *profile_b, bool do_rows,
                                               bool do_cols) {
   int exclusion_total = args.exclusion_lower + args.exclusion_upper;
-  uint64_t blocksz = get_blocksz(t);
+  uint64_t blocksz = get_blocksz(t->info()->fp_type);
   uint64_t num_workers = ceil((args.n_x - exclusion_total) /
                               static_cast<double>(DIAGS_PER_THREAD));
   uint64_t num_blocks = ceil(num_workers / static_cast<double>(blocksz));

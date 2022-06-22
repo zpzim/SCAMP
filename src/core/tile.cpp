@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <functional>
 #ifdef _HAS_CUDA_
-#include "kernels.h"
+#include "gpu_kernel/kernels.h"
 #endif
 #include "cpu_kernel/kernel_dispatcher.h"
 

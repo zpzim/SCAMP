@@ -2,7 +2,7 @@
 #include <cuda.h>
 #include <float.h>
 #include "common/common.h"
-#include "tile.h"
+#include "core/tile.h"
 
 namespace SCAMP {
 

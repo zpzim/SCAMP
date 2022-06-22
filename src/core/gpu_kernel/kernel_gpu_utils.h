@@ -1,6 +1,5 @@
 #pragma once
 #include "common/common.h"
-#include "tile.h"
 
 
 #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 600
@@ -49,7 +48,7 @@ HOST_DEVICE_FUNCTION constexpr bool NeedsCheckIfDone(
 size_t GetProfileTypeSizeInternalGPU(SCAMPProfileType type);
 
 // Get the desired block size to launch the kernel with according to tils
-int get_blocksz(Tile *t);
+int get_blocksz(SCAMPPrecisionType fp_type);
 
 // Gets the required amount of shared memory for the kernel
 int get_smem(const OpInfo *info, uint64_t blocksz);

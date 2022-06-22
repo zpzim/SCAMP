@@ -1,7 +1,4 @@
 #pragma once
-
-#include "defines.h"
-
 //////////////////////////////////////////////////////
 // UPDATE_ROW:
 // C: 0 1 2 3 4 5 6
@@ -113,8 +110,7 @@ __device__ inline void merge_to_column(
     Eigen::ArrayBase<Derived7Dist>& best_so_far, const Eigen::ArrayBase<Derived4Dist>& dists_to_merge,
     Eigen::ArrayBase<Derived7uint>& best_so_far_index, const OptionalArgs& args) {
   if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN) {
-    auto slicer = Eigen::seqN(Eigen::fix<iter>, Eigen::fix<4>);
-    best_so_far(slicer) = dists_to_merge.cwiseMax(best_so_far(slicer));
+    best_so_far.segment<4>(iter) = dists_to_merge.cwiseMax(best_so_far.segment<4>(iter));
   } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX || PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY || PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
     #pragma unroll 4
     for (int i = 0; i < 4; ++i) {

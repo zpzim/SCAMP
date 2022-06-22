@@ -3,8 +3,8 @@
 
 namespace SCAMP {
 
-int get_blocksz(Tile *t) {
-  switch (t->info()->fp_type) {
+int get_blocksz(SCAMPPrecisionType fp_type) {
+  switch (fp_type) {
     case PRECISION_ULTRA:
     case PRECISION_DOUBLE:
       return BLOCKSZ_DP;
