@@ -11,111 +11,138 @@
 
 namespace SCAMP {
 
-template<class T, std::size_t alignment>
-__device__
-T* align_array(std::size_t n_elements, char*& ptr,
-      std::size_t* space=nullptr) noexcept
-{
-    const std::uintptr_t intptr = reinterpret_cast<uintptr_t>(ptr);
-    const std::uintptr_t aligned = (intptr + alignment - 1) & -alignment;
-    const std::uintptr_t end = aligned + n_elements * sizeof(T);
-    if(space)
-        *space += static_cast<std::size_t>(end - intptr);
-    ptr = reinterpret_cast<char*>(end);
-    return reinterpret_cast<T*>(aligned);
+template <class T, std::size_t alignment>
+__device__ T *align_array(std::size_t n_elements, char *&ptr,
+                          std::size_t *space = nullptr) noexcept {
+  const std::uintptr_t intptr = reinterpret_cast<uintptr_t>(ptr);
+  const std::uintptr_t aligned = (intptr + alignment - 1) & -alignment;
+  const std::uintptr_t end = aligned + n_elements * sizeof(T);
+  if (space) *space += static_cast<std::size_t>(end - intptr);
+  ptr = reinterpret_cast<char *>(end);
+  return reinterpret_cast<T *>(aligned);
 }
 
-template<typename T>
+template <typename T>
 __device__ constexpr int getAlignment() {
   return sizeof(T) * 2;
 }
 
-template<typename T>
+template <typename T>
 __device__ constexpr Eigen::AlignmentType getEigenAlignment() {
   return Eigen::Unaligned;
-/*
-  constexpr int align = getAlignment<T>();
-  if constexpr (align == 128) {
-    return Eigen::Aligned128;
-  } else if constexpr (align == 64) {
-    return Eigen::Aligned64;
-  } else if constexpr (align == 32) {
-    return Eigen::Aligned32;
-  } else if constexpr (align == 16) {
-    return Eigen::Aligned16;
-  } else if constexpr (align == 8) {
-    return Eigen::Aligned8;
-  } else {
-    return Eigen::Unaligned;
-  }
-*/
+  /*
+    constexpr int align = getAlignment<T>();
+    if constexpr (align == 128) {
+      return Eigen::Aligned128;
+    } else if constexpr (align == 64) {
+      return Eigen::Aligned64;
+    } else if constexpr (align == 32) {
+      return Eigen::Aligned32;
+    } else if constexpr (align == 16) {
+      return Eigen::Aligned16;
+    } else if constexpr (align == 8) {
+      return Eigen::Aligned8;
+    } else {
+      return Eigen::Unaligned;
+    }
+  */
 }
 
 // Structure which manages shared memory on the GPU and automatically allocates
 // appropriate segments in memory for variables used by the kernel
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, SCAMPProfileType type, int tile_width, int tile_height>
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, SCAMPProfileType type,
+          int tile_width, int tile_height>
 struct SCAMPSmem {
-  __device__ SCAMPSmem(char *smem, bool compute_rows, bool compute_columns, int extra_operands);
-  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>, getEigenAlignment<DATA_TYPE>()> df_col;
-  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>, getEigenAlignment<DATA_TYPE>()> dg_col;
-  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>, getEigenAlignment<DATA_TYPE>()> inorm_col;
-  Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>, getEigenAlignment<DATA_TYPE>()> df_row;
-  Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>, getEigenAlignment<DATA_TYPE>()> dg_row;
-  Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>, getEigenAlignment<DATA_TYPE>()> inorm_row;
-  Eigen::Map<Eigen::Array<PROFILE_DATA_TYPE, tile_width, 1>, getEigenAlignment<PROFILE_DATA_TYPE>()> local_mp_col;
-  Eigen::Map<Eigen::Array<PROFILE_DATA_TYPE, tile_height, 1>, getEigenAlignment<PROFILE_DATA_TYPE>()> local_mp_row;
+  __device__ SCAMPSmem(char *smem, bool compute_rows, bool compute_columns,
+                       int extra_operands);
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>,
+             getEigenAlignment<DATA_TYPE>()>
+      df_col;
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>,
+             getEigenAlignment<DATA_TYPE>()>
+      dg_col;
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>,
+             getEigenAlignment<DATA_TYPE>()>
+      inorm_col;
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>,
+             getEigenAlignment<DATA_TYPE>()>
+      df_row;
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>,
+             getEigenAlignment<DATA_TYPE>()>
+      dg_row;
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>,
+             getEigenAlignment<DATA_TYPE>()>
+      inorm_row;
+  Eigen::Map<Eigen::Array<PROFILE_DATA_TYPE, tile_width, 1>,
+             getEigenAlignment<PROFILE_DATA_TYPE>()>
+      local_mp_col;
+  Eigen::Map<Eigen::Array<PROFILE_DATA_TYPE, tile_height, 1>,
+             getEigenAlignment<PROFILE_DATA_TYPE>()>
+      local_mp_row;
 
   uint64_t *profile_a_length;
   uint64_t *profile_b_length;
 };
 
-
-
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, SCAMPProfileType type, int tile_width, int tile_height>
-__device__ SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, type, tile_width, tile_height>::SCAMPSmem(
-    char *smem, bool compute_rows, bool compute_columns, int extra_operands) :
-  df_col(nullptr), dg_col(nullptr), inorm_col(nullptr), df_row(nullptr), dg_row(nullptr), inorm_row(nullptr), local_mp_col(nullptr), local_mp_row(nullptr) {
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, SCAMPProfileType type,
+          int tile_width, int tile_height>
+__device__ SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, type, tile_width,
+                     tile_height>::SCAMPSmem(char *smem, bool compute_rows,
+                                             bool compute_columns,
+                                             int extra_operands)
+    : df_col(nullptr),
+      dg_col(nullptr),
+      inorm_col(nullptr),
+      df_row(nullptr),
+      dg_row(nullptr),
+      inorm_row(nullptr),
+      local_mp_col(nullptr),
+      local_mp_row(nullptr) {
   typedef decltype(df_col) WideArray;
   typedef decltype(df_row) TallArray;
 
   constexpr int align_data_bytes = getAlignment<DATA_TYPE>();
   constexpr int align_profile_bytes = getAlignment<PROFILE_DATA_TYPE>();
-/*
-  new (&df_col) WideArray(align_array<DATA_TYPE, align_data_bytes>(tile_width, smem));
-  new (&dg_col) WideArray(align_array<DATA_TYPE, align_data_bytes>(tile_width, smem));
-  new (&inorm_col) WideArray(align_array<DATA_TYPE, align_data_bytes>(tile_width, smem));
-  new (&df_row) TallArray(align_array<DATA_TYPE, align_data_bytes>(tile_height, smem));
-  new (&dg_row) TallArray(align_array<DATA_TYPE, align_data_bytes>(tile_height, smem));
-  new (&inorm_row) TallArray(align_array<DATA_TYPE, align_data_bytes>(tile_height, smem));
-*/
- 
-  new (&df_col) WideArray((DATA_TYPE*)smem);
+  /*
+    new (&df_col) WideArray(align_array<DATA_TYPE, align_data_bytes>(tile_width,
+    smem)); new (&dg_col) WideArray(align_array<DATA_TYPE,
+    align_data_bytes>(tile_width, smem)); new (&inorm_col)
+    WideArray(align_array<DATA_TYPE, align_data_bytes>(tile_width, smem)); new
+    (&df_row) TallArray(align_array<DATA_TYPE, align_data_bytes>(tile_height,
+    smem)); new (&dg_row) TallArray(align_array<DATA_TYPE,
+    align_data_bytes>(tile_height, smem)); new (&inorm_row)
+    TallArray(align_array<DATA_TYPE, align_data_bytes>(tile_height, smem));
+  */
+
+  new (&df_col) WideArray((DATA_TYPE *)smem);
   smem += sizeof(DATA_TYPE) * tile_width;
-  new (&dg_col) WideArray((DATA_TYPE*)smem);
+  new (&dg_col) WideArray((DATA_TYPE *)smem);
   smem += sizeof(DATA_TYPE) * tile_width;
-  new (&inorm_col) WideArray((DATA_TYPE*)smem);
+  new (&inorm_col) WideArray((DATA_TYPE *)smem);
   smem += sizeof(DATA_TYPE) * tile_width;
-  new (&df_row) TallArray((DATA_TYPE*)smem);
+  new (&df_row) TallArray((DATA_TYPE *)smem);
   smem += sizeof(DATA_TYPE) * tile_height;
-  new (&dg_row) TallArray((DATA_TYPE*)smem);
+  new (&dg_row) TallArray((DATA_TYPE *)smem);
   smem += sizeof(DATA_TYPE) * tile_height;
-  new (&inorm_row) TallArray((DATA_TYPE*)smem);
+  new (&inorm_row) TallArray((DATA_TYPE *)smem);
   smem += sizeof(DATA_TYPE) * tile_height;
 
   if (compute_columns) {
-    //new (&local_mp_col) decltype(local_mp_col)(align_array<PROFILE_DATA_TYPE, align_profile_bytes>(tile_width, smem));
-    new (&local_mp_col) decltype(local_mp_col)((PROFILE_DATA_TYPE*)smem);
+    // new (&local_mp_col) decltype(local_mp_col)(align_array<PROFILE_DATA_TYPE,
+    // align_profile_bytes>(tile_width, smem));
+    new (&local_mp_col) decltype(local_mp_col)((PROFILE_DATA_TYPE *)smem);
     smem += sizeof(PROFILE_DATA_TYPE) * tile_width;
   }
   if (compute_rows) {
-    //new (&local_mp_row) decltype(local_mp_row)(align_array<PROFILE_DATA_TYPE, align_profile_bytes>(tile_height, smem));
-    new (&local_mp_row) decltype(local_mp_row)((PROFILE_DATA_TYPE*)smem);
+    // new (&local_mp_row) decltype(local_mp_row)(align_array<PROFILE_DATA_TYPE,
+    // align_profile_bytes>(tile_height, smem));
+    new (&local_mp_row) decltype(local_mp_row)((PROFILE_DATA_TYPE *)smem);
     smem += sizeof(PROFILE_DATA_TYPE) * tile_height;
   }
   if (NeedsCheckIfDone(type)) {
-    profile_a_length = reinterpret_cast<uint64_t*>(smem);
+    profile_a_length = reinterpret_cast<uint64_t *>(smem);
     smem += sizeof(uint64_t);
-    profile_b_length = reinterpret_cast<uint64_t*>(smem);
+    profile_b_length = reinterpret_cast<uint64_t *>(smem);
   } else {
     profile_a_length = nullptr;
     profile_b_length = nullptr;
@@ -156,8 +183,8 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
 
   // Wrap the shared memory in  a struct which contains handles shared memory
   // accesses
-  SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE, tile_width, tile_height> smem(
-      smem_raw, COMPUTE_ROWS, COMPUTE_COLS, args.opt.num_extra_operands);
+  SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE, tile_width, tile_height>
+      smem(smem_raw, COMPUTE_ROWS, COMPUTE_COLS, args.opt.num_extra_operands);
 
   // Find the starting diagonal of the distance matrix
   const unsigned int start_diag = args.exclusion_lower +
@@ -210,9 +237,10 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
   // matrix
   while (tile_start_col < args.n_x && tile_start_row < args.n_y) {
     // Initialize the next tile's shared memory
-    init_smem<decltype(smem), PROFILE_DATA_TYPE, PROFILE_OUTPUT_TYPE, COMPUTE_ROWS,
-              COMPUTE_COLS, tile_width, tile_height, BLOCKSZ, PROFILE_TYPE>(
-        args, smem, profile_A, profile_B, tile_start_col, tile_start_row);
+    init_smem<decltype(smem), PROFILE_DATA_TYPE, PROFILE_OUTPUT_TYPE,
+              COMPUTE_ROWS, COMPUTE_COLS, tile_width, tile_height, BLOCKSZ,
+              PROFILE_TYPE>(args, smem, profile_A, profile_B, tile_start_col,
+                            tile_start_row);
     thread_info.local_col = threadIdx.x * DIAGS_PER_THREAD;
     thread_info.local_row = 0;
 
@@ -227,7 +255,8 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
         start_diag + DIAGS_PER_THREAD < num_diags) {
       // Fast Path
       while (thread_info.local_row < tile_height) {
-        do_iteration_fast<PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, DISTANCE_TYPE>(args, thread_info, smem);
+        do_iteration_fast<PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
+                          DISTANCE_TYPE>(args, thread_info, smem);
       }
     } else if (start_diag < num_diags) {
       // Slow Path
@@ -248,9 +277,9 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
     __syncthreads();
 
     // Write back our best-so-far computed for this tile to global memory
-    write_back<PROFILE_TYPE, COMPUTE_COLS, COMPUTE_ROWS, BLOCKSZ, tile_width, tile_height>(
-        args, smem, tile_start_col, tile_start_row, args.n_x, args.n_y,
-        profile_A, profile_B);
+    write_back<PROFILE_TYPE, COMPUTE_COLS, COMPUTE_ROWS, BLOCKSZ, tile_width,
+               tile_height>(args, smem, tile_start_col, tile_start_row,
+                            args.n_x, args.n_y, profile_A, profile_B);
 
     // Update the tile position
     tile_start_col += tile_height;
@@ -297,16 +326,16 @@ SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
     switch (fp_type) {
       case PRECISION_ULTRA:
       case PRECISION_DOUBLE: {
-        do_tile<double, PROFILE_OUTPUT_TYPE,
-                PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
-                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_DP, BLOCKSZ_DP>
+        do_tile<double, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE, DISTANCE_TYPE,
+                COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
+                TILE_HEIGHT_DP, BLOCKSZ_DP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
       case PRECISION_SINGLE: {
-        do_tile<float, PROFILE_OUTPUT_TYPE,
-                PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
-                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP>
+        do_tile<float, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE, DISTANCE_TYPE,
+                COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
+                TILE_HEIGHT_SP, BLOCKSZ_SP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
@@ -321,16 +350,16 @@ SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
     switch (fp_type) {
       case PRECISION_ULTRA:
       case PRECISION_DOUBLE: {
-        do_tile<double, PROFILE_OUTPUT_TYPE,
-                PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
-                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_DP, BLOCKSZ_DP>
+        do_tile<double, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE, DISTANCE_TYPE,
+                COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
+                TILE_HEIGHT_DP, BLOCKSZ_DP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
       case PRECISION_SINGLE: {
-        do_tile<float, PROFILE_OUTPUT_TYPE,
-                PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
-                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP>
+        do_tile<float, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE, DISTANCE_TYPE,
+                COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
+                TILE_HEIGHT_SP, BLOCKSZ_SP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
@@ -344,16 +373,16 @@ SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
     switch (fp_type) {
       case PRECISION_ULTRA:
       case PRECISION_DOUBLE: {
-        do_tile<double, PROFILE_OUTPUT_TYPE,
-                PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
-                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_DP, BLOCKSZ_DP>
+        do_tile<double, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE, DISTANCE_TYPE,
+                COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
+                TILE_HEIGHT_DP, BLOCKSZ_DP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
       case PRECISION_SINGLE: {
-        do_tile<float, PROFILE_OUTPUT_TYPE,
-                PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
-                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP>
+        do_tile<float, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE, DISTANCE_TYPE,
+                COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, BLOCKSPERSM,
+                TILE_HEIGHT_SP, BLOCKSZ_SP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }

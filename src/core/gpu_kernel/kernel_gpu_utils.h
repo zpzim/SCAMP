@@ -1,7 +1,6 @@
 #pragma once
 #include "common/common.h"
 
-
 #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 600
 // Double atomicAdd is implemented
 #else
@@ -41,7 +40,6 @@ HOST_DEVICE_FUNCTION constexpr bool NeedsCheckIfDone(
     SCAMPProfileType profile_type) {
   return profile_type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS;
 }
-
 
 // Gets the profile element size as used by the GPU kernels
 // This can be different than what is used in the CPU case
