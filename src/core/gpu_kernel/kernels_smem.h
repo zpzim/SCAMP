@@ -193,6 +193,7 @@ __device__ void write_back_value(SCAMPKernelInputArgs<double> &args, int local_p
     }
   } else {
     static_assert(PROFILE_TYPE != -1, "write_back_value not implemented for profile type.");
+  }
 }
 
 template <SCAMPProfileType PROFILE_TYPE, bool COMPUTE_COLS, bool COMPUTE_ROWS, int BLOCKSZ, int TILE_WIDTH, int TILE_HEIGHT, typename DerivedProfile, typename DerivedSmem>
