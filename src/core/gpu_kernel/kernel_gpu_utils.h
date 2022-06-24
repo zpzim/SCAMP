@@ -59,51 +59,6 @@ int GetTileHeight(SCAMPPrecisionType dtype);
 // Gets the size of an element for particular SCAMP precision type
 int FPTypeSize(SCAMPPrecisionType dtype);
 
-// Gets the max of 4 values (avoids returning NaN if any of d1-d4 are NaN)
-template <typename T>
-__device__ inline T max4(const T &d1, const T &d2, const T &d3, const T &d4) {
-  T ret = -2;
-  if (d1 > ret) {
-    ret = d1;
-  }
-  if (d2 > ret) {
-    ret = d2;
-  }
-  if (d3 > ret) {
-    ret = d3;
-  }
-  if (d4 > ret) {
-    ret = d4;
-  }
-  return ret;
-}
-
-// Gets the max of 4 values (avoids returning NaN if any of d1-d4 are NaN)
-// Including the index
-template <typename T>
-__device__ inline T max4_index(const T &d1, const T &d2, const T &d3,
-                               const T &d4, const uint32_t init,
-                               uint32_t &idx) {
-  T ret = -2;
-  if (d1 > ret) {
-    ret = d1;
-    idx = init;
-  }
-  if (d2 > ret) {
-    ret = d2;
-    idx = init + 1;
-  }
-  if (d3 > ret) {
-    ret = d3;
-    idx = init + 2;
-  }
-  if (d4 > ret) {
-    ret = d4;
-    idx = init + 3;
-  }
-  return ret;
-}
-
 /////////////////////////////////////////////
 // Atomic OPs for CUDA kernels
 /////////////////////////////////////////////
@@ -226,10 +181,10 @@ __device__ inline float fAtomicMax(float *addr, float value) {
 template <SCAMPAtomicType type>
 __device__ inline float fAtomicMax_check(float *addr, float value,
                                          float check) {
-  if (value < check) {
-    return check;
+  if (value > check) {
+    return fAtomicMax<type>(addr, value);
   }
-  return fAtomicMax<type>(addr, value);
+  return -2;
 }
 
 // Outputs an 'initial' distance value based on the type of profile being

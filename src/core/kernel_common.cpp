@@ -36,6 +36,7 @@ SCAMPKernelInputArgs<T>::SCAMPKernelInputArgs(Tile *t, bool transpose,
   global_start_col = t->get_tile_col();
   global_start_row = t->get_tile_row();
   has_nan_input = t->has_nan_input();
+  transposed = transpose;
 }
 
 template <typename T>

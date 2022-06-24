@@ -35,6 +35,7 @@ struct SCAMPKernelInputArgs {
   int64_t global_start_col;
   int64_t global_start_row;
   bool has_nan_input;
+  bool transposed;
 
   OptionalArgs opt;
   void Print() const;

@@ -122,16 +122,12 @@ __device__ void init_smem(SCAMPKernelInputArgs<double> &args,
                                      COMPUTE_COLS, tile_width, tile_height,
                                      BLOCKSZ>(
       args, smem, profile_a, profile_b, col_start, row_start);
-    return;
-  }
-  if constexpr (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
+  } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
     init_smem_with_static_initializer<SMEM_TYPE, PROFILE_DATA_TYPE, COMPUTE_ROWS,
                                     COMPUTE_COLS, tile_width, tile_height,
                                     BLOCKSZ>(
       args, smem, col_start, row_start, 0.0);
-    return;
-  }
-  if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
+  } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
     mp_entry e;
     e.floats[0] = args.opt.threshold;
     e.ints[1] = 0;
@@ -139,14 +135,13 @@ __device__ void init_smem(SCAMPKernelInputArgs<double> &args,
                                       COMPUTE_COLS, tile_width, tile_height,
                                       BLOCKSZ>(
         args, smem, col_start, row_start, e.ulong);
-    return;
-  }
-  if constexpr (PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
+  } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
     init_smem_for_all_neighbors<SMEM_TYPE, COMPUTE_ROWS,
                                      COMPUTE_COLS, tile_width, tile_height,
                                      BLOCKSZ>(
       args, smem, col_start, row_start);
-    return;
+  } else {
+    static_assert(PROFILE_TYPE != -1, "init_smem not implemented for profile type.");
   }
   
 }
@@ -196,7 +191,8 @@ __device__ void write_back_value(SCAMPKernelInputArgs<double> &args, int local_p
         profile[pos].col = global_position;
       }
     }
-  }
+  } else {
+    static_assert(PROFILE_TYPE != -1, "write_back_value not implemented for profile type.");
 }
 
 template <SCAMPProfileType PROFILE_TYPE, bool COMPUTE_COLS, bool COMPUTE_ROWS, int BLOCKSZ, int TILE_WIDTH, int TILE_HEIGHT, typename DerivedProfile, typename DerivedSmem>

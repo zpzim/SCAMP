@@ -27,11 +27,13 @@ T* align_array(std::size_t n_elements, char*& ptr,
 
 template<typename T>
 __device__ constexpr int getAlignment() {
-  return sizeof(T) * 4;
+  return sizeof(T) * 2;
 }
 
 template<typename T>
 __device__ constexpr Eigen::AlignmentType getEigenAlignment() {
+  return Eigen::Unaligned;
+/*
   constexpr int align = getAlignment<T>();
   if constexpr (align == 128) {
     return Eigen::Aligned128;
@@ -46,6 +48,7 @@ __device__ constexpr Eigen::AlignmentType getEigenAlignment() {
   } else {
     return Eigen::Unaligned;
   }
+*/
 }
 
 // Structure which manages shared memory on the GPU and automatically allocates
@@ -75,21 +78,39 @@ __device__ SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, type, tile_width, tile_height
   typedef decltype(df_col) WideArray;
   typedef decltype(df_row) TallArray;
 
-  constexpr int align_data_bytes = getEigenAlignment<DATA_TYPE>();
-  constexpr int align_profile_bytes = getEigenAlignment<PROFILE_DATA_TYPE>();
-
+  constexpr int align_data_bytes = getAlignment<DATA_TYPE>();
+  constexpr int align_profile_bytes = getAlignment<PROFILE_DATA_TYPE>();
+/*
   new (&df_col) WideArray(align_array<DATA_TYPE, align_data_bytes>(tile_width, smem));
   new (&dg_col) WideArray(align_array<DATA_TYPE, align_data_bytes>(tile_width, smem));
   new (&inorm_col) WideArray(align_array<DATA_TYPE, align_data_bytes>(tile_width, smem));
   new (&df_row) TallArray(align_array<DATA_TYPE, align_data_bytes>(tile_height, smem));
   new (&dg_row) TallArray(align_array<DATA_TYPE, align_data_bytes>(tile_height, smem));
   new (&inorm_row) TallArray(align_array<DATA_TYPE, align_data_bytes>(tile_height, smem));
+*/
+ 
+  new (&df_col) WideArray((DATA_TYPE*)smem);
+  smem += sizeof(DATA_TYPE) * tile_width;
+  new (&dg_col) WideArray((DATA_TYPE*)smem);
+  smem += sizeof(DATA_TYPE) * tile_width;
+  new (&inorm_col) WideArray((DATA_TYPE*)smem);
+  smem += sizeof(DATA_TYPE) * tile_width;
+  new (&df_row) TallArray((DATA_TYPE*)smem);
+  smem += sizeof(DATA_TYPE) * tile_height;
+  new (&dg_row) TallArray((DATA_TYPE*)smem);
+  smem += sizeof(DATA_TYPE) * tile_height;
+  new (&inorm_row) TallArray((DATA_TYPE*)smem);
+  smem += sizeof(DATA_TYPE) * tile_height;
 
   if (compute_columns) {
-    new (&local_mp_col) decltype(local_mp_col)(align_array<PROFILE_DATA_TYPE, align_profile_bytes>(tile_width, smem));
+    //new (&local_mp_col) decltype(local_mp_col)(align_array<PROFILE_DATA_TYPE, align_profile_bytes>(tile_width, smem));
+    new (&local_mp_col) decltype(local_mp_col)((PROFILE_DATA_TYPE*)smem);
+    smem += sizeof(PROFILE_DATA_TYPE) * tile_width;
   }
   if (compute_rows) {
-    new (&local_mp_row) decltype(local_mp_row)(align_array<PROFILE_DATA_TYPE, align_profile_bytes>(tile_height, smem));
+    //new (&local_mp_row) decltype(local_mp_row)(align_array<PROFILE_DATA_TYPE, align_profile_bytes>(tile_height, smem));
+    new (&local_mp_row) decltype(local_mp_row)((PROFILE_DATA_TYPE*)smem);
+    smem += sizeof(PROFILE_DATA_TYPE) * tile_height;
   }
   if (NeedsCheckIfDone(type)) {
     profile_a_length = reinterpret_cast<uint64_t*>(smem);
@@ -203,21 +224,18 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
     // the last tile in every thread-block will take the slower path (bottom)
     if (tile_start_col + tile_width < args.n_x &&
         tile_start_row + tile_height < args.n_y &&
-        start_diag + DIAGS_PER_THREAD <= num_diags) {
+        start_diag + DIAGS_PER_THREAD < num_diags) {
       // Fast Path
       while (thread_info.local_row < tile_height) {
-        do_iteration_fast<decltype(smem), DATA_TYPE, 
-                          PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS,
-                          COMPUTE_COLS, PROFILE_TYPE>(thread_info, smem,
-                                                      args.opt);
+        do_iteration_fast<PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, DISTANCE_TYPE>(args, thread_info, smem);
       }
     } else if (start_diag < num_diags) {
       // Slow Path
       while (thread_info.global_col < args.n_x &&
              thread_info.global_row < args.n_y &&
              thread_info.local_row < tile_height) {
-        do_row_edge<PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, DISTANCE_TYPE, PROFILE_DATA_TYPE>(
-            thread_info, smem, args.n_x, start_diag, num_diags, args.opt);
+        do_row_edge<PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, DISTANCE_TYPE>(
+            args, thread_info, smem, start_diag, num_diags);
         ++thread_info.global_col;
         ++thread_info.global_row;
         ++thread_info.local_col;
