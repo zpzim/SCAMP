@@ -173,8 +173,9 @@ if (CMAKE_CUDA_COMPILER)
   set(CMAKE_CUDA_STANDARD 17)
   include_directories(${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   set(CUDA_SEPARABLE_COMPILATION ON)
-  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr -lineinfo")
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -lineinfo --expt-relaxed-constexpr --ptxas-options=--warn-on-spills -Xptxas=-warn-lmem-usage -Xptxas=-allow-expensive-optimizations=true")
   set_cuda_architectures()
+
 endif()
 
 if (NOT SCAMP_ENABLE_BINARY_DISTRIBUTION)

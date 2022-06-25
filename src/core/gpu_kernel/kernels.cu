@@ -9,6 +9,11 @@
 
 #include <Eigen/Core>
 
+
+#define EIGEN_DEFAULT_DENSE_INDEX_TYPE int
+#define EIGEN_RUNTIME_NO_MALLOC
+#define EIGEN_DONT_PARALLELIZE
+
 namespace SCAMP {
 
 template <class T, std::size_t alignment>
