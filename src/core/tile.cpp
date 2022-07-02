@@ -34,6 +34,25 @@ std::pair<int, int> Tile::get_exclusion_for_self_join(bool upper_tile) {
   size_t height = get_tile_height() - info_->mp_window + 1;
   exclusion =
       get_exclusion(info_->mp_window, get_tile_col(), get_tile_row() + height);
+  // The main diagonal is handled by the upper tile. Which means that we need to
+  // apply one less diagonal to the exclusion zone for lower tiles.
+  // Transposed tiles are always off the main diag. Since the main diag counts as
+  // the first excluded diagonal (i.e. in an exclusion zone of 1 we only get rid of
+  // the main diagonal.) we need to reduce the amount excluded from transposed
+  // tiles to account for this.
+  // 
+  //
+  //               A A A A T   Legend: A = normal tile, T = Transposed tile 
+  //                 A A A T T  
+  //                   A A T T T  
+  //                     A T T T T
+  //                  ^    A A A A
+  //                  |      A A A
+  //               main diag   A A
+  //                             A
+  if (exclusion > 0) {
+    exclusion--;
+  }
   return std::make_pair(extra_exclusion, exclusion);
 }
 
@@ -131,6 +150,25 @@ std::pair<int, int> Tile::get_exclusion_for_ab_join(bool upper_tile) {
           get_exclusion(info_->mp_window, start_col, start_row + height);
     } else {
       exclusion_upper = 0;
+    }
+    // The main diagonal is handled by the upper tile. Which means that we need to
+    // apply one less diagonal to the exclusion zone for lower tiles.
+    // Transposed tiles are always off the main diag. Since the main diag counts as
+    // the first excluded diagonal (i.e. in an exclusion zone of 1 we only get rid of
+    // the main diagonal.) we need to reduce the amount excluded from transposed
+    // tiles to account for this.
+    // 
+    //
+    //               A A A A T   Legend: A = normal tile, T = Transposed tile 
+    //                 A A A T T  
+    //                   A A T T T  
+    //                     A T T T T
+    //                  ^    A A A A
+    //                  |      A A A
+    //               main diag   A A
+    //                             A
+    if (exclusion_upper > 0) {
+      exclusion_upper--; 
     }
   }
   return std::make_pair(std::max(exclusion_lower, alternative_exclusion_lower),
