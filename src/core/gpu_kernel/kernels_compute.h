@@ -1,24 +1,24 @@
 #pragma once
 
 // Constexpr for loop definition. Unrolled by definition.
-template<std::size_t N>
-struct num { static const constexpr auto value = N; };
+template <std::size_t N>
+struct num {
+  static const constexpr auto value = N;
+};
 
 template <class F, std::size_t... Is>
-__device__ void for_(F func, std::index_sequence<Is...>)
-{
+__device__ void for_(F func, std::index_sequence<Is...>) {
   using expander = int[];
   (void)expander{0, ((void)func(num<Is>{}), 0)...};
 }
 
 template <std::size_t N, typename F>
-__device__ void for_(F func)
-{
+__device__ void for_(F func) {
   for_(func, std::make_index_sequence<N>());
 }
 
 // Helper function to compute arraywise maximums.
-// Ignores nan, returns -2 if the entire array contains NaN. 
+// Ignores nan, returns -2 if the entire array contains NaN.
 template <typename Derived, typename ScalarType = typename Derived::Scalar>
 __device__ inline ScalarType max_dist(const Eigen::ArrayBase<Derived>& dist) {
   ScalarType ret = -2;
@@ -30,7 +30,7 @@ __device__ inline ScalarType max_dist(const Eigen::ArrayBase<Derived>& dist) {
     return ret;
   }
 
-  for_<Derived::RowsAtCompileTime>([&] (auto i) {
+  for_<Derived::RowsAtCompileTime>([&](auto i) {
     if (dist[i.value] > ret) {
       ret = dist[i.value];
     }
@@ -38,10 +38,12 @@ __device__ inline ScalarType max_dist(const Eigen::ArrayBase<Derived>& dist) {
   return ret;
 }
 
-// Helper function to compute arraywise maximums and also sets idx to the index of the maximum element.
-// Ignores nan, returns -2 if the entire array contains NaN. 
+// Helper function to compute arraywise maximums and also sets idx to the index
+// of the maximum element. Ignores nan, returns -2 if the entire array contains
+// NaN.
 template <typename Derived, typename ScalarType = typename Derived::Scalar>
-__device__ inline ScalarType max_dist(const Eigen::ArrayBase<Derived>& dist, int &idx) {
+__device__ inline ScalarType max_dist(const Eigen::ArrayBase<Derived>& dist,
+                                      int& idx) {
   ScalarType ret = -2;
   if constexpr (Derived::RowsAtCompileTime > 4) {
     ScalarType max = dist.template maxCoeff<Eigen::PropagateNumbers>(&idx);
@@ -51,7 +53,7 @@ __device__ inline ScalarType max_dist(const Eigen::ArrayBase<Derived>& dist, int
     return ret;
   }
 
-  for_<Derived::RowsAtCompileTime>([&] (auto i) {
+  for_<Derived::RowsAtCompileTime>([&](auto i) {
     if (dist[i.value] > ret) {
       ret = dist[i.value];
       idx = i.value;
@@ -59,7 +61,6 @@ __device__ inline ScalarType max_dist(const Eigen::ArrayBase<Derived>& dist, int
   });
   return ret;
 }
-
 
 //////////////////////////////////////////////////////
 // UPDATE_ROW:
@@ -109,7 +110,7 @@ __device__ inline void update_row(const SCAMPKernelInputArgs<double>& args,
       mp_entry local_max;
       local_max.floats[0] = d;
       local_max.ints[1] = idx;
-      #pragma unroll
+#pragma unroll
       for (int i = 16; i >= 1; i /= 2) {
         mp_entry other;
         other.ulong = __shfl_down_sync(0xffffffff, local_max.ulong, i);
@@ -119,14 +120,15 @@ __device__ inline void update_row(const SCAMPKernelInputArgs<double>& args,
       }
       if ((threadIdx.x & 0x1f) == 0) {
         MPatomicMax<ATOMIC_BLOCK>(
-          smem.local_mp_row.data() + info.local_row + iter, local_max.floats[0], local_max.ints[1]);
+            smem.local_mp_row.data() + info.local_row + iter,
+            local_max.floats[0], local_max.ints[1]);
       }
-    } 
+    }
   } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
     // Coalesce all row updates to lane 0 of each warp and atomically update
     // This way is more efficient than atomics when we expect a lot of updates
     DISTANCE_TYPE sum = (dist > args.opt.threshold).select(dist, 0).sum();
-    #pragma unroll
+#pragma unroll
     for (int i = 16; i >= 1; i /= 2) {
       sum += __shfl_down_sync(0xffffffff, sum, i);
     }
@@ -179,10 +181,11 @@ __device__ inline void merge_to_column(
     const Eigen::ArrayBase<RowDistArray>& dists_to_merge,
     Eigen::ArrayBase<ColIndexArray>& best_so_far_index) {
   static_assert(RowDistArray::RowsAtCompileTime == DIAGS_PER_THREAD);
-  static_assert(ColDistArray::RowsAtCompileTime == ColIndexArray::RowsAtCompileTime);
+  static_assert(ColDistArray::RowsAtCompileTime ==
+                ColIndexArray::RowsAtCompileTime);
   static_assert(ColDistArray::RowsAtCompileTime == unrolled_cols);
   if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN) {
-    #pragma unroll DIAGS_PER_THREAD
+#pragma unroll DIAGS_PER_THREAD
     for (int i = 0; i < DIAGS_PER_THREAD; ++i) {
       if (dists_to_merge[i] > best_so_far[iter + i]) {
         best_so_far[iter + i] = dists_to_merge[i];
@@ -192,7 +195,7 @@ __device__ inline void merge_to_column(
   } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX ||
                        PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY ||
                        PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
-    #pragma unroll DIAGS_PER_THREAD 
+#pragma unroll DIAGS_PER_THREAD
     for (int i = 0; i < DIAGS_PER_THREAD; ++i) {
       if (dists_to_merge[i] > best_so_far[iter + i]) {
         best_so_far[iter + i] = dists_to_merge[i];
@@ -200,7 +203,8 @@ __device__ inline void merge_to_column(
       }
     }
   } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
-    best_so_far.segment<DIAGS_PER_THREAD>(iter) += (dists_to_merge > args.opt.threshold).select(dists_to_merge, 0);
+    best_so_far.segment<DIAGS_PER_THREAD>(iter) +=
+        (dists_to_merge > args.opt.threshold).select(dists_to_merge, 0);
   } else {
     static_assert(PROFILE_TYPE != -1,
                   "merge_to_column not implemented for profile type.");
@@ -227,9 +231,10 @@ __device__ inline void update_cols(const SCAMPKernelInputArgs<double>& args,
                                    Eigen::ArrayBase<ColDistArray>& distc,
                                    Eigen::ArrayBase<ColIndexArray>& idxc) {
   if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN) {
-    Eigen::Array<float, unrolled_cols, 1> mp_col_check = smem.local_mp_col.segment<unrolled_cols>(info.local_col);
-    // Check the best-so-far column and update distance if necessary
-    #pragma unroll unrolled_cols
+    Eigen::Array<float, unrolled_cols, 1> mp_col_check =
+        smem.local_mp_col.segment<unrolled_cols>(info.local_col);
+// Check the best-so-far column and update distance if necessary
+#pragma unroll unrolled_cols
     for (int i = 0; i < unrolled_cols; ++i) {
       float old = fAtomicMax_check<ATOMIC_BLOCK>(
           smem.local_mp_col.data() + info.local_col + i, distc[i],
@@ -242,7 +247,7 @@ __device__ inline void update_cols(const SCAMPKernelInputArgs<double>& args,
     {
       Eigen::Array<uint64_t, unrolled_cols, 1> temp =
           smem.local_mp_col.segment<unrolled_cols>(info.local_col);
-      #pragma unroll unrolled_cols
+#pragma unroll unrolled_cols
       for (int i = 0; i < unrolled_cols; ++i) {
         mp_entry e;
         e.ulong = temp[i];
@@ -250,8 +255,8 @@ __device__ inline void update_cols(const SCAMPKernelInputArgs<double>& args,
       }
     }
 
-    // Check the best-so-far column and update distance/index if necessary
-    #pragma unroll unrolled_cols
+// Check the best-so-far column and update distance/index if necessary
+#pragma unroll unrolled_cols
     for (int i = 0; i < unrolled_cols; ++i) {
       MPatomicMax_check<ATOMIC_BLOCK>(
           smem.local_mp_col.data() + info.local_col + i, distc[i], idxc[i],
@@ -259,9 +264,9 @@ __device__ inline void update_cols(const SCAMPKernelInputArgs<double>& args,
     }
 
   } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
-    // Add the current sum that this thread has computed to the shared sum across
-    // the entire thread block
-    #pragma unroll unrolled_cols
+// Add the current sum that this thread has computed to the shared sum across
+// the entire thread block
+#pragma unroll unrolled_cols
     for (int i = 0; i < unrolled_cols; ++i) {
       do_atomicAdd<double, ATOMIC_BLOCK>(
           smem.local_mp_col.data() + info.local_col + i, distc[i]);
@@ -292,26 +297,29 @@ __device__ inline void update_cols(const SCAMPKernelInputArgs<double>& args,
 template <int iter, SCAMPProfileType PROFILE_TYPE, bool COMPUTE_ROWS,
           bool COMPUTE_COLS, typename DISTANCE_TYPE, typename DerivedInputType,
           typename DerivedSmem, typename DistColArray, typename InputColArray,
-          typename InputRowArray, typename IndexColArray, typename RowType = typename InputRowArray::Scalar, typename ColType = typename InputColArray::Scalar>
+          typename InputRowArray, typename IndexColArray,
+          typename RowType = typename InputRowArray::Scalar,
+          typename ColType = typename InputColArray::Scalar>
 __device__ inline FORCE_INLINE void do_row(
-    const SCAMPKernelInputArgs<double>& args, SCAMPThreadInfo<DerivedInputType>& info,
-    DerivedSmem& smem, Eigen::ArrayBase<DistColArray>& distc,
+    const SCAMPKernelInputArgs<double>& args,
+    SCAMPThreadInfo<DerivedInputType>& info, DerivedSmem& smem,
+    Eigen::ArrayBase<DistColArray>& distc,
     const Eigen::ArrayBase<InputColArray>& inormc,
     const Eigen::ArrayBase<InputColArray>& dfc,
     const Eigen::ArrayBase<InputColArray>& dgc,
     const Eigen::ArrayBase<InputRowArray>& inormr,
     const Eigen::ArrayBase<InputRowArray>& dfr,
-    const Eigen::ArrayBase<InputRowArray>& dgr,
-    const float curr_mp_row_val,
+    const Eigen::ArrayBase<InputRowArray>& dgr, const float curr_mp_row_val,
     Eigen::ArrayBase<IndexColArray>& idxc) {
   static_assert(std::is_same<RowType, ColType>::value);
 
   // Compute the correlation values for the current tile row
   Eigen::Array<DISTANCE_TYPE, DIAGS_PER_THREAD, 1> dist;
-  #pragma unroll DIAGS_PER_THREAD
+#pragma unroll DIAGS_PER_THREAD
   for (int i = 0; i < DIAGS_PER_THREAD; ++i) {
     dist[i] = info.cov[i] * inormc[iter + i] * inormr[iter];
-    info.cov[i] = info.cov[i] + dfc[iter+i] * dgr[iter] + dgc[iter+i] * dfr[iter];
+    info.cov[i] =
+        info.cov[i] + dfc[iter + i] * dgr[iter] + dgc[iter + i] * dfr[iter];
   }
 
   // Update the column best-so-far values
@@ -322,7 +330,8 @@ __device__ inline FORCE_INLINE void do_row(
   // Perform any updates for this tile row and commit to the shared-memory
   // matrix profile
   if constexpr (COMPUTE_ROWS) {
-    update_row<iter, PROFILE_TYPE, DISTANCE_TYPE>(args, info, smem, dist, curr_mp_row_val);
+    update_row<iter, PROFILE_TYPE, DISTANCE_TYPE>(args, info, smem, dist,
+                                                  curr_mp_row_val);
   }
 }
 
@@ -382,7 +391,7 @@ void __device__ do_iteration_fast(const SCAMPKernelInputArgs<double>& args,
                   PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX) {
       Eigen::Array<uint64_t, unrolled_rows, 1> temp =
           smem.local_mp_row.segment<unrolled_rows>(info.local_row);
-      #pragma unroll unrolled_rows
+#pragma unroll unrolled_rows
       for (int i = 0; i < unrolled_rows; ++i) {
         mp_entry e;
         e.ulong = temp[i];
@@ -394,10 +403,10 @@ void __device__ do_iteration_fast(const SCAMPKernelInputArgs<double>& args,
   }
 
   // Generate and coalesce distances into profile
-  for_<unrolled_rows>([&] (auto i) {
-    do_row<i.value,PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, DISTANCE_TYPE>(
-        args, info, smem, distc, inormc, dfc, dgc, inormr, dfr, dgr, mp_row_check[i.value],
-        idxc);
+  for_<unrolled_rows>([&](auto i) {
+    do_row<i.value, PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, DISTANCE_TYPE>(
+        args, info, smem, distc, inormc, dfc, dgc, inormr, dfr, dgr,
+        mp_row_check[i.value], idxc);
   });
 
   // Update the column wise matrix profile with the best-so-far
@@ -507,7 +516,8 @@ __device__ inline void do_row_edge(const SCAMPKernelInputArgs<double>& args,
   // Compute the next set of distances. Only a single row. Note this may compute
   // garbage for values beyond the edge of the array.
   Eigen::Array<DISTANCE_TYPE, DIAGS_PER_THREAD, 1> dist =
-      (info.cov * smem.inorm_col.segment<DIAGS_PER_THREAD>(info.local_col) * inormr)
+      (info.cov * smem.inorm_col.segment<DIAGS_PER_THREAD>(info.local_col) *
+       inormr)
           .template cast<DISTANCE_TYPE>();
 
   // Update cov and compute the next distance values. Note this may compute
@@ -515,7 +525,7 @@ __device__ inline void do_row_edge(const SCAMPKernelInputArgs<double>& args,
   info.cov += smem.df_col.segment<DIAGS_PER_THREAD>(info.local_col) * dgr +
               smem.dg_col.segment<DIAGS_PER_THREAD>(info.local_col) * dfr;
 
-  for_<DIAGS_PER_THREAD>([&] (auto i) {
+  for_<DIAGS_PER_THREAD>([&](auto i) {
     reduce_edge<i.value, PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS>(
         args, info, smem, dist, dist_row, idx_row, diag, num_diags);
   });

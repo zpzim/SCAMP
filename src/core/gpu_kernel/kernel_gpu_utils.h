@@ -109,7 +109,6 @@ __device__ inline T max4_index(const T &d1, const T &d2, const T &d3,
   return ret;
 }
 
-
 /////////////////////////////////////////////
 // Atomic OPs for CUDA kernels
 /////////////////////////////////////////////

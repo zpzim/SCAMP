@@ -21,22 +21,14 @@ template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, SCAMPProfileType type,
 struct SCAMPSmem {
   __device__ SCAMPSmem(char *smem, bool compute_rows, bool compute_columns,
                        int extra_operands);
-  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>>
-      df_col;
-  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>>
-      dg_col;
-  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>>
-      inorm_col;
-  Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>>
-      df_row;
-  Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>>
-      dg_row;
-  Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>>
-      inorm_row;
-  Eigen::Map<Eigen::Array<PROFILE_DATA_TYPE, tile_width, 1>>
-      local_mp_col;
-  Eigen::Map<Eigen::Array<PROFILE_DATA_TYPE, tile_height, 1>>
-      local_mp_row;
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>> df_col;
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>> dg_col;
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>> inorm_col;
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>> df_row;
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>> dg_row;
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>> inorm_row;
+  Eigen::Map<Eigen::Array<PROFILE_DATA_TYPE, tile_width, 1>> local_mp_col;
+  Eigen::Map<Eigen::Array<PROFILE_DATA_TYPE, tile_height, 1>> local_mp_row;
 
   uint64_t *profile_a_length;
   uint64_t *profile_b_length;
@@ -151,8 +143,9 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
   const unsigned int num_diags = args.n_x - args.exclusion_upper;
 
   // Load the first dot product values
-  for (int i = 0; i < DIAGS_PER_THREAD && thread_info.global_col + i < args.n_x; ++i) {
-      thread_info.cov[i] = args.cov[thread_info.global_col + i];
+  for (int i = 0; i < DIAGS_PER_THREAD && thread_info.global_col + i < args.n_x;
+       ++i) {
+    thread_info.cov[i] = args.cov[thread_info.global_col + i];
   }
 
   /////////////////////////////////////
