@@ -20,18 +20,25 @@ static __inline__ __device__ double atomicAdd(double *address, double val) {
 
 namespace SCAMP {
 
-// This is the kernel tile height used by the GPUs
-constexpr int KERNEL_TILE_HEIGHT = 200;
-// Number of diagonals executed per thread (DO NOT MODIFY)
-constexpr int DIAGS_PER_THREAD = 4;
+// Number of diagonals computed per thread
+constexpr int DIAGS_PER_THREAD = 2;
+// Number of rows unrolled in the inner loop.
+constexpr int unrolled_rows = 8;
+// Number of columns unrolled in the inner loop.
+constexpr int unrolled_cols = DIAGS_PER_THREAD + unrolled_rows - 1;
+// Number of iterations of the inner loop to do before syncing.
+constexpr int KERNEL_TILE_ITERS = 30;
+// Height of the parallelogram computed in the inner loop.
+constexpr int KERNEL_TILE_HEIGHT = KERNEL_TILE_ITERS * unrolled_rows;
+constexpr int TILE_HEIGHT_SP = KERNEL_TILE_HEIGHT;
+constexpr int TILE_HEIGHT_DP = KERNEL_TILE_HEIGHT;
+
 // Threads per block for single precision SCAMP
 constexpr int BLOCKSZ_SP = 512;
 // Threads per block for double precision SCAMP
 constexpr int BLOCKSZ_DP = 256;
-// Blocks per SM for SCAMP
+// Minimum Blocks per SM for SCAMP
 constexpr int BLOCKSPERSM = 2;
-constexpr int TILE_HEIGHT_SP = KERNEL_TILE_HEIGHT;
-constexpr int TILE_HEIGHT_DP = KERNEL_TILE_HEIGHT;
 
 // Describes the SCOPE of an atomic operation in a GPU kernel
 enum SCAMPAtomicType { ATOMIC_BLOCK, ATOMIC_GLOBAL, ATOMIC_SYSTEM };

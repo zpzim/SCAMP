@@ -7,51 +7,12 @@
 #include "kernel_gpu_utils.h"
 #include "kernels.h"
 
-#include <Eigen/Core>
-
-
 #define EIGEN_DEFAULT_DENSE_INDEX_TYPE int
 #define EIGEN_RUNTIME_NO_MALLOC
 #define EIGEN_DONT_PARALLELIZE
+#include <Eigen/Core>
 
 namespace SCAMP {
-
-template <class T, std::size_t alignment>
-__device__ T *align_array(std::size_t n_elements, char *&ptr,
-                          std::size_t *space = nullptr) noexcept {
-  const std::uintptr_t intptr = reinterpret_cast<uintptr_t>(ptr);
-  const std::uintptr_t aligned = (intptr + alignment - 1) & -alignment;
-  const std::uintptr_t end = aligned + n_elements * sizeof(T);
-  if (space) *space += static_cast<std::size_t>(end - intptr);
-  ptr = reinterpret_cast<char *>(end);
-  return reinterpret_cast<T *>(aligned);
-}
-
-template <typename T>
-__device__ constexpr int getAlignment() {
-  return sizeof(T) * 2;
-}
-
-template <typename T>
-__device__ constexpr Eigen::AlignmentType getEigenAlignment() {
-  return Eigen::Unaligned;
-  /*
-    constexpr int align = getAlignment<T>();
-    if constexpr (align == 128) {
-      return Eigen::Aligned128;
-    } else if constexpr (align == 64) {
-      return Eigen::Aligned64;
-    } else if constexpr (align == 32) {
-      return Eigen::Aligned32;
-    } else if constexpr (align == 16) {
-      return Eigen::Aligned16;
-    } else if constexpr (align == 8) {
-      return Eigen::Aligned8;
-    } else {
-      return Eigen::Unaligned;
-    }
-  */
-}
 
 // Structure which manages shared memory on the GPU and automatically allocates
 // appropriate segments in memory for variables used by the kernel
@@ -60,29 +21,21 @@ template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, SCAMPProfileType type,
 struct SCAMPSmem {
   __device__ SCAMPSmem(char *smem, bool compute_rows, bool compute_columns,
                        int extra_operands);
-  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>,
-             getEigenAlignment<DATA_TYPE>()>
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>>
       df_col;
-  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>,
-             getEigenAlignment<DATA_TYPE>()>
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>>
       dg_col;
-  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>,
-             getEigenAlignment<DATA_TYPE>()>
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>>
       inorm_col;
-  Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>,
-             getEigenAlignment<DATA_TYPE>()>
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>>
       df_row;
-  Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>,
-             getEigenAlignment<DATA_TYPE>()>
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>>
       dg_row;
-  Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>,
-             getEigenAlignment<DATA_TYPE>()>
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>>
       inorm_row;
-  Eigen::Map<Eigen::Array<PROFILE_DATA_TYPE, tile_width, 1>,
-             getEigenAlignment<PROFILE_DATA_TYPE>()>
+  Eigen::Map<Eigen::Array<PROFILE_DATA_TYPE, tile_width, 1>>
       local_mp_col;
-  Eigen::Map<Eigen::Array<PROFILE_DATA_TYPE, tile_height, 1>,
-             getEigenAlignment<PROFILE_DATA_TYPE>()>
+  Eigen::Map<Eigen::Array<PROFILE_DATA_TYPE, tile_height, 1>>
       local_mp_row;
 
   uint64_t *profile_a_length;
@@ -106,19 +59,6 @@ __device__ SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, type, tile_width,
   typedef decltype(df_col) WideArray;
   typedef decltype(df_row) TallArray;
 
-  constexpr int align_data_bytes = getAlignment<DATA_TYPE>();
-  constexpr int align_profile_bytes = getAlignment<PROFILE_DATA_TYPE>();
-  /*
-    new (&df_col) WideArray(align_array<DATA_TYPE, align_data_bytes>(tile_width,
-    smem)); new (&dg_col) WideArray(align_array<DATA_TYPE,
-    align_data_bytes>(tile_width, smem)); new (&inorm_col)
-    WideArray(align_array<DATA_TYPE, align_data_bytes>(tile_width, smem)); new
-    (&df_row) TallArray(align_array<DATA_TYPE, align_data_bytes>(tile_height,
-    smem)); new (&dg_row) TallArray(align_array<DATA_TYPE,
-    align_data_bytes>(tile_height, smem)); new (&inorm_row)
-    TallArray(align_array<DATA_TYPE, align_data_bytes>(tile_height, smem));
-  */
-
   new (&df_col) WideArray((DATA_TYPE *)smem);
   smem += sizeof(DATA_TYPE) * tile_width;
   new (&dg_col) WideArray((DATA_TYPE *)smem);
@@ -133,14 +73,10 @@ __device__ SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, type, tile_width,
   smem += sizeof(DATA_TYPE) * tile_height;
 
   if (compute_columns) {
-    // new (&local_mp_col) decltype(local_mp_col)(align_array<PROFILE_DATA_TYPE,
-    // align_profile_bytes>(tile_width, smem));
     new (&local_mp_col) decltype(local_mp_col)((PROFILE_DATA_TYPE *)smem);
     smem += sizeof(PROFILE_DATA_TYPE) * tile_width;
   }
   if (compute_rows) {
-    // new (&local_mp_row) decltype(local_mp_row)(align_array<PROFILE_DATA_TYPE,
-    // align_profile_bytes>(tile_height, smem));
     new (&local_mp_row) decltype(local_mp_row)((PROFILE_DATA_TYPE *)smem);
     smem += sizeof(PROFILE_DATA_TYPE) * tile_height;
   }
@@ -156,7 +92,7 @@ __device__ SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, type, tile_width,
 
 template <typename DATA_TYPE>
 struct SCAMPThreadInfo {
-  Eigen::Array<DATA_TYPE, 4, 1> cov;
+  Eigen::Array<DATA_TYPE, DIAGS_PER_THREAD, 1> cov;
   uint32_t local_row;
   uint32_t local_col;
   uint32_t global_row;
@@ -212,23 +148,11 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
 
   // num_diags is the number of diagonals in the distance matrix, less any
   // diagonals at the end we are not computing
-  const unsigned int num_diags = args.n_x - args.exclusion_upper + 1;
+  const unsigned int num_diags = args.n_x - args.exclusion_upper;
 
   // Load the first dot product values
-  if (thread_info.global_col < args.n_x) {
-    thread_info.cov[0] = args.cov[thread_info.global_col];
-  }
-
-  if (thread_info.global_col + 1 < args.n_x) {
-    thread_info.cov[1] = args.cov[thread_info.global_col + 1];
-  }
-
-  if (thread_info.global_col + 2 < args.n_x) {
-    thread_info.cov[2] = args.cov[thread_info.global_col + 2];
-  }
-
-  if (thread_info.global_col + 3 < args.n_x) {
-    thread_info.cov[3] = args.cov[thread_info.global_col + 3];
+  for (int i = 0; i < DIAGS_PER_THREAD && thread_info.global_col + i < args.n_x; ++i) {
+      thread_info.cov[i] = args.cov[thread_info.global_col + i];
   }
 
   /////////////////////////////////////
@@ -257,7 +181,7 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
     // the last tile in every thread-block will take the slower path (bottom)
     if (tile_start_col + tile_width < args.n_x &&
         tile_start_row + tile_height < args.n_y &&
-        start_diag + DIAGS_PER_THREAD < num_diags) {
+        start_diag + DIAGS_PER_THREAD <= num_diags) {
       // Fast Path
       while (thread_info.local_row < tile_height) {
         do_iteration_fast<PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
