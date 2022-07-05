@@ -22,14 +22,18 @@ namespace SCAMP {
 
 // Number of diagonals computed per thread
 constexpr int DIAGS_PER_THREAD = 2;
+constexpr int unrolled_diags = 2;
 // Number of rows unrolled in the inner loop.
-constexpr int unrolled_rows = 8;
+constexpr int unrolled_rows = 2;
+constexpr int outer_unrolled_rows = 16;
+constexpr int inner_unrolled_cols = unrolled_diags + unrolled_rows - 1;
 // Number of columns unrolled in the inner loop.
-constexpr int unrolled_cols = DIAGS_PER_THREAD + unrolled_rows - 1;
+constexpr int unrolled_cols = DIAGS_PER_THREAD + outer_unrolled_rows - 1;
+
 // Number of iterations of the inner loop to do before syncing.
-constexpr int KERNEL_TILE_ITERS = 30;
+constexpr int KERNEL_TILE_ITERS = 16;
 // Height of the parallelogram computed in the inner loop.
-constexpr int KERNEL_TILE_HEIGHT = KERNEL_TILE_ITERS * unrolled_rows;
+constexpr int KERNEL_TILE_HEIGHT = KERNEL_TILE_ITERS * outer_unrolled_rows;
 constexpr int TILE_HEIGHT_SP = KERNEL_TILE_HEIGHT;
 constexpr int TILE_HEIGHT_DP = KERNEL_TILE_HEIGHT;
 
