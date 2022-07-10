@@ -86,7 +86,7 @@ __device__ inline ScalarType max_dist(const Eigen::ArrayBase<Derived>& dist,
 // Update shared memory using result of reduction
 //////////////////////////////////////////////////////
 
-template <int row_iter, int diag_iter, SCAMPProfileType PROFILE_TYPE, typename DISTANCE_TYPE,
+template <int row_iter, SCAMPProfileType PROFILE_TYPE, typename DISTANCE_TYPE,
           typename InputDataType, typename DerivedSmem, typename DistRowArray>
 __device__ inline void merge_to_row(const SCAMPKernelInputArgs<double>& args,
                                   const SCAMPThreadInfo<InputDataType>& info,
@@ -102,7 +102,7 @@ __device__ inline void merge_to_row(const SCAMPKernelInputArgs<double>& args,
                        PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
     int idx;
     DISTANCE_TYPE d = max_dist(dist, idx);
-    idx += info.global_col + row_iter + diag_iter;
+    idx += info.global_col + row_iter;
     if (d > distr) {
       distr = d;
       idxr = idx;
@@ -116,7 +116,7 @@ __device__ inline void merge_to_row(const SCAMPKernelInputArgs<double>& args,
   }
 }
 
-template <int row_iter, SCAMPProfileType PROFILE_TYPE, typename DISTANCE_TYPE,
+template <int row_iter, int num_to_update, SCAMPProfileType PROFILE_TYPE, typename DISTANCE_TYPE,
           typename InputDataType, typename DerivedSmem, typename DistRowArray, typename IndexRowArray>
 __device__ inline void update_rows(const SCAMPKernelInputArgs<double>& args,
                                   const SCAMPThreadInfo<InputDataType>& info,
@@ -124,31 +124,31 @@ __device__ inline void update_rows(const SCAMPKernelInputArgs<double>& args,
                                   const Eigen::ArrayBase<DistRowArray>& distr,
                                   const Eigen::ArrayBase<IndexRowArray>& idxr) {
   if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN) {
-    Eigen::Array<float, unrolled_rows, 1> mp_row_check = smem.local_mp_row.segment<unrolled_rows>(info.local_row + row_iter);
-    #pragma unroll unrolled_rows
-    for (int i = 0; i < unrolled_rows; ++i) {
+    Eigen::Array<float, num_to_update, 1> mp_row_check = smem.local_mp_row.segment<num_to_update>(info.local_row + row_iter);
+    #pragma unroll num_to_update
+    for (int i = 0; i < num_to_update; ++i) {
       fAtomicMax_check<ATOMIC_BLOCK>(
           smem.local_mp_row.data() + info.local_row + i + row_iter, distr[i+row_iter], mp_row_check[i]);
     }
   } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX ||
                        PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY ||
                        PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
-    Eigen::Array<float, unrolled_rows, 1> mp_row_check;
-    Eigen::Array<uint64_t, unrolled_rows, 1> temp =
-        smem.local_mp_row.segment<unrolled_rows>(info.local_row + row_iter);
-    #pragma unroll outer_unrolled_rows
-    for (int i = 0; i < unrolled_rows; ++i) {
+    Eigen::Array<float, num_to_update, 1> mp_row_check;
+    Eigen::Array<uint64_t, num_to_update, 1> temp =
+        smem.local_mp_row.segment<num_to_update>(info.local_row + row_iter);
+    #pragma unroll num_to_update
+    for (int i = 0; i < num_to_update; ++i) {
       mp_entry e;
       e.ulong = temp[i];
       mp_row_check[i] = e.floats[0];
     }
-    for (int r = 0; r < unrolled_rows; ++r) {
+    for (int r = 0; r < num_to_update; ++r) {
       MPatomicMax_check<ATOMIC_BLOCK>(
           smem.local_mp_row.data() + info.local_row + r + row_iter, distr[r+row_iter], idxr[r+row_iter], mp_row_check[r]);
     }
   } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
-    #pragma unroll unrolled_rows
-    for (int r = 0; r < unrolled_rows; ++r) {
+    #pragma unroll num_to_update
+    for (int r = 0; r < num_to_update; ++r) {
       DISTANCE_TYPE sum = distr[r+row_iter];
       #pragma unroll
       for (int i = 16; i >= 1; i /= 2) {
@@ -196,7 +196,7 @@ __device__ inline void update_rows(const SCAMPKernelInputArgs<double>& args,
 // storing the result in 'best_so_far[iter, iter+3]'
 /////////////////////////////////////////////////////////////////////////
 
-template <int row_iter, int diag_iter, SCAMPProfileType PROFILE_TYPE, typename DerivedDataType,
+template <int row_iter, SCAMPProfileType PROFILE_TYPE, typename DerivedDataType,
           typename DerivedSmem, typename ColDistArray, typename RowDistArray,
           typename ColIndexArray>
 __device__ inline void merge_to_column(
@@ -211,8 +211,8 @@ __device__ inline void merge_to_column(
   if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN) {
     #pragma unroll unrolled_diags
     for (int i = 0; i < unrolled_diags; ++i) {
-      if (dists_to_merge[i] > best_so_far[diag_iter + row_iter + i]) {
-        best_so_far[diag_iter + row_iter + i] = dists_to_merge[i];
+      if (dists_to_merge[i] > best_so_far[row_iter + i]) {
+        best_so_far[row_iter + i] = dists_to_merge[i];
       }
     }
   } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX ||
@@ -220,13 +220,13 @@ __device__ inline void merge_to_column(
                        PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
     #pragma unroll unrolled_diags
     for (int i = 0; i < unrolled_diags; ++i) {
-      if (dists_to_merge[i] > best_so_far[diag_iter + row_iter + i]) {
-        best_so_far[diag_iter + row_iter + i] = dists_to_merge[i];
-        best_so_far_index[diag_iter + row_iter + i] = info.global_row + row_iter;
+      if (dists_to_merge[i] > best_so_far[row_iter + i]) {
+        best_so_far[row_iter + i] = dists_to_merge[i];
+        best_so_far_index[row_iter + i] = info.global_row + row_iter;
       }
     }
   } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
-    best_so_far.segment<unrolled_diags>(diag_iter + row_iter) += (dists_to_merge > args.opt.threshold).select(dists_to_merge, 0);
+    best_so_far.segment<unrolled_diags>(row_iter) += (dists_to_merge > args.opt.threshold).select(dists_to_merge, 0);
   } else {
     static_assert(PROFILE_TYPE != -1,
                   "merge_to_column not implemented for profile type.");
@@ -315,7 +315,7 @@ __device__ inline void update_cols(const SCAMPKernelInputArgs<double>& args,
 // DO NOT EDIT this function unless you are sure you know what you are doing as
 // it is templated and used by ALL profile computations.
 //////////////////////////////////////////////////////////
-template <int outer_row_iter, int row_iter, int diag_iter, SCAMPProfileType PROFILE_TYPE, bool COMPUTE_ROWS,
+template <int outer_row_iter, int row_iter, SCAMPProfileType PROFILE_TYPE, bool COMPUTE_ROWS,
           bool COMPUTE_COLS, typename DISTANCE_TYPE, typename DerivedInputType,
           typename DerivedSmem, typename DistColArray, typename InputColArray,
           typename IndexColArray, typename ColType = typename InputColArray::Scalar>
@@ -336,19 +336,19 @@ __device__ inline FORCE_INLINE void do_row(
   Eigen::Array<DISTANCE_TYPE, unrolled_diags, 1> dist;
   #pragma unroll unrolled_diags
   for (int i = 0; i < unrolled_diags; ++i) {
-    dist[i] = info.cov[i + diag_iter] * inormc[row_iter + i] * inormr;
-    info.cov[i + diag_iter] = info.cov[i + diag_iter] + dfc[row_iter + i] * dgr + dgc[row_iter + i] * dfr;
+    dist[i] = info.cov[i] * inormc[row_iter + i] * inormr;
+    info.cov[i] = info.cov[i] + dfc[row_iter + i] * dgr + dgc[row_iter + i] * dfr;
   }
 
   // Update the column best-so-far values
   if constexpr (COMPUTE_COLS) {
-    merge_to_column<outer_row_iter, diag_iter, PROFILE_TYPE>(args, info, smem, distc, dist, idxc);
+    merge_to_column<outer_row_iter, PROFILE_TYPE>(args, info, smem, distc, dist, idxc);
   }
 
   // Perform any updates for this tile row and commit to the shared-memory
   // matrix profile
   if constexpr (COMPUTE_ROWS) {
-    merge_to_row<outer_row_iter, diag_iter, PROFILE_TYPE, DISTANCE_TYPE>(args, info, smem, dist, distr, idxr);
+    merge_to_row<outer_row_iter, PROFILE_TYPE, DISTANCE_TYPE>(args, info, smem, dist, distr, idxr);
   }
 }
 
@@ -392,28 +392,45 @@ void __device__ do_iteration_fast(const SCAMPKernelInputArgs<double>& args,
   Eigen::Array<DISTANCE_TYPE, outer_unrolled_rows, 1> distr = Eigen::Array<DISTANCE_TYPE, outer_unrolled_rows, 1>::Constant(init);
   Eigen::Array<unsigned int, unrolled_cols, 1> idxc;
   Eigen::Array<unsigned int, outer_unrolled_rows, 1> idxr;
+  static_assert(unrolled_diags == DIAGS_PER_THREAD);
 
+/*
+   if (info.global_row == 0) {
+      info.dfc = Eigen::Map<const Eigen::Array<double, unrolled_cols, 1>>(args.dfa + info.global_col).template cast<DerivedDataType>();
+      info.dgc = Eigen::Map<const Eigen::Array<double, unrolled_cols, 1>>(args.dga + info.global_col).template cast<DerivedDataType>();
+      info.inormc = Eigen::Map<const Eigen::Array<double, unrolled_cols, 1>>(args.normsa + info.global_col).template cast<DerivedDataType>();
+    } else {
+      info.dfc.segment<self_overlap>(0) = info.dfc.segment<self_overlap>(DIAGS_PER_THREAD);
+      info.dgc.segment<self_overlap>(0) = info.dgc.segment<self_overlap>(DIAGS_PER_THREAD);
+      info.inormc.segment<self_overlap>(0) = info.inormc.segment<self_overlap>(DIAGS_PER_THREAD);
+      #pragma unroll (unrolled_cols - self_overlap)
+      for (int i = 1; i < inner_unrolled_cols; ++i) {
+        info.dfc[i] = __shfl_down_sync(0xffffffff, info.dfc[i], 1);
+        info.dgc[i] = __shfl_down_sync(0xffffffff, info.dgc[i], 1);
+        info.inormc[i] = __shfl_down_sync(0xffffffff, info.inormc[i], 1);
+      }
+    }
+*/
+
+  dfc = smem.df_col.segment<inner_unrolled_cols>(info.local_col);
+  dgc = smem.dg_col.segment<inner_unrolled_cols>(info.local_col);
+  inormc = smem.inorm_col.segment<inner_unrolled_cols>(info.local_col);
 
   for_<outer_unrolled_rows / unrolled_rows>([&] (auto j) {
+    if constexpr (j.value > 0) {
+      dfc.segment<inner_unrolled_cols - unrolled_rows>(0) = dfc.segment<inner_unrolled_cols - unrolled_rows>(unrolled_rows);
+      dgc.segment<inner_unrolled_cols - unrolled_rows>(0) = dgc.segment<inner_unrolled_cols - unrolled_rows>(unrolled_rows);
+      inormc.segment<inner_unrolled_cols - unrolled_rows>(0) = inormc.segment<inner_unrolled_cols - unrolled_rows>(unrolled_rows);
+      dfc.segment<unrolled_rows>(inner_unrolled_cols - unrolled_rows) = smem.df_col.segment<unrolled_rows>(info.local_col + j.value * unrolled_rows + (inner_unrolled_cols - unrolled_rows));
+      dgc.segment<unrolled_rows>(inner_unrolled_cols - unrolled_rows) = smem.dg_col.segment<unrolled_rows>(info.local_col + j.value * unrolled_rows + (inner_unrolled_cols - unrolled_rows));
+      inormc.segment<unrolled_rows>(inner_unrolled_cols - unrolled_rows) = smem.inorm_col.segment<unrolled_rows>(info.local_col + j.value * unrolled_rows + (inner_unrolled_cols - unrolled_rows));
+    }
     Eigen::Array<DerivedDataType, unrolled_rows, 1> dfr = smem.df_row.segment<unrolled_rows>(info.local_row + j.value * unrolled_rows);
     Eigen::Array<DerivedDataType, unrolled_rows, 1> dgr = smem.dg_row.segment<unrolled_rows>(info.local_row + j.value * unrolled_rows);
     Eigen::Array<DerivedDataType, unrolled_rows, 1> inormr = smem.inorm_row.segment<unrolled_rows>(info.local_row + j.value * unrolled_rows);
-    dfc = smem.df_col.segment<inner_unrolled_cols>(info.local_col + j.value * unrolled_rows);
-    dgc = smem.dg_col.segment<inner_unrolled_cols>(info.local_col + j.value * unrolled_rows);
-    inormc = smem.inorm_col.segment<inner_unrolled_cols>(info.local_col + j.value * unrolled_rows);
-    for_<DIAGS_PER_THREAD / unrolled_diags>([&] (auto i) {
-      if constexpr (i.value > 0) {
-        dfc.segment<inner_unrolled_cols - unrolled_diags>(0) = dfc.segment<inner_unrolled_cols - unrolled_diags>(unrolled_diags);
-        dgc.segment<inner_unrolled_cols - unrolled_diags>(0) = dgc.segment<inner_unrolled_cols - unrolled_diags>(unrolled_diags);
-        inormc.segment<inner_unrolled_cols - unrolled_diags>(0) = inormc.segment<inner_unrolled_cols - unrolled_diags>(unrolled_diags);
-        dfc.segment<unrolled_diags>(inner_unrolled_cols - unrolled_diags) = smem.df_col.segment<unrolled_diags>(info.local_col + j.value * unrolled_rows + i.value * unrolled_diags);
-        dgc.segment<unrolled_diags>(inner_unrolled_cols - unrolled_diags) = smem.dg_col.segment<unrolled_diags>(info.local_col + j.value * unrolled_rows + i.value * unrolled_diags);
-        inormc.segment<unrolled_diags>(inner_unrolled_cols - unrolled_diags) = smem.inorm_col.segment<unrolled_diags>(info.local_col + j.value * unrolled_rows + i.value * unrolled_diags);
-      } 
-      for_<unrolled_rows>([&] (auto k) {
-        do_row<j.value * unrolled_rows + k.value,k.value,i.value * unrolled_diags, PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, DISTANCE_TYPE>(
-            args, info, smem, distc, distr[j.value * unrolled_rows + k.value], inormc, dfc, dgc, inormr[k.value], dfr[k.value], dgr[k.value], idxc, idxr[j.value * unrolled_rows + k.value]);
-      });
+    for_<unrolled_rows>([&] (auto k) {
+      do_row<j.value * unrolled_rows + k.value,k.value, PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, DISTANCE_TYPE>(
+          args, info, smem, distc, distr[j.value * unrolled_rows + k.value], inormc, dfc, dgc, inormr[k.value], dfr[k.value], dgr[k.value], idxc, idxr[j.value * unrolled_rows + k.value]);
     });
     // Update the column wise matrix profile with the best-so-far
     if constexpr (COMPUTE_COLS) {
@@ -421,16 +438,14 @@ void __device__ do_iteration_fast(const SCAMPKernelInputArgs<double>& args,
     }
     // Update the row wise matrix profile with the best-so-far
     if constexpr (COMPUTE_ROWS) {
-      update_rows<j.value * unrolled_rows, PROFILE_TYPE, DISTANCE_TYPE>(args, info, smem, distr, idxr);
+      update_rows<j.value * unrolled_rows, unrolled_rows, PROFILE_TYPE, DISTANCE_TYPE>(args, info, smem, distr, idxr);
     }
-    
   });
 
-  // Update the column wise matrix profile with the best-so-far
+  // Update the column wise matrix profile with the remaining best-so-far.
   if constexpr (COMPUTE_COLS) {
     update_cols<outer_unrolled_rows, unrolled_cols - outer_unrolled_rows, PROFILE_TYPE>(args, info, smem, distc, idxc);
   }
-
   // Advance counters
   info.local_col += outer_unrolled_rows;
   info.local_row += outer_unrolled_rows;
