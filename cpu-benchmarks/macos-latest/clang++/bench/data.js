@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1655586015133,
+  "lastUpdate": 1659624987186,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -96,6 +96,54 @@ window.BENCHMARK_DATA = {
             "value": 2.8349569399997563,
             "unit": "s/iter",
             "extra": "iterations: 1\ncpu: 0.0019970000000000127 s\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "Zach Zimmerman",
+            "username": "zpzim"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "27e617febc69c476408ae05b217be395cc72aa35",
+          "message": "Fix some broken links in intro.rst (#119)",
+          "timestamp": "2022-08-04T07:51:56-07:00",
+          "tree_id": "dd44769e8b2614928cd8d09a124fe81845fdc641",
+          "url": "https://github.com/zpzim/SCAMP/commit/27e617febc69c476408ae05b217be395cc72aa35"
+        },
+        "date": 1659624981769,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/32768",
+            "value": 1.0430934272999992,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0019589000000000004 s\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/32768",
+            "value": 0.6078471536999984,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0018739 s\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/32768",
+            "value": 1.1726081388000011,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.001999899999999999 s\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/1/32768",
+            "value": 2.7668920589999857,
+            "unit": "s/iter",
+            "extra": "iterations: 1\ncpu: 0.0021869999999999945 s\nthreads: 1"
           }
         ]
       }
