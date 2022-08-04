@@ -9,7 +9,7 @@ This is a much improved framework over `GPU-STOMP <https://github.com/zpzim/STOM
  * fp32 version should get good performance on GeForce cards
  * AB joins (you can produce the matrix profile from 2 different time series)
  * Distributable on the cloud.
- * More types of matrix profiles! See `Profile Types </profiles>`.
+ * More types of matrix profiles! See :doc:`Profile Types </profiles>`.
  * Extremely Efficient Implementation
  * Extensible to adding optimized versions of custom join operations.
  * CPU Support (Only enabled for double precision; does not support KNN joins yet)
@@ -29,7 +29,7 @@ The matrix profile is expensive to compute. SCAMP aims to utilize specialized ke
 Why use SCAMP?
 ==============
  
-  * It is `faster </performance>` than any other matrix profile library. It is 10x to 100x faster than almost all other implementations out there currently.
+  * It is :doc:`faster </performance>` than any other matrix profile library. It is 10x to 100x faster than almost all other implementations out there currently.
   * It is very easy to install using conda and has very few dependencies.
   * It handles real data: very large inputs, missing values, and flat regions with little issue.
   * It can compute various other types of matrix profiles, including efficiently computing KNN matrix profiles, and matrix summaries (a.k.a. mplots). And can be extended to compute other types of profile efficiently.
@@ -47,4 +47,4 @@ When is SCAMP not the right choice?
 
   * SCAMP does not currently support architectures other than x86_64 (sorry Apple M1 users, you'll need to build from source). SCAMP can build on other architectures but they are not explicitly supported. Eventually support will be added but it is not currently being worked on.
   * SCAMP does not currently provide a rich API for doing things with the matrix profile once you have it. Some support for things like this is on the roadmap, but there are other libraries you can use for post processing in the meantime.
-  * You want to generate matrix profiles on edge devices (sensor systems, smartwatches, raspberry pis, smartphone, etc.), these devices usually have exotic architectures (eg. 32-bits or ARM) not fully supported by SCAMP. The preference on these systems is to do some kind of approximation to reduce power usage and save on-chip resources. You might try looking into `LAMP<https://www.cs.ucr.edu/~eamonn/LAMP_Camera_Ready2.pdf>` for something like this.
+  * You want to generate matrix profiles on edge devices (sensor systems, smartwatches, raspberry pis, smartphone, etc.), these devices usually have exotic architectures (eg. 32-bits or ARM) not fully supported by SCAMP. The preference on these systems is to do some kind of approximation to reduce power usage and save on-chip resources. You might try looking into `LAMP <https://www.cs.ucr.edu/~eamonn/LAMP_Camera_Ready2.pdf>`_ for something like this.
