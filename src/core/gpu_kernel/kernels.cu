@@ -29,7 +29,7 @@ struct SCAMPSmem {
   Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>> inorm_row;
   Eigen::Map<Eigen::Array<PROFILE_DATA_TYPE, tile_width, 1>> local_mp_col;
   Eigen::Map<Eigen::Array<PROFILE_DATA_TYPE, tile_height, 1>> local_mp_row;
-  
+
   uint64_t *profile_a_length;
   uint64_t *profile_b_length;
 };
@@ -40,15 +40,13 @@ __device__ SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, type, tile_width,
                      tile_height>::SCAMPSmem(char *smem, bool compute_rows,
                                              bool compute_columns,
                                              int extra_operands)
-    : 
-      df_row(nullptr),
+    : df_row(nullptr),
       dg_row(nullptr),
       inorm_row(nullptr),
       local_mp_col(nullptr),
       local_mp_row(nullptr) {
   typedef decltype(df_row) TallArray;
 
-  
   new (&df_row) TallArray((DATA_TYPE *)smem);
   smem += sizeof(DATA_TYPE) * tile_height;
   new (&dg_row) TallArray((DATA_TYPE *)smem);
