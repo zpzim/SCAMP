@@ -16,9 +16,6 @@ __device__ inline void init_smem_with_static_initializer(
   int global_position = col_start + threadIdx.x;
   int local_position = threadIdx.x;
   while (local_position < tile_width && global_position < args.n_x) {
-    smem.dg_col[local_position] = args.dga[global_position];
-    smem.df_col[local_position] = args.dfa[global_position];
-    smem.inorm_col[local_position] = args.normsa[global_position];
     if (COMPUTE_COLS) {
       smem.local_mp_col[local_position] = initializer;
     }
@@ -49,9 +46,6 @@ __device__ inline void init_smem_with_dynamic_initializer(
   int global_position = col_start + threadIdx.x;
   int local_position = threadIdx.x;
   while (local_position < tile_width && global_position < args.n_x) {
-    smem.dg_col[local_position] = args.dga[global_position];
-    smem.df_col[local_position] = args.dfa[global_position];
-    smem.inorm_col[local_position] = args.normsa[global_position];
     if (COMPUTE_COLS) {
       smem.local_mp_col[local_position] = initializer_col[global_position];
     }
@@ -83,9 +77,6 @@ __device__ void init_smem_for_all_neighbors(SCAMPKernelInputArgs<double> &args,
   mp_entry initializer;
   initializer.ints[1] = 0;
   while (local_position < tile_width && global_position < args.n_x) {
-    smem.dg_col[local_position] = args.dga[global_position];
-    smem.df_col[local_position] = args.dfa[global_position];
-    smem.inorm_col[local_position] = args.normsa[global_position];
     if (COMPUTE_COLS) {
       initializer.floats[0] = args.thresholds_a[global_position];
       smem.local_mp_col[local_position] = initializer.ulong;

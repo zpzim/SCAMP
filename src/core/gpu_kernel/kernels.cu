@@ -1,3 +1,4 @@
+#include <cooperative_groups.h>
 #include <thrust/device_ptr.h>
 #include <thrust/execution_policy.h>
 #include <thrust/sort.h>
@@ -12,6 +13,8 @@
 #define EIGEN_DONT_PARALLELIZE
 #include <Eigen/Core>
 
+namespace cg = cooperative_groups;
+
 namespace SCAMP {
 
 // Structure which manages shared memory on the GPU and automatically allocates
@@ -21,15 +24,12 @@ template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, SCAMPProfileType type,
 struct SCAMPSmem {
   __device__ SCAMPSmem(char *smem, bool compute_rows, bool compute_columns,
                        int extra_operands);
-  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>> df_col;
-  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>> dg_col;
-  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>> inorm_col;
   Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>> df_row;
   Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>> dg_row;
   Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>> inorm_row;
   Eigen::Map<Eigen::Array<PROFILE_DATA_TYPE, tile_width, 1>> local_mp_col;
   Eigen::Map<Eigen::Array<PROFILE_DATA_TYPE, tile_height, 1>> local_mp_row;
-
+  
   uint64_t *profile_a_length;
   uint64_t *profile_b_length;
 };
@@ -40,23 +40,15 @@ __device__ SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, type, tile_width,
                      tile_height>::SCAMPSmem(char *smem, bool compute_rows,
                                              bool compute_columns,
                                              int extra_operands)
-    : df_col(nullptr),
-      dg_col(nullptr),
-      inorm_col(nullptr),
+    : 
       df_row(nullptr),
       dg_row(nullptr),
       inorm_row(nullptr),
       local_mp_col(nullptr),
       local_mp_row(nullptr) {
-  typedef decltype(df_col) WideArray;
   typedef decltype(df_row) TallArray;
 
-  new (&df_col) WideArray((DATA_TYPE *)smem);
-  smem += sizeof(DATA_TYPE) * tile_width;
-  new (&dg_col) WideArray((DATA_TYPE *)smem);
-  smem += sizeof(DATA_TYPE) * tile_width;
-  new (&inorm_col) WideArray((DATA_TYPE *)smem);
-  smem += sizeof(DATA_TYPE) * tile_width;
+  
   new (&df_row) TallArray((DATA_TYPE *)smem);
   smem += sizeof(DATA_TYPE) * tile_height;
   new (&dg_row) TallArray((DATA_TYPE *)smem);
@@ -85,6 +77,7 @@ __device__ SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, type, tile_width,
 template <typename DATA_TYPE>
 struct SCAMPThreadInfo {
   Eigen::Array<DATA_TYPE, DIAGS_PER_THREAD, 1> cov;
+  Eigen::Array<DATA_TYPE, inner_unrolled_cols, 1> dfc, dgc, inormc;
   uint32_t local_row;
   uint32_t local_col;
   uint32_t global_row;

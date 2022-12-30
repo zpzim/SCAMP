@@ -317,27 +317,22 @@ __device__ inline void update_cols(const SCAMPKernelInputArgs<double>& args,
 //////////////////////////////////////////////////////////
 template <int outer_row_iter, int row_iter, SCAMPProfileType PROFILE_TYPE, bool COMPUTE_ROWS,
           bool COMPUTE_COLS, typename DISTANCE_TYPE, typename DerivedInputType,
-          typename DerivedSmem, typename DistColArray, typename InputColArray,
-          typename IndexColArray, typename ColType = typename InputColArray::Scalar>
+          typename DerivedSmem, typename DistColArray, typename IndexColArray>
 __device__ inline FORCE_INLINE void do_row(
     const SCAMPKernelInputArgs<double>& args, SCAMPThreadInfo<DerivedInputType>& info,
     DerivedSmem& smem, Eigen::ArrayBase<DistColArray>& distc, DISTANCE_TYPE& distr,
-    const Eigen::ArrayBase<InputColArray>& inormc,
-    const Eigen::ArrayBase<InputColArray>& dfc,
-    const Eigen::ArrayBase<InputColArray>& dgc,
     const DerivedInputType& inormr,
     const DerivedInputType& dfr,
     const DerivedInputType& dgr,
     Eigen::ArrayBase<IndexColArray>& idxc,
     unsigned int& idxr) {
-  static_assert(std::is_same<DerivedInputType, ColType>::value);
 
   // Compute the correlation values for the current tile row
   Eigen::Array<DISTANCE_TYPE, unrolled_diags, 1> dist;
   #pragma unroll unrolled_diags
   for (int i = 0; i < unrolled_diags; ++i) {
-    dist[i] = info.cov[i] * inormc[row_iter + i] * inormr;
-    info.cov[i] = info.cov[i] + dfc[row_iter + i] * dgr + dgc[row_iter + i] * dfr;
+    dist[i] = info.cov[i] * info.inormc[row_iter + i] * inormr;
+    info.cov[i] = info.cov[i] + info.dfc[row_iter + i] * dgr + info.dgc[row_iter + i] * dfr;
   }
 
   // Update the column best-so-far values
@@ -351,6 +346,87 @@ __device__ inline FORCE_INLINE void do_row(
     merge_to_row<outer_row_iter, PROFILE_TYPE, DISTANCE_TYPE>(args, info, smem, dist, distr, idxr);
   }
 }
+
+
+template<typename Data, int size, typename T> 
+auto __device__ inline ConvertToIntrinsic(const Eigen::ArrayBase<T>& arr) {
+  static_assert(sizeof(Data) == 4 || sizeof(Data) == 8);
+  static_assert(size > 0 && size <= 4); 
+  if constexpr (size == 1) {
+    return arr.coeff(0);
+  }
+  if constexpr (size == 2) {
+    if constexpr (sizeof(Data) == 4) {
+      float2 result;
+      result.x = arr.coeff(0);
+      result.y = arr.coeff(1);
+      return result;
+    }
+    if constexpr (sizeof(Data) == 8) {
+      double2 result;
+      result.x = arr.coeff(0);
+      result.y = arr.coeff(1);
+      return result;
+    }
+  }
+  if constexpr (size == 3) {
+    if constexpr (sizeof(Data) == 4) {
+      float3 result;
+      result.x = arr.coeff(0);
+      result.y = arr.coeff(1);
+      result.z = arr.coeff(2);
+      return result;
+    }
+    if constexpr (sizeof(Data) == 8) {
+      double3 result;
+      result.x = arr.coeff(0);
+      result.y = arr.coeff(1);
+      result.z = arr.coeff(2);
+      return result;
+    }
+  }
+  if constexpr (size == 4) {
+    if constexpr (sizeof(Data) == 4) {
+      float4 result;
+      result.x = arr.coeff(0);
+      result.y = arr.coeff(1);
+      result.z = arr.coeff(2);
+      result.w = arr.coeff(3);
+      return result;
+    }
+    if constexpr (sizeof(Data) == 8) {
+      double4 result;
+      result.x = arr.coeff(0);
+      result.y = arr.coeff(1);
+      result.z = arr.coeff(2);
+      result.w = arr.coeff(3);
+      return result;
+    }
+
+  }
+  static_assert(size <= 4);
+}
+
+template<typename Data, int size, typename T> 
+Eigen::Array<Data, size, 1> __device__ inline ConvertToEigen(const T& intrinsic) {
+  static_assert(sizeof(Data) == 4 || sizeof(Data) == 8);
+  static_assert(size > 0 && size <= 4); 
+  Eigen::Array<Data, size, 1> arr;
+  if constexpr (size > 0) {
+    arr[0] = intrinsic.x;
+  }
+  if constexpr (size > 1) {
+    arr[1] = intrinsic.y;
+  }
+  if constexpr (size > 2) {
+    arr[2] = intrinsic.z;
+  }
+  if constexpr (size > 3) {
+    arr[3] = intrinsic.w;
+  }
+  return arr;  
+}
+
 
 ///////////////////////////////////////////////////////////////////////////////
 // OPTIMIZED CODE PATH:
@@ -385,7 +461,6 @@ void __device__ do_iteration_fast(const SCAMPKernelInputArgs<double>& args,
                                   SCAMPThreadInfo<DerivedDataType>& info,
                                   DerivedSmem& smem) {
   
-  Eigen::Array<DerivedDataType, inner_unrolled_cols, 1> dfc, dgc, inormc;
   DISTANCE_TYPE init = init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
   Eigen::Array<DISTANCE_TYPE, unrolled_cols, 1> distc =
       Eigen::Array<DISTANCE_TYPE, unrolled_cols, 1>::Constant(init);
@@ -393,44 +468,49 @@ void __device__ do_iteration_fast(const SCAMPKernelInputArgs<double>& args,
   Eigen::Array<unsigned int, unrolled_cols, 1> idxc;
   Eigen::Array<unsigned int, outer_unrolled_rows, 1> idxr;
   static_assert(unrolled_diags == DIAGS_PER_THREAD);
+  
+  constexpr int self_overlap = inner_unrolled_cols - unrolled_rows;
 
-/*
-   if (info.global_row == 0) {
-      info.dfc = Eigen::Map<const Eigen::Array<double, unrolled_cols, 1>>(args.dfa + info.global_col).template cast<DerivedDataType>();
-      info.dgc = Eigen::Map<const Eigen::Array<double, unrolled_cols, 1>>(args.dga + info.global_col).template cast<DerivedDataType>();
-      info.inormc = Eigen::Map<const Eigen::Array<double, unrolled_cols, 1>>(args.normsa + info.global_col).template cast<DerivedDataType>();
-    } else {
-      info.dfc.segment<self_overlap>(0) = info.dfc.segment<self_overlap>(DIAGS_PER_THREAD);
-      info.dgc.segment<self_overlap>(0) = info.dgc.segment<self_overlap>(DIAGS_PER_THREAD);
-      info.inormc.segment<self_overlap>(0) = info.inormc.segment<self_overlap>(DIAGS_PER_THREAD);
-      #pragma unroll (unrolled_cols - self_overlap)
-      for (int i = 1; i < inner_unrolled_cols; ++i) {
-        info.dfc[i] = __shfl_down_sync(0xffffffff, info.dfc[i], 1);
-        info.dgc[i] = __shfl_down_sync(0xffffffff, info.dgc[i], 1);
-        info.inormc[i] = __shfl_down_sync(0xffffffff, info.inormc[i], 1);
-      }
-    }
-*/
+  cg::thread_block g = cg::this_thread_block();
+  auto this_warp = cg::tiled_partition<32>(g);
 
-  dfc = smem.df_col.segment<inner_unrolled_cols>(info.local_col);
-  dgc = smem.dg_col.segment<inner_unrolled_cols>(info.local_col);
-  inormc = smem.inorm_col.segment<inner_unrolled_cols>(info.local_col);
+  if (info.global_row == 0) {
+    info.dfc = Eigen::Map<const Eigen::Array<double, inner_unrolled_cols, 1>>(args.dfa + info.global_col).template cast<DerivedDataType>();
+    info.dgc = Eigen::Map<const Eigen::Array<double, inner_unrolled_cols, 1>>(args.dga + info.global_col).template cast<DerivedDataType>();
+    info.inormc = Eigen::Map<const Eigen::Array<double, inner_unrolled_cols, 1>>(args.normsa + info.global_col).template cast<DerivedDataType>();
+  }
 
   for_<outer_unrolled_rows / unrolled_rows>([&] (auto j) {
-    if constexpr (j.value > 0) {
-      dfc.segment<inner_unrolled_cols - unrolled_rows>(0) = dfc.segment<inner_unrolled_cols - unrolled_rows>(unrolled_rows);
-      dgc.segment<inner_unrolled_cols - unrolled_rows>(0) = dgc.segment<inner_unrolled_cols - unrolled_rows>(unrolled_rows);
-      inormc.segment<inner_unrolled_cols - unrolled_rows>(0) = inormc.segment<inner_unrolled_cols - unrolled_rows>(unrolled_rows);
-      dfc.segment<unrolled_rows>(inner_unrolled_cols - unrolled_rows) = smem.df_col.segment<unrolled_rows>(info.local_col + j.value * unrolled_rows + (inner_unrolled_cols - unrolled_rows));
-      dgc.segment<unrolled_rows>(inner_unrolled_cols - unrolled_rows) = smem.dg_col.segment<unrolled_rows>(info.local_col + j.value * unrolled_rows + (inner_unrolled_cols - unrolled_rows));
-      inormc.segment<unrolled_rows>(inner_unrolled_cols - unrolled_rows) = smem.inorm_col.segment<unrolled_rows>(info.local_col + j.value * unrolled_rows + (inner_unrolled_cols - unrolled_rows));
+    if (info.global_row != 0 || j.value > 0) {
+      auto temp = ConvertToIntrinsic<DerivedDataType, unrolled_rows>(info.dfc.segment<unrolled_rows>(self_overlap));
+      info.dfc.segment<self_overlap>(0) = info.dfc.segment<self_overlap>(unrolled_rows);
+      temp = this_warp.shfl_down(temp,1);
+      info.dfc.segment<unrolled_rows>(self_overlap) = ConvertToEigen<DerivedDataType, unrolled_rows>(temp);
+
+      temp = ConvertToIntrinsic<DerivedDataType, unrolled_rows>(info.dgc.segment<unrolled_rows>(self_overlap));     
+      info.dgc.segment<self_overlap>(0) = info.dgc.segment<self_overlap>(unrolled_rows);
+      temp = this_warp.shfl_down(temp,1);
+      info.dgc.segment<unrolled_rows>(self_overlap) = ConvertToEigen<DerivedDataType, unrolled_rows>(temp);
+
+      temp = ConvertToIntrinsic<DerivedDataType, unrolled_rows>(info.inormc.segment<unrolled_rows>(self_overlap)); 
+      info.inormc.segment<self_overlap>(0) = info.inormc.segment<self_overlap>(unrolled_rows);
+      temp = this_warp.shfl_down(temp,1);
+      info.inormc.segment<unrolled_rows>(self_overlap) = ConvertToEigen<DerivedDataType, unrolled_rows>(temp);
+
+      if(this_warp.thread_rank() == 31) {
+        info.dfc.segment<unrolled_rows>(self_overlap) = Eigen::Map<const Eigen::Array<double, unrolled_rows, 1>>(args.dfa + info.global_col + j.value * unrolled_rows + self_overlap).template cast<DerivedDataType>();
+        info.dgc.segment<unrolled_rows>(self_overlap) = Eigen::Map<const Eigen::Array<double, unrolled_rows, 1>>(args.dga + info.global_col + j.value * unrolled_rows + self_overlap).template cast<DerivedDataType>();
+        info.inormc.segment<unrolled_rows>(self_overlap) = Eigen::Map<const Eigen::Array<double, unrolled_rows, 1>>(args.normsa + info.global_col + j.value * unrolled_rows + self_overlap).template cast<DerivedDataType>();
+      }
+
     }
+
     Eigen::Array<DerivedDataType, unrolled_rows, 1> dfr = smem.df_row.segment<unrolled_rows>(info.local_row + j.value * unrolled_rows);
     Eigen::Array<DerivedDataType, unrolled_rows, 1> dgr = smem.dg_row.segment<unrolled_rows>(info.local_row + j.value * unrolled_rows);
     Eigen::Array<DerivedDataType, unrolled_rows, 1> inormr = smem.inorm_row.segment<unrolled_rows>(info.local_row + j.value * unrolled_rows);
     for_<unrolled_rows>([&] (auto k) {
       do_row<j.value * unrolled_rows + k.value,k.value, PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, DISTANCE_TYPE>(
-          args, info, smem, distc, distr[j.value * unrolled_rows + k.value], inormc, dfc, dgc, inormr[k.value], dfr[k.value], dgr[k.value], idxc, idxr[j.value * unrolled_rows + k.value]);
+          args, info, smem, distc, distr[j.value * unrolled_rows + k.value], inormr[k.value], dfr[k.value], dgr[k.value], idxc, idxr[j.value * unrolled_rows + k.value]);
     });
     // Update the column wise matrix profile with the best-so-far
     if constexpr (COMPUTE_COLS) {
@@ -545,17 +625,21 @@ __device__ inline void do_row_edge(const SCAMPKernelInputArgs<double>& args,
   DerivedDataType dgr = smem.dg_row[info.local_row];
   DerivedDataType dfr = smem.df_row[info.local_row];
 
+  Eigen::Array<DerivedDataType,DIAGS_PER_THREAD, 1> dfc, dgc, inormc;
+  dfc = Eigen::Map<const Eigen::Array<double, DIAGS_PER_THREAD, 1>>(args.dfa + info.global_col).template cast<DerivedDataType>();
+  dgc = Eigen::Map<const Eigen::Array<double, DIAGS_PER_THREAD, 1>>(args.dga + info.global_col).template cast<DerivedDataType>();
+  inormc = Eigen::Map<const Eigen::Array<double, DIAGS_PER_THREAD, 1>>(args.normsa + info.global_col).template cast<DerivedDataType>();
+
   // Compute the next set of distances. Only a single row. Note this may compute
   // garbage for values beyond the edge of the array.
   Eigen::Array<DISTANCE_TYPE, DIAGS_PER_THREAD, 1> dist =
-      (info.cov * smem.inorm_col.segment<DIAGS_PER_THREAD>(info.local_col) *
-       inormr)
+      (info.cov * inormc * inormr)
           .template cast<DISTANCE_TYPE>();
 
   // Update cov and compute the next distance values. Note this may compute
   // garbage for values beyond the edge of the array.
-  info.cov += smem.df_col.segment<DIAGS_PER_THREAD>(info.local_col) * dgr +
-              smem.dg_col.segment<DIAGS_PER_THREAD>(info.local_col) * dfr;
+  info.cov += dfc * dgr +
+              dgc * dfr;
 
   for_<DIAGS_PER_THREAD>([&](auto i) {
     reduce_edge<i.value, PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS>(
