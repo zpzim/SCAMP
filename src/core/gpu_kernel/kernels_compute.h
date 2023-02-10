@@ -62,6 +62,10 @@ __device__ inline ScalarType max_dist(const Eigen::ArrayBase<Derived>& dist,
   return ret;
 }
 
+static __inline__ __device__ double fetch_double(uint2 p){
+    return __hiloint2double(p.y, p.x);
+}
+
 //////////////////////////////////////////////////////
 // UPDATE_ROW:
 // C: 0 1 2 3 4 5 6
@@ -475,13 +479,22 @@ void __device__ do_iteration_fast(const SCAMPKernelInputArgs<double>& args,
   auto this_warp = cg::tiled_partition<32>(g);
 
   if (info.global_row == 0) {
-    info.dfc = Eigen::Map<const Eigen::Array<double, inner_unrolled_cols, 1>>(args.dfa + info.global_col).template cast<DerivedDataType>();
-    info.dgc = Eigen::Map<const Eigen::Array<double, inner_unrolled_cols, 1>>(args.dga + info.global_col).template cast<DerivedDataType>();
-    info.inormc = Eigen::Map<const Eigen::Array<double, inner_unrolled_cols, 1>>(args.normsa + info.global_col).template cast<DerivedDataType>();
+    for (int i = 0; i < inner_unrolled_cols; ++i) {
+      info.dfc[i] = fetch_double(tex1Dfetch<uint2>(args.dfa_tex, info.global_col + i));
+      info.dgc[i] = fetch_double(tex1Dfetch<uint2>(args.dga_tex, info.global_col + i));
+      info.inormc[i] = fetch_double(tex1Dfetch<uint2>(args.normsa_tex, info.global_col + i));
+      //info.dfc[i] = args.dfa[info.global_col + i];
+      //info.dgc[i] = args.dga[info.global_col + i];
+      //info.inormc[i] = args.normsa[info.global_col +i];
+    }
+    //info.dfc = Eigen::Map<const Eigen::Array<double, inner_unrolled_cols, 1>>(args.dfa + info.global_col).template cast<DerivedDataType>();
+    //info.dgc = Eigen::Map<const Eigen::Array<double, inner_unrolled_cols, 1>>(args.dga + info.global_col).template cast<DerivedDataType>();
+    //info.inormc = Eigen::Map<const Eigen::Array<double, inner_unrolled_cols, 1>>(args.normsa + info.global_col).template cast<DerivedDataType>();
   }
 
   for_<outer_unrolled_rows / unrolled_rows>([&] (auto j) {
     if (info.global_row != 0 || j.value > 0) {
+/*
       auto temp = ConvertToIntrinsic<DerivedDataType, unrolled_rows>(info.dfc.segment<unrolled_rows>(self_overlap));
       info.dfc.segment<self_overlap>(0) = info.dfc.segment<self_overlap>(unrolled_rows);
       temp = this_warp.shfl_down(temp,1);
@@ -496,12 +509,29 @@ void __device__ do_iteration_fast(const SCAMPKernelInputArgs<double>& args,
       info.inormc.segment<self_overlap>(0) = info.inormc.segment<self_overlap>(unrolled_rows);
       temp = this_warp.shfl_down(temp,1);
       info.inormc.segment<unrolled_rows>(self_overlap) = ConvertToEigen<DerivedDataType, unrolled_rows>(temp);
+*/
+      info.dfc.segment<self_overlap>(0) = info.dfc.segment<self_overlap>(unrolled_rows);
+      info.dgc.segment<self_overlap>(0) = info.dgc.segment<self_overlap>(unrolled_rows);
+      info.inormc.segment<self_overlap>(0) = info.inormc.segment<self_overlap>(unrolled_rows);
 
-      if(this_warp.thread_rank() == 31) {
-        info.dfc.segment<unrolled_rows>(self_overlap) = Eigen::Map<const Eigen::Array<double, unrolled_rows, 1>>(args.dfa + info.global_col + j.value * unrolled_rows + self_overlap).template cast<DerivedDataType>();
-        info.dgc.segment<unrolled_rows>(self_overlap) = Eigen::Map<const Eigen::Array<double, unrolled_rows, 1>>(args.dga + info.global_col + j.value * unrolled_rows + self_overlap).template cast<DerivedDataType>();
-        info.inormc.segment<unrolled_rows>(self_overlap) = Eigen::Map<const Eigen::Array<double, unrolled_rows, 1>>(args.normsa + info.global_col + j.value * unrolled_rows + self_overlap).template cast<DerivedDataType>();
-      }
+      //if(this_warp.thread_rank() == 31) {
+        for (int i = 0; i < unrolled_rows; ++i) {
+          info.dfc[self_overlap+i] = fetch_double(tex1Dfetch<uint2>(args.dfa_tex, info.global_col + j.value * unrolled_rows + self_overlap + i));
+          info.dgc[self_overlap+i] = fetch_double(tex1Dfetch<uint2>(args.dga_tex, info.global_col + j.value * unrolled_rows + self_overlap + i));
+          info.inormc[self_overlap+i] = fetch_double(tex1Dfetch<uint2>(args.normsa_tex, info.global_col + j.value * unrolled_rows + self_overlap + i));
+          //info.dfc[self_overlap+i] = args.dfa[info.global_col + j.value * unrolled_rows + self_overlap+i];
+          //info.dgc[self_overlap+i] = args.dga[info.global_col + j.value * unrolled_rows + self_overlap+i];
+          //info.inormc[self_overlap+i] = args.normsa[info.global_col + j.value * unrolled_rows + self_overlap+i];
+
+          //info.dfc.segment<unrolled_rows>(self_overlap) = Eigen::Map<const Eigen::Array<double, unrolled_rows, 1>>(args.dfa + info.global_col + j.value * unrolled_rows + self_overlap).template cast<DerivedDataType>();
+          //info.dgc.segment<unrolled_rows>(self_overlap) = Eigen::Map<const Eigen::Array<double, unrolled_rows, 1>>(args.dga + info.global_col + j.value * unrolled_rows + self_overlap).template cast<DerivedDataType>();
+          //info.inormc.segment<unrolled_rows>(self_overlap) = Eigen::Map<const Eigen::Array<double, unrolled_rows, 1>>(args.normsa + info.global_col + j.value * unrolled_rows + self_overlap).template cast<DerivedDataType>();
+
+        }
+        //info.dfc.segment<unrolled_rows>(self_overlap) = Eigen::Map<const Eigen::Array<double, unrolled_rows, 1>>(args.dfa + info.global_col + j.value * unrolled_rows + self_overlap).template cast<DerivedDataType>();
+        //info.dgc.segment<unrolled_rows>(self_overlap) = Eigen::Map<const Eigen::Array<double, unrolled_rows, 1>>(args.dga + info.global_col + j.value * unrolled_rows + self_overlap).template cast<DerivedDataType>();
+        //info.inormc.segment<unrolled_rows>(self_overlap) = Eigen::Map<const Eigen::Array<double, unrolled_rows, 1>>(args.normsa + info.global_col + j.value * unrolled_rows + self_overlap).template cast<DerivedDataType>();
+      //}
 
     }
 

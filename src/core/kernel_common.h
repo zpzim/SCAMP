@@ -18,6 +18,14 @@ struct SCAMPKernelInputArgs {
   const T *__restrict dgb;
   const T *__restrict normsa;
   const T *__restrict normsb;
+#ifdef _HAS_CUDA_
+  cudaTextureObject_t dfa_tex;
+  cudaTextureObject_t dga_tex;
+  cudaTextureObject_t normsa_tex;
+  cudaTextureObject_t dfb_tex;
+  cudaTextureObject_t dgb_tex;
+  cudaTextureObject_t normsb_tex;
+#endif
   const float *__restrict thresholds_a;
   const float *__restrict thresholds_b;
   const T *__restrict extras[NUM_EXTRA_OPERANDS];

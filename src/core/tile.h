@@ -18,6 +18,11 @@ class Tile {
       QT_dev_, means_A_, means_B_, norms_A_, norms_B_, df_A_, df_B_, dg_A_,
       dg_B_, scratchpad_;
 
+#ifdef _HAS_CUDA_
+  cudaTextureObject_t df_A_tex_, dg_A_tex_, norms_A_tex_;
+  cudaTextureObject_t df_B_tex_, dg_B_tex_, norms_B_tex_;
+#endif
+
   std::unique_ptr<float, std::function<void(float *)>> thresholds_A_,
       thresholds_B_;
   // Per worker output vectors (device)
@@ -103,6 +108,14 @@ class Tile {
   const double *dgb() const { return dg_B_.get(); }
   const double *normsa() const { return norms_A_.get(); }
   const double *normsb() const { return norms_B_.get(); }
+#ifdef _HAS_CUDA_
+  cudaTextureObject_t dfa_tex() const { return df_A_tex_; }
+  cudaTextureObject_t dga_tex() const { return dg_A_tex_; }
+  cudaTextureObject_t normsa_tex() const { return norms_A_tex_; }
+  cudaTextureObject_t dfb_tex() const { return df_B_tex_; }
+  cudaTextureObject_t dgb_tex() const { return dg_B_tex_; }
+  cudaTextureObject_t normsb_tex() const { return norms_B_tex_; }
+#endif
   const float *thresholds_A() const { return thresholds_A_.get(); }
   const float *thresholds_B() const { return thresholds_B_.get(); }
   unsigned long long int *get_mutable_a_dev_length() {

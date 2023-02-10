@@ -37,6 +37,14 @@ SCAMPKernelInputArgs<T>::SCAMPKernelInputArgs(Tile *t, bool transpose,
   global_start_row = t->get_tile_row();
   has_nan_input = t->has_nan_input();
   transposed = transpose;
+#ifdef _HAS_CUDA_
+  dfa_tex = transpose ? t->dfb_tex() : t->dfa_tex();
+  dga_tex = transpose ? t->dgb_tex() : t->dga_tex();
+  normsa_tex = transpose ? t->normsb_tex() : t->normsa_tex();
+  dfb_tex = transpose ? t->dfa_tex() : t->dfb_tex();
+  dgb_tex = transpose ? t->dga_tex() : t->dgb_tex();
+  normsb_tex = transpose ? t->normsa_tex() : t->normsb_tex();
+#endif
 }
 
 template <typename T>
