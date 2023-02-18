@@ -18,24 +18,24 @@ static int get_exclusion(uint64_t window_size, int64_t start_row,
   return 0;
 }
 
-
 #ifdef _HAS_CUDA_
-static void MapTexture(double* linear_mem, int length, cudaTextureObject_t &tex_obj, int deviceid) {
-      struct cudaTextureDesc td;
-      memset(&td, 0, sizeof(td));
-      td.normalizedCoords = 0;
-      td.readMode = cudaReadModeElementType;
-      struct cudaResourceDesc resDesc;
-      memset(&resDesc, 0, sizeof(resDesc));
-      resDesc.resType = cudaResourceTypeLinear;
-      resDesc.res.linear.devPtr = linear_mem;
-      resDesc.res.linear.sizeInBytes = length*sizeof(double);
-      resDesc.res.linear.desc.f = cudaChannelFormatKindUnsigned;
-      resDesc.res.linear.desc.x = 32;
-      resDesc.res.linear.desc.y = 32;
-      gpuErrchk(cudaSetDevice(deviceid));
-      gpuErrchk(cudaCreateTextureObject(&tex_obj, &resDesc, &td, nullptr));
-      gpuErrchk(cudaDeviceSynchronize());
+static void MapTexture(double *linear_mem, int length,
+                       cudaTextureObject_t &tex_obj, int deviceid) {
+  struct cudaTextureDesc td;
+  memset(&td, 0, sizeof(td));
+  td.normalizedCoords = 0;
+  td.readMode = cudaReadModeElementType;
+  struct cudaResourceDesc resDesc;
+  memset(&resDesc, 0, sizeof(resDesc));
+  resDesc.resType = cudaResourceTypeLinear;
+  resDesc.res.linear.devPtr = linear_mem;
+  resDesc.res.linear.sizeInBytes = length * sizeof(double);
+  resDesc.res.linear.desc.f = cudaChannelFormatKindUnsigned;
+  resDesc.res.linear.desc.x = 32;
+  resDesc.res.linear.desc.y = 32;
+  gpuErrchk(cudaSetDevice(deviceid));
+  gpuErrchk(cudaCreateTextureObject(&tex_obj, &resDesc, &td, nullptr));
+  gpuErrchk(cudaDeviceSynchronize());
 }
 #endif
 
@@ -337,18 +337,16 @@ Tile::Tile(const OpInfo *info, SCAMPArchitecture arch, int cuda_id)
   profile_a_dev_length_ = alloc_mem<unsigned long long int>(1, arch, cuda_id);
   profile_b_dev_length_ = alloc_mem<unsigned long long int>(1, arch, cuda_id);
 
-
 #ifdef _HAS_CUDA_
   if (arch == CUDA_GPU_WORKER) {
-      MapTexture(df_A_.get(), info->max_tile_width, df_A_tex_, cuda_id);
-      MapTexture(dg_A_.get(), info->max_tile_width, dg_A_tex_, cuda_id);
-      MapTexture(norms_A_.get(), info->max_tile_width, norms_A_tex_, cuda_id);
-      MapTexture(df_B_.get(), info->max_tile_width, df_B_tex_, cuda_id);
-      MapTexture(dg_B_.get(), info->max_tile_width, dg_B_tex_, cuda_id);
-      MapTexture(norms_B_.get(), info->max_tile_width, norms_B_tex_, cuda_id);
+    MapTexture(df_A_.get(), info->max_tile_width, df_A_tex_, cuda_id);
+    MapTexture(dg_A_.get(), info->max_tile_width, dg_A_tex_, cuda_id);
+    MapTexture(norms_A_.get(), info->max_tile_width, norms_A_tex_, cuda_id);
+    MapTexture(df_B_.get(), info->max_tile_width, df_B_tex_, cuda_id);
+    MapTexture(dg_B_.get(), info->max_tile_width, dg_B_tex_, cuda_id);
+    MapTexture(norms_B_.get(), info->max_tile_width, norms_B_tex_, cuda_id);
   }
 #endif
-
 }
 
 Tile::~Tile() {
