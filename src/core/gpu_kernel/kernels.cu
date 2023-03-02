@@ -74,10 +74,15 @@ __device__ SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, type, tile_width,
   }
 }
 
-template <typename DATA_TYPE>
+template <typename DATA_TYPE, typename DISTANCE_TYPE>
 struct SCAMPThreadInfo {
   Eigen::Array<DATA_TYPE, DIAGS_PER_THREAD, 1> cov;
-  Eigen::Array<DATA_TYPE, inner_unrolled_cols, 1> dfc, dgc, inormc;
+  Eigen::Array<DATA_TYPE, DIAGS_PER_THREAD, 1> dfc, dgc, inormc;
+  Eigen::Array<DISTANCE_TYPE, DIAGS_PER_THREAD, 1> distc;
+  Eigen::Array<unsigned int, DIAGS_PER_THREAD, 1> idxc;
+  int warpln;
+  int srcln;
+  int updates_remaining;
   uint32_t local_row;
   uint32_t local_col;
   uint32_t global_row;
@@ -103,7 +108,19 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
             PROFILE_OUTPUT_TYPE *profile_B) {
   constexpr int tile_width = tile_height + BLOCKSZ * DIAGS_PER_THREAD;
 
-  SCAMPThreadInfo<DATA_TYPE> thread_info;
+  SCAMPThreadInfo<DATA_TYPE, DISTANCE_TYPE> thread_info;
+  
+  if (threadIdx.x == 0) {
+    thread_info.srcln = 31;
+  } else {
+    thread_info.srcln = (threadIdx.x - 1) & 0x1f;
+  }
+  thread_info.warpln = (threadIdx.x) & 0x1f;
+  thread_info.updates_remaining = thread_info.warpln * DIAGS_PER_THREAD + (DIAGS_PER_THREAD - 1);
+
+  DISTANCE_TYPE init = init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
+  thread_info.distc = Eigen::Array<DISTANCE_TYPE, unrolled_diags, 1>::Constant(init);
+
 
   extern __shared__ char smem_raw[];
 
@@ -174,6 +191,7 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
                           DISTANCE_TYPE>(args, thread_info, smem);
       }
     } else if (start_diag < num_diags) {
+/*
       // Slow Path
       while (thread_info.global_col < args.n_x &&
              thread_info.global_row < args.n_y &&
@@ -185,6 +203,7 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
         ++thread_info.local_col;
         ++thread_info.local_row;
       }
+*/
     }
 
     // After this sync, the caches will be updated with the best so far values
