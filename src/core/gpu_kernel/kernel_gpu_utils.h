@@ -21,17 +21,17 @@ static __inline__ __device__ double atomicAdd(double *address, double val) {
 namespace SCAMP {
 
 // Number of diagonals computed per thread
-constexpr int DIAGS_PER_THREAD = 2;
-constexpr int unrolled_diags = 2;
+constexpr int DIAGS_PER_THREAD = 4;
+constexpr int unrolled_diags = 4;
 // Number of rows unrolled in the inner loop.
 constexpr int unrolled_rows = 2;
-constexpr int outer_unrolled_rows = 16;
+constexpr int outer_unrolled_rows = 4;
 constexpr int inner_unrolled_cols = unrolled_diags + unrolled_rows - 1;
 // Number of columns unrolled in the inner loop.
 constexpr int unrolled_cols = DIAGS_PER_THREAD + outer_unrolled_rows - 1;
 
 // Number of iterations of the inner loop to do before syncing.
-constexpr int KERNEL_TILE_ITERS = 16;
+constexpr int KERNEL_TILE_ITERS = 128;
 // Height of the parallelogram computed in the inner loop.
 constexpr int KERNEL_TILE_HEIGHT = KERNEL_TILE_ITERS * outer_unrolled_rows;
 constexpr int TILE_HEIGHT_SP = KERNEL_TILE_HEIGHT;
