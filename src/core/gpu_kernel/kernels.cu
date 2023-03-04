@@ -29,7 +29,7 @@ struct SCAMPSmem {
   Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>> inorm_row;
   Eigen::Map<Eigen::Array<PROFILE_DATA_TYPE, tile_width, 1>> local_mp_col;
   Eigen::Map<Eigen::Array<PROFILE_DATA_TYPE, tile_height, 1>> local_mp_row;
-  
+
   uint64_t *profile_a_length;
   uint64_t *profile_b_length;
 };
@@ -40,15 +40,13 @@ __device__ SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, type, tile_width,
                      tile_height>::SCAMPSmem(char *smem, bool compute_rows,
                                              bool compute_columns,
                                              int extra_operands)
-    : 
-      df_row(nullptr),
+    : df_row(nullptr),
       dg_row(nullptr),
       inorm_row(nullptr),
       local_mp_col(nullptr),
       local_mp_row(nullptr) {
   typedef decltype(df_row) TallArray;
 
-  
   new (&df_row) TallArray((DATA_TYPE *)smem);
   smem += sizeof(DATA_TYPE) * tile_height;
   new (&dg_row) TallArray((DATA_TYPE *)smem);
@@ -109,18 +107,19 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
   constexpr int tile_width = tile_height + BLOCKSZ * DIAGS_PER_THREAD;
 
   SCAMPThreadInfo<DATA_TYPE, DISTANCE_TYPE> thread_info;
-  
+
   if (threadIdx.x == 0) {
     thread_info.srcln = 31;
   } else {
     thread_info.srcln = (threadIdx.x - 1) & 0x1f;
   }
   thread_info.warpln = (threadIdx.x) & 0x1f;
-  thread_info.updates_remaining = thread_info.warpln * DIAGS_PER_THREAD + (DIAGS_PER_THREAD - 1);
+  thread_info.updates_remaining =
+      thread_info.warpln * DIAGS_PER_THREAD + (DIAGS_PER_THREAD - 1);
 
   DISTANCE_TYPE init = init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
-  thread_info.distc = Eigen::Array<DISTANCE_TYPE, unrolled_diags, 1>::Constant(init);
-
+  thread_info.distc =
+      Eigen::Array<DISTANCE_TYPE, unrolled_diags, 1>::Constant(init);
 
   extern __shared__ char smem_raw[];
 
@@ -191,19 +190,19 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
                           DISTANCE_TYPE>(args, thread_info, smem);
       }
     } else if (start_diag < num_diags) {
-/*
-      // Slow Path
-      while (thread_info.global_col < args.n_x &&
-             thread_info.global_row < args.n_y &&
-             thread_info.local_row < tile_height) {
-        do_row_edge<PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, DISTANCE_TYPE>(
-            args, thread_info, smem, start_diag, num_diags);
-        ++thread_info.global_col;
-        ++thread_info.global_row;
-        ++thread_info.local_col;
-        ++thread_info.local_row;
-      }
-*/
+      /*
+            // Slow Path
+            while (thread_info.global_col < args.n_x &&
+                   thread_info.global_row < args.n_y &&
+                   thread_info.local_row < tile_height) {
+              do_row_edge<PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
+         DISTANCE_TYPE>( args, thread_info, smem, start_diag, num_diags);
+              ++thread_info.global_col;
+              ++thread_info.global_row;
+              ++thread_info.local_col;
+              ++thread_info.local_row;
+            }
+      */
     }
 
     // After this sync, the caches will be updated with the best so far values
