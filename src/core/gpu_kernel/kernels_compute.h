@@ -468,7 +468,8 @@ void __device__ inline do_iteration_fast(const SCAMPKernelInputArgs<double>& arg
         args, info, smem, distr, inormr, dfr, dgr, idxr, j.value);
     DerivedDataType temp = this_warp.shfl(info.cov[unrolled_diags - 1], info.srcln); 
     for_<unrolled_diags - 1>([&](auto i) {
-      info.cov[i.value + 1] = info.cov[i.value]; 
+      constexpr int fetch_index = unrolled_diags - 1 - (i.value + 1);
+      info.cov[fetch_index + 1] = info.cov[fetch_index];
     });
     info.cov[0] = temp;
     if (info.updates_remaining < unrolled_diags) {
