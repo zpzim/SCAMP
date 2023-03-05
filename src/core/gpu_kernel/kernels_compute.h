@@ -396,6 +396,7 @@ Eigen::Array<Data, size, 1> __device__ inline ConvertToEigen(
   return arr;
 }
 
+
 template <int updates_remaining, bool COMPUTE_COLS,
           SCAMPProfileType PROFILE_TYPE, typename DerivedDataType,
           typename DerivedDistanceType, typename DerivedSmem>
@@ -403,23 +404,67 @@ void __device__ inline update_info(
     const SCAMPKernelInputArgs<double>& args,
     SCAMPThreadInfo<DerivedDataType, DerivedDistanceType>& info,
     DerivedSmem smem) {
-  int new_global_col = info.global_col + 32 * unrolled_diags;
   int new_local_col = info.local_col + 32 * unrolled_diags;
-  int col_to_update = (unrolled_diags - 1) - updates_remaining;
+  int new_global_col = info.global_col + 32 * unrolled_diags;
+  if constexpr (updates_remaining == unrolled_diags - 1) {
+    info.dfc2 = smem.df_col.segment<unrolled_diags>(new_local_col);
+    info.dgc2 = smem.dg_col.segment<unrolled_diags>(new_local_col);
+    info.inormc2 = smem.inorm_col.segment<unrolled_diags>(new_local_col);
+  }
+  constexpr int col_to_update = (unrolled_diags - 1) - updates_remaining;
   // Update the column wise matrix profile with the best-so-far
   if constexpr (COMPUTE_COLS) {
     update_cols<PROFILE_TYPE>(args, info, smem, info.distc[col_to_update],
                               info.idxc[col_to_update], col_to_update);
   }
-  info.dfc[col_to_update] = args.dfa[new_global_col + col_to_update];
-  info.dgc[col_to_update] = args.dga[new_global_col + col_to_update];
-  info.inormc[col_to_update] = args.normsa[new_global_col + col_to_update];
+  // Register Read
+  info.dfc[col_to_update] = info.dfc2[col_to_update];
+  info.dgc[col_to_update] = info.dgc2[col_to_update];
+  info.inormc[col_to_update] = info.inormc2[col_to_update];
+  // Shared read
+  //info.dfc[col_to_update] = smem.df_col[new_local_col + col_to_update];
+  //info.dgc[col_to_update] = smem.dg_col[new_local_col + col_to_update];
+  //info.inormc[col_to_update] = smem.inorm_col[new_local_col + col_to_update];
+  // Global read
+  //info.dfc[col_to_update] = args.dfa[new_global_col + col_to_update];
+  //info.dgc[col_to_update] = args.dga[new_global_col + col_to_update];
+  //info.inormc[col_to_update] = args.normsa[new_global_col + col_to_update];
   info.distc[col_to_update] = init_dist<DerivedDistanceType, PROFILE_TYPE>();
   if constexpr (updates_remaining == 0) {
     info.global_col = new_global_col;
     info.local_col = new_local_col;
     info.updates_remaining = 32 * unrolled_diags;
   }
+}
+
+template <bool COMPUTE_COLS, SCAMPProfileType PROFILE_TYPE, typename DerivedDataType, typename DerivedDistanceType, typename DerivedSmem>
+void __device__ inline do_update_info(const SCAMPKernelInputArgs<double>& args, 
+    SCAMPThreadInfo<DerivedDataType, DerivedDistanceType>& info,
+    DerivedSmem smem) {
+	if constexpr (unrolled_diags >= 4) {
+          if (info.updates_remaining == 3){
+            update_info<3, COMPUTE_COLS, PROFILE_TYPE>(args, info, smem);
+	    return;
+	  }
+	}
+	if constexpr (unrolled_diags >= 3) {
+          if (info.updates_remaining == 2){
+            update_info<2, COMPUTE_COLS, PROFILE_TYPE>(args, info, smem);
+	    return;
+	  }
+	}
+	if constexpr (unrolled_diags >= 2) {
+          if (info.updates_remaining == 1){
+            update_info<1, COMPUTE_COLS, PROFILE_TYPE>(args, info, smem);
+	    return;
+	  }
+	}
+	if constexpr (unrolled_diags >= 1) {
+          if (info.updates_remaining == 0){
+            update_info<0, COMPUTE_COLS, PROFILE_TYPE>(args, info, smem);
+	    return;
+	  }
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -461,15 +506,19 @@ void __device__ inline do_iteration_fast(
   auto this_warp = cg::tiled_partition<32>(g);
 
   if (info.global_row == 0) {
-    info.dfc = Eigen::Map<const Eigen::Array<double, unrolled_diags, 1>>(
-                   args.dfa + info.global_col)
-                   .template cast<DerivedDataType>();
-    info.dgc = Eigen::Map<const Eigen::Array<double, unrolled_diags, 1>>(
-                   args.dga + info.global_col)
-                   .template cast<DerivedDataType>();
-    info.inormc = Eigen::Map<const Eigen::Array<double, unrolled_diags, 1>>(
-                      args.normsa + info.global_col)
-                      .template cast<DerivedDataType>();
+    info.dfc = smem.df_col.segment<unrolled_diags>(info.local_col);
+    info.dgc = smem.dg_col.segment<unrolled_diags>(info.local_col);
+    info.inormc = smem.inorm_col.segment<unrolled_diags>(info.local_col);
+    
+    //info.dfc = Eigen::Map<const Eigen::Array<double, unrolled_diags, 1>>(
+    //               args.dfa + info.global_col)
+    //               .template cast<DerivedDataType>();
+    //info.dgc = Eigen::Map<const Eigen::Array<double, unrolled_diags, 1>>(
+    //               args.dga + info.global_col)
+    //               .template cast<DerivedDataType>();
+    //info.inormc = Eigen::Map<const Eigen::Array<double, unrolled_diags, 1>>(
+    //                  args.normsa + info.global_col)
+    //                  .template cast<DerivedDataType>();
   }
   for_<outer_unrolled_rows>([&](auto j) {
     DerivedDataType dfr = smem.df_row[info.local_row + j.value];
@@ -487,15 +536,18 @@ void __device__ inline do_iteration_fast(
     });
     info.cov[0] = temp;
     if (info.updates_remaining < unrolled_diags) {
-      if (info.updates_remaining == 3) {
+      do_update_info<COMPUTE_COLS, PROFILE_TYPE>(args, info, smem);
+/*
+      if (info.updates_remaining == 3){
         update_info<3, COMPUTE_COLS, PROFILE_TYPE>(args, info, smem);
-      } else if (info.updates_remaining == 2) {
+      } else if (info.updates_remaining == 2){
         update_info<2, COMPUTE_COLS, PROFILE_TYPE>(args, info, smem);
       } else if (info.updates_remaining == 1) {
         update_info<1, COMPUTE_COLS, PROFILE_TYPE>(args, info, smem);
-      } else {
+      } else if (info.updates_remaining == 0) {
         update_info<0, COMPUTE_COLS, PROFILE_TYPE>(args, info, smem);
       }
+*/
     }
     info.updates_remaining--;
     // Update the row wise matrix profile with the best-so-far

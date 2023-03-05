@@ -24,6 +24,9 @@ template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, SCAMPProfileType type,
 struct SCAMPSmem {
   __device__ SCAMPSmem(char *smem, bool compute_rows, bool compute_columns,
                        int extra_operands);
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>> df_col;
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>> dg_col;
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>> inorm_col;
   Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>> df_row;
   Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>> dg_row;
   Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>> inorm_row;
@@ -40,13 +43,23 @@ __device__ SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, type, tile_width,
                      tile_height>::SCAMPSmem(char *smem, bool compute_rows,
                                              bool compute_columns,
                                              int extra_operands)
-    : df_row(nullptr),
+    : df_col(nullptr),
+      dg_col(nullptr),
+      inorm_col(nullptr),
+      df_row(nullptr),
       dg_row(nullptr),
       inorm_row(nullptr),
       local_mp_col(nullptr),
       local_mp_row(nullptr) {
+  typedef decltype(df_col) WideArray;
   typedef decltype(df_row) TallArray;
 
+  new (&df_col) WideArray((DATA_TYPE *)smem);
+  smem += sizeof(DATA_TYPE) * tile_width;
+  new (&dg_col) WideArray((DATA_TYPE *)smem);
+  smem += sizeof(DATA_TYPE) * tile_width;
+  new (&inorm_col) WideArray((DATA_TYPE *)smem);
+  smem += sizeof(DATA_TYPE) * tile_width;
   new (&df_row) TallArray((DATA_TYPE *)smem);
   smem += sizeof(DATA_TYPE) * tile_height;
   new (&dg_row) TallArray((DATA_TYPE *)smem);
@@ -76,6 +89,7 @@ template <typename DATA_TYPE, typename DISTANCE_TYPE>
 struct SCAMPThreadInfo {
   Eigen::Array<DATA_TYPE, DIAGS_PER_THREAD, 1> cov;
   Eigen::Array<DATA_TYPE, DIAGS_PER_THREAD, 1> dfc, dgc, inormc;
+  Eigen::Array<DATA_TYPE, DIAGS_PER_THREAD, 1> dfc2, dgc2, inormc2;
   Eigen::Array<DISTANCE_TYPE, DIAGS_PER_THREAD, 1> distc;
   Eigen::Array<unsigned int, DIAGS_PER_THREAD, 1> idxc;
   int warpln;
