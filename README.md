@@ -17,6 +17,8 @@
 ![Conda](https://img.shields.io/conda/pn/conda-forge/pyscamp-cpu?label=pyscamp-cpu)
 ![Conda](https://img.shields.io/conda/dn/conda-forge/pyscamp-cpu?label=Downloads%3A%20pyscamp-cpu)
 
+[![DOI](https://zenodo.org/badge/127799249.svg)](https://zenodo.org/badge/latestdoi/127799249)
+
 
 # SCAMP: SCAlable Matrix Profile
 
