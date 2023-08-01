@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1659625529859,
+  "lastUpdate": 1690849552638,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -142,6 +142,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BM_MATRIX_SELF_JOIN/1/32768",
             "value": 3.9791477999999643,
+            "unit": "s/iter",
+            "extra": "iterations: 1\ncpu: 0 s\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "Zach Zimmerman",
+            "username": "zpzim"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "fe867f9cf755d149f1a7aa98b6ed0509c1311fac",
+          "message": "Update README.md to include DIO from zenodo",
+          "timestamp": "2023-07-31T17:14:19-07:00",
+          "tree_id": "d2988c8498c94c5b3c4019ae370c118301eb5783",
+          "url": "https://github.com/zpzim/SCAMP/commit/fe867f9cf755d149f1a7aa98b6ed0509c1311fac"
+        },
+        "date": 1690849548237,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/32768",
+            "value": 1.7357924600000048,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.003125 s\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/32768",
+            "value": 1.4593165100000078,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0046875 s\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/32768",
+            "value": 1.80053165999999,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.003125 s\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/1/32768",
+            "value": 4.414454599999999,
             "unit": "s/iter",
             "extra": "iterations: 1\ncpu: 0 s\nthreads: 1"
           }
