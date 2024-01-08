@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1690849018987,
+  "lastUpdate": 1704703471702,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -192,6 +192,54 @@ window.BENCHMARK_DATA = {
             "value": 2.8352228919999902,
             "unit": "s/iter",
             "extra": "iterations: 1\ncpu: 0.0027971999999999997 s\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "Zach Zimmerman",
+            "username": "zpzim"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "3f3078e9abdfd4141fe19ce68500d9ab908353ba",
+          "message": "Add support for cuda 12 builds (#124)\n\n* Adds support for builing for compute capabilities 87, 89, and 90. \r\n\r\n* Fixes issues with CUDA_ARCHITECTURES not being set correctly based on cuda compiler version.\r\n\r\n* Fix some broken test scripts.\r\n\r\n* Bump SDE version for arch emulation test",
+          "timestamp": "2024-01-08T00:35:29-08:00",
+          "tree_id": "4bf8750b26a17e93ab412acda21fe81cf34f943c",
+          "url": "https://github.com/zpzim/SCAMP/commit/3f3078e9abdfd4141fe19ce68500d9ab908353ba"
+        },
+        "date": 1704703470447,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/32768",
+            "value": 0.6603139096000007,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0025179 s\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/32768",
+            "value": 0.2792590851999989,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0024493500000000003 s\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/32768",
+            "value": 1.0156873591999982,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0025054000000000005 s\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/1/32768",
+            "value": 2.105998853700001,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0024967599999999993 s\nthreads: 1"
           }
         ]
       }
