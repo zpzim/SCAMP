@@ -95,9 +95,9 @@ jobs:
           submodules: 'true'
 
       - name: Setup SDE binaries
-        uses: petarpetrovt/setup-sde@v1.2
+        uses: petarpetrovt/setup-sde@v2.3
         with:
-          sdeVersion: 8.69.1-2021-07-18
+          sdeVersion: 9.27.0
 
       
       - name: Prep Build
@@ -207,9 +207,9 @@ jobs:
         run: |
           set -e
           cd $GITHUB_WORKSPACE
+          python3 -m pip install numpy pandas tqdm setuptools
           python3 setup.py sdist
           python3 -m pip install -v dist/*
-          python3 -m pip install numpy pandas tqdm
 
       - name: pyscamp Test
         shell: bash
