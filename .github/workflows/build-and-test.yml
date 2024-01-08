@@ -97,7 +97,7 @@ jobs:
       - name: Setup SDE binaries
         uses: petarpetrovt/setup-sde@v2.3
         with:
-          sdeVersion: 8.69.1-2021-07-18
+          sdeVersion: 9.27.0
 
       
       - name: Prep Build
