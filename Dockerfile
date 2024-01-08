@@ -1,4 +1,4 @@
-FROM nvidia/cuda:11.4.2-devel-ubuntu20.04 AS base
+FROM nvidia/cuda:12.3.1-devel-ubuntu20.04 AS base
 
 RUN apt-get update && \
     apt-get upgrade -y
@@ -15,7 +15,7 @@ RUN rm -rf /SCAMP/build
 RUN mkdir /SCAMP/build && cd /SCAMP/build && cmake -DSCAMP_ENABLE_BINARY_DISTRIBUTION=1 -DBUILD_CLIENT_SERVER=1 -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang .. && make -j8
 
 # We only need the CUDA runtime for the final container
-FROM nvidia/cuda:11.4.2-runtime-ubuntu20.04
+FROM nvidia/cuda:12.3.1-runtime-ubuntu20.04
 
 # Copy the SCAMP binaries and tests to the final container
 RUN mkdir /SCAMP
