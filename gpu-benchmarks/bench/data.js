@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1704734119228,
+  "lastUpdate": 1704775520690,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -192,6 +192,54 @@ window.BENCHMARK_DATA = {
             "value": 1.4413608590999503,
             "unit": "s/iter",
             "extra": "iterations: 10\ncpu: 0.028438400399999987 s\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "Zach Zimmerman",
+            "username": "zpzim"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "1b5a3b19cd05c208c3b01982f691c4a26ee4dbe5",
+          "message": "Update docker build to cuda 12.3.1 (#125)\n\n* Update Docker image to use CUDA 12.3.1\r\n\r\n* Update grpc submodule to v1.60.0\r\n\r\n* Fix client/server build issue with new grpc.",
+          "timestamp": "2024-01-08T20:12:11-08:00",
+          "tree_id": "5c1a872dab9181e06e3382673077c62069ee7d9b",
+          "url": "https://github.com/zpzim/SCAMP/commit/1b5a3b19cd05c208c3b01982f691c4a26ee4dbe5"
+        },
+        "date": 1704775509100,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/-1/524288",
+            "value": 0.7738590107997879,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0284369109 s\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/-1/524288",
+            "value": 0.724107754000579,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.028512309900000005 s\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/-1/524288",
+            "value": 2.010767740600568,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0284816273 s\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/-1/524288",
+            "value": 1.441256782200071,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0283662404 s\nthreads: 1"
           }
         ]
       }
