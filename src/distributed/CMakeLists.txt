@@ -1,5 +1,8 @@
 include(SCAMPMacros)
 
+# Fix for https://github.com/protocolbuffers/protobuf/issues/12185
+set(ABSL_ENABLE_INSTALL ON)
+
 add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/grpc ${CMAKE_CURRENT_BINARY_DIR}/grpc EXCLUDE_FROM_ALL)
 
 # After using add_subdirectory, we can now use the grpc targets directly from
