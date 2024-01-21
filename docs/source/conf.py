@@ -18,11 +18,11 @@ sys.path.insert(0, os.path.abspath('../../build/'))
 # -- Project information -----------------------------------------------------
 
 project = 'SCAMP'
-copyright = '2020, Zach Zimmerman'
+copyright = '2024, Zach Zimmerman'
 author = 'Zach Zimmerman'
 
 # The full version, including alpha/beta/rc tags
-release = '0.4.0'
+release = '4.0.0'
 
 
 # -- General configuration ---------------------------------------------------
