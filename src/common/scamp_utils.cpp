@@ -224,3 +224,58 @@ bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
   }
   return true;
 }
+
+std::tuple<std::vector<double>,std::vector<double>> ProfileToVector(SCAMP::Profile &p, bool output_pearson, int window)
+{
+
+  std::vector<double> mp_out;
+  std::vector<double> mpi_out;
+
+  switch (p.type) {
+    case SCAMP::PROFILE_TYPE_1NN_INDEX: {
+
+      auto arr = p.data[0].uint64_value;
+      for (const uint64_t elem : arr) {
+        SCAMP::mp_entry e;
+        e.ulong = elem;
+        if (output_pearson) {
+          mp_out.push_back(CleanupPearson(e.floats[0]));
+        } else {
+          mp_out.push_back(ConvertToEuclidean(e.floats[0], window));
+        }
+        int index;
+        // If there was no match, set index to -1
+        if (e.floats[0] < -1) {
+          index = -1;
+        } else {
+          index = e.ints[1];
+        }
+        mpi_out.push_back(double(index));
+      }
+      break;
+    }
+    case SCAMP::PROFILE_TYPE_1NN: {
+      auto arr = p.data[0].float_value;
+      for (const float elem : arr) {
+        if (output_pearson) {
+          mp_out.push_back(CleanupPearson(elem));
+        } else {
+          mp_out.push_back(ConvertToEuclidean(elem, window));
+        }
+      }
+      break;
+    }
+    case SCAMP::PROFILE_TYPE_SUM_THRESH: {
+
+      auto arr = p.data[0].double_value;
+      for (const double elem : arr) {
+        mp_out.push_back(elem);
+      }
+      break;
+    }
+    default:
+      break;
+  }
+  return {mp_out,mpi_out};
+
+}

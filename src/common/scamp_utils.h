@@ -3,6 +3,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include <tuple>
 
 #include "common.h"
 #include "profile.h"
@@ -31,3 +32,5 @@ double CleanupPearson(double val);
 bool WriteProfileToFile(const std::string &mp, const std::string &mpi,
                         SCAMP::Profile &p, bool output_pearson, int window,
                         int matrix_width, int matrix_height);
+
+std::tuple<std::vector<double>,std::vector<double>> ProfileToVector(SCAMP::Profile &p, bool output_pearson, int window);

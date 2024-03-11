@@ -269,8 +269,45 @@ FORCE_INLINE inline void handle_row(const SCAMPKernelInputArgs<double> &args,
 }
 
 template <typename DIST_TYPE, typename PROFILE_DATA_TYPE,
+          typename EIGEN_CORR_TYPE, typename EIGEN_INPUT_TYPE,
+          typename EIGEN_INPUT_TYPE_CONST, SCAMPProfileType PROFILE_TYPE,
+          bool computing_rows, bool computing_cols>
+FORCE_INLINE inline void handle_row_flatnoise(const SCAMPKernelInputArgs<double> &args,
+                                    ThreadInfo &info, EIGEN_CORR_TYPE &corr,
+                                    EIGEN_INPUT_TYPE &cov,
+                                    EIGEN_INPUT_TYPE_CONST &normsa,
+                                    EIGEN_INPUT_TYPE_CONST &dfa,
+                                    EIGEN_INPUT_TYPE_CONST &dga,
+                                    PROFILE_DATA_TYPE *__restrict profile_A,
+                                    PROFILE_DATA_TYPE *__restrict profile_B) {
+  corr = (cov * normsa * args.normsb[info.row] + args.noise_var_k * normsa.min(args.normsb[info.row]).pow(2)).template cast<DIST_TYPE>();
+  if (args.has_nan_input) {
+    // Remove any nan values so that they don't pollute the reduction.
+    // This is expensive on some compilers so only do it if we need to.
+    for (int local_diag = 0; local_diag < corr.size(); local_diag++) {
+      corr[local_diag] = std::isfinite(corr[local_diag])
+                             ? corr[local_diag]
+                             : init_dist<DIST_TYPE, PROFILE_TYPE>();
+    }
+  }
+  if constexpr (computing_cols) {
+    update_columnwise<DIST_TYPE, PROFILE_DATA_TYPE, EIGEN_CORR_TYPE,
+                      PROFILE_TYPE>(args, info, corr, profile_A);
+  }
+  if constexpr (computing_rows) {
+    update_rowwise<DIST_TYPE, PROFILE_DATA_TYPE, EIGEN_CORR_TYPE, PROFILE_TYPE>(
+        args, info, corr, profile_B);
+  }
+  //std::cout << corr << '\n';
+  cov += dfa * args.dgb[info.row];
+  cov += dga * args.dfb[info.row];
+}
+
+
+
+template <typename DIST_TYPE, typename PROFILE_DATA_TYPE,
           SCAMPProfileType PROFILE_TYPE, bool computing_rows,
-          bool computing_cols>
+          bool computing_cols, RowAlgorithm row_algo >
 FORCE_INLINE inline void handle_row_fast(
     const SCAMPKernelInputArgs<double> &args, ThreadInfo &info,
     PROFILE_DATA_TYPE *__restrict profile_A,
@@ -283,14 +320,21 @@ FORCE_INLINE inline void handle_row_fast(
       args.dfa + info.tile_diag + info.row);
   Eigen::Map<const Eigen::Array<double, unrollWid, 1>> dga(
       args.dga + info.tile_diag + info.row);
-  handle_row<DIST_TYPE, PROFILE_DATA_TYPE, decltype(corr), decltype(cov),
-             decltype(normsa), PROFILE_TYPE, computing_rows, computing_cols>(
-      args, info, corr, cov, normsa, dfa, dga, profile_A, profile_B);
+  
+  if constexpr (row_algo == RowAlgorithm::FlatNoise) {
+    handle_row_flatnoise<DIST_TYPE, PROFILE_DATA_TYPE, decltype(corr), decltype(cov),
+              decltype(normsa), PROFILE_TYPE, computing_rows, computing_cols>(
+        args, info, corr, cov, normsa, dfa, dga, profile_A, profile_B);
+  }else {
+    handle_row<DIST_TYPE, PROFILE_DATA_TYPE, decltype(corr), decltype(cov),
+              decltype(normsa), PROFILE_TYPE, computing_rows, computing_cols>(
+        args, info, corr, cov, normsa, dfa, dga, profile_A, profile_B);
+  }
 }
 
 template <typename DIST_TYPE, typename PROFILE_DATA_TYPE,
           SCAMPProfileType PROFILE_TYPE, bool computing_rows,
-          bool computing_cols>
+          bool computing_cols, RowAlgorithm row_algo >
 FORCE_INLINE inline void handle_row_slow(
     const SCAMPKernelInputArgs<double> &args, ThreadInfo &info,
     PROFILE_DATA_TYPE *__restrict profile_A,
@@ -307,14 +351,21 @@ FORCE_INLINE inline void handle_row_slow(
       args.dfa + info.tile_diag + info.row, diagmax - info.tile_diag);
   Eigen::Map<const Eigen::Array<double, Eigen::Dynamic, 1>> dga(
       args.dga + info.tile_diag + info.row, diagmax - info.tile_diag);
-  handle_row<DIST_TYPE, PROFILE_DATA_TYPE, decltype(corr), decltype(cov),
-             decltype(normsa), PROFILE_TYPE, computing_rows, computing_cols>(
+  
+  if constexpr (row_algo == RowAlgorithm::FlatNoise ) {
+    handle_row_flatnoise<DIST_TYPE, PROFILE_DATA_TYPE, decltype(corr), decltype(cov),
+              decltype(normsa), PROFILE_TYPE, computing_rows, computing_cols>(
+        args, info, corr, cov, normsa, dfa, dga, profile_A, profile_B);
+  }else {
+    handle_row<DIST_TYPE, PROFILE_DATA_TYPE, decltype(corr), decltype(cov),
+          decltype(normsa), PROFILE_TYPE, computing_rows, computing_cols>(
       args, info, corr, cov, normsa, dfa, dga, profile_A, profile_B);
+  }
 }
 
 template <typename DIST_TYPE, typename PROFILE_DATA_TYPE,
           SCAMPProfileType PROFILE_TYPE, bool computing_rows,
-          bool computing_cols>
+          bool computing_cols, RowAlgorithm row_algo>
 void do_tile(const SCAMPKernelInputArgs<double> &args,
              PROFILE_DATA_TYPE *__restrict profile_A,
              PROFILE_DATA_TYPE *__restrict profile_B) {
@@ -337,7 +388,7 @@ void do_tile(const SCAMPKernelInputArgs<double> &args,
     // Fast case where we can unroll fully.
     for (info.row = 0; info.row < info.full_row_iters; info.row++) {
       handle_row_fast<DIST_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE,
-                      computing_rows, computing_cols>(args, info, profile_A,
+                      computing_rows, computing_cols, row_algo>(args, info, profile_A,
                                                       profile_B);
     }
 
@@ -345,7 +396,7 @@ void do_tile(const SCAMPKernelInputArgs<double> &args,
     for (info.row = info.full_row_iters; info.row < info.row_iters;
          info.row++) {
       handle_row_slow<DIST_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE,
-                      computing_rows, computing_cols>(args, info, profile_A,
+                      computing_rows, computing_cols, row_algo>(args, info, profile_A,
                                                       profile_B);
     }
   }
@@ -357,15 +408,17 @@ SCAMPError_t LaunchDoTile(const SCAMPKernelInputArgs<double> &args,
                           PROFILE_OUTPUT_TYPE *profile_A,
                           PROFILE_OUTPUT_TYPE *profile_B,
                           SCAMPPrecisionType fp_type, bool computing_rows,
-                          bool computing_cols) {
+                          bool computing_cols, const RowAlgorithm row_algo) {
   if (computing_rows && computing_cols) {
     constexpr bool COMPUTE_COLS = true;
     constexpr bool COMPUTE_ROWS = true;
     switch (fp_type) {
       case PRECISION_ULTRA:
       case PRECISION_DOUBLE:
-        do_tile<DIST_TYPE, PROFILE_OUTPUT_TYPE, PROFILE_TYPE, COMPUTE_ROWS,
-                COMPUTE_COLS>(args, profile_A, profile_B);
+        (row_algo == RowAlgorithm::FlatNoise ? do_tile<DIST_TYPE, PROFILE_OUTPUT_TYPE, PROFILE_TYPE, COMPUTE_ROWS,
+                COMPUTE_COLS,RowAlgorithm::FlatNoise> : 
+                do_tile<DIST_TYPE, PROFILE_OUTPUT_TYPE, PROFILE_TYPE, COMPUTE_ROWS,
+                COMPUTE_COLS,RowAlgorithm::Pearson>)(args, profile_A, profile_B);
         break;
       case PRECISION_MIXED:
       case PRECISION_SINGLE:
@@ -378,8 +431,10 @@ SCAMPError_t LaunchDoTile(const SCAMPKernelInputArgs<double> &args,
     switch (fp_type) {
       case PRECISION_ULTRA:
       case PRECISION_DOUBLE:
-        do_tile<DIST_TYPE, PROFILE_OUTPUT_TYPE, PROFILE_TYPE, COMPUTE_ROWS,
-                COMPUTE_COLS>(args, profile_A, profile_B);
+        (row_algo == RowAlgorithm::FlatNoise ? do_tile<DIST_TYPE, PROFILE_OUTPUT_TYPE, PROFILE_TYPE, COMPUTE_ROWS,
+                COMPUTE_COLS,RowAlgorithm::FlatNoise> : 
+                do_tile<DIST_TYPE, PROFILE_OUTPUT_TYPE, PROFILE_TYPE, COMPUTE_ROWS,
+                COMPUTE_COLS,RowAlgorithm::Pearson>)(args, profile_A, profile_B);
         break;
       case PRECISION_MIXED:
       case PRECISION_SINGLE:
@@ -392,8 +447,10 @@ SCAMPError_t LaunchDoTile(const SCAMPKernelInputArgs<double> &args,
     switch (fp_type) {
       case PRECISION_ULTRA:
       case PRECISION_DOUBLE:
-        do_tile<DIST_TYPE, PROFILE_OUTPUT_TYPE, PROFILE_TYPE, COMPUTE_ROWS,
-                COMPUTE_COLS>(args, profile_A, profile_B);
+        (row_algo == RowAlgorithm::FlatNoise ? do_tile<DIST_TYPE, PROFILE_OUTPUT_TYPE, PROFILE_TYPE, COMPUTE_ROWS,
+                COMPUTE_COLS,RowAlgorithm::FlatNoise > : 
+                do_tile<DIST_TYPE, PROFILE_OUTPUT_TYPE, PROFILE_TYPE, COMPUTE_ROWS,
+                COMPUTE_COLS,RowAlgorithm::Pearson>)(args, profile_A, profile_B);
         break;
       case PRECISION_MIXED:
       case PRECISION_SINGLE:
@@ -407,7 +464,7 @@ SCAMPError_t LaunchDoTile(const SCAMPKernelInputArgs<double> &args,
 SCAMPError_t compute_cpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
                                               Tile *t, void *profile_a,
                                               void *profile_b, bool do_rows,
-                                              bool do_cols) {
+                                              bool do_cols, const RowAlgorithm row_algo) {
   int exclusion_total = args.exclusion_lower + args.exclusion_upper;
   if (exclusion_total < args.n_x) {
     switch (t->info()->profile_type) {
@@ -415,22 +472,22 @@ SCAMPError_t compute_cpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
         return LaunchDoTile<double, double, PROFILE_TYPE_SUM_THRESH>(
             args, static_cast<double *>(profile_a),
             static_cast<double *>(profile_b), t->info()->fp_type, do_rows,
-            do_cols);
+            do_cols,row_algo);
       case PROFILE_TYPE_1NN_INDEX:
         return LaunchDoTile<float, mp_entry, PROFILE_TYPE_1NN_INDEX>(
             args, static_cast<mp_entry *>(profile_a),
             static_cast<mp_entry *>(profile_b), t->info()->fp_type, do_rows,
-            do_cols);
+            do_cols,row_algo);
       case PROFILE_TYPE_1NN:
         return LaunchDoTile<float, float, PROFILE_TYPE_1NN>(
             args, static_cast<float *>(profile_a),
             static_cast<float *>(profile_b), t->info()->fp_type, do_rows,
-            do_cols);
+            do_cols,row_algo);
       case PROFILE_TYPE_MATRIX_SUMMARY:
         return LaunchDoTile<float, float, PROFILE_TYPE_MATRIX_SUMMARY>(
             args, static_cast<float *>(profile_a),
             static_cast<float *>(profile_b), t->info()->fp_type, do_rows,
-            do_cols);
+            do_cols,row_algo);
       case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
       default:
         return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;

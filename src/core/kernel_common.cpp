@@ -4,7 +4,7 @@ namespace SCAMP {
 
 template <typename T>
 SCAMPKernelInputArgs<T>::SCAMPKernelInputArgs(Tile *t, bool transpose,
-                                              bool ab_join) {
+                                              bool ab_join) : noise_var_k(T(t->info()->noise_var_k)) {
   cov = t->QT();
   dfa = transpose ? t->dfb() : t->dfa();
   dfb = transpose ? t->dfa() : t->dfb();

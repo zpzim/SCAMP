@@ -32,7 +32,7 @@ OpInfo::OpInfo(size_t Asize, size_t Bsize, size_t window_sz,
                SCAMPProfileType profiletype, bool keep_rows, bool compute_rows,
                bool compute_cols, bool aligned, bool silent_mode,
                int num_workers, int64_t max_matches_per_col, int64_t mheight,
-               int64_t mwidth)
+               int64_t mwidth, RowAlgorithm row_algo, double noise_var)
     : full_ts_len_A(Asize),
       full_ts_len_B(Bsize),
       mp_window(window_sz),
@@ -49,7 +49,9 @@ OpInfo::OpInfo(size_t Asize, size_t Bsize, size_t window_sz,
       silent_mode(silent_mode),
       max_matches_per_column(max_matches_per_col),
       matrix_height(mheight),
-      matrix_width(mwidth) {
+      matrix_width(mwidth),
+      row_algorithm(row_algo),
+      noise_var_k((noise_var*noise_var)*((2.0+(double)window_sz) / 2.0)) {
   if (self_join) {
     full_ts_len_B = full_ts_len_A;
   }

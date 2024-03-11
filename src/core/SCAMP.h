@@ -61,11 +61,11 @@ class SCAMP_Operation {
                   Profile *pA, Profile *pB, bool keep_rows, bool compute_rows,
                   bool compute_cols, bool is_aligned, bool silent_mode,
                   int num_threads, int64_t max_matches_per_col,
-                  int64_t matrix_height, int64_t matrix_width)
+                  int64_t matrix_height, int64_t matrix_width, RowAlgorithm row_algorithm, double noise_var)
       : info_(Asize, Bsize, window_sz, max_tile_size, selfjoin, t, start_row,
               start_col, args_, profile_type, keep_rows, compute_rows,
               compute_cols, is_aligned, silent_mode, dev.size() + num_threads,
-              max_matches_per_col, matrix_height, matrix_width),
+              max_matches_per_col, matrix_height, matrix_width, row_algorithm, noise_var),
         profile_a_(pA),
         profile_b_(pB),
         completed_tiles_(0),
