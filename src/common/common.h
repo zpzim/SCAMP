@@ -52,6 +52,8 @@ enum SCAMPPrecisionType {
   PRECISION_ULTRA = 4,
 };
 
+enum class RowAlgorithm{Pearson, FlatNoise};
+
 std::string GetPrecisionTypeString(SCAMPPrecisionType t);
 std::string GetProfileTypeString(SCAMPProfileType t);
 bool NeedsSort(SCAMPProfileType type);
@@ -130,7 +132,7 @@ struct OpInfo {
          int64_t start_col, OptionalArgs args_, SCAMPProfileType profiletype,
          bool keep_rows, bool compute_rows, bool compute_cols, bool aligned,
          bool silent_mode, int num_workers, int64_t max_matches_per_col,
-         int64_t mheight, int64_t mwidth);
+         int64_t mheight, int64_t mwidth, RowAlgorithm row_algorithm, double noise_var_k);
 
   // Total size of A timeseries
   size_t full_ts_len_A;
@@ -180,6 +182,9 @@ struct OpInfo {
   int64_t matrix_width;
   double cols_per_cell;
   double rows_per_cell;
+
+  RowAlgorithm row_algorithm = RowAlgorithm::Pearson;
+  double noise_var_k;
 };
 
 // Struct containing the precomputed statistics for an input time series

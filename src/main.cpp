@@ -99,6 +99,31 @@ DEFINE_string(gpus, "",
               "IDs of GPUs on the system to use, if this flag is not set SCAMP "
               "tries to use all available GPUs on the system");
 
+DEFINE_string(row_algorithm, "pearson",
+              "The correlation algorithm used to compare subequences "
+              "[pearson] is the default, [flatnoise] for flat and noisy timeseries" );
+
+DEFINE_double(
+    noise_variance, 0,
+    "Variance of Noise of input data. " 
+    "Used when row_algorithm is flatnoise. ");
+
+auto string_to_RowAlgorithm(std::string str) 
+{
+  
+  for(char &ch : str){
+    ch = std::tolower(ch);
+  }
+
+  if(str == "flatnoise") {
+    return SCAMP::RowAlgorithm::FlatNoise;
+  }else{
+    return SCAMP::RowAlgorithm::Pearson;
+  }
+
+}
+
+
 int main(int argc, char **argv) {
   bool self_join, computing_rows, computing_cols;
   gflags::ParseCommandLineFlags(&argc, &argv, true);
@@ -209,6 +234,9 @@ int main(int argc, char **argv) {
   args.max_matches_per_column = FLAGS_max_matches_per_column;
   args.matrix_height = FLAGS_reduced_height;
   args.matrix_width = FLAGS_reduced_width;
+  args.row_algorithm = string_to_RowAlgorithm(FLAGS_row_algorithm);
+  args.noise_variance = FLAGS_noise_variance;
+
   if (FLAGS_print_debug_info) {
     printf("Starting SCAMP\n");
   }

@@ -15,7 +15,7 @@ namespace BASELINE {
 
 SCAMPError_t compute_cpu_resources_and_launch(
     SCAMP::SCAMPKernelInputArgs<double> args, SCAMP::Tile *t, void *profile_a,
-    void *profile_b, bool do_rows, bool do_cols);
+    void *profile_b, bool do_rows, bool do_cols, RowAlgorithm row_algo);
 }
 
 }  // namespace SCAMP

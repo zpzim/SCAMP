@@ -7,5 +7,5 @@ namespace SCAMP {
 
 SCAMPError_t dispatch_kernel_baseline(SCAMPKernelInputArgs<double> args,
                                       Tile *t, void *profile_a, void *profile_b,
-                                      bool do_rows, bool do_cols);
+                                      bool do_rows, bool do_cols, RowAlgorithm row_algo);
 }

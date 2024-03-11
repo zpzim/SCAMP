@@ -34,6 +34,8 @@ struct SCAMPArgs {
   int64_t max_matches_per_column;
   int64_t matrix_height;
   int64_t matrix_width;
+  RowAlgorithm row_algorithm;
+  double noise_variance;
 };
 
 }  // namespace SCAMP
