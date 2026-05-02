@@ -226,13 +226,6 @@ jobs:
         os: [ubuntu-latest, windows-latest]
         compiler: [g++, clang++, cl]
         cuda: ['11.7.0', '12.6.0']
-        thrust-sort: [default]
-        include:
-          # Exercise the SCAMP_DISABLE_THRUST_SORT escape hatch on linux + 12.6
-          - os: ubuntu-latest
-            compiler: g++
-            cuda: '12.6.0'
-            thrust-sort: disabled
         exclude:
           - os: ubuntu-latest
             compiler: cl
@@ -261,11 +254,7 @@ jobs:
           set -e
           cd $GITHUB_WORKSPACE
           mkdir build && cd build
-          EXTRA=""
-          if [ "${{ matrix.thrust-sort }}" = "disabled" ]; then
-            EXTRA="-DSCAMP_DISABLE_THRUST_SORT=ON"
-          fi
-          cmake -DFORCE_CUDA=1 $EXTRA ..
+          cmake -DFORCE_CUDA=1 ..
           cmake --build . --config Release --parallel 2
 
   build-and-test-cuda:
