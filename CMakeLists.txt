@@ -1,4 +1,17 @@
 cmake_minimum_required(VERSION 3.18 FATAL_ERROR)
+
+# Allow building against CMake 4.x even though some vendored dependencies
+# (e.g. third_party/gflags) still declare cmake_minimum_required(<3.5).
+# CMAKE_POLICY_VERSION_MINIMUM is the upstream-documented escape hatch:
+# any vendored CMakeLists with a min version lower than this floor will be
+# treated as if it requested this version.  Without this, configuring
+# fails with:
+#   "Compatibility with CMake < 3.5 has been removed from CMake."
+# under CMake 4 / conda-forge's current pinning.
+if(NOT DEFINED CMAKE_POLICY_VERSION_MINIMUM)
+  set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING
+      "Minimum CMake policy version applied to vendored subprojects")
+endif()
 include(CheckLanguage)
 include(CheckCXXCompilerFlag)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
