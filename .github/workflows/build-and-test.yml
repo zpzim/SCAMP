@@ -225,6 +225,14 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         compiler: [g++, clang++, cl]
+        cuda: ['11.7.0', '12.6.0']
+        thrust-sort: [default]
+        include:
+          # Exercise the SCAMP_DISABLE_THRUST_SORT escape hatch on linux + 12.6
+          - os: ubuntu-latest
+            compiler: g++
+            cuda: '12.6.0'
+            thrust-sort: disabled
         exclude:
           - os: ubuntu-latest
             compiler: cl
@@ -236,24 +244,28 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           submodules: 'true'
-      - uses: Jimver/cuda-toolkit@v0.2.6
+      - uses: Jimver/cuda-toolkit@v0.2.16
         id: cuda-toolkit
         with:
-          cuda: '11.7.0'
+          cuda: ${{ matrix.cuda }}
 
       - name: Prep Build
         run: echo "CXX=${{ matrix.compiler }}" >> $GITHUB_ENV
-        
+
       - name: Build SCAMP
         shell: bash
         run: |
           set -e
           cd $GITHUB_WORKSPACE
           mkdir build && cd build
-          cmake -DFORCE_CUDA=1 ..
+          EXTRA=""
+          if [ "${{ matrix.thrust-sort }}" = "disabled" ]; then
+            EXTRA="-DSCAMP_DISABLE_THRUST_SORT=ON"
+          fi
+          cmake -DFORCE_CUDA=1 $EXTRA ..
           cmake --build . --config Release --parallel 2
 
   build-and-test-cuda:
@@ -286,3 +298,54 @@ jobs:
           set -e
           cd $GITHUB_WORKSPACE/test
           python3 ./run_tests.py --executable "../build/SCAMP" --force_gpu --extra_args " --num_cpu_workers=0"
+
+  # Verify pyscamp builds and tests on the python/numpy combinations that
+  # broke in the v4.0.1 era (cp313/cp314 + numpy 2).  This job is the
+  # regression net for #129 (numpy>=2 selfjoin returning a constant vector)
+  # and for the `from distutils.version import LooseVersion` removal in
+  # setup.py.
+  build-and-test-pyscamp-modern:
+    name: pyscamp ${{ matrix.os }} py${{ matrix.python-version }} numpy${{ matrix.numpy }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.10', '3.12', '3.13']
+        numpy: ['1', '2']
+        exclude:
+          # numpy 1.x wheels do not exist for cp313 on PyPI
+          - python-version: '3.13'
+            numpy: '1'
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'true'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Build pyscamp
+        shell: bash
+        run: |
+          set -e
+          python -m pip install --upgrade pip
+          # Pin the runtime numpy first so the build picks it up.
+          if [ "${{ matrix.numpy }}" = "1" ]; then
+            python -m pip install "numpy<2" pandas tqdm
+          else
+            python -m pip install "numpy>=2" pandas tqdm
+          fi
+          python -m pip install -v --no-build-isolation .
+
+      - name: Run pyscamp tests (catches #129 regression)
+        shell: bash
+        run: |
+          set -e
+          cd test
+          python test_pyscamp.py
+          python ./run_tests.py --executable pyscamp
