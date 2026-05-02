@@ -10,8 +10,8 @@
 #include <thrust/sort.h>
 #endif
 #include <algorithm>
-#include <vector>
 #include <unordered_map>
+#include <vector>
 #include "defines.h"
 #include "kernel_common.h"
 #include "kernel_gpu_utils.h"

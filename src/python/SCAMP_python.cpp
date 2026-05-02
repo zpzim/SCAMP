@@ -28,14 +28,13 @@ static std::vector<double> ArrayToDoubleVector(
     const char* arg_name) {
   auto buf = arr.request();
   if (buf.ndim != 1) {
-    throw std::invalid_argument(std::string("Argument '") + arg_name +
-                                "' must be a 1D array (got ndim=" +
-                                std::to_string(buf.ndim) + ").");
+    throw std::invalid_argument(
+        std::string("Argument '") + arg_name +
+        "' must be a 1D array (got ndim=" + std::to_string(buf.ndim) + ").");
   }
   const double* data = static_cast<const double*>(buf.ptr);
   return std::vector<double>(data, data + buf.size);
 }
-
 
 void SplitProfile1NNINDEX(const std::vector<uint64_t> profile,
                           py::array_t<float>& nn, py::array_t<int>& index,
@@ -449,7 +448,12 @@ PYBIND11_MODULE(pyscamp, m) {
         Returns true if both 1) The module was compiled with GPU support and 2) GPUs are available.
         )pbdoc");
 
-  m.def("selfjoin", [](py::array_t<double, py::array::c_style | py::array::forcecast> a, int m, const py::kwargs& kwargs) { return self_join_1NN_INDEX(ArrayToDoubleVector(a, "a"), m, kwargs); }, py::arg("a"), py::arg("m"), R"pbdoc(
+  m.def("selfjoin",
+        [](py::array_t<double, py::array::c_style | py::array::forcecast> a,
+           int m, const py::kwargs& kwargs) {
+          return self_join_1NN_INDEX(ArrayToDoubleVector(a, "a"), m, kwargs);
+        },
+        py::arg("a"), py::arg("m"), R"pbdoc(
     Computes the matrix profile for time series A.
   
     :param a: Time series to compute matrix profile for.
@@ -460,7 +464,14 @@ PYBIND11_MODULE(pyscamp, m) {
     :rtype: Tuple of np.ndarray[float32] and np.ndarray[int32]
     )pbdoc");
 
-  m.def("abjoin", [](py::array_t<double, py::array::c_style | py::array::forcecast> a, py::array_t<double, py::array::c_style | py::array::forcecast> b, int m, const py::kwargs& kwargs) { return ab_join_1NN_INDEX(ArrayToDoubleVector(a, "a"), ArrayToDoubleVector(b, "b"), m, kwargs); }, py::arg("a"), py::arg("b"), py::arg("m"),
+  m.def("abjoin",
+        [](py::array_t<double, py::array::c_style | py::array::forcecast> a,
+           py::array_t<double, py::array::c_style | py::array::forcecast> b,
+           int m, const py::kwargs& kwargs) {
+          return ab_join_1NN_INDEX(ArrayToDoubleVector(a, "a"),
+                                   ArrayToDoubleVector(b, "b"), m, kwargs);
+        },
+        py::arg("a"), py::arg("b"), py::arg("m"),
         R"pbdoc(
     For each subsequence in time series A, finds the nearest neighbor in time series B.
 
@@ -474,7 +485,12 @@ PYBIND11_MODULE(pyscamp, m) {
     :rtype: Tuple of np.ndarray[float32] and np.ndarray[int32]
     )pbdoc");
 
-  m.def("selfjoin_sum", [](py::array_t<double, py::array::c_style | py::array::forcecast> a, int m, const py::kwargs& kwargs) { return self_join_SUM_THRESH(ArrayToDoubleVector(a, "a"), m, kwargs); }, py::arg("a"), py::arg("m"),
+  m.def("selfjoin_sum",
+        [](py::array_t<double, py::array::c_style | py::array::forcecast> a,
+           int m, const py::kwargs& kwargs) {
+          return self_join_SUM_THRESH(ArrayToDoubleVector(a, "a"), m, kwargs);
+        },
+        py::arg("a"), py::arg("m"),
         R"pbdoc(
     Returns the sum of the correlations above specified threshold (default 0) for each subsequence in a time series.
 
@@ -488,8 +504,14 @@ PYBIND11_MODULE(pyscamp, m) {
     :rtype: np.ndarray[float64]
     )pbdoc");
 
-  m.def("abjoin_sum", [](py::array_t<double, py::array::c_style | py::array::forcecast> a, py::array_t<double, py::array::c_style | py::array::forcecast> b, int m, const py::kwargs& kwargs) { return ab_join_SUM_THRESH(ArrayToDoubleVector(a, "a"), ArrayToDoubleVector(b, "b"), m, kwargs); }, py::arg("a"), py::arg("b"),
-        py::arg("m"), R"pbdoc(
+  m.def("abjoin_sum",
+        [](py::array_t<double, py::array::c_style | py::array::forcecast> a,
+           py::array_t<double, py::array::c_style | py::array::forcecast> b,
+           int m, const py::kwargs& kwargs) {
+          return ab_join_SUM_THRESH(ArrayToDoubleVector(a, "a"),
+                                    ArrayToDoubleVector(b, "b"), m, kwargs);
+        },
+        py::arg("a"), py::arg("b"), py::arg("m"), R"pbdoc(
     For each subsequence in time series a, returns the sum of the correlations to subsequences in time series b above specified threshold (default 0).
 
     :param a: Time series to compute matrix profile for.
@@ -504,7 +526,12 @@ PYBIND11_MODULE(pyscamp, m) {
     :rtype: np.ndarray[float64]
     )pbdoc");
 
-  m.def("selfjoin_knn", [](py::array_t<double, py::array::c_style | py::array::forcecast> a, int m, int k, const py::kwargs& kwargs) { return self_join_KNN(ArrayToDoubleVector(a, "a"), m, k, kwargs); }, py::arg("a"), py::arg("m"), py::arg("k"),
+  m.def("selfjoin_knn",
+        [](py::array_t<double, py::array::c_style | py::array::forcecast> a,
+           int m, int k, const py::kwargs& kwargs) {
+          return self_join_KNN(ArrayToDoubleVector(a, "a"), m, k, kwargs);
+        },
+        py::arg("a"), py::arg("m"), py::arg("k"),
         R"pbdoc(
     [GPU ONLY, EXPERIMENTAL] Returns the approximate k nearest neighbors for each subsequence in a time series
 
@@ -520,8 +547,14 @@ PYBIND11_MODULE(pyscamp, m) {
     :rtype: List of tuple[int, int, float]
     )pbdoc");
 
-  m.def("abjoin_knn", [](py::array_t<double, py::array::c_style | py::array::forcecast> a, py::array_t<double, py::array::c_style | py::array::forcecast> b, int m, int k, const py::kwargs& kwargs) { return ab_join_KNN(ArrayToDoubleVector(a, "a"), ArrayToDoubleVector(b, "b"), m, k, kwargs); }, py::arg("a"), py::arg("b"), py::arg("m"),
-        py::arg("k"), R"pbdoc(
+  m.def("abjoin_knn",
+        [](py::array_t<double, py::array::c_style | py::array::forcecast> a,
+           py::array_t<double, py::array::c_style | py::array::forcecast> b,
+           int m, int k, const py::kwargs& kwargs) {
+          return ab_join_KNN(ArrayToDoubleVector(a, "a"),
+                             ArrayToDoubleVector(b, "b"), m, k, kwargs);
+        },
+        py::arg("a"), py::arg("b"), py::arg("m"), py::arg("k"), R"pbdoc(
     [GPU ONLY, EXPERIMENTAL] For each subsequence in time series A, returns its Approximate K nearest neighbors in time series B
 
     :param a: Time series to compute the KNN matrix profile for.`
@@ -538,7 +571,12 @@ PYBIND11_MODULE(pyscamp, m) {
     :rtype: List of tuple[int, int, float]
     )pbdoc");
 
-  m.def("selfjoin_matrix", [](py::array_t<double, py::array::c_style | py::array::forcecast> a, int m, const py::kwargs& kwargs) { return self_join_MATRIX(ArrayToDoubleVector(a, "a"), m, kwargs); }, py::arg("a"), py::arg("m"),
+  m.def("selfjoin_matrix",
+        [](py::array_t<double, py::array::c_style | py::array::forcecast> a,
+           int m, const py::kwargs& kwargs) {
+          return self_join_MATRIX(ArrayToDoubleVector(a, "a"), m, kwargs);
+        },
+        py::arg("a"), py::arg("m"),
         R"pbdoc(
     [EXPERIMENTAL] Returns a pooled version of the distance matrix with HxW of [mheight x mwidth], pooling operation is max() for Pearson Correlation and min() for Euclidian Distance
 
@@ -556,8 +594,14 @@ PYBIND11_MODULE(pyscamp, m) {
     :rtype: 2D array
     )pbdoc");
 
-  m.def("abjoin_matrix", [](py::array_t<double, py::array::c_style | py::array::forcecast> a, py::array_t<double, py::array::c_style | py::array::forcecast> b, int m, const py::kwargs& kwargs) { return ab_join_MATRIX(ArrayToDoubleVector(a, "a"), ArrayToDoubleVector(b, "b"), m, kwargs); }, py::arg("a"), py::arg("b"),
-        py::arg("m"), R"pbdoc(
+  m.def("abjoin_matrix",
+        [](py::array_t<double, py::array::c_style | py::array::forcecast> a,
+           py::array_t<double, py::array::c_style | py::array::forcecast> b,
+           int m, const py::kwargs& kwargs) {
+          return ab_join_MATRIX(ArrayToDoubleVector(a, "a"),
+                                ArrayToDoubleVector(b, "b"), m, kwargs);
+        },
+        py::arg("a"), py::arg("b"), py::arg("m"), R"pbdoc(
     [EXPERIMENTAL] Returns a pooled version of the distance matrix with HxW of [mheight x mwidth], pooling operation is max() for Pearson Correlation and min() for Euclidian Distance
 
     :param a: Time series corresponding to the columns of the distance matrix.
