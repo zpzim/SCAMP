@@ -1,6 +1,16 @@
+// Thrust headers are included only when thrust::sort is used (default).
+// Define SCAMP_DISABLE_THRUST_SORT to skip thrust entirely and use a host-side
+// std::sort fallback.  This is required when building against CUDA toolkits
+// whose bundled CCCL has the _CCCL_PP_SPLICE_WITH_IMPL1 macro arg-count
+// regression (observed with CUDA 12.9 + GCC 13 in conda-forge); see
+// https://github.com/NVIDIA/cccl for upstream tracking.
+#ifndef SCAMP_DISABLE_THRUST_SORT
 #include <thrust/device_ptr.h>
 #include <thrust/execution_policy.h>
 #include <thrust/sort.h>
+#endif
+#include <algorithm>
+#include <vector>
 #include <unordered_map>
 #include "defines.h"
 #include "kernel_common.h"
@@ -353,8 +363,24 @@ SCAMPError_t gpu_kernel_ab_join_lower(Tile *t) {
 }
 
 void match_gpu_sort(SCAMPmatch *matches, int64_t len, cudaStream_t stream) {
+#ifdef SCAMP_DISABLE_THRUST_SORT
+  // Fallback path used when thrust is unavailable or known-buggy on the host
+  // toolchain (e.g. CUDA 12.9 + GCC 13 CCCL macro regression).  Round-trip
+  // through host memory and std::sort.  KNN match arrays are typically small
+  // enough that the extra copy is not the dominant cost; profile and switch to
+  // cub::DeviceMergeSort if that ever stops being true.
+  std::vector<SCAMPmatch> host(len);
+  cudaMemcpyAsync(host.data(), matches, len * sizeof(SCAMPmatch),
+                  cudaMemcpyDeviceToHost, stream);
+  cudaStreamSynchronize(stream);
+  std::sort(host.begin(), host.end());
+  cudaMemcpyAsync(matches, host.data(), len * sizeof(SCAMPmatch),
+                  cudaMemcpyHostToDevice, stream);
+  cudaStreamSynchronize(stream);
+#else
   thrust::device_ptr<SCAMPmatch> ptr = thrust::device_pointer_cast(matches);
   thrust::sort(thrust::cuda::par.on(stream), ptr, ptr + len);
+#endif
 }
 
 }  // namespace SCAMP

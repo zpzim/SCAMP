@@ -65,6 +65,16 @@ if (NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
   set(CMAKE_CUDA_ARCHITECTURES 60 61)
 endif()
 
+option(SCAMP_DISABLE_THRUST_SORT
+  "Skip thrust::sort and fall back to a host std::sort in match_gpu_sort. \
+Useful for CUDA/CCCL toolchains where thrust headers fail to compile, \
+e.g. CUDA 12.9 + GCC 13 (_CCCL_PP_SPLICE_WITH_IMPL1 macro regression)."
+  OFF)
+if(SCAMP_DISABLE_THRUST_SORT)
+  add_compile_definitions(SCAMP_DISABLE_THRUST_SORT)
+  message(STATUS "SCAMP_DISABLE_THRUST_SORT=ON: match_gpu_sort will use host fallback")
+endif()
+
 if(FORCE_NO_CUDA)
   unset(CMAKE_CUDA_COMPILER)
 elseif(FORCE_CUDA)
