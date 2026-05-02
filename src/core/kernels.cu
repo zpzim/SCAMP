@@ -1,13 +1,6 @@
-// Use CUB directly for GPU sort instead of thrust::sort.  CUB sits at a
-// lower layer of CCCL than Thrust does and avoids THRUST_NAMESPACE_BEGIN
-// entirely, which has been the source of preprocessor regressions across
-// CUDA toolkit point releases (most recently CUDA 12.9 shipping a CCCL
-// where _CCCL_PP_SPLICE_WITH_IMPL1 changed arity, causing every <thrust/...>
-// include to fail to compile in conda-forge's pinning).  thrust::sort
-// dispatches to CUB internally on CUDA anyway, so this is a strictly
-// equal-or-better performance change.
 #include <cub/device/device_merge_sort.cuh>
 #include <unordered_map>
+#include <vector>
 #include "defines.h"
 #include "kernel_common.h"
 #include "kernel_gpu_utils.h"
