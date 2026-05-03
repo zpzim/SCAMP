@@ -182,12 +182,31 @@ jobs:
           ./run_tests.sh ../build/src/distributed/SCAMP_distributed /dev/null 
           python3 ./run_tests.py --executable ../build/src/distributed/SCAMP_distributed --matrix_sizes --window_sizes 100 --extra_args "--no_gpu --num_cpu_workers=1 --distributed_tile_size=1500"
     
-  build-and-test-cpu-pyscamp:
+  build-and-test-pyscamp:
+    name: pyscamp ${{ matrix.os }} py${{ matrix.python-version }} np${{ matrix.numpy }} redistrib${{ matrix.redistributable }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        redistributable: [OFF, ON]
+        python-version: ['3.10', '3.12', '3.13']
+        numpy: ['1', '2']
+        redistributable: ['OFF', 'ON']
+        exclude:
+          # numpy 1.x wheels do not exist for cp313 on PyPI
+          - python-version: '3.13'
+            numpy: '1'
+          # Windows: only test the latest stable config (py3.13 + numpy2), both redistrib values
+          - os: windows-latest
+            python-version: '3.10'
+          - os: windows-latest
+            python-version: '3.12'
+          - os: windows-latest
+            numpy: '1'
+          # Redistrib ON only tested with py3.13 to keep job count down
+          - python-version: '3.10'
+            redistributable: 'ON'
+          - python-version: '3.12'
+            redistributable: 'ON'
 
     runs-on: ${{ matrix.os }}
 
@@ -199,30 +218,29 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
-
-      - name: Prep Build
-        shell: bash
-        run: |
-          set -e
-          echo "SCAMP_ENABLE_BINARY_DISTRIBUTION=${{ matrix.redistributable }}" >> $GITHUB_ENV
+          python-version: ${{ matrix.python-version }}
 
       - name: Build pyscamp
         shell: bash
         run: |
           set -e
-          cd $GITHUB_WORKSPACE
-          python3 -m pip install --upgrade pip
-          python3 -m pip install --upgrade "setuptools>=70" wheel setuptools_scm cmake numpy pandas tqdm
-          python3 -m pip install -v --no-build-isolation .
+          echo "SCAMP_ENABLE_BINARY_DISTRIBUTION=${{ matrix.redistributable }}" >> $GITHUB_ENV
+          python -m pip install --upgrade pip
+          python -m pip install --upgrade "setuptools>=70" wheel setuptools_scm cmake
+          if [ "${{ matrix.numpy }}" = "1" ]; then
+            python -m pip install "numpy<2" pandas tqdm
+          else
+            python -m pip install "numpy>=2" pandas tqdm
+          fi
+          python -m pip install -v --no-build-isolation .
 
-      - name: pyscamp Test
+      - name: pyscamp tests
         shell: bash
         run: |
           set -e
           cd $GITHUB_WORKSPACE/test
-          python3 test_pyscamp.py
-          python3 ./run_tests.py --executable pyscamp
+          python test_pyscamp.py
+          python ./run_tests.py --executable pyscamp
 
   build-cuda-cli:
     strategy:
@@ -293,57 +311,3 @@ jobs:
           cd $GITHUB_WORKSPACE/test
           python3 ./run_tests.py --executable "../build/SCAMP" --force_gpu --extra_args " --num_cpu_workers=0"
 
-  # Verify pyscamp builds and tests on the python/numpy combinations that
-  # broke in the v4.0.1 era (cp313/cp314 + numpy 2).  This job is the
-  # regression net for #129 (numpy>=2 selfjoin returning a constant vector)
-  # and for the `from distutils.version import LooseVersion` removal in
-  # setup.py.
-  build-and-test-pyscamp-modern:
-    name: pyscamp ${{ matrix.os }} py${{ matrix.python-version }} numpy${{ matrix.numpy }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-        python-version: ['3.10', '3.12', '3.13']
-        numpy: ['1', '2']
-        exclude:
-          # numpy 1.x wheels do not exist for cp313 on PyPI
-          - python-version: '3.13'
-            numpy: '1'
-
-    runs-on: ${{ matrix.os }}
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: 'true'
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Build pyscamp
-        shell: bash
-        run: |
-          set -e
-          python -m pip install --upgrade pip
-          # --no-build-isolation means pip uses the current env to build, so we
-          # must pre-install setuptools/wheel/setuptools_scm/cmake ourselves
-          # (otherwise: "error: invalid command 'bdist_wheel'" from setup.py).
-          python -m pip install --upgrade "setuptools>=70" wheel setuptools_scm cmake
-          # Pin the runtime numpy first so the build picks it up.
-          if [ "${{ matrix.numpy }}" = "1" ]; then
-            python -m pip install "numpy<2" pandas tqdm
-          else
-            python -m pip install "numpy>=2" pandas tqdm
-          fi
-          python -m pip install -v --no-build-isolation .
-
-      - name: Run pyscamp tests (catches #129 regression)
-        shell: bash
-        run: |
-          set -e
-          cd test
-          python test_pyscamp.py
-          python ./run_tests.py --executable pyscamp

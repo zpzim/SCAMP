@@ -57,21 +57,53 @@ endmacro()
 
 macro(set_cuda_architectures)
   message(STATUS "CUDA VERSION: ${CMAKE_CUDA_COMPILER_VERSION}")
+
+  # Rebuild from scratch; the placeholder set before enable_language(CUDA) is replaced here.
+  set(CMAKE_CUDA_ARCHITECTURES "")
+
+  # Kepler (SM 3.x): removed in CUDA 12.0
+  if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "12.0")
+    list(APPEND CMAKE_CUDA_ARCHITECTURES 35 37)
+  endif()
+
+  # Maxwell (SM 5.x): deprecated CUDA 12.0, removed CUDA 13.0
+  if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "13.0")
+    list(APPEND CMAKE_CUDA_ARCHITECTURES 50 52 53)
+  endif()
+
+  # Pascal (SM 6.x): supported in all targeted CUDA versions; deprecation expected post-CUDA 13
+  list(APPEND CMAKE_CUDA_ARCHITECTURES 60 61 62)
+
+  # Volta (SM 7.0, 7.2)
+  list(APPEND CMAKE_CUDA_ARCHITECTURES 70 72)
+
+  # Turing (SM 7.5)
+  list(APPEND CMAKE_CUDA_ARCHITECTURES 75)
+
+  # Ampere A100/A30 (SM 8.0): introduced CUDA 11.0 (our minimum)
+  list(APPEND CMAKE_CUDA_ARCHITECTURES 80)
+
+  # Ampere desktop/server (SM 8.6): introduced CUDA 11.1
   if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "11.1")
     list(APPEND CMAKE_CUDA_ARCHITECTURES 86)
   endif()
+
+  # Ampere Jetson Orin (SM 8.7): introduced CUDA 11.5
   if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "11.5")
     list(APPEND CMAKE_CUDA_ARCHITECTURES 87)
   endif()
+
+  # Ada Lovelace (SM 8.9) + Hopper (SM 9.0): introduced CUDA 11.8
   if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "11.8")
     list(APPEND CMAKE_CUDA_ARCHITECTURES 89 90)
   endif()
-  list(APPEND CMAKE_CUDA_ARCHITECTURES 60 61 62 70 72 75 80)
-  if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "12")
-    list(APPEND CMAKE_CUDA_ARCHITECTURES 35 37 50 52 53)
+
+  # Blackwell (SM 10.0): introduced CUDA 12.6
+  if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "12.6")
+    list(APPEND CMAKE_CUDA_ARCHITECTURES 100)
   endif()
 
   list(REMOVE_DUPLICATES CMAKE_CUDA_ARCHITECTURES)
-  list(SORT CMAKE_CUDA_ARCHITECTURES)
+  list(SORT CMAKE_CUDA_ARCHITECTURES COMPARE NATURAL)
   message(STATUS "Configuring CUDA Architectures: ${CMAKE_CUDA_ARCHITECTURES}")
-endmacro() 
+endmacro()
