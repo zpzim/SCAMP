@@ -35,6 +35,11 @@ jobs:
         with:
           submodules: 'true'
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
       - name: Prep Build
         shell: bash
         run: |
@@ -97,7 +102,7 @@ jobs:
       - name: Setup SDE binaries
         uses: petarpetrovt/setup-sde@v4.0
         with:
-          sdeVersion: 9.27.0
+          sdeVersion: 9.33.0
 
       
       - name: Prep Build
