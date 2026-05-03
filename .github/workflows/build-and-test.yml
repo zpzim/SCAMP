@@ -27,10 +27,6 @@ jobs:
             compiler: g++
           - os: windows-latest
             compiler: clang++
-          # Windows cl + redistrib=ON: Eigen/AVX2 template compilation through MSVC
-          # takes 90+ minutes and has always failed; redistrib=ON is covered by pyscamp Windows job
-          - os: windows-latest
-            redistributable: ON
 
     runs-on: ${{ matrix.os }}
 
