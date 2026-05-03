@@ -98,8 +98,8 @@ macro(set_cuda_architectures)
     list(APPEND CMAKE_CUDA_ARCHITECTURES 89 90)
   endif()
 
-  # Blackwell (SM 10.0): introduced CUDA 12.6
-  if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "12.6")
+  # Blackwell (SM 10.0): introduced CUDA 12.8
+  if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "12.8")
     list(APPEND CMAKE_CUDA_ARCHITECTURES 100)
   endif()
 
