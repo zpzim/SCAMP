@@ -1,5 +1,10 @@
 include(SCAMPMacros)
 
+# Force BUILD_TESTING OFF so that cpu_features does not try to download
+# googletest. gRPC (pulled in via BUILD_CLIENT_SERVER) sets BUILD_TESTING=ON
+# in the CMake CACHE before this directory is processed; FORCE overrides it.
+set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+
 fetch_env(SCAMP_USE_EXTERNAL_EIGEN)
 
 if (SCAMP_USE_EXTERNAL_EIGEN)
