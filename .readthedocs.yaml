@@ -13,9 +13,6 @@ build:
   os: ubuntu-22.04
   tools:
     python: "3.12"
-  environment:
-    # Prevent cmake from searching for CUDA in the RTD build environment
-    FORCE_NO_CUDA: "1"
 
 # Build documentation in the "docs/" directory with Sphinx
 sphinx:
