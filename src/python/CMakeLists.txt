@@ -5,7 +5,7 @@ fetch_env(PYSCAMP_USE_EXTERNAL_PYBIND11)
 set(PYBIND11_FIND_PYTHON ON)
 
 if (PYSCAMP_USE_EXTERNAL_PYBIND11)
-  find_package(pybind11 2.9.2 CONFIG REQUIRED)
+  find_package(pybind11 2.13.6 CONFIG REQUIRED)
 else()
   add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/pybind11 ${CMAKE_CURRENT_BINARY_DIR}/pybind11)
 endif()

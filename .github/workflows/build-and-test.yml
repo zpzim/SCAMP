@@ -31,9 +31,14 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           submodules: 'true'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
 
       - name: Prep Build
         shell: bash
@@ -90,14 +95,14 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           submodules: 'true'
 
       - name: Setup SDE binaries
-        uses: petarpetrovt/setup-sde@v2.3
+        uses: petarpetrovt/setup-sde@v4.0
         with:
-          sdeVersion: 9.27.0
+          sdeVersion: 9.33.0
 
       
       - name: Prep Build
@@ -143,7 +148,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           submodules: 'recursive'
 
@@ -177,47 +182,65 @@ jobs:
           ./run_tests.sh ../build/src/distributed/SCAMP_distributed /dev/null 
           python3 ./run_tests.py --executable ../build/src/distributed/SCAMP_distributed --matrix_sizes --window_sizes 100 --extra_args "--no_gpu --num_cpu_workers=1 --distributed_tile_size=1500"
     
-  build-and-test-cpu-pyscamp:
+  build-and-test-pyscamp:
+    name: pyscamp ${{ matrix.os }} py${{ matrix.python-version }} np${{ matrix.numpy }} redistrib${{ matrix.redistributable }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        redistributable: [OFF, ON]
+        python-version: ['3.10', '3.12', '3.13']
+        numpy: ['1', '2']
+        redistributable: ['OFF', 'ON']
+        exclude:
+          # numpy 1.x wheels do not exist for cp313 on PyPI
+          - python-version: '3.13'
+            numpy: '1'
+          # Windows: only test the latest stable config (py3.13 + numpy2), both redistrib values
+          - os: windows-latest
+            python-version: '3.10'
+          - os: windows-latest
+            python-version: '3.12'
+          - os: windows-latest
+            numpy: '1'
+          # Redistrib ON only tested with py3.13 to keep job count down
+          - python-version: '3.10'
+            redistributable: 'ON'
+          - python-version: '3.12'
+            redistributable: 'ON'
 
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           submodules: 'true'
 
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
-
-      - name: Prep Build
-        shell: bash
-        run: |
-          set -e
-          echo "SCAMP_ENABLE_BINARY_DISTRIBUTION=${{ matrix.redistributable }}" >> $GITHUB_ENV
+          python-version: ${{ matrix.python-version }}
 
       - name: Build pyscamp
         shell: bash
         run: |
           set -e
-          cd $GITHUB_WORKSPACE
-          python3 -m pip install numpy pandas tqdm setuptools
-          python3 setup.py sdist
-          python3 -m pip install -v dist/*
+          echo "SCAMP_ENABLE_BINARY_DISTRIBUTION=${{ matrix.redistributable }}" >> $GITHUB_ENV
+          python -m pip install --upgrade pip
+          python -m pip install --upgrade "setuptools>=70" wheel setuptools_scm cmake
+          if [ "${{ matrix.numpy }}" = "1" ]; then
+            python -m pip install "numpy<2" pandas tqdm
+          else
+            python -m pip install "numpy>=2" pandas tqdm
+          fi
+          python -m pip install -v --no-build-isolation .
 
-      - name: pyscamp Test
+      - name: pyscamp tests
         shell: bash
         run: |
           set -e
           cd $GITHUB_WORKSPACE/test
-          python3 test_pyscamp.py
-          python3 ./run_tests.py --executable pyscamp
+          python test_pyscamp.py
+          python ./run_tests.py --executable pyscamp
 
   build-cuda-cli:
     strategy:
@@ -225,6 +248,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         compiler: [g++, clang++, cl]
+        cuda: ['12.6.0']
         exclude:
           - os: ubuntu-latest
             compiler: cl
@@ -236,17 +260,17 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           submodules: 'true'
-      - uses: Jimver/cuda-toolkit@v0.2.6
+      - uses: Jimver/cuda-toolkit@v0.2.30
         id: cuda-toolkit
         with:
-          cuda: '11.7.0'
+          cuda: ${{ matrix.cuda }}
 
       - name: Prep Build
         run: echo "CXX=${{ matrix.compiler }}" >> $GITHUB_ENV
-        
+
       - name: Build SCAMP
         shell: bash
         run: |
@@ -260,7 +284,7 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           submodules: 'true'
 
@@ -286,3 +310,4 @@ jobs:
           set -e
           cd $GITHUB_WORKSPACE/test
           python3 ./run_tests.py --executable "../build/SCAMP" --force_gpu --extra_args " --num_cpu_workers=0"
+

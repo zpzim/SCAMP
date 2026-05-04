@@ -37,7 +37,7 @@ do
                     echo "Failure: Errors in MP index exceed 1% for this test."
                     exit 1
                 fi
-                python difference.py mp_columns_out $COMPARE_MP out
+                python3 difference.py mp_columns_out $COMPARE_MP out
                 result=$?
                 if [ $result -ne 0 ] ; then
                     exit $result
@@ -69,7 +69,7 @@ do
                 echo "Failure: Errors in MP index exceed 1% for this test."
                 exit 1
             fi
-            python difference.py mp_columns_out $COMPARE_MP out
+            python3 difference.py mp_columns_out $COMPARE_MP out
             result=$?
             if [ $result -ne 0 ] ; then
                 exit $result
@@ -103,7 +103,7 @@ do
                         echo "Failure: Errors in MP index exceed 1% for this test."
                         exit 1
                     fi
-                    python difference.py mp_columns_out $COMPARE_MP out
+                    python3 difference.py mp_columns_out $COMPARE_MP out
                     result=$?
                     if [ $result -ne 0 ] ; then
                         exit $result
@@ -129,7 +129,7 @@ do
                         echo "Failure: Errors in MP index exceed 1% for this test."
                         exit 1
                     fi
-                    python difference.py mp_columns_out $COMPARE_MP out
+                    python3 difference.py mp_columns_out $COMPARE_MP out
                     result=$?
                     if [ $result -ne 0 ] ; then
                         exit $result
@@ -158,7 +158,7 @@ do
                         echo "Failure: Errors in MP index exceed 1% for this test."
                         exit 1
                     fi
-                    python difference.py mp_columns_out $COMPARE_MP out
+                    python3 difference.py mp_columns_out $COMPARE_MP out
                     result=$?
                     if [ $result -ne 0 ] ; then
                         exit $result
@@ -170,7 +170,7 @@ do
                         echo "Failure: Errors in MP index exceed 1% for this test."
                         exit 1
                     fi
-                    python difference.py mp_rows_out $COMPARE_MPB out
+                    python3 difference.py mp_rows_out $COMPARE_MPB out
                     result=$?
                     if [ $result -ne 0 ] ; then
                         exit $result
@@ -186,7 +186,7 @@ do
                         echo "Failure: Errors in MP index exceed 1% for this test."
                         exit 1
                     fi
-                    python difference.py mp_columns_out $COMPARE_MPB out
+                    python3 difference.py mp_columns_out $COMPARE_MPB out
                     result=$?
                     if [ $result -ne 0 ] ; then
                         exit $result
@@ -199,7 +199,7 @@ do
                         echo "Failure: Errors in MP index exceed 1% for this test."
                         exit 1
                     fi
-                    python difference.py mp_rows_out $COMPARE_MP out
+                    python3 difference.py mp_rows_out $COMPARE_MP out
                     result=$?
                     if [ $result -ne 0 ] ; then
                         exit $result

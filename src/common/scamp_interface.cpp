@@ -3,6 +3,7 @@
 #include "core/SCAMP.h"
 #include "scamp_exception.h"
 
+#include <chrono>
 #include <thread>
 #include <vector>
 
@@ -83,7 +84,7 @@ void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
   if (!args->silent_mode) {
     printf(
         "Finished %d SCAMP tiles to generate  matrix profile in %lf "
-        "seconds on %lu devices and %d threads\n",
+        "seconds on %zu devices and %d threads\n",
         op.get_completed_tiles(),
         std::chrono::duration_cast<std::chrono::microseconds>(end - start)
                 .count() /

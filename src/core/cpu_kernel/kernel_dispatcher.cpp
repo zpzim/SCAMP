@@ -1,14 +1,12 @@
 #include "kernel_dispatcher.h"
 
-#ifdef _SCAMP_DISTRIBUTABLE_
-#include "avx/dispatch_avx.h"
-#include "avx2/dispatch_avx2.h"
-#endif
 #include "baseline/dispatch_baseline.h"
 
-#if defined(_SCAMP_DISTRIBUTABLE_)
+#ifdef _SCAMP_DISTRIBUTABLE_
 #include "cpu_features_macros.h"
 #if defined(CPU_FEATURES_ARCH_X86)
+#include "avx/dispatch_avx.h"
+#include "avx2/dispatch_avx2.h"
 #include "cpuinfo_x86.h"
 static const cpu_features::X86Features features =
     cpu_features::GetX86Info().features;
