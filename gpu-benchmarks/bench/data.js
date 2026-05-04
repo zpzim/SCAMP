@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1777872274521,
+  "lastUpdate": 1777910043116,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -286,6 +286,52 @@ window.BENCHMARK_DATA = {
             "value": 1.4399823265997838,
             "unit": "s/iter",
             "extra": "iterations: 10\ncpu: 0.030801450500000004 s\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Zach Zimmerman",
+            "username": "zpzim",
+            "email": "zpzimmerman@gmail.com"
+          },
+          "committer": {
+            "name": "Zach Zimmerman",
+            "username": "zpzim",
+            "email": "zpzimmerman@gmail.com"
+          },
+          "id": "e66e09839b84ff07685565a705b66a93773a81d9",
+          "message": "Bump Google Benchmark v1.9.0 -> v1.9.5\n\nv1.9.5 contains the upstream fix for the Windows/ClangCL build failure:\n\"Fix CXX feature check when try_run compilation fails\" (PR #2046).\nThe regex backend detection used check_cxx_source_runs() which would\ncompile but not run under Visual Studio generators, causing the benchmark\ncmake configure to error out with \"Failed to determine the source files\nfor the regular expression backend\".\n\nCo-Authored-By: Claude Sonnet 4.6 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-05-04T15:08:54Z",
+          "url": "https://github.com/zpzim/SCAMP/commit/e66e09839b84ff07685565a705b66a93773a81d9"
+        },
+        "date": 1777910042374,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/-1/524288",
+            "value": 0.7703090978000546,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.030912506600000007 s\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/-1/524288",
+            "value": 0.7297736189000716,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0310418829 s\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/-1/524288",
+            "value": 2.0290508318998035,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.031361776900000006 s\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/-1/524288",
+            "value": 1.4384183278001728,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.029467007200000016 s\nthreads: 1"
           }
         ]
       }
