@@ -14,6 +14,11 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath('../../build/'))
 
+# pyscamp is a C extension; mock it so Sphinx can build without a compiled
+# binary in environments where pip install . is unavailable (e.g. RTD preview
+# builds, or if the cmake step fails).
+autodoc_mock_imports = ['pyscamp']
+
 
 # -- Project information -----------------------------------------------------
 
@@ -22,7 +27,7 @@ copyright = '2024, Zach Zimmerman'
 author = 'Zach Zimmerman'
 
 # The full version, including alpha/beta/rc tags
-release = '4.0.0'
+release = '4.0.1'
 
 
 # -- General configuration ---------------------------------------------------
