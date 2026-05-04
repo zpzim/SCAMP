@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.11 FATAL_ERROR)
 include(FetchContent)
 FetchContent_Declare(benchmark
   GIT_REPOSITORY    https://github.com/google/benchmark.git
-  GIT_TAG           "v1.9.0"
+  GIT_TAG           "v1.9.5"
 )
 
 # Disable benchmark's own test suite so it does not try to download GoogleTest.
