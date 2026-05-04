@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1704776062833,
+  "lastUpdate": 1777872068375,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -240,6 +240,52 @@ window.BENCHMARK_DATA = {
             "value": 1.7233991517001415,
             "unit": "s/iter",
             "extra": "iterations: 10\ncpu: 0.0016748887000000005 s\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Zach Zimmerman",
+            "username": "zpzim",
+            "email": "zpzimmerman@gmail.com"
+          },
+          "committer": {
+            "name": "Zach Zimmerman",
+            "username": "zpzim",
+            "email": "zpzimmerman@gmail.com"
+          },
+          "id": "91159aa6695f74f9af4533f329068a6f24bc206c",
+          "message": "Switch PyPI publishing to OIDC trusted publishing\n\nAPI tokens created before 2FA was enabled are invalidated by PyPI.\nRather than rotating the token, switch to trusted publishing (OIDC):\nPyPI trusts GitHub Actions directly, no API token or secret needed.\n\nChanges:\n- Add permissions.id-token: write to both publish jobs\n- Remove password: ${{ secrets.TEST_PYPI_API_TOKEN / PYPI_API_TOKEN }}\n\nTo activate, add a trusted publisher on Test PyPI and PyPI:\n  Publisher: GitHub Actions\n  Owner: zpzim\n  Repository: SCAMP\n  Workflow: python-publish-test.yml / python-publish.yml\n  Environment: (leave blank)\n\nSee: https://docs.pypi.org/trusted-publishers/\n\nCo-Authored-By: Claude Sonnet 4.6 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-05-04T05:14:47Z",
+          "url": "https://github.com/zpzim/SCAMP/commit/91159aa6695f74f9af4533f329068a6f24bc206c"
+        },
+        "date": 1777872067190,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/32768",
+            "value": 0.48383499099982147,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0018851920000000002 s\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/32768",
+            "value": 0.22981214971001462,
+            "unit": "s/iter",
+            "extra": "iterations: 100\ncpu: 0.0018354412700000004 s\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/32768",
+            "value": 0.8649228394002421,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.001893313699999999 s\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/1/32768",
+            "value": 1.4584031226997467,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0019315530000000025 s\nthreads: 1"
           }
         ]
       }
