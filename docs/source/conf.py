@@ -12,12 +12,13 @@
 #
 import os
 import sys
-sys.path.insert(0, os.path.abspath('../../build/'))
 
-# pyscamp is a C extension; mock it so Sphinx can build without a compiled
-# binary in environments where pip install . is unavailable (e.g. RTD preview
-# builds, or if the cmake step fails).
-autodoc_mock_imports = ['pyscamp']
+# docs/pyscamp.py is a pure-Python stub with the real docstrings extracted
+# from src/python/SCAMP_python.cpp. It lets autodoc generate the API docs
+# without requiring a compiled C extension. Inserting docs/ first ensures
+# the stub takes precedence over any installed pyscamp binary.
+sys.path.insert(0, os.path.abspath('..'))
+sys.path.insert(0, os.path.abspath('../../build/'))
 
 
 # -- Project information -----------------------------------------------------
