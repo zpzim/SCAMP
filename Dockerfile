@@ -1,12 +1,10 @@
 FROM nvidia/cuda:12.9.0-devel-ubuntu24.04 AS base
 
-RUN apt-get update && \
-    apt-get upgrade -y && \
-    rm -rf /var/lib/apt/lists/*
-
 # SCAMP build dependencies
-RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    cmake zlib1g-dev clang \
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get upgrade -y && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        cmake zlib1g-dev clang \
     && rm -rf /var/lib/apt/lists/*
 
 COPY . /SCAMP
