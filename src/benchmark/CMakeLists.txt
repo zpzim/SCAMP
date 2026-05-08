@@ -3,10 +3,26 @@ cmake_minimum_required(VERSION 3.11 FATAL_ERROR)
 include(FetchContent)
 FetchContent_Declare(benchmark
   GIT_REPOSITORY    https://github.com/google/benchmark.git
-  GIT_TAG           "v1.6.1"
+  GIT_TAG           "v1.9.5"
 )
 
-set(BENCHMARK_DOWNLOAD_DEPENDENCIES 1)
+# Disable benchmark's own test suite so it does not try to download GoogleTest.
+# GoogleTest's old cmake_minimum_required is rejected by CMake 4.x and the
+# download runs in a subprocess that does not inherit CMAKE_POLICY_VERSION_MINIMUM.
+set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+
+# Disable benchmark's -Werror. SCAMP's global CMAKE_CXX_FLAGS_RELEASE adds
+# Linux-style flags like -O3 which clang-cl warns about as unused arguments;
+# combined with benchmark's -Werror this turns warnings into hard errors.
+set(BENCHMARK_ENABLE_WERROR OFF CACHE BOOL "" FORCE)
+
+# On MSVC (cl), benchmark's regex backend detection fails because its test
+# compiles a snippet that gates on __cplusplus, which MSVC reports as 199711L
+# unless /Zc:__cplusplus is set. Pre-cache the result; std::regex is
+# available on every supported MSVC toolchain.
+if(MSVC)
+  set(HAVE_STD_REGEX ON CACHE BOOL "" FORCE)
+endif()
 
 FetchContent_MakeAvailable(benchmark)
 

@@ -12,6 +12,12 @@
 #
 import os
 import sys
+
+# docs/pyscamp.py is a pure-Python stub with the real docstrings extracted
+# from src/python/SCAMP_python.cpp. It lets autodoc generate the API docs
+# without requiring a compiled C extension. Inserting docs/ first ensures
+# the stub takes precedence over any installed pyscamp binary.
+sys.path.insert(0, os.path.abspath('..'))
 sys.path.insert(0, os.path.abspath('../../build/'))
 
 
@@ -22,7 +28,7 @@ copyright = '2024, Zach Zimmerman'
 author = 'Zach Zimmerman'
 
 # The full version, including alpha/beta/rc tags
-release = '4.0.0'
+release = '4.0.1'
 
 
 # -- General configuration ---------------------------------------------------
