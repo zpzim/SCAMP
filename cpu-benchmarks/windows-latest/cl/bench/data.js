@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1777869043326,
+  "lastUpdate": 1778252992929,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -336,6 +336,52 @@ window.BENCHMARK_DATA = {
             "value": 2.479759610000002,
             "unit": "s/iter",
             "extra": "iterations: 10\ncpu: 0.003125 s\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Zach Zimmerman",
+            "username": "zpzim",
+            "email": "zpzimmerman@gmail.com"
+          },
+          "committer": {
+            "name": "Zach Zimmerman",
+            "username": "zpzim",
+            "email": "zpzimmerman@gmail.com"
+          },
+          "id": "e6c5ed48b8d3e41b6f9715230b16d56c028e75d7",
+          "message": "Fix Windows benchmark builds: HAVE_STD_REGEX pre-cache + disable Werror\n\nTwo separate Windows failures after the v1.9.5 bump:\n\n1. cl (MSVC): benchmark's regex backend detection compiles a snippet\n   that gates on __cplusplus, but MSVC reports __cplusplus as 199711L\n   unless /Zc:__cplusplus is set. All three regex backends (std,\n   gnu_posix, posix) report 'failed' and benchmark errors out with\n   \"Failed to determine the source files for the regular expression\n   backend\". Pre-set HAVE_STD_REGEX in the cache for any MSVC toolchain\n   to skip the detection (std::regex is always available).\n\n2. clang-cl: SCAMP's global CMAKE_CXX_FLAGS_RELEASE adds Linux-style\n   flags like -O3 which clang-cl warns about as unused arguments\n   ('-Wunused-command-line-argument'). Combined with benchmark's\n   default BENCHMARK_ENABLE_WERROR=ON, these warnings become hard\n   errors. Disable BENCHMARK_ENABLE_WERROR so benchmark builds tolerate\n   incidental flag mismatches with our parent project's flags.\n\nCo-Authored-By: Claude Sonnet 4.6 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-05-08T15:03:29Z",
+          "url": "https://github.com/zpzim/SCAMP/commit/e6c5ed48b8d3e41b6f9715230b16d56c028e75d7"
+        },
+        "date": 1778252981161,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/32768",
+            "value": 1.1233041299999968,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0 s\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/32768",
+            "value": 0.777094210000007,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.00625 s\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/32768",
+            "value": 0.9643990199999962,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0 s\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/1/32768",
+            "value": 2.8374438000000737,
+            "unit": "s/iter",
+            "extra": "iterations: 1\ncpu: 0 s\nthreads: 1"
           }
         ]
       }
