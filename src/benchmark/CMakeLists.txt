@@ -11,6 +11,19 @@ FetchContent_Declare(benchmark
 # download runs in a subprocess that does not inherit CMAKE_POLICY_VERSION_MINIMUM.
 set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
 
+# Disable benchmark's -Werror. SCAMP's global CMAKE_CXX_FLAGS_RELEASE adds
+# Linux-style flags like -O3 which clang-cl warns about as unused arguments;
+# combined with benchmark's -Werror this turns warnings into hard errors.
+set(BENCHMARK_ENABLE_WERROR OFF CACHE BOOL "" FORCE)
+
+# On MSVC (cl), benchmark's regex backend detection fails because its test
+# compiles a snippet that gates on __cplusplus, which MSVC reports as 199711L
+# unless /Zc:__cplusplus is set. Pre-cache the result; std::regex is
+# available on every supported MSVC toolchain.
+if(MSVC)
+  set(HAVE_STD_REGEX ON CACHE BOOL "" FORCE)
+endif()
+
 FetchContent_MakeAvailable(benchmark)
 
 add_library(scamp_benchmarks_common "common.cpp")
