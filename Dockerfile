@@ -1,9 +1,12 @@
 FROM nvidia/cuda:12.9.0-devel-ubuntu24.04 AS base
 
-# SCAMP build dependencies
-RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get upgrade -y && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+# SCAMP build dependencies. Skip 'apt-get upgrade' — the base image is
+# already current enough for our needs and upgrading pulls in dozens of
+# unrelated packages (llvm-18 toolchain, libicu, libpython3.12, etc.) which
+# multiply the chance of a transient Ubuntu mirror failure during the build.
+RUN echo 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries && \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         cmake zlib1g-dev clang \
     && rm -rf /var/lib/apt/lists/*
 
