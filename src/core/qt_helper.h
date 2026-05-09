@@ -11,7 +11,7 @@
 #ifdef _CUFFT_H_
 
 // cuFFT API errors
-static const char *_cudaGetErrorEnum(cufftResult error) {
+inline const char *_cudaGetErrorEnum(cufftResult error) {
   switch (error) {
     case CUFFT_SUCCESS:
       return "CUFFT_SUCCESS";
