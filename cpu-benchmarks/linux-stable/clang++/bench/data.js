@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1778256268328,
+  "lastUpdate": 1778357648374,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -380,6 +380,54 @@ window.BENCHMARK_DATA = {
             "value": 1.0969369798956905,
             "unit": "s/iter",
             "extra": "iterations: 10\ncpu: 0.001829511100000003 s\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "Zach Zimmerman",
+            "username": "zpzim"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "8d56f8ef127b7ff6be510180bef53a80fab9f663",
+          "message": "Fix CUDA 13.0 compatibility + harden arch support matrix (#138)\n\n* Fix CUDA 13.0 compatibility + update arch support matrix\n\nArchitectures removed in CUDA 13.0: Pascal (SM 6.x) and Volta (SM 7.0/7.2)\nalongside Maxwell — gate all with VERSION_LESS \"13.0\". Fixes nvcc fatal error\nwhen building with CUDA 13.\n\ncuFFT constants removed in CUDA 13.0: CUFFT_PARSE_ERROR, LICENSE_ERROR,\nINCOMPLETE_PARAMETER_LIST — guard with #ifdef CUFFT_PARSE_ERROR.\n\nUpdate CMAKE_CUDA_ARCHITECTURES placeholder from SM 60/61 to SM 75, which\nis valid from CUDA 10.0 through CUDA 13+, avoiding enable_language(CUDA)\nfailures with CUDA 13.\n\nCorrections and additions to set_cuda_architectures() (per CUDA release notes):\n- SM 87 (Jetson Orin): corrected introduction to CUDA 11.4 (was 11.5)\n- SM 100/101 (Blackwell DC) + SM 120 (Blackwell consumer): added at CUDA 12.8\n- SM 103, SM 121: added at CUDA 12.9\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* Add libcub-dev to Docker build dependencies\n\nBlackwell arch targets (SM 100+) trigger CUB code paths that require\nconsistent libcub/libcccl header versions. Without libcub-dev installed\nas an explicit package, the devel image's bundled CUB headers and CCCL\npreprocessor headers can be from different sub-releases, causing:\n  error: macro \"_CCCL_PP_SPLICE_WITH_IMPL1\" passed 3 arguments, but takes just 2\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* Bump build-cuda-cli to CUDA 12.9.1, add libcub-dev on Linux\n\n12.9.1 is the latest point release and exercises Blackwell arch targets\n(SM 100+). libcub-dev ensures consistent CUB/CCCL header versions on the\nGitHub-hosted Ubuntu runner, matching the fix already applied to the\nDockerfile and local self-hosted runner.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* Work around CCCL 2.8.x arch token overflow (NVIDIA/cccl#4967)\n\nCUDA 12.9.x ships CCCL 2.8.x which overflows when too many GPU arch\nnumbers are concatenated into the versioned inline namespace name. Fixed\nin CCCL 3.0.0 (CUDA 13.0+), not backported to 2.8.x.\n\nOn CUDA 12.8-12.x, limit the arch list to 11 entries:\n  60 61 70 75 80 86 87 89 90 100 120\n- Maxwell (SM 5x) excluded (deprecated; removed in CUDA 13)\n- SM 62 (Tegra X2) and SM 72 (Jetson Xavier) excluded (embedded-only)\n- Blackwell limited to SM 100 + SM 120 (minor variants SM 101/103/121\n  added back on CUDA 13.0+ where the bug is fixed)\n- Pascal (SM 60/61) and Volta (SM 70) retained\n\nOn CUDA 13.0+: full Blackwell variant set included; CCCL 3.0.0 handles\nthe larger list correctly.\n\nAlso revert the libcub-dev workarounds (Dockerfile, CI) added under the\nwrong diagnosis — the arch count reduction is the real fix.\nBump build-cuda-cli CI to CUDA 12.9.1 (latest 12.x point release).\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n---------\n\nCo-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>",
+          "timestamp": "2026-05-09T12:30:50-07:00",
+          "tree_id": "b1354880ba8e65867a95388c5d98a14b523531a2",
+          "url": "https://github.com/zpzim/SCAMP/commit/8d56f8ef127b7ff6be510180bef53a80fab9f663"
+        },
+        "date": 1778357647586,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/32768",
+            "value": 0.5252281972032506,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0018662798 s\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/32768",
+            "value": 0.23405463424976916,
+            "unit": "s/iter",
+            "extra": "iterations: 100\ncpu: 0.00180565109 s\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/32768",
+            "value": 0.7015711457002908,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0018526723999999968 s\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/1/32768",
+            "value": 1.0978076024970504,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.001863936500000002 s\nthreads: 1"
           }
         ]
       }
