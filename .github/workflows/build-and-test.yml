@@ -268,10 +268,6 @@ jobs:
         with:
           cuda: ${{ matrix.cuda }}
 
-      - name: Install libcub-dev
-        if: runner.os == 'Linux'
-        run: sudo apt-get install -y --no-install-recommends libcub-dev
-
       - name: Prep Build
         run: echo "CXX=${{ matrix.compiler }}" >> $GITHUB_ENV
 
