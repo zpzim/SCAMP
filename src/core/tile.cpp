@@ -38,9 +38,21 @@ std::pair<int, int> Tile::get_exclusion_for_self_join(bool upper_tile) {
   size_t height = get_tile_height() - info_->mp_window + 1;
   exclusion =
       get_exclusion(info_->mp_window, get_tile_col(), get_tile_row() + height);
-  // The lower tile is executed transposed. The transposed geometry shifts the
-  // effective exclusion boundary by one diagonal, so we reduce exclusion_upper
-  // by 1 to avoid missing the corner value at the boundary (ca75a21).
+  // The main diagonal is handled by the upper tile, so we apply one less
+  // diagonal to the exclusion zone for lower (transposed) tiles.
+  // Transposed tiles are always off the main diagonal. Since the main diagonal
+  // counts as the first excluded diagonal (i.e. in an exclusion zone of 1 we
+  // only exclude the main diagonal), we reduce the exclusion for transposed
+  // tiles to account for this.
+  //
+  //               A A A A T   Legend: A = normal tile, T = Transposed tile
+  //                 A A A T T
+  //                   A A T T T
+  //                     A T T T T
+  //                  ^    A A A A
+  //                  |      A A A
+  //               main diag   A A
+  //                             A
   if (exclusion > 0) {
     exclusion--;
   }
@@ -142,8 +154,21 @@ std::pair<int, int> Tile::get_exclusion_for_ab_join(bool upper_tile) {
     } else {
       exclusion_upper = 0;
     }
-    // The lower tile is executed transposed; reduce exclusion_upper by 1 to
-    // avoid missing the corner value at the exclusion boundary (ca75a21).
+    // The main diagonal is handled by the upper tile, so we apply one less
+    // diagonal to the exclusion zone for lower (transposed) tiles.
+    // Transposed tiles are always off the main diagonal. Since the main diagonal
+    // counts as the first excluded diagonal (i.e. in an exclusion zone of 1 we
+    // only exclude the main diagonal), we reduce the exclusion for transposed
+    // tiles to account for this.
+    //
+    //               A A A A T   Legend: A = normal tile, T = Transposed tile
+    //                 A A A T T
+    //                   A A T T T
+    //                     A T T T T
+    //                  ^    A A A A
+    //                  |      A A A
+    //               main diag   A A
+    //                             A
     if (exclusion_upper > 0) {
       exclusion_upper--;
     }
