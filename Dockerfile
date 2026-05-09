@@ -7,7 +7,7 @@ FROM nvidia/cuda:12.9.0-devel-ubuntu24.04 AS base
 RUN echo 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries && \
     apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        cmake zlib1g-dev clang \
+        cmake zlib1g-dev clang libcub-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY . /SCAMP
