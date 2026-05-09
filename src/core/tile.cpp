@@ -156,10 +156,10 @@ std::pair<int, int> Tile::get_exclusion_for_ab_join(bool upper_tile) {
     }
     // The main diagonal is handled by the upper tile, so we apply one less
     // diagonal to the exclusion zone for lower (transposed) tiles.
-    // Transposed tiles are always off the main diagonal. Since the main diagonal
-    // counts as the first excluded diagonal (i.e. in an exclusion zone of 1 we
-    // only exclude the main diagonal), we reduce the exclusion for transposed
-    // tiles to account for this.
+    // Transposed tiles are always off the main diagonal. Since the main
+    // diagonal counts as the first excluded diagonal (i.e. in an exclusion zone
+    // of 1 we only exclude the main diagonal), we reduce the exclusion for
+    // transposed tiles to account for this.
     //
     //               A A A A T   Legend: A = normal tile, T = Transposed tile
     //                 A A A T T
