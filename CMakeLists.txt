@@ -73,9 +73,10 @@ endif()
 # Thread libraries
 find_package(Threads REQUIRED)
 
-# We need to set some default architectures if there were none set in order for enable_language(CUDA) to pass.
+# Placeholder required before enable_language(CUDA); set_cuda_architectures() replaces this.
+# SM 75 (Turing) is valid for all supported CUDA versions (10.0+).
 if (NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-  set(CMAKE_CUDA_ARCHITECTURES 60 61)
+  set(CMAKE_CUDA_ARCHITECTURES 75)
 endif()
 
 if(FORCE_NO_CUDA)
