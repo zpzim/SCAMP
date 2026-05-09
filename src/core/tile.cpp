@@ -11,7 +11,11 @@ namespace SCAMP {
 // Gets the exclusion zone for a particular tile (helper_function)
 static int get_exclusion(uint64_t window_size, int64_t start_row,
                          int64_t start_column) {
-  int exclusion = window_size / 4;
+  // Use ceiling division (ceil(m/4)) so that small window sizes (m=3) get
+  // exclusion=1 rather than 0. Floor division gives 0 for m<4, which includes
+  // the self-match on the main diagonal and produces a zero Euclidean distance
+  // vector in the output (issue #135).
+  int exclusion = (window_size + 3) / 4;
   if (start_column >= start_row && start_column < start_row + exclusion) {
     return exclusion;
   }
@@ -34,6 +38,12 @@ std::pair<int, int> Tile::get_exclusion_for_self_join(bool upper_tile) {
   size_t height = get_tile_height() - info_->mp_window + 1;
   exclusion =
       get_exclusion(info_->mp_window, get_tile_col(), get_tile_row() + height);
+  // The lower tile is executed transposed. The transposed geometry shifts the
+  // effective exclusion boundary by one diagonal, so we reduce exclusion_upper
+  // by 1 to avoid missing the corner value at the boundary (ca75a21).
+  if (exclusion > 0) {
+    exclusion--;
+  }
   return std::make_pair(extra_exclusion, exclusion);
 }
 
@@ -131,6 +141,11 @@ std::pair<int, int> Tile::get_exclusion_for_ab_join(bool upper_tile) {
           get_exclusion(info_->mp_window, start_col, start_row + height);
     } else {
       exclusion_upper = 0;
+    }
+    // The lower tile is executed transposed; reduce exclusion_upper by 1 to
+    // avoid missing the corner value at the exclusion boundary (ca75a21).
+    if (exclusion_upper > 0) {
+      exclusion_upper--;
     }
   }
   return std::make_pair(std::max(exclusion_lower, alternative_exclusion_lower),
