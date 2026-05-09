@@ -71,13 +71,17 @@ macro(set_cuda_architectures)
     list(APPEND CMAKE_CUDA_ARCHITECTURES 50 52 53)
   endif()
 
-  # Pascal (SM 6.x): supported in all targeted CUDA versions; deprecation expected post-CUDA 13
-  list(APPEND CMAKE_CUDA_ARCHITECTURES 60 61 62)
+  # Pascal (SM 6.x): removed in CUDA 13.0
+  if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "13.0")
+    list(APPEND CMAKE_CUDA_ARCHITECTURES 60 61 62)
+  endif()
 
-  # Volta (SM 7.0, 7.2)
-  list(APPEND CMAKE_CUDA_ARCHITECTURES 70 72)
+  # Volta (SM 7.0, 7.2): introduced CUDA 9.0/10.0; removed CUDA 13.0
+  if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "13.0")
+    list(APPEND CMAKE_CUDA_ARCHITECTURES 70 72)
+  endif()
 
-  # Turing (SM 7.5)
+  # Turing (SM 7.5): introduced CUDA 10.0
   list(APPEND CMAKE_CUDA_ARCHITECTURES 75)
 
   # Ampere A100/A30 (SM 8.0): introduced CUDA 11.0 (our minimum)
@@ -88,8 +92,8 @@ macro(set_cuda_architectures)
     list(APPEND CMAKE_CUDA_ARCHITECTURES 86)
   endif()
 
-  # Ampere Jetson Orin (SM 8.7): introduced CUDA 11.5
-  if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "11.5")
+  # Ampere Jetson Orin (SM 8.7): introduced CUDA 11.4
+  if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "11.4")
     list(APPEND CMAKE_CUDA_ARCHITECTURES 87)
   endif()
 
@@ -98,9 +102,14 @@ macro(set_cuda_architectures)
     list(APPEND CMAKE_CUDA_ARCHITECTURES 89 90)
   endif()
 
-  # Blackwell (SM 10.0): introduced CUDA 12.8
+  # Blackwell datacenter (SM 100, 101) + consumer (SM 120): introduced CUDA 12.8
   if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "12.8")
-    list(APPEND CMAKE_CUDA_ARCHITECTURES 100)
+    list(APPEND CMAKE_CUDA_ARCHITECTURES 100 101 120)
+  endif()
+
+  # Blackwell SM 103 + SM 121: introduced CUDA 12.9
+  if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "12.9")
+    list(APPEND CMAKE_CUDA_ARCHITECTURES 103 121)
   endif()
 
   list(REMOVE_DUPLICATES CMAKE_CUDA_ARCHITECTURES)
