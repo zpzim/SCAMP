@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1778355483664,
+  "lastUpdate": 1778372412147,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -524,6 +524,54 @@ window.BENCHMARK_DATA = {
             "value": 1.747689099999991,
             "unit": "s/iter",
             "extra": "iterations: 10\ncpu: 0 s\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "Zach Zimmerman",
+            "username": "zpzim"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "0c5d3640118336af653900b3cb5a60f9beef8dcd",
+          "message": "Fix MSVC C4505 warning + compute_101 unsupported arch on CUDA 13.0 (#141)\n\n* Fix MSVC C4505 warning for _cudaGetErrorEnum in qt_helper.h\n\nstatic functions have internal linkage, so MSVC warns C4505 when a\ntranslation unit includes the header but never calls CHECK_CUFFT_ERRORS.\ninline has external linkage and is the correct specifier for a\nutility function defined in a header.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* Fix compute_101 error on CUDA 13.0+; add multi-version CUDA build CI\n\nsm_101 (Jetson Thor) was renamed to sm_110 in CUDA 13.0, causing\n'nvcc fatal: Unsupported gpu architecture compute_101' when building\nwith the CUDA 13.0 conda-forge package. Replace 101 with 110 in the\n>= 13.0 arch list and add sm_103 / sm_121 (introduced CUDA 12.9,\nnow safe to include since the CCCL arity bug is fixed in 13.0).\n\nAlso add a build-cuda-versions CI job that compiles with CUDA 12.6.0,\n12.8.0, and 13.0.0 on both Linux (g++) and Windows (cl), covering the\nkey architectural breakpoints not already tested by build-cuda-cli\n(which tests 12.9.1 across compilers).\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n---------\n\nCo-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>",
+          "timestamp": "2026-05-09T17:10:31-07:00",
+          "tree_id": "608a45382fca75d371903b33e81bf1531832051d",
+          "url": "https://github.com/zpzim/SCAMP/commit/0c5d3640118336af653900b3cb5a60f9beef8dcd"
+        },
+        "date": 1778372408974,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/32768",
+            "value": 0.8972633900000005,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0015625 s\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/32768",
+            "value": 0.27892800000000195,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0015625 s\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/32768",
+            "value": 0.7518825499999992,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0046875 s\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/1/32768",
+            "value": 1.7548287399999993,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.003125 s\nthreads: 1"
           }
         ]
       }
