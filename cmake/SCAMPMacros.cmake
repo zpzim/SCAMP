@@ -120,9 +120,12 @@ macro(set_cuda_architectures)
     list(APPEND CMAKE_CUDA_ARCHITECTURES 100 120)
   endif()
 
-  # Blackwell all variants on CUDA 13.0+ (CCCL 3.0.0 fixes the arity bug)
+  # Blackwell all variants on CUDA 13.0+ (CCCL 3.0.0 fixes the arity bug).
+  # sm_101 (Jetson Thor) was renamed to sm_110 in CUDA 13.0; sm_103 (B300)
+  # and sm_121 (DGX Spark) were introduced in CUDA 12.9 but kept out of 12.x
+  # builds to stay within the CCCL 2.8.x arch-token limit.
   if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "13.0")
-    list(APPEND CMAKE_CUDA_ARCHITECTURES 100 101 103 120 121)
+    list(APPEND CMAKE_CUDA_ARCHITECTURES 100 103 110 120 121)
   endif()
 
   list(REMOVE_DUPLICATES CMAKE_CUDA_ARCHITECTURES)
