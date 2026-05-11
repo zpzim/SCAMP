@@ -11,7 +11,11 @@ namespace SCAMP {
 // Gets the exclusion zone for a particular tile (helper_function)
 static int get_exclusion(uint64_t window_size, int64_t start_row,
                          int64_t start_column) {
-  int exclusion = window_size / 4;
+  // Use ceiling division (ceil(m/4)) so that small window sizes (m=3) get
+  // exclusion=1 rather than 0. Floor division gives 0 for m<4, which includes
+  // the self-match on the main diagonal and produces a zero Euclidean distance
+  // vector in the output (issue #135).
+  int exclusion = (window_size + 3) / 4;
   if (start_column >= start_row && start_column < start_row + exclusion) {
     return exclusion;
   }

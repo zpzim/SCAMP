@@ -75,6 +75,22 @@ else:
   failed = True
   print ("Matrix Summary AB join fail")
 
+# Small window size tests (issue #135): with m < 4 the exclusion zone formula
+# ceil(m/4) differs from floor(m/4). Specifically m=3 gives ceil=1 vs floor=0;
+# floor=0 caused the main diagonal (self-match, Euclidean distance = 0) to win
+# for every subsequence, producing an all-zero distance vector.
+small_m_arr = np.random.random(size=(200,))
+small_m_arr2 = np.random.random(size=(200,))
+for test_m in [3, 4]:
+  dm_small = distance_matrix(small_m_arr, None, test_m)
+  dist_small, index_small = mp.selfjoin(small_m_arr, test_m, pearson=True)
+  vdist_small, vindex_small = reduce_1nn_index(dm_small)
+  if compare_vectors(vdist_small, dist_small) and compare_index(vindex_small, vdist_small, index_small, dist_small):
+    print("1NN INDEX Self join m={} pass".format(test_m))
+  else:
+    failed = True
+    print("1NN INDEX Self join m={} fail".format(test_m))
+
 if mp.gpu_supported():
   print('GPUs Supported')
   thresh = 0.12

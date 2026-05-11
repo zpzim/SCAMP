@@ -106,7 +106,7 @@ def distance_matrix(a,b,w):
 
     diagmax = na
     if not has_b:
-        minlag = w // 4
+        minlag = (w + 3) // 4  # ceil(m/4) — matches SCAMP's exclusion zone
     else:
         minlag = 0
 
@@ -184,9 +184,9 @@ def distance_matrix_np(a,b,m):
   else:
     out = np.corrcoef(x)
 
-  # Mark exclusion zone
+  # Mark exclusion zone: exclude |i-j| < ceil(m/4), matching SCAMP's formula.
   if not has_b:
-    minlag = m // 4 - 1
+    minlag = (m + 3) // 4 - 1  # ceil(m/4) - 1
     for i in range(nb):
       x = max(0, i - minlag)
       y = min(na, i + minlag + 1)
