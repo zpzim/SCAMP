@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1778372412147,
+  "lastUpdate": 1778515054013,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -570,6 +570,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BM_MATRIX_SELF_JOIN/1/32768",
             "value": 1.7548287399999993,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.003125 s\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "Zach Zimmerman",
+            "username": "zpzim"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "22bda6e274db48f3f70dd5e763c99295c70e02d7",
+          "message": "Fix exclusion zone for small window sizes and improve docs/comments (#140)\n\n* Fix exclusion zone for small window sizes (issue #135)\n\nWith m<4, floor(m/4)=0 meant no exclusion zone was applied. Each\nsubsequence then matched itself (corr=1.0) as its nearest neighbor,\nproducing Euclidean distance 0.0 everywhere.\n\nFix get_exclusion() to use ceiling division -- (m+3)/4 -- so m=3 gets\nexclusion=1 instead of 0, correctly excluding the trivial self-match.\n\nAlso apply the ca75a21 off-by-one fix for transposed (lower) tiles:\nthe transposed geometry shifts the effective exclusion boundary by one\ndiagonal, so exclusion_upper is reduced by 1 in get_exclusion_for_self_join\nand get_exclusion_for_ab_join to avoid missing the corner value.\n\nFix the same floor-division bug in the Python reference implementation\n(distance_matrix_fast.py) and add correctness tests for m=3 and m=4.\n\n* Document MATRIX_SUMMARY threshold behaviour (issue #134)\n\nWith the default threshold of 0, cells whose pooling window contains only\nnegative correlations are left as NaN. Document this and note that\nthreshold=-1 guarantees all cells are filled.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>",
+          "timestamp": "2026-05-11T08:48:58-07:00",
+          "tree_id": "a52da91da6ee2908adf7e83756120a852c1c9059",
+          "url": "https://github.com/zpzim/SCAMP/commit/22bda6e274db48f3f70dd5e763c99295c70e02d7"
+        },
+        "date": 1778515047809,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/32768",
+            "value": 0.8520200399999908,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0046875 s\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/32768",
+            "value": 0.27386565000000473,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0015625 s\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/32768",
+            "value": 0.7541266899999982,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0 s\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/1/32768",
+            "value": 1.7598247000000016,
             "unit": "s/iter",
             "extra": "iterations: 10\ncpu: 0.003125 s\nthreads: 1"
           }
