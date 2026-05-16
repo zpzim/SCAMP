@@ -1,8 +1,8 @@
 #include <cub/device/device_merge_sort.cuh>
 #include <unordered_map>
 #include <vector>
-#include "defines.h"
-#include "kernel_common.h"
+#include "core/defines.h"
+#include "core/kernel_common.h"
 #include "kernel_gpu_utils.h"
 #include "kernels.h"
 

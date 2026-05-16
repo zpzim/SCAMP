@@ -1,6 +1,6 @@
 #pragma once
 #include "common/common.h"
-#include "tile.h"
+#include "core/tile.h"
 
 #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 600
 // Double atomicAdd is implemented
