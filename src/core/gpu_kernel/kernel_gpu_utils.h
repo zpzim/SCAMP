@@ -1,6 +1,7 @@
 #pragma once
 #include "common/common.h"
 #include "core/tile.h"
+#include "kernel_constants.h"
 
 #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 600
 // Double atomicAdd is implemented
@@ -21,18 +22,9 @@ static __inline__ __device__ double atomicAdd(double *address, double val) {
 
 namespace SCAMP {
 
-// This is the kernel tile height used by the GPUs
-constexpr int KERNEL_TILE_HEIGHT = 200;
-// Number of diagonals executed per thread (DO NOT MODIFY)
-constexpr int DIAGS_PER_THREAD = 4;
-// Threads per block for single precision SCAMP
-constexpr int BLOCKSZ_SP = 512;
-// Threads per block for double precision SCAMP
-constexpr int BLOCKSZ_DP = 256;
-// Blocks per SM for SCAMP
-constexpr int BLOCKSPERSM = 2;
-constexpr int TILE_HEIGHT_SP = KERNEL_TILE_HEIGHT;
-constexpr int TILE_HEIGHT_DP = KERNEL_TILE_HEIGHT;
+// Launch constants moved to kernel_constants.h so they can be consumed from
+// host-only translation units (e.g. kernel_config.cpp) without pulling in
+// the CUDA device intrinsics defined later in this header.
 
 // Describes the SCOPE of an atomic operation in a GPU kernel
 enum SCAMPAtomicType { ATOMIC_BLOCK, ATOMIC_GLOBAL, ATOMIC_SYSTEM };
