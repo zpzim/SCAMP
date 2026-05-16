@@ -11,12 +11,11 @@ SCAMPError_t LaunchKernel_SUM_THRESH(SCAMPKernelInputArgs<double> args,
                                      double *profile_A, double *profile_B,
                                      SCAMPPrecisionType fp_type,
                                      bool computing_rows, bool computing_cols,
-                                     uint64_t blocksz, uint64_t num_blocks,
+                                     KernelConfig cfg, uint64_t num_blocks,
                                      uint64_t smem, cudaStream_t s) {
-  return LaunchDoTile<double, double, double, PROFILE_TYPE_SUM_THRESH,
-                      BLOCKSPERSM>(args, profile_A, profile_B, fp_type,
-                                   computing_rows, computing_cols, blocksz,
-                                   num_blocks, smem, s);
+  return LaunchDoTile<double, double, double, PROFILE_TYPE_SUM_THRESH>(
+      args, profile_A, profile_B, fp_type, computing_rows, computing_cols, cfg,
+      num_blocks, smem, s);
 }
 
 }  // namespace SCAMP

@@ -44,4 +44,23 @@ constexpr int BLOCKSPERSM = 2;
 constexpr int TILE_HEIGHT_SP = KERNEL_TILE_HEIGHT;
 constexpr int TILE_HEIGHT_DP = KERNEL_TILE_HEIGHT;
 
+// ---------------------------------------------------------------------------
+// Autotune variants.
+//
+// The autotuner picks one of these (tile_height, blocks_per_sm) variants per
+// (device, profile_type, precision). Each variant must be enumerated here AND
+// instantiated in the LaunchDoTile dispatch in kernels_impl.h; entries that
+// aren't pre-instantiated will fall back to the default at lookup time.
+//
+// Adding a variant: append a row to kKernelVariants in kernel_config.cpp,
+// add a branch in the LaunchDoTile switch (kernels_impl.h), and the
+// autotuner will start benchmarking it on the next RunAutotune() invocation.
+// Removing one is the reverse, plus pruning stale cache entries.
+// ---------------------------------------------------------------------------
+
+// Alt variant: smaller tile, higher occupancy. Useful on devices where the
+// default's smem footprint limits blocks_per_sm.
+constexpr int KERNEL_TILE_HEIGHT_ALT = 128;
+constexpr int BLOCKSPERSM_ALT = 4;
+
 }  // namespace SCAMP

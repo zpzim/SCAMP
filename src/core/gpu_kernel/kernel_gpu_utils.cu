@@ -61,10 +61,9 @@ size_t GetProfileTypeSizeInternalGPU(SCAMPProfileType type) {
   }
 }
 
-int get_smem(const OpInfo *info, uint64_t blocksz) {
+int get_smem(const OpInfo *info, uint64_t blocksz, int tile_height) {
   constexpr int num_shared_variables = 3;
   int intermediate_data_size = FPTypeSize(info->fp_type);
-  int tile_height = GetTileHeight(info->fp_type);
   int tile_width = blocksz * DIAGS_PER_THREAD + tile_height;
   int smem = (tile_width + tile_height) *
              (num_shared_variables + info->opt_args.num_extra_operands) *

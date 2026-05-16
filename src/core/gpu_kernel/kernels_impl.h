@@ -155,22 +155,23 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
 }
 
 // Dispatches on precision and compute_rows/compute_cols to the right
-// instantiation of do_tile<...> for a given profile type. Each per-profile-
-// type .cu file calls this template once with its PROFILE_TYPE bound, which
-// instantiates 9 do_tile variants (3 precisions x 3 row/col modes).
+// instantiation of do_tile<...> for a given profile type AND a given
+// (tile_height, blocks_per_sm) variant. Each per-profile-type .cu file
+// instantiates this template once per (variant, BLOCKSPERSM) tuple, then
+// LaunchDoTile picks among the instantiations based on the autotuner's
+// chosen KernelConfig.
 //
 // PRECISION_MIXED uses float storage (DATA_TYPE=float) but accumulates in
 // double (ACCUM_TYPE=double); kept separate from the eigen-branch port
 // (which dropped MIXED) so the public precision API stays intact.
 template <typename PROFILE_OUTPUT_TYPE, typename PROFILE_DATA_TYPE,
           typename DISTANCE_TYPE, SCAMPProfileType PROFILE_TYPE,
-          int BLOCKSPERSM>
-SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
-                          PROFILE_OUTPUT_TYPE *profile_A,
-                          PROFILE_OUTPUT_TYPE *profile_B,
-                          SCAMPPrecisionType fp_type, bool computing_rows,
-                          bool computing_cols, uint64_t blocksz,
-                          uint64_t num_blocks, uint64_t smem, cudaStream_t s) {
+          int tile_height_v, int blocks_per_sm_v>
+SCAMPError_t LaunchDoTileWithGeometry(
+    SCAMPKernelInputArgs<double> args, PROFILE_OUTPUT_TYPE *profile_A,
+    PROFILE_OUTPUT_TYPE *profile_B, SCAMPPrecisionType fp_type,
+    bool computing_rows, bool computing_cols, uint64_t blocksz,
+    uint64_t num_blocks, uint64_t smem, cudaStream_t s) {
   dim3 block(blocksz, 1, 1);
   dim3 grid(num_blocks, 1, 1);
   if (computing_rows && computing_cols) {
@@ -181,21 +182,21 @@ SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
       case PRECISION_DOUBLE: {
         do_tile<double, double, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE,
                 DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE,
-                BLOCKSPERSM, TILE_HEIGHT_DP, BLOCKSZ_DP>
+                blocks_per_sm_v, tile_height_v, BLOCKSZ_DP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
       case PRECISION_MIXED: {
         do_tile<float, double, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE,
                 DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE,
-                BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP>
+                blocks_per_sm_v, tile_height_v, BLOCKSZ_SP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
       case PRECISION_SINGLE: {
         do_tile<float, float, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE,
                 DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE,
-                BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP>
+                blocks_per_sm_v, tile_height_v, BLOCKSZ_SP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
@@ -211,21 +212,21 @@ SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
       case PRECISION_DOUBLE: {
         do_tile<double, double, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE,
                 DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE,
-                BLOCKSPERSM, TILE_HEIGHT_DP, BLOCKSZ_DP>
+                blocks_per_sm_v, tile_height_v, BLOCKSZ_DP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
       case PRECISION_MIXED: {
         do_tile<float, double, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE,
                 DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE,
-                BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP>
+                blocks_per_sm_v, tile_height_v, BLOCKSZ_SP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
       case PRECISION_SINGLE: {
         do_tile<float, float, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE,
                 DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE,
-                BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP>
+                blocks_per_sm_v, tile_height_v, BLOCKSZ_SP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
@@ -240,21 +241,21 @@ SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
       case PRECISION_DOUBLE: {
         do_tile<double, double, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE,
                 DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE,
-                BLOCKSPERSM, TILE_HEIGHT_DP, BLOCKSZ_DP>
+                blocks_per_sm_v, tile_height_v, BLOCKSZ_DP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
       case PRECISION_MIXED: {
         do_tile<float, double, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE,
                 DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE,
-                BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP>
+                blocks_per_sm_v, tile_height_v, BLOCKSZ_SP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
       case PRECISION_SINGLE: {
         do_tile<float, float, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE,
                 DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE,
-                BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP>
+                blocks_per_sm_v, tile_height_v, BLOCKSZ_SP>
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
@@ -264,6 +265,45 @@ SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
   }
   gpuErrchk(cudaPeekAtLastError());
   return SCAMP_NO_ERROR;
+}
+
+// Variant dispatch entry point. Each LaunchKernel_<PROFILE> in
+// kernel_<profile>.cu forwards to this; the switch picks the
+// pre-instantiated LaunchDoTileWithGeometry<...> for the autotuner-chosen
+// (tile_height, blocks_per_sm). Variants must match an entry in
+// kKernelVariants (kernel_config.cpp); cfgs that don't are rejected by
+// IsSupportedKernelConfig upstream and fall back to the default before we
+// get here.
+//
+// When adding a variant: add a case here AND the matching constant pair to
+// kernel_constants.h + kernel_config.cpp.
+template <typename PROFILE_OUTPUT_TYPE, typename PROFILE_DATA_TYPE,
+          typename DISTANCE_TYPE, SCAMPProfileType PROFILE_TYPE>
+SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
+                          PROFILE_OUTPUT_TYPE *profile_A,
+                          PROFILE_OUTPUT_TYPE *profile_B,
+                          SCAMPPrecisionType fp_type, bool computing_rows,
+                          bool computing_cols, KernelConfig cfg,
+                          uint64_t num_blocks, uint64_t smem, cudaStream_t s) {
+  if (cfg.tile_height == KERNEL_TILE_HEIGHT &&
+      cfg.blocks_per_sm == BLOCKSPERSM) {
+    return LaunchDoTileWithGeometry<PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE,
+                                    DISTANCE_TYPE, PROFILE_TYPE,
+                                    KERNEL_TILE_HEIGHT, BLOCKSPERSM>(
+        args, profile_A, profile_B, fp_type, computing_rows, computing_cols,
+        cfg.blocksz, num_blocks, smem, s);
+  } else if (cfg.tile_height == KERNEL_TILE_HEIGHT_ALT &&
+             cfg.blocks_per_sm == BLOCKSPERSM_ALT) {
+    return LaunchDoTileWithGeometry<PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE,
+                                    DISTANCE_TYPE, PROFILE_TYPE,
+                                    KERNEL_TILE_HEIGHT_ALT, BLOCKSPERSM_ALT>(
+        args, profile_A, profile_B, fp_type, computing_rows, computing_cols,
+        cfg.blocksz, num_blocks, smem, s);
+  }
+  // Shouldn't happen: IsSupportedKernelConfig should have rejected this cfg
+  // upstream, and the caller would have fallen back to the default. Return
+  // an error so the issue is visible rather than silently launching nothing.
+  return SCAMP_CUDA_ERROR;
 }
 
 }  // namespace SCAMP

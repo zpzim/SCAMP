@@ -10,12 +10,12 @@ namespace SCAMP {
 SCAMPError_t LaunchKernel_1NN(SCAMPKernelInputArgs<double> args,
                               float *profile_A, float *profile_B,
                               SCAMPPrecisionType fp_type, bool computing_rows,
-                              bool computing_cols, uint64_t blocksz,
+                              bool computing_cols, KernelConfig cfg,
                               uint64_t num_blocks, uint64_t smem,
                               cudaStream_t s) {
-  return LaunchDoTile<float, float, float, PROFILE_TYPE_1NN, BLOCKSPERSM>(
-      args, profile_A, profile_B, fp_type, computing_rows, computing_cols,
-      blocksz, num_blocks, smem, s);
+  return LaunchDoTile<float, float, float, PROFILE_TYPE_1NN>(
+      args, profile_A, profile_B, fp_type, computing_rows, computing_cols, cfg,
+      num_blocks, smem, s);
 }
 
 }  // namespace SCAMP

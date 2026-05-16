@@ -22,22 +22,23 @@ SCAMPError_t compute_gpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
                                               void *profile_b, bool do_rows,
                                               bool do_cols) {
   int exclusion_total = args.exclusion_lower + args.exclusion_upper;
-  // Pull the per-device kernel config from the autotune cache. Today this
-  // always returns the compile-time default (see autotune.cpp); the lookup
-  // is wired in now so that follow-up PRs adding kernel variants only need
-  // to plug new dispatch branches into LaunchDoTile.
+  // Pull the per-device kernel config from the autotune cache. The returned
+  // cfg names a (blocksz, tile_height, blocks_per_sm) tuple that
+  // IsSupportedKernelConfig has already validated against the enumerated
+  // variant table (see kernel_config.cpp). LaunchKernel_<X> below switches
+  // on the cfg to pick the matching pre-instantiated kernel variant.
   KernelConfig cfg = GetKernelConfigForDevice(
       t->get_cuda_id(), t->info()->profile_type, t->info()->fp_type);
-  (void)cfg;  // currently only the default config is honored downstream
-  uint64_t blocksz = get_blocksz(t);
+  uint64_t blocksz = cfg.blocksz;
   uint64_t num_workers = ceil((args.n_x - exclusion_total) /
                               static_cast<double>(DIAGS_PER_THREAD));
   uint64_t num_blocks = ceil(num_workers / static_cast<double>(blocksz));
-  uint64_t smem = get_smem(t->info(), blocksz);
+  uint64_t smem = get_smem(t->info(), blocksz, cfg.tile_height);
   if (!t->info()->silent_mode) {
     std::cout << "Launching " << num_blocks << " thread blocks of size "
-              << blocksz << " with a total of " << smem
-              << " bytes of shared memory per block." << std::endl;
+              << blocksz << " (tile_height=" << cfg.tile_height
+              << ", blocks_per_sm=" << cfg.blocks_per_sm << ") with a total of "
+              << smem << " bytes of shared memory per block." << std::endl;
   }
   if (exclusion_total >= args.n_x) {
     return SCAMP_NO_ERROR;
@@ -47,27 +48,27 @@ SCAMPError_t compute_gpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
       return LaunchKernel_SUM_THRESH(
           args, reinterpret_cast<double *>(profile_a),
           reinterpret_cast<double *>(profile_b), t->info()->fp_type, do_rows,
-          do_cols, blocksz, num_blocks, smem, t->get_stream());
+          do_cols, cfg, num_blocks, smem, t->get_stream());
     case PROFILE_TYPE_1NN_INDEX:
       return LaunchKernel_1NN_INDEX(
           args, reinterpret_cast<uint64_t *>(profile_a),
           reinterpret_cast<uint64_t *>(profile_b), t->info()->fp_type, do_rows,
-          do_cols, blocksz, num_blocks, smem, t->get_stream());
+          do_cols, cfg, num_blocks, smem, t->get_stream());
     case PROFILE_TYPE_1NN:
       return LaunchKernel_1NN(args, reinterpret_cast<float *>(profile_a),
                               reinterpret_cast<float *>(profile_b),
-                              t->info()->fp_type, do_rows, do_cols, blocksz,
+                              t->info()->fp_type, do_rows, do_cols, cfg,
                               num_blocks, smem, t->get_stream());
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
       return LaunchKernel_APPROX_ALL_NEIGHBORS(
           args, reinterpret_cast<SCAMPmatch *>(profile_a),
           reinterpret_cast<SCAMPmatch *>(profile_b), t->info()->fp_type,
-          do_rows, do_cols, blocksz, num_blocks, smem, t->get_stream());
+          do_rows, do_cols, cfg, num_blocks, smem, t->get_stream());
     case PROFILE_TYPE_MATRIX_SUMMARY:
       return LaunchKernel_MATRIX_SUMMARY(
           args, reinterpret_cast<float *>(profile_a),
           reinterpret_cast<float *>(profile_b), t->info()->fp_type, do_rows,
-          do_cols, blocksz, num_blocks, smem, t->get_stream());
+          do_cols, cfg, num_blocks, smem, t->get_stream());
     default:
       return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
   }

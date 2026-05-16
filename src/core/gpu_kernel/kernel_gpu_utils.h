@@ -168,8 +168,10 @@ size_t GetProfileTypeSizeInternalGPU(SCAMPProfileType type);
 // Get the desired block size to launch the kernel with according to tils
 int get_blocksz(Tile *t);
 
-// Gets the required amount of shared memory for the kernel
-int get_smem(const OpInfo *info, uint64_t blocksz);
+// Gets the required amount of shared memory for the kernel. tile_height is
+// the per-variant value (KERNEL_TILE_HEIGHT for the default, etc.); passing
+// it explicitly lets the autotuner size smem for the variant it picked.
+int get_smem(const OpInfo *info, uint64_t blocksz, int tile_height);
 
 // Gets the tile height used by the kernel
 int GetTileHeight(SCAMPPrecisionType dtype);
