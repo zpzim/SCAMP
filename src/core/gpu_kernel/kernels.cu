@@ -7,12 +7,6 @@
 // duplicate the kernel instantiations.
 #include <cub/device/device_merge_sort.cuh>
 
-// Eigen in CUDA device code: fixed-size matrices and arrays from <Eigen/Core>
-// are device-callable when --expt-relaxed-constexpr is on (set at top level).
-// We pull this in here so the smoke-test kernel below validates the toolchain
-// end-to-end. Production use lives in kernels_impl.h.
-#include <Eigen/Core>
-
 #include "autotune.h"
 #include "core/defines.h"
 #include "core/kernel_common.h"
@@ -22,19 +16,6 @@
 #include "kernels_dispatch.h"
 
 namespace SCAMP {
-
-namespace {
-// Smoke-test kernel: validates that Eigen's fixed-size arrays compile and run
-// inside device code with our nvcc flags. Never launched at runtime; remove
-// once the real Eigen rewrite is in place and exercises Eigen in production
-// paths.
-__global__ void eigen_device_smoke_test(float *out) {
-  Eigen::Array<float, 4, 1> a;
-  a << 1.f, 2.f, 3.f, 4.f;
-  Eigen::Array<float, 4, 1> b = a * 2.f + 1.f;
-  *out = b.sum();
-}
-}  // namespace
 
 SCAMPError_t compute_gpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
                                               Tile *t, void *profile_a,

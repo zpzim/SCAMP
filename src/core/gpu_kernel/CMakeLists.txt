@@ -33,7 +33,9 @@ add_library(gpu_utils
     ${CMAKE_CURRENT_BINARY_DIR}/builtin_autotune_cache.cpp
 )
 target_include_directories(gpu_utils PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(gpu_utils kernel_common common CUDA::cudart)
+# gpu_utils needs Eigen too: kernel_gpu_utils.h now declares Eigen::Map
+# fields inside SCAMPSmem and Eigen::Array inside SCAMPThreadInfo.
+target_link_libraries(gpu_utils kernel_common common CUDA::cudart Eigen3::Eigen)
 
 add_library(gpu_kernels
     ${CMAKE_CURRENT_SOURCE_DIR}/kernels.cu

@@ -1,4 +1,7 @@
 #pragma once
+#include <Eigen/Core>
+#include <utility>
+
 #include "common/common.h"
 #include "core/tile.h"
 #include "kernel_constants.h"
@@ -35,62 +38,93 @@ HOST_DEVICE_FUNCTION constexpr bool NeedsCheckIfDone(
 }
 
 // Structure which manages shared memory on the GPU and automatically allocates
-// appropriate segments in memory for variables used by the kernel
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, SCAMPProfileType type>
+// appropriate segments in memory for variables used by the kernel.
+//
+// The per-region pointers are wrapped in Eigen::Map<Eigen::Array<..., N, 1>>
+// so callers can write expressions like smem.df_col.segment<unrolled_diags>(
+// info.local_col) instead of hand-unrolled raw-pointer loads.
+//
+// Eigen::Map has no default constructor that takes nothing, so the ctor
+// uses placement new to overwrite nullptr-initialized Map members with maps
+// pointing into the smem buffer. (Eigen 5 doesn't expose a public mutator
+// for the underlying pointer; placement new remains the canonical pattern
+// for re-seating a Map.)
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, SCAMPProfileType type,
+          int tile_width, int tile_height>
 struct SCAMPSmem {
   __device__ SCAMPSmem(char *smem, bool compute_rows, bool compute_columns,
-                       int tile_width, int tile_height, int extra_operands);
-  DATA_TYPE *__restrict__ df_col;
-  DATA_TYPE *__restrict__ dg_col;
-  DATA_TYPE *__restrict__ inorm_col;
-  DATA_TYPE *__restrict__ df_row;
-  DATA_TYPE *__restrict__ dg_row;
-  DATA_TYPE *__restrict__ inorm_row;
+                       int extra_operands);
 
-  PROFILE_DATA_TYPE *__restrict__ local_mp_col;
-  PROFILE_DATA_TYPE *__restrict__ local_mp_row;
+  // Public typedef so callees can spell the scalar type of the column /
+  // row data segments without re-deriving the SCAMPSmem template args.
+  // Needed because for PRECISION_MIXED the cov accumulator's scalar type
+  // (ACCUM_TYPE=double) differs from the column-data scalar type
+  // (DATA_TYPE=float); local register-window arrays must use DataType to
+  // match the segment they're loaded from.
+  using DataType = DATA_TYPE;
+
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>> df_col;
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>> dg_col;
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_width, 1>> inorm_col;
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>> df_row;
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>> dg_row;
+  Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>> inorm_row;
+  Eigen::Map<Eigen::Array<PROFILE_DATA_TYPE, tile_width, 1>> local_mp_col;
+  Eigen::Map<Eigen::Array<PROFILE_DATA_TYPE, tile_height, 1>> local_mp_row;
 
   uint64_t *profile_a_length;
   uint64_t *profile_b_length;
 };
 
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, SCAMPProfileType type>
-__device__ SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, type>::SCAMPSmem(
-    char *smem, bool compute_rows, bool compute_columns, int tile_width,
-    int tile_height, int extra_operands) {
-  constexpr int data_size = sizeof(DATA_TYPE);
-  constexpr int profile_size = sizeof(PROFILE_DATA_TYPE);
-  int curr_byte = 0;
-  df_col = (DATA_TYPE *)(smem);
-  curr_byte += tile_width * data_size;
-  dg_col = (DATA_TYPE *)(smem + curr_byte);
-  curr_byte += tile_width * data_size;
-  inorm_col = (DATA_TYPE *)(smem + curr_byte);
-  curr_byte += tile_width * data_size;
-  df_row = (DATA_TYPE *)(smem + curr_byte);
-  curr_byte += tile_height * data_size;
-  dg_row = (DATA_TYPE *)(smem + curr_byte);
-  curr_byte += tile_height * data_size;
-  inorm_row = (DATA_TYPE *)(smem + curr_byte);
-  curr_byte += tile_height * data_size;
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, SCAMPProfileType type,
+          int tile_width, int tile_height>
+__device__ SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, type, tile_width,
+                     tile_height>::SCAMPSmem(char *smem, bool compute_rows,
+                                             bool compute_columns,
+                                             int extra_operands)
+    : df_col(nullptr),
+      dg_col(nullptr),
+      inorm_col(nullptr),
+      df_row(nullptr),
+      dg_row(nullptr),
+      inorm_row(nullptr),
+      local_mp_col(nullptr),
+      local_mp_row(nullptr) {
+  using WideArrayMap = decltype(df_col);
+  using TallArrayMap = decltype(df_row);
+  using ColProfileMap = decltype(local_mp_col);
+  using RowProfileMap = decltype(local_mp_row);
+
+  new (&df_col) WideArrayMap(reinterpret_cast<DATA_TYPE *>(smem));
+  smem += sizeof(DATA_TYPE) * tile_width;
+  new (&dg_col) WideArrayMap(reinterpret_cast<DATA_TYPE *>(smem));
+  smem += sizeof(DATA_TYPE) * tile_width;
+  new (&inorm_col) WideArrayMap(reinterpret_cast<DATA_TYPE *>(smem));
+  smem += sizeof(DATA_TYPE) * tile_width;
+  new (&df_row) TallArrayMap(reinterpret_cast<DATA_TYPE *>(smem));
+  smem += sizeof(DATA_TYPE) * tile_height;
+  new (&dg_row) TallArrayMap(reinterpret_cast<DATA_TYPE *>(smem));
+  smem += sizeof(DATA_TYPE) * tile_height;
+  new (&inorm_row) TallArrayMap(reinterpret_cast<DATA_TYPE *>(smem));
+  smem += sizeof(DATA_TYPE) * tile_height;
 
   if (compute_columns) {
-    local_mp_col = (PROFILE_DATA_TYPE *)(smem + curr_byte);
-    curr_byte += tile_width * profile_size;
-  } else {
-    local_mp_col = nullptr;
+    new (&local_mp_col)
+        ColProfileMap(reinterpret_cast<PROFILE_DATA_TYPE *>(smem));
+    smem += sizeof(PROFILE_DATA_TYPE) * tile_width;
   }
+  // local_mp_col, local_mp_row Maps were nullptr-constructed above; if their
+  // computing-* flag is false they remain null (and the kernel will not read
+  // them).
   if (compute_rows) {
-    local_mp_row = (PROFILE_DATA_TYPE *)(smem + curr_byte);
-    curr_byte += tile_height * profile_size;
-  } else {
-    local_mp_row = nullptr;
+    new (&local_mp_row)
+        RowProfileMap(reinterpret_cast<PROFILE_DATA_TYPE *>(smem));
+    smem += sizeof(PROFILE_DATA_TYPE) * tile_height;
   }
   if (NeedsCheckIfDone(type)) {
-    profile_a_length = (uint64_t *)(smem + curr_byte);
-    curr_byte += sizeof(uint64_t);
-    profile_b_length = (uint64_t *)(smem + curr_byte);
-    curr_byte += sizeof(uint64_t);
+    profile_a_length = reinterpret_cast<uint64_t *>(smem);
+    smem += sizeof(uint64_t);
+    profile_b_length = reinterpret_cast<uint64_t *>(smem);
   } else {
     profile_a_length = nullptr;
     profile_b_length = nullptr;
@@ -99,15 +133,33 @@ __device__ SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, type>::SCAMPSmem(
 
 template <typename ACCUM_TYPE>
 struct SCAMPThreadInfo {
-  ACCUM_TYPE cov1;
-  ACCUM_TYPE cov2;
-  ACCUM_TYPE cov3;
-  ACCUM_TYPE cov4;
+  Eigen::Array<ACCUM_TYPE, DIAGS_PER_THREAD, 1> cov;
   uint32_t local_row;
   uint32_t local_col;
   uint32_t global_row;
   uint32_t global_col;
 };
+
+// Compile-time-unrolled for loop driven by std::index_sequence. Each
+// invocation of `func` receives a `num<I>` value whose `::value` is the
+// constexpr loop index, so loop-iter-dependent template arguments are
+// usable inside the body. Faster than #pragma unroll for inner-kernel use
+// because the index is a true compile-time constant.
+template <std::size_t N>
+struct num {
+  static constexpr auto value = N;
+};
+
+template <class F, std::size_t... Is>
+__device__ inline void for_(F func, std::index_sequence<Is...>) {
+  using expander = int[];
+  (void)expander{0, ((void)func(num<Is>{}), 0)...};
+}
+
+template <std::size_t N, typename F>
+__device__ inline void for_(F func) {
+  for_(func, std::make_index_sequence<N>());
+}
 
 // Gets the profile element size as used by the GPU kernels
 // This can be different than what is used in the CPU case
