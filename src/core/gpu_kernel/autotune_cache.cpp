@@ -102,8 +102,13 @@ const char *PrecisionTypeName(SCAMPPrecisionType t) {
 }
 
 bool ParseProfileTypeName(const std::string &s, SCAMPProfileType *out) {
+  // The enum is not contiguous and 1NN/MATRIX_SUMMARY/APPROX_ALL_NEIGHBORS sit
+  // above the prior PROFILE_TYPE_1NN_MULTIDIM upper bound; iterate the full
+  // range to cover them. (Out-of-range integer values fall through to
+  // ProfileTypeName's default "INVALID" branch and never match an input
+  // string other than literally "INVALID".)
   for (int i = static_cast<int>(PROFILE_TYPE_INVALID);
-       i <= static_cast<int>(PROFILE_TYPE_1NN_MULTIDIM); ++i) {
+       i <= static_cast<int>(PROFILE_TYPE_MATRIX_SUMMARY); ++i) {
     auto candidate = static_cast<SCAMPProfileType>(i);
     if (s == ProfileTypeName(candidate)) {
       *out = candidate;
