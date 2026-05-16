@@ -18,4 +18,6 @@ mheight=[int]:
   For matrix summaries, the height of the output matrix (default 50)
 verbose=[bool]:
   Enable verbose output. This will log to stdout. (default False)
+allow_trivial_match=[bool]:
+  ab-join only. When True (default), all subsequence pairs are considered. When False, treats ``a`` and ``b`` as aligned (e.g. overlapping segments of the same series) and applies the self-join exclusion zone, filtering trivial near-diagonal matches. Equivalent to the ``--aligned`` flag in the CLI. Passing this kwarg to a self-join raises ``ValueError``.
 
