@@ -20,6 +20,10 @@ set_target_properties(pyscamp PROPERTIES
 target_link_libraries(pyscamp PRIVATE scamp_args scamp_utils scamp_interface common)
 target_link_libraries(pyscamp PRIVATE pybind11::module)
 
+if (CMAKE_CUDA_COMPILER)
+  # pyscamp.autotune() routes to SCAMP::RunAutotune in gpu_utils.
+  target_link_libraries(pyscamp PRIVATE gpu_utils CUDA::cudart)
+endif()
 
 mark_cuda_if_available()
 mark_clang_tidy()

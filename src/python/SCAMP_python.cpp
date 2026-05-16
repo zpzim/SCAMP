@@ -7,6 +7,10 @@
 #include "common/scamp_args.h"
 #include "common/scamp_interface.h"
 #include "common/scamp_utils.h"
+#ifdef _HAS_CUDA_
+#include <cuda_runtime.h>
+#include "core/gpu_kernel/autotune.h"
+#endif
 
 namespace py = pybind11;
 
@@ -399,6 +403,35 @@ py::array_t<float> scamp_matrix(const std::vector<double>& a,
 
 bool has_gpu_support() { return SCAMP::num_available_gpus() > 0; }
 
+// Runs the SCAMP GPU autotuner over the requested device(s) and writes the
+// chosen kernel configuration to the on-disk cache. Returns the number of
+// devices tuned. Raises ImportError-equivalent (RuntimeError) when pyscamp
+// was built without CUDA, and a ValueError when no GPUs are available.
+int run_autotune(const std::vector<int>& devices,
+                 const std::string& cache_path) {
+#ifndef _HAS_CUDA_
+  (void)devices;
+  (void)cache_path;
+  throw std::runtime_error(
+      "pyscamp was built without CUDA; autotune() is unavailable.");
+#else
+  std::vector<int> targets = devices;
+  if (targets.empty()) {
+    int num_dev = 0;
+    cudaGetDeviceCount(&num_dev);
+    if (num_dev <= 0) {
+      throw std::invalid_argument(
+          "No CUDA devices available; pyscamp.autotune() needs at least one.");
+    }
+    for (int i = 0; i < num_dev; ++i) targets.push_back(i);
+  }
+  for (int dev : targets) {
+    SCAMP::RunAutotune(dev, cache_path, /*verbose=*/true);
+  }
+  return static_cast<int>(targets.size());
+#endif
+}
+
 bool (*GPU_supported)() = &has_gpu_support;
 std::tuple<py::array_t<float>, py::array_t<int>> (*self_join_1NN_INDEX)(
     const std::vector<double>&, int, const py::kwargs&) = &scamp;
@@ -447,6 +480,27 @@ PYBIND11_MODULE(pyscamp, m) {
   m.def("gpu_supported", GPU_supported, R"pbdoc(
         Returns true if both 1) The module was compiled with GPU support and 2) GPUs are available.
         )pbdoc");
+
+  m.def("autotune", &run_autotune, py::arg("devices") = std::vector<int>{},
+        py::arg("cache_path") = std::string{}, R"pbdoc(
+    Run the SCAMP GPU kernel autotuner for the selected device(s) and persist
+    the chosen kernel configurations to disk. Future pyscamp calls on the same
+    machine will read these configurations from the cache and use them when
+    launching GPU kernels.
+
+    :param devices: List of CUDA device IDs to tune. If empty (default), every
+                    visible CUDA device is tuned.
+    :type devices: list[int], optional
+    :param cache_path: Filesystem path to read/write the cache from. Empty
+                       (default) uses $SCAMP_AUTOTUNE_CACHE if set, otherwise
+                       $XDG_CACHE_HOME/scamp/autotune.txt or
+                       $HOME/.cache/scamp/autotune.txt.
+    :type cache_path: str, optional
+    :return: Number of devices that were tuned.
+    :rtype: int
+    :raises RuntimeError: If pyscamp was built without CUDA support.
+    :raises ValueError: If no CUDA devices are available.
+    )pbdoc");
 
   m.def("selfjoin",
         [](py::array_t<double, py::array::c_style | py::array::forcecast> a,

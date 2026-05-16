@@ -1,5 +1,6 @@
 #ifdef _HAS_CUDA_
 #include <cuda_runtime.h>
+#include "core/gpu_kernel/autotune.h"
 #endif
 
 #include <gflags/gflags.h>
@@ -98,10 +99,48 @@ DEFINE_string(
 DEFINE_string(gpus, "",
               "IDs of GPUs on the system to use, if this flag is not set SCAMP "
               "tries to use all available GPUs on the system");
+DEFINE_bool(autotune, false,
+            "Run the SCAMP GPU kernel autotuner for the selected device(s), "
+            "persist the chosen kernel configuration to "
+            "$SCAMP_AUTOTUNE_CACHE (or ~/.cache/scamp/autotune.txt by "
+            "default), and exit without running a matrix profile job.");
 
 int main(int argc, char **argv) {
   bool self_join, computing_rows, computing_cols;
   gflags::ParseCommandLineFlags(&argc, &argv, true);
+
+  // --autotune short-circuits the normal join path: it queries the GPU(s),
+  // records the best kernel configuration for each (profile_type, precision)
+  // pair, and exits. No input files are required.
+  if (FLAGS_autotune) {
+#ifdef _HAS_CUDA_
+    std::vector<int> tune_devices = ParseIntList(FLAGS_gpus);
+    if (tune_devices.empty()) {
+      int num_dev = 0;
+      cudaGetDeviceCount(&num_dev);
+      if (num_dev <= 0) {
+        std::cerr << "Error: --autotune requires at least one CUDA device, "
+                     "none were found."
+                  << std::endl;
+        return 1;
+      }
+      for (int i = 0; i < num_dev; ++i) tune_devices.push_back(i);
+    }
+    try {
+      for (int dev : tune_devices) {
+        SCAMP::RunAutotune(dev, /*cache_path=*/"", /*verbose=*/true);
+      }
+    } catch (const std::exception &e) {
+      std::cerr << "Autotune failed: " << e.what() << std::endl;
+      return 1;
+    }
+    return 0;
+#else
+    std::cerr << "Error: --autotune requires a CUDA-enabled build."
+              << std::endl;
+    return 1;
+#endif
+  }
   if (!FLAGS_ultra_precision && !FLAGS_double_precision &&
       !FLAGS_mixed_precision && !FLAGS_single_precision) {
     FLAGS_double_precision = true;

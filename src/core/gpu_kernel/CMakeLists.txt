@@ -11,8 +11,29 @@ include(SCAMPMacros)
 
 add_library(qt_kernels ${CMAKE_CURRENT_SOURCE_DIR}/qt_kernels.cu)
 
-add_library(gpu_utils ${CMAKE_CURRENT_SOURCE_DIR}/kernel_gpu_utils.cu)
-target_link_libraries(gpu_utils kernel_common)
+# Embed data/autotune_cache.txt into the binary as a C++ string constant.
+# The runtime lookup consults this built-in cache after user overrides; it is
+# the only way conda-forge / pip wheel users get GPU-specific tuning, since
+# they cannot recompile. To update the contents for a new device, run the
+# autotuner locally and merge the result into data/autotune_cache.txt, then
+# rebuild.
+file(READ "${CMAKE_SOURCE_DIR}/data/autotune_cache.txt"
+     SCAMP_BUILTIN_AUTOTUNE_CONTENT)
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/builtin_autotune_cache.cpp.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/builtin_autotune_cache.cpp"
+    @ONLY)
+
+add_library(gpu_utils
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_gpu_utils.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_config.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/device_props.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/autotune_cache.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/autotune.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/builtin_autotune_cache.cpp
+)
+target_include_directories(gpu_utils PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(gpu_utils kernel_common common CUDA::cudart)
 
 add_library(gpu_kernels
     ${CMAKE_CURRENT_SOURCE_DIR}/kernels.cu

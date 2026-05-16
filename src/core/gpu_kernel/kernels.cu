@@ -7,8 +7,10 @@
 // duplicate the kernel instantiations.
 #include <cub/device/device_merge_sort.cuh>
 
+#include "autotune.h"
 #include "core/defines.h"
 #include "core/kernel_common.h"
+#include "kernel_config.h"
 #include "kernel_gpu_utils.h"
 #include "kernels.h"
 #include "kernels_dispatch.h"
@@ -20,6 +22,13 @@ SCAMPError_t compute_gpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
                                               void *profile_b, bool do_rows,
                                               bool do_cols) {
   int exclusion_total = args.exclusion_lower + args.exclusion_upper;
+  // Pull the per-device kernel config from the autotune cache. Today this
+  // always returns the compile-time default (see autotune.cpp); the lookup
+  // is wired in now so that follow-up PRs adding kernel variants only need
+  // to plug new dispatch branches into LaunchDoTile.
+  KernelConfig cfg = GetKernelConfigForDevice(
+      t->get_cuda_id(), t->info()->profile_type, t->info()->fp_type);
+  (void)cfg;  // currently only the default config is honored downstream
   uint64_t blocksz = get_blocksz(t);
   uint64_t num_workers = ceil((args.n_x - exclusion_total) /
                               static_cast<double>(DIAGS_PER_THREAD));

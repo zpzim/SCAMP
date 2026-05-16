@@ -1,0 +1,23 @@
+SCAMP_AUTOTUNE_V1
+# Built-in autotune cache shipped with SCAMP binaries.
+#
+# Format: device_key|profile_type|precision|blocksz|tile_height|blocks_per_sm
+#   device_key is the sanitized device name + sm_<major><minor>, e.g.
+#     "NVIDIA_GeForce_RTX_3080__sm_86"
+#   profile_type is one of 1NN, 1NN_INDEX, SUM_THRESH, MATRIX_SUMMARY,
+#     APPROX_ALL_NEIGHBORS
+#   precision is one of SINGLE, MIXED, DOUBLE, ULTRA
+#
+# To regenerate for a new GPU:
+#   1. Run `SCAMP --autotune` (or pyscamp.autotune()) on a machine with that
+#      GPU; this writes $SCAMP_AUTOTUNE_CACHE (default ~/.cache/scamp/autotune.txt).
+#   2. Manually merge the new device's lines into this file.
+#   3. Open a PR; the next build will ship the new entries to end users.
+#
+# Notes:
+# - Entries here are consulted only when ~/.cache/scamp/autotune.txt is
+#   absent or has no record for the device. The user override always wins.
+# - Today only the compile-time default KernelConfig is honored by the
+#   kernel dispatcher, so cache entries other than the default are ignored.
+#   Future PRs that add alternative kernel variants will make these
+#   selectable at runtime.
