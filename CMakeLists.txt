@@ -188,6 +188,10 @@ if (CMAKE_CUDA_COMPILER)
   include_directories(${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   set(CUDA_SEPARABLE_COMPILATION ON)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -lineinfo")
+  # Eigen's headers use constexpr functions inside templates that get called
+  # from __device__ code. --expt-relaxed-constexpr permits nvcc to call
+  # constexpr host functions from device contexts without warnings.
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr")
   set_cuda_architectures()
 endif()
 

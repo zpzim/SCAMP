@@ -43,7 +43,12 @@ add_library(gpu_kernels
     ${CMAKE_CURRENT_SOURCE_DIR}/kernel_matrix_summary.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/kernel_approx_all_neighbors.cu
 )
-target_link_libraries(gpu_kernels gpu_utils kernel_common common)
+# Eigen3::Eigen is defined by src/core/cpu_kernel/CMakeLists.txt, which the
+# parent src/core/CMakeLists.txt processes before this directory. We use
+# Eigen's fixed-size arrays in the device-side compute templates for cleaner
+# expression syntax than hand-unrolled C arrays; the headers are
+# device-callable when --expt-relaxed-constexpr is on (set at top level).
+target_link_libraries(gpu_kernels gpu_utils kernel_common common Eigen3::Eigen)
 
 mark_cuda_if_available()
 mark_clang_tidy()
