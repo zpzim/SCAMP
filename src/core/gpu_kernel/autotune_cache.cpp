@@ -144,7 +144,7 @@ AutotuneCache::AutotuneCache() : path_(DefaultPath()) {}
 AutotuneCache::AutotuneCache(std::string path) : path_(std::move(path)) {}
 
 bool AutotuneCache::FileExists() const {
-  struct stat st{};
+  struct stat st {};
   return ::stat(path_.c_str(), &st) == 0 && S_ISREG(st.st_mode);
 }
 
@@ -236,7 +236,9 @@ void AutotuneCache::Save() const {
       throw SCAMPException("Cannot open autotune cache for writing: " + tmp);
     }
     out << kHeader << "\n";
-    out << "# device_key|profile_type|precision|blocksz|tile_height|blocks_per_sm\n";
+    out << "# "
+           "device_key|profile_type|precision|blocksz|tile_height|blocks_per_"
+           "sm\n";
     for (const auto &kv : entries_) {
       const Key &k = kv.first;
       const KernelConfig &c = kv.second;

@@ -49,7 +49,8 @@ struct AutotuneResult {
 // Returns a summary of what was chosen. Throws SCAMPException on CUDA or
 // filesystem failures.
 //
-// cache_path is optional; pass empty string to use AutotuneCache::DefaultPath().
+// cache_path is optional; pass empty string to use
+// AutotuneCache::DefaultPath().
 AutotuneResult RunAutotune(int device_id, const std::string &cache_path = "",
                            bool verbose = true);
 

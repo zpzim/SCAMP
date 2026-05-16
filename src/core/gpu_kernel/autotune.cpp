@@ -135,7 +135,8 @@ AutotuneResult RunAutotune(int device_id, const std::string &cache_path,
     last_chosen = cfg;
     if (verbose) {
       std::cout << "  " << ProfileTypeName(t.profile) << " "
-                << PrecisionTypeName(t.precision) << " -> blocksz=" << cfg.blocksz
+                << PrecisionTypeName(t.precision)
+                << " -> blocksz=" << cfg.blocksz
                 << " tile_height=" << cfg.tile_height
                 << " blocks_per_sm=" << cfg.blocks_per_sm << "\n";
     }
@@ -173,8 +174,7 @@ KernelConfig GetKernelConfigForDevice(int device_id,
     // 1) User override (env var or ~/.cache/scamp/autotune.txt).
     const AutotuneCache *user = GetOrLoadUserCache(cache_path);
     auto user_hit = user->Lookup(key, profile_type, precision);
-    if (user_hit.has_value() &&
-        IsSupportedKernelConfig(*user_hit, precision)) {
+    if (user_hit.has_value() && IsSupportedKernelConfig(*user_hit, precision)) {
       return *user_hit;
     }
 

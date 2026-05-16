@@ -7,13 +7,10 @@
 
 namespace SCAMP {
 
-SCAMPError_t LaunchKernel_MATRIX_SUMMARY(SCAMPKernelInputArgs<double> args,
-                                         float *profile_A, float *profile_B,
-                                         SCAMPPrecisionType fp_type,
-                                         bool computing_rows,
-                                         bool computing_cols, uint64_t blocksz,
-                                         uint64_t num_blocks, uint64_t smem,
-                                         cudaStream_t s) {
+SCAMPError_t LaunchKernel_MATRIX_SUMMARY(
+    SCAMPKernelInputArgs<double> args, float *profile_A, float *profile_B,
+    SCAMPPrecisionType fp_type, bool computing_rows, bool computing_cols,
+    uint64_t blocksz, uint64_t num_blocks, uint64_t smem, cudaStream_t s) {
   return LaunchDoTile<float, uint64_t, float, PROFILE_TYPE_MATRIX_SUMMARY,
                       BLOCKSPERSM>(args, profile_A, profile_B, fp_type,
                                    computing_rows, computing_cols, blocksz,

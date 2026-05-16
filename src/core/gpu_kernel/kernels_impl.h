@@ -1,11 +1,11 @@
 // Templated implementation of the SCAMP GPU "do_tile" kernel and the
 // LaunchDoTile<...> dispatcher helper. This header is included ONLY by the
 // per-profile-type translation units (kernel_1nn_index.cu, kernel_1nn.cu,
-// kernel_sum_thresh.cu, kernel_matrix_summary.cu, kernel_approx_all_neighbors.cu)
-// so each .cu file instantiates the template for exactly one profile type
-// rather than all five being compiled serially in a single TU. This is a
-// pure refactor of the body previously inside kernels.cu and produces
-// identical PTX.
+// kernel_sum_thresh.cu, kernel_matrix_summary.cu,
+// kernel_approx_all_neighbors.cu) so each .cu file instantiates the template
+// for exactly one profile type rather than all five being compiled serially in
+// a single TU. This is a pure refactor of the body previously inside kernels.cu
+// and produces identical PTX.
 #pragma once
 
 #include <cuda.h>
