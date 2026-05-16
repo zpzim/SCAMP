@@ -120,15 +120,19 @@ SCAMP::SCAMPArgs GetDefaultSCAMPArgs() {
 }
 
 bool KeyIsOkForProfileType(std::string key, SCAMP::SCAMPProfileType type) {
-  static const std::set<std::string> nn_index = {"verbose", "precision",
-                                                 "pearson", "gpus", "threads"};
+  static const std::set<std::string> nn_index = {
+      "verbose", "precision", "pearson",
+      "gpus",    "threads",   "allow_trivial_match"};
   static const std::set<std::string> sum_thresh = {
-      "verbose", "precision", "pearson", "gpus", "threads", "threshold"};
+      "verbose",   "precision",          "pearson", "gpus", "threads",
+      "threshold", "allow_trivial_match"};
   static const std::set<std::string> knn = {
-      "verbose", "precision", "pearson", "gpus", "threads", "threshold"};
+      "verbose",   "precision",          "pearson", "gpus", "threads",
+      "threshold", "allow_trivial_match"};
   static const std::set<std::string> matrix = {
-      "verbose", "precision", "pearson", "gpus",
-      "threads", "threshold", "mheight", "mwidth"};
+      "verbose", "precision", "pearson",
+      "gpus",    "threads",   "threshold",
+      "mheight", "mwidth",    "allow_trivial_match"};
 
   switch (type) {
     case SCAMP::PROFILE_TYPE_1NN_INDEX:
@@ -199,6 +203,13 @@ void get_args_based_on_kwargs(SCAMP::SCAMPArgs* args, py::kwargs kwargs,
             "Invalid number of cpu worker threads specified, must be greater "
             "than or equal to 0.");
       }
+    } else if (key == "allow_trivial_match") {
+      if (!args->has_b) {
+        throw std::invalid_argument(
+            "allow_trivial_match is only valid for ab-joins; self-joins always "
+            "exclude trivial matches.");
+      }
+      args->is_aligned = !item.second.cast<bool>();
     } else {
       throw std::invalid_argument(
           "Invalid keyword argument specified unknown argument: " + key);
@@ -476,11 +487,13 @@ PYBIND11_MODULE(pyscamp, m) {
     For each subsequence in time series A, finds the nearest neighbor in time series B.
 
     :param a: Time series, b will be queried for subsequences in a.
-    :type a: 1D array 
+    :type a: 1D array
     :param b: Time series in which to search for matches for subsequences in a.
     :type b: 1D array
     :param m: Subsequence length to use for computing the matrix profile.
     :type m: int
+    :param allow_trivial_match: When True (default), all subsequence pairs are considered. When False, treats a and b as aligned (e.g. overlapping segments of the same series) and excludes trivial self-matches near the equivalent main diagonal.
+    :type allow_trivial_match: bool, optional
     :return: A tuple. First element: The nearest neighbor distance of subsequences in a to time series b. Second element: The index (in b) of each nearest neighbor.
     :rtype: Tuple of np.ndarray[float32] and np.ndarray[int32]
     )pbdoc");
@@ -522,6 +535,8 @@ PYBIND11_MODULE(pyscamp, m) {
     :type m: int
     :param threshold: Correlation threshold [0,1] (Default 0), matches which have a correlation less than the threshold will be ignored
     :type threshold: float, optional
+    :param allow_trivial_match: When True (default), all subsequence pairs are considered. When False, treats a and b as aligned (e.g. overlapping segments of the same series) and excludes trivial self-matches near the equivalent main diagonal.
+    :type allow_trivial_match: bool, optional
     :return: For each subsequence in A, returns the sum of correlations above the the specified threshold in B.
     :rtype: np.ndarray[float64]
     )pbdoc");
@@ -567,6 +582,8 @@ PYBIND11_MODULE(pyscamp, m) {
     :type k: int
     :param threshold: Correlation threshold [0,1] (Default 0), matches which have a correlation less than the threshold will be ignored
     :type threshold: float, optional
+    :param allow_trivial_match: When True (default), all subsequence pairs are considered. When False, treats a and b as aligned (e.g. overlapping segments of the same series) and excludes trivial self-matches near the equivalent main diagonal.
+    :type allow_trivial_match: bool, optional
     :return: List of tuples (col, row, distance) containing the matches (up to K) for each column of the distance matrix, col is the index in A, row is the index in B of the match, and d is the distance between the two subsequences
     :rtype: List of tuple[int, int, float]
     )pbdoc");
@@ -616,6 +633,8 @@ PYBIND11_MODULE(pyscamp, m) {
     :type mwidth: int, optional
     :param threshold: Correlation threshold [0,1] (Default 0), matches which have a correlation less than the threshold will be ignored
     :type threshold: float, optional
+    :param allow_trivial_match: When True (default), all subsequence pairs are considered. When False, treats a and b as aligned (e.g. overlapping segments of the same series) and excludes trivial self-matches near the equivalent main diagonal.
+    :type allow_trivial_match: bool, optional
     :return: A 2D array of height of mheight and width of mwidth. This is a pooled version of the full distance matrix.
     :rtype: 2D array
 )pbdoc");

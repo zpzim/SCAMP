@@ -91,6 +91,35 @@ for test_m in [3, 4]:
     failed = True
     print("1NN INDEX Self join m={} fail".format(test_m))
 
+# allow_trivial_match tests (issue #132): exposes is_aligned via kwarg.
+# abjoin(a, a, m, allow_trivial_match=False) should match selfjoin(a, m).
+# abjoin(a, a, m, allow_trivial_match=True) (the default) should return
+# correlation 1.0 everywhere from the trivial self-match diagonal.
+atm_dist_default, _ = mp.abjoin(arr, arr, 1024, pearson=True)
+atm_dist_filtered, atm_idx_filtered = mp.abjoin(
+    arr, arr, 1024, pearson=True, allow_trivial_match=False)
+self_dist, self_idx = mp.selfjoin(arr, 1024, pearson=True)
+
+if np.allclose(atm_dist_default, 1.0, atol=1e-5):
+  print("allow_trivial_match default (True) pass")
+else:
+  failed = True
+  print("allow_trivial_match default (True) fail")
+
+if (compare_vectors(self_dist, atm_dist_filtered)
+    and compare_index(self_idx, self_dist, atm_idx_filtered, atm_dist_filtered)):
+  print("allow_trivial_match=False matches selfjoin pass")
+else:
+  failed = True
+  print("allow_trivial_match=False matches selfjoin fail")
+
+try:
+  mp.selfjoin(arr, 1024, allow_trivial_match=True)
+  failed = True
+  print("allow_trivial_match rejected on selfjoin fail")
+except ValueError:
+  print("allow_trivial_match rejected on selfjoin pass")
+
 if mp.gpu_supported():
   print('GPUs Supported')
   thresh = 0.12
