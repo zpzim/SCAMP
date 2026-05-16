@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1778515070593,
+  "lastUpdate": 1778959559009,
   "repoUrl": "https://github.com/zpzim/SCAMP",
   "entries": {
     "Benchmark": [
@@ -666,6 +666,54 @@ window.BENCHMARK_DATA = {
             "value": 2.0857657383999992,
             "unit": "s/iter",
             "extra": "iterations: 10\ncpu: 0.0027402138000000007 s\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "zpzimmerman@gmail.com",
+            "name": "Zach Zimmerman",
+            "username": "zpzim"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "9a5278035dd0a02107b1be6923a7c584b4680a2b",
+          "message": "Add allow_trivial_match to pyscamp ab-joins; consolidate CUDA CI matrix (#142)\n\n* Add allow_trivial_match kwarg to pyscamp ab-join functions (issue #132)\n\nExposes the underlying SCAMPArgs.is_aligned option (CLI: --aligned) to\npyscamp's ab-join APIs. When False, treats a and b as aligned segments\nof the same series and applies an exclusion zone equivalent to a\nself-join, filtering trivial near-diagonal matches.\n\n- Default True for ab-joins (preserves existing pyscamp behaviour: no\n  exclusion zone, all subsequence pairs considered).\n- Passing the kwarg to a self-join raises ValueError, since self-joins\n  already exclude trivial matches by construction.\n\nAdded tests verifying:\n  - mp.abjoin(a, a, m) returns ~1.0 everywhere by default (trivial self-\n    match diagonal is included).\n  - mp.abjoin(a, a, m, allow_trivial_match=False) exactly matches\n    mp.selfjoin(a, m).\n  - Passing allow_trivial_match to a self-join raises ValueError.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* Committing clang-format changes\n\n* Consolidate CUDA build CI into a single matrix to fit cache budget\n\nPreviously we had two CUDA build jobs that together pinned six\n(OS, CUDA) cache entries (~24GB) against GitHub's 10GB per-repo cache:\n  - build-cuda-cli covered 12.9.1 across g++/clang++/cl (2 cache entries)\n  - build-cuda-versions covered 12.6.0/12.8.0/13.0.0 across g++/cl\n    (6 cache entries, with 12.6.0 already overlapping build-cuda-cli's\n     coverage and racing for the same Jimver/cuda-toolkit artifact name)\n\nMerge both into build-cuda-versions and prune to the breakpoints that\nmatter for arch/CCCL coverage: 12.8.0 (CCCL 2.8.x arch-token bug) and\n13.0.0 (CCCL 3.0 fix plus sm_110 / Blackwell rename). 12.9.1 sits\nbetween these and the version gates in SCAMPMacros.cmake mean its\narch list is a subset of what 13.0.0 exercises -- dropping it loses no\nunique coverage. Keep ubuntu+clang++ at 13.0.0 only as a smoke test for\nclang as the host compiler; nvcc owns CUDA codegen so testing it on\nevery CUDA version is low-value.\n\nResult: 5 build jobs, 4 cache entries (~16GB). Still above the 10GB\nbudget but a 33% reduction, and no overlapping (OS, CUDA) entries\nbetween jobs -- which also eliminates the parallel Jimver/cuda-toolkit\nartifact-name 409 conflicts that were popping up on 12.6.0.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n---------\n\nCo-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>\nCo-authored-by: github-actions <41898282+github-actions[bot]@users.noreply.github.com>",
+          "timestamp": "2026-05-16T12:24:15-07:00",
+          "tree_id": "7cb6ab5dc776bd9c1673b6036ed1e8f908387216",
+          "url": "https://github.com/zpzim/SCAMP/commit/9a5278035dd0a02107b1be6923a7c584b4680a2b"
+        },
+        "date": 1778959557723,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BM_1NN_INDEX_SELF_JOIN/1/32768",
+            "value": 0.917339716699999,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0028643358000000002 s\nthreads: 1"
+          },
+          {
+            "name": "BM_1NN_SELF_JOIN/1/32768",
+            "value": 0.3091066355999999,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0028067921999999994 s\nthreads: 1"
+          },
+          {
+            "name": "BM_SUM_SELF_JOIN/1/32768",
+            "value": 1.119678577699999,
+            "unit": "s/iter",
+            "extra": "iterations: 10\ncpu: 0.0027746160000000006 s\nthreads: 1"
+          },
+          {
+            "name": "BM_MATRIX_SELF_JOIN/1/32768",
+            "value": 2.534261615999995,
+            "unit": "s/iter",
+            "extra": "iterations: 1\ncpu: 0.0028826629999999936 s\nthreads: 1"
           }
         ]
       }
