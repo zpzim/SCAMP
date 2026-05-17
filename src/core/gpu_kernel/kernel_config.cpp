@@ -11,16 +11,35 @@ namespace {
 
 // Enumerated launch-geometry variants. Index 0 is the canonical default
 // (matches DEFAULT_* constants from kernel_constants.h). Each entry must
-// have a matching branch in the LaunchDoTile switch in kernels_impl.h.
+// have a matching VARIANT_BRANCH in the LaunchDoTile switch in
+// kernels_impl.h.
 //
-// Keep this short -- every entry multiplies the do_tile template
+// Constraint: OuterUnrolledRows must be divisible by UnrolledRows (the
+// outer for_<OUR/UR> loop). Derived sizes that drive register pressure:
+//   inner_unrolled_cols = DPT + UR - 1   (column window held in regs)
+//   unrolled_cols       = DPT + OUR - 1  (distc/idxc array width)
+//
+// Keep this short-ish -- every entry multiplies the do_tile template
 // instantiation count (5 profiles x 3 precisions x 3 row/col modes x
-// |kVariants|).
-constexpr std::array<KernelVariantGeometry, 2> kVariants{{
-    // bps, DPT, ur, our, kti       (derived tile_height)
+// |kVariants|). Current: 6 variants x 45 = 270 instantiations.
+constexpr std::array<KernelVariantGeometry, 6> kVariants{{
+    // bps, DPT, ur, our, kti       (derived tile_height, inner_cols,
+    //                               unrolled_cols)
     {DEFAULT_BLOCKSPERSM, DEFAULT_DIAGS_PER_THREAD, DEFAULT_UNROLLED_ROWS,
-     DEFAULT_OUTER_UNROLLED_ROWS, DEFAULT_KERNEL_TILE_ITERS},  // 2,2,2,16,16 (256)
-    {2, 4, 2, 4, 50},                                          // 2,4,2,4,50  (200)
+     DEFAULT_OUTER_UNROLLED_ROWS, DEFAULT_KERNEL_TILE_ITERS},
+    // v0: 2,2,2,16,16 -> tile=256, eigen-port default sliding-window shape
+    {2, 4, 2, 4, 50},
+    // v1: 2,4,2,4,50  -> tile=200, DPT=4 with master-like tile height
+    {2, 4, 4, 4, 50},
+    // v2: 2,4,4,4,50  -> tile=200, matches pre-Eigen-port master's 4x4
+    //                   hand-unroll exactly (OUR/UR=1 inner iteration)
+    {4, 2, 2, 8, 16},
+    // v3: 4,2,2,8,16  -> tile=128, higher occupancy + smaller tile
+    {2, 2, 2, 8, 32},
+    // v4: 2,2,2,8,32  -> tile=256, smaller outer-unroll = less register
+    //                   pressure at the same tile height
+    {1, 4, 4, 16, 16},
+    // v5: 1,4,4,16,16 -> tile=256, low occupancy + big per-thread work
 }};
 
 int BlocksizeForPrecision(SCAMPPrecisionType precision) {
@@ -28,7 +47,6 @@ int BlocksizeForPrecision(SCAMPPrecisionType precision) {
     case PRECISION_ULTRA:
     case PRECISION_DOUBLE:
       return BLOCKSZ_DP;
-    case PRECISION_MIXED:
     case PRECISION_SINGLE:
       return BLOCKSZ_SP;
     default:

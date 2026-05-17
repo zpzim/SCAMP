@@ -339,9 +339,10 @@ __device__ void do_iteration_fast(
   constexpr int inner_unrolled_cols = DiagsPerThread + UnrolledRows - 1;
   constexpr int unrolled_cols = DiagsPerThread + OuterUnrolledRows - 1;
 
-  // Local register-window arrays must match the smem column-data type, not
-  // the cov accumulator type. For PRECISION_MIXED these differ (cov is
-  // double, columns are float).
+  // Local register-window arrays use the smem column-data type. Since
+  // MIXED was dropped, DataType always equals the cov accumulator type,
+  // but routing through DerivedSmem::DataType keeps the do_iteration_fast
+  // body decoupled from how the SCAMPThreadInfo template args got chosen.
   using SmemDataType = typename DerivedSmem::DataType;
   Eigen::Array<SmemDataType, inner_unrolled_cols, 1> dfc, dgc, inormc;
   DISTANCE_TYPE init = init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
@@ -533,10 +534,12 @@ __device__ inline void do_row_edge(
   // entries may correspond to out-of-bounds positions; the reduce_edge
   // calls below bound-check before consuming each one.
   //
-  // Element-wise scalar form (not an Eigen array expression) because for
-  // PRECISION_MIXED, info.cov has scalar type ACCUM_TYPE=double while the
-  // smem segments are DATA_TYPE=float; Eigen 5 doesn't auto-promote across
-  // Arrays of different scalar types in cwise ops.
+  // Element-wise scalar form (not an Eigen array expression) keeps the
+  // same shape do_iteration_fast uses. Originally needed because
+  // PRECISION_MIXED could put info.cov (double) and the smem segments
+  // (float) at different scalar types under Eigen 5's strict promotion;
+  // now that MIXED is dropped both are the same type, but the scalar form
+  // costs nothing and is consistent with do_row.
   Eigen::Array<DISTANCE_TYPE, DiagsPerThread, 1> dist;
 #pragma unroll DiagsPerThread
   for (int i = 0; i < DiagsPerThread; ++i) {

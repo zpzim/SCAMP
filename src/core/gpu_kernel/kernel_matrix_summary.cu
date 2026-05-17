@@ -1,9 +1,10 @@
-// Instantiates the SCAMP do_tile<...> kernel for PROFILE_TYPE_MATRIX_SUMMARY.
-// Split out of kernels.cu so the heavy template instantiations for each
-// profile type can compile in parallel.
+// Per-profile launch dispatcher for PROFILE_TYPE_MATRIX_SUMMARY. The heavy
+// do_tile instantiations live in kernel_matrix_summary_v0.cu ...
+// kernel_matrix_summary_v5.cu (generated from kernel_variant.cu.in); this
+// file resolves cfg -> variant index.
 #include "kernel_gpu_utils.h"
 #include "kernels_dispatch.h"
-#include "kernels_impl.h"
+#include "kernels_variants.h"
 
 namespace SCAMP {
 
@@ -14,9 +15,7 @@ SCAMPError_t LaunchKernel_MATRIX_SUMMARY(SCAMPKernelInputArgs<double> args,
                                          bool computing_cols, KernelConfig cfg,
                                          uint64_t num_blocks, uint64_t smem,
                                          cudaStream_t s) {
-  return LaunchDoTile<float, uint64_t, float, PROFILE_TYPE_MATRIX_SUMMARY>(
-      args, profile_A, profile_B, fp_type, computing_rows, computing_cols, cfg,
-      num_blocks, smem, s);
+  SCAMP_VARIANT_DISPATCH(MATRIX_SUMMARY);
 }
 
 }  // namespace SCAMP

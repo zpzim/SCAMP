@@ -1,6 +1,9 @@
 #ifdef _HAS_CUDA_
 #include <cuda_runtime.h>
 #include "core/gpu_kernel/autotune.h"
+#ifdef _HAS_CUDA_
+#include "core/gpu_kernel/autotune_bench.h"
+#endif
 #endif
 
 #include <gflags/gflags.h>
@@ -54,7 +57,6 @@ DEFINE_bool(ultra_precision, false,
             "Ultra high precision computation with a potential performance hit "
             "(for large subsequence lengths).");
 DEFINE_bool(double_precision, false, "Computation in double precision");
-DEFINE_bool(mixed_precision, false, "Computation in mixed precision");
 DEFINE_bool(single_precision, false, "Computation in single precision");
 DEFINE_bool(
     keep_rows, false,
@@ -128,7 +130,10 @@ int main(int argc, char **argv) {
     }
     try {
       for (int dev : tune_devices) {
-        SCAMP::RunAutotune(dev, /*cache_path=*/"", /*verbose=*/true);
+        SCAMP::RunAutotuneWithBenchmark(dev,
+                                        &SCAMP::DefaultBenchmarkVariant,
+                                        /*cache_path=*/"",
+                                        /*verbose=*/true);
       }
     } catch (const std::exception &e) {
       std::cerr << "Autotune failed: " << e.what() << std::endl;
@@ -142,11 +147,11 @@ int main(int argc, char **argv) {
 #endif
   }
   if (!FLAGS_ultra_precision && !FLAGS_double_precision &&
-      !FLAGS_mixed_precision && !FLAGS_single_precision) {
+      !FLAGS_single_precision) {
     FLAGS_double_precision = true;
   }
   if ((FLAGS_ultra_precision ? 1 : 0) + (FLAGS_double_precision ? 1 : 0) +
-          (FLAGS_mixed_precision ? 1 : 0) + (FLAGS_single_precision ? 1 : 0) !=
+          (FLAGS_single_precision ? 1 : 0) !=
       1) {
     printf("Error: only one precision flag can be enabled at a time\n");
     return 1;
@@ -184,9 +189,8 @@ int main(int argc, char **argv) {
     computing_rows = FLAGS_keep_rows;
   }
 
-  SCAMP::SCAMPPrecisionType t =
-      GetPrecisionType(FLAGS_ultra_precision, FLAGS_double_precision,
-                       FLAGS_mixed_precision, FLAGS_single_precision);
+  SCAMP::SCAMPPrecisionType t = GetPrecisionType(
+      FLAGS_ultra_precision, FLAGS_double_precision, FLAGS_single_precision);
   SCAMP::SCAMPProfileType profile_type = ParseProfileType(FLAGS_profile_type);
 
   std::vector<double> Ta_h, Tb_h;

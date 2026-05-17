@@ -160,10 +160,10 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
 // KernelConfig.
 //
 // Geometry template params correspond to one row of kKernelVariants (see
-// kernel_config.cpp). PRECISION_MIXED uses float storage (DATA_TYPE=float)
-// but accumulates in double (ACCUM_TYPE=double); kept separate from the
-// eigen-branch port (which dropped MIXED) so the public precision API
-// stays intact.
+// kernel_config.cpp). Two precisions only: SINGLE (DATA=ACCUM=float) and
+// DOUBLE/ULTRA (DATA=ACCUM=double). MIXED was dropped because it was
+// uniformly slower than DOUBLE in practice -- it kept DP's accumulator
+// cost without DP's smem footprint reduction.
 template <typename PROFILE_OUTPUT_TYPE, typename PROFILE_DATA_TYPE,
           typename DISTANCE_TYPE, SCAMPProfileType PROFILE_TYPE,
           int blocks_per_sm_v, int DiagsPerThread, int UnrolledRows,
@@ -175,7 +175,7 @@ SCAMPError_t LaunchDoTileWithGeometry(
     uint64_t num_blocks, uint64_t smem, cudaStream_t s) {
   dim3 block(blocksz, 1, 1);
   dim3 grid(num_blocks, 1, 1);
-  // Expand the 3 row/col modes x 3 precisions = 9 do_tile<...> instantiations.
+  // Expand the 3 row/col modes x 2 precisions = 6 do_tile<...> instantiations.
   // The macro keeps the dispatch table compact; each LAUNCH_PRECISION call
   // emits one nvcc <<<>>> kernel-launch line.
 #define LAUNCH_PRECISION(DATA_T, ACCUM_T, BLOCKSZ_V, COMP_ROWS, COMP_COLS) \
@@ -190,10 +190,6 @@ SCAMPError_t LaunchDoTileWithGeometry(
     case PRECISION_ULTRA:                                        \
     case PRECISION_DOUBLE:                                       \
       LAUNCH_PRECISION(double, double, BLOCKSZ_DP, COMP_ROWS,    \
-                       COMP_COLS);                               \
-      break;                                                     \
-    case PRECISION_MIXED:                                        \
-      LAUNCH_PRECISION(float, double, BLOCKSZ_SP, COMP_ROWS,     \
                        COMP_COLS);                               \
       break;                                                     \
     case PRECISION_SINGLE:                                       \
@@ -217,49 +213,15 @@ SCAMPError_t LaunchDoTileWithGeometry(
   return SCAMP_NO_ERROR;
 }
 
-// Variant dispatch entry point. Each LaunchKernel_<PROFILE> in
-// kernel_<profile>.cu forwards to this; the if-chain picks the
-// pre-instantiated LaunchDoTileWithGeometry<...> for the autotuner-chosen
-// (blocks_per_sm, DiagsPerThread, UnrolledRows, OuterUnrolledRows,
-// KernelTileIters) tuple. Variants must match an entry in kKernelVariants
-// (kernel_config.cpp); cfgs that don't are rejected by
-// IsSupportedKernelConfig upstream and fall back to the default before we
-// get here.
+// LaunchDoTile (the cfg switch over enumerated variants) used to live here
+// as a template that each kernel_<X>.cu instantiated -- pulling all 6
+// variants' LaunchDoTileWithGeometry instantiations into one TU. That made
+// each kernel_<X>.cu compile 36 do_tile bodies serially.
 //
-// When adding a variant: add a branch here AND the matching tuple to the
-// kVariants table in kernel_config.cpp.
-template <typename PROFILE_OUTPUT_TYPE, typename PROFILE_DATA_TYPE,
-          typename DISTANCE_TYPE, SCAMPProfileType PROFILE_TYPE>
-SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
-                          PROFILE_OUTPUT_TYPE *profile_A,
-                          PROFILE_OUTPUT_TYPE *profile_B,
-                          SCAMPPrecisionType fp_type, bool computing_rows,
-                          bool computing_cols, KernelConfig cfg,
-                          uint64_t num_blocks, uint64_t smem, cudaStream_t s) {
-#define VARIANT_BRANCH(bps_v, dpt_v, ur_v, our_v, kti_v)                       \
-  if (cfg.blocks_per_sm == (bps_v) && cfg.diags_per_thread == (dpt_v) &&       \
-      cfg.unrolled_rows == (ur_v) && cfg.outer_unrolled_rows == (our_v) &&     \
-      cfg.kernel_tile_iters == (kti_v)) {                                      \
-    return LaunchDoTileWithGeometry<                                           \
-        PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE, DISTANCE_TYPE, PROFILE_TYPE,   \
-        bps_v, dpt_v, ur_v, our_v, kti_v>(args, profile_A, profile_B, fp_type, \
-                                          computing_rows, computing_cols,      \
-                                          cfg.blocksz, num_blocks, smem, s);   \
-  }
-
-  // Variant 0: default
-  VARIANT_BRANCH(DEFAULT_BLOCKSPERSM, DEFAULT_DIAGS_PER_THREAD,
-                 DEFAULT_UNROLLED_ROWS, DEFAULT_OUTER_UNROLLED_ROWS,
-                 DEFAULT_KERNEL_TILE_ITERS)
-  // Variant 1: DPT=4 (master-like), tile_height = 4*50 = 200
-  VARIANT_BRANCH(2, 4, 2, 4, 50)
-
-#undef VARIANT_BRANCH
-
-  // Shouldn't happen: IsSupportedKernelConfig should have rejected this cfg
-  // upstream, and the caller would have fallen back to the default. Return
-  // an error so the issue is visible rather than silently launching nothing.
-  return SCAMP_CUDA_ERROR;
-}
+// Post-split the cfg switch lives in kernels_variants.h as a
+// SCAMP_VARIANT_DISPATCH macro inside each per-profile dispatcher .cu
+// file, and each variant's LaunchDoTileWithGeometry instantiation lives in
+// its own generated kernel_<profile>_v<N>.cu (via configure_file from
+// kernel_variant.cu.in). 30 small files instead of 5 big ones.
 
 }  // namespace SCAMP

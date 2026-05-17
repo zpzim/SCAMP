@@ -181,8 +181,6 @@ void get_args_based_on_kwargs(SCAMP::SCAMPArgs* args, py::kwargs kwargs,
       std::string ptype = item.second.cast<std::string>();
       if (ptype == "single") {
         args->precision_type = SCAMP::PRECISION_SINGLE;
-      } else if (ptype == "mixed") {
-        args->precision_type = SCAMP::PRECISION_MIXED;
       } else if (ptype == "double") {
         args->precision_type = SCAMP::PRECISION_DOUBLE;
       } else if (ptype == "ultra") {
@@ -190,7 +188,7 @@ void get_args_based_on_kwargs(SCAMP::SCAMPArgs* args, py::kwargs kwargs,
       } else {
         throw std::invalid_argument(
             "Invalid precision type specified: valid options are single, "
-            "mixed, double, ultra");
+            "double, ultra");
       }
     } else if (key == "pearson") {
       pearson = item.second.cast<bool>();

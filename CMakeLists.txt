@@ -331,6 +331,12 @@ if (CMAKE_CUDA_COMPILER)
   target_compile_definitions(SCAMP PUBLIC -D_HAS_CUDA_)
 endif()
 target_link_libraries(SCAMP gflags common scamp_interface scamp_utils)
+if (CMAKE_CUDA_COMPILER)
+  # autotune_bench provides the synthetic-workload benchmark that the
+  # --autotune CLI path drives. Only linked in CUDA builds since the CLI's
+  # --autotune flag itself is gated on _HAS_CUDA_.
+  target_link_libraries(SCAMP autotune_bench)
+endif()
 
 # clang-format target
 function(prepend var prefix)

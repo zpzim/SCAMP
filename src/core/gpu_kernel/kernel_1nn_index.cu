@@ -1,9 +1,10 @@
-// Instantiates the SCAMP do_tile<...> kernel for PROFILE_TYPE_1NN_INDEX.
-// Split out of kernels.cu so the heavy template instantiations for each
-// profile type can compile in parallel.
+// Per-profile launch dispatcher for PROFILE_TYPE_1NN_INDEX. The heavy
+// do_tile instantiations live in kernel_1nn_index_v0.cu ...
+// kernel_1nn_index_v5.cu (generated from kernel_variant.cu.in); this file
+// resolves cfg -> variant index.
 #include "kernel_gpu_utils.h"
 #include "kernels_dispatch.h"
-#include "kernels_impl.h"
+#include "kernels_variants.h"
 
 namespace SCAMP {
 
@@ -13,9 +14,7 @@ SCAMPError_t LaunchKernel_1NN_INDEX(SCAMPKernelInputArgs<double> args,
                                     bool computing_rows, bool computing_cols,
                                     KernelConfig cfg, uint64_t num_blocks,
                                     uint64_t smem, cudaStream_t s) {
-  return LaunchDoTile<uint64_t, uint64_t, float, PROFILE_TYPE_1NN_INDEX>(
-      args, profile_A, profile_B, fp_type, computing_rows, computing_cols, cfg,
-      num_blocks, smem, s);
+  SCAMP_VARIANT_DISPATCH(1NN_INDEX);
 }
 
 }  // namespace SCAMP

@@ -3,6 +3,15 @@
 namespace SCAMP {
 
 void SCAMPArgs::validate() {
+  if (precision_type == PRECISION_MIXED) {
+    // MIXED was dropped: in practice it was uniformly slower than DOUBLE
+    // (kept double's accumulator cost without halving the smem footprint).
+    // The enum value is preserved for proto / distributed wire compat but
+    // is no longer a valid choice for an actual run.
+    throw SCAMPException(
+        "Error: PRECISION_MIXED is no longer supported. Use PRECISION_SINGLE "
+        "or PRECISION_DOUBLE.");
+  }
   if (window < 3) {
     throw SCAMPException("Error: Subsequence length must be at least 3");
   }

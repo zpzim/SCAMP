@@ -2,8 +2,10 @@
 
 #include <array>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
 
@@ -25,21 +27,16 @@ struct ProfilePrecisionPair {
   SCAMPPrecisionType precision;
 };
 
-constexpr std::array<ProfilePrecisionPair, 15> kAutotuneTargets{{
+constexpr std::array<ProfilePrecisionPair, 10> kAutotuneTargets{{
     {PROFILE_TYPE_1NN_INDEX, PRECISION_DOUBLE},
-    {PROFILE_TYPE_1NN_INDEX, PRECISION_MIXED},
     {PROFILE_TYPE_1NN_INDEX, PRECISION_SINGLE},
     {PROFILE_TYPE_1NN, PRECISION_DOUBLE},
-    {PROFILE_TYPE_1NN, PRECISION_MIXED},
     {PROFILE_TYPE_1NN, PRECISION_SINGLE},
     {PROFILE_TYPE_SUM_THRESH, PRECISION_DOUBLE},
-    {PROFILE_TYPE_SUM_THRESH, PRECISION_MIXED},
     {PROFILE_TYPE_SUM_THRESH, PRECISION_SINGLE},
     {PROFILE_TYPE_MATRIX_SUMMARY, PRECISION_DOUBLE},
-    {PROFILE_TYPE_MATRIX_SUMMARY, PRECISION_MIXED},
     {PROFILE_TYPE_MATRIX_SUMMARY, PRECISION_SINGLE},
     {PROFILE_TYPE_APPROX_ALL_NEIGHBORS, PRECISION_DOUBLE},
-    {PROFILE_TYPE_APPROX_ALL_NEIGHBORS, PRECISION_MIXED},
     {PROFILE_TYPE_APPROX_ALL_NEIGHBORS, PRECISION_SINGLE},
 }};
 
@@ -93,7 +90,17 @@ const AutotuneCache *GetOrLoadBuiltinCache() {
   return state.builtin_cache.get();
 }
 
+// Thread-local override used by the autotune benchmark loop to force a
+// specific KernelConfig for one timed run. While set, GetKernelConfigForDevice
+// returns it and skips the cache + supportedness checks (the caller is
+// responsible for only setting cfgs that map to a real variant).
+thread_local std::optional<KernelConfig> g_cfg_override;
+
 }  // namespace
+
+void SetKernelConfigOverride(const KernelConfig &cfg) { g_cfg_override = cfg; }
+
+void ClearKernelConfigOverride() { g_cfg_override.reset(); }
 
 AutotuneResult RunAutotune(int device_id, const std::string &cache_path,
                            bool verbose) {
@@ -163,10 +170,106 @@ AutotuneResult RunAutotune(int device_id, const std::string &cache_path,
   return AutotuneResult{device_key, resolved, last_chosen, true};
 }
 
+AutotuneResult RunAutotuneWithBenchmark(int device_id, BenchmarkFn bench,
+                                        const std::string &cache_path,
+                                        bool verbose) {
+  GpuDeviceProps props = QueryDeviceProps(device_id);
+  std::string device_key = props.CacheKey();
+  std::string resolved =
+      cache_path.empty() ? AutotuneCache::DefaultPath() : cache_path;
+
+  AutotuneCache disk_cache(resolved);
+  // Load existing entries so we don't clobber records from other devices that
+  // share the cache file.
+  disk_cache.Load();
+
+  if (verbose) {
+    std::cout << "SCAMP autotune (benchmarked)\n"
+              << "  device      : " << props.name << " (sm_"
+              << props.compute_major << props.compute_minor << ", "
+              << props.sm_count << " SMs)\n"
+              << "  override    : " << resolved << "\n"
+              << "  device key  : " << device_key << "\n"
+              << "  variants    : " << kNumKernelVariants << "\n"
+              << "  trials/tuple: " << kNumKernelVariants
+              << " (one per variant)\n"
+              << "\n"
+              << "  NOTE: Per-(profile, precision) winners are written to the\n"
+              << "  user override path. To ship them, merge the relevant\n"
+              << "  lines into data/autotune_cache.txt and open a PR.\n\n";
+  }
+
+  KernelConfig last_chosen{};
+  for (const auto &t : kAutotuneTargets) {
+    if (verbose) {
+      std::cout << "  " << ProfileTypeName(t.profile) << " "
+                << PrecisionTypeName(t.precision) << ":\n";
+    }
+    double best_seconds = std::numeric_limits<double>::infinity();
+    KernelConfig best_cfg = GetDefaultKernelConfig(t.precision);
+    for (std::size_t i = 0; i < kNumKernelVariants; ++i) {
+      KernelConfig cfg = GetKernelConfigForVariant(i, t.precision);
+      double seconds = std::numeric_limits<double>::infinity();
+      try {
+        seconds = bench(device_id, t.profile, t.precision, cfg);
+      } catch (const std::exception &e) {
+        if (verbose) {
+          std::cout << "    variant " << i << " threw: " << e.what()
+                    << " (treated as infinitely slow)\n";
+        }
+      }
+      if (verbose) {
+        std::cout << "    variant " << i << ": bps=" << cfg.blocks_per_sm
+                  << " dpt=" << cfg.diags_per_thread
+                  << " ur=" << cfg.unrolled_rows
+                  << " our=" << cfg.outer_unrolled_rows
+                  << " kti=" << cfg.kernel_tile_iters
+                  << " (tile_height=" << cfg.tile_height() << ") -> "
+                  << seconds << " s\n";
+      }
+      if (seconds < best_seconds) {
+        best_seconds = seconds;
+        best_cfg = cfg;
+      }
+    }
+    disk_cache.Store(device_key, t.profile, t.precision, best_cfg);
+    last_chosen = best_cfg;
+    if (verbose) {
+      std::cout << "    WINNER: bps=" << best_cfg.blocks_per_sm
+                << " dpt=" << best_cfg.diags_per_thread
+                << " ur=" << best_cfg.unrolled_rows
+                << " our=" << best_cfg.outer_unrolled_rows
+                << " kti=" << best_cfg.kernel_tile_iters << " (" << best_seconds
+                << " s)\n\n";
+    }
+  }
+
+  disk_cache.Save();
+
+  // Invalidate the process-wide cached copy of the user override so subsequent
+  // kernel launches in the same process pick up the fresh entries.
+  {
+    std::lock_guard<std::mutex> lock(SharedCacheMutex());
+    SharedCacheState().user_cache.reset();
+    SharedCacheState().loaded_user_path.clear();
+  }
+
+  if (verbose) {
+    std::cout << "  wrote " << kAutotuneTargets.size() << " entries to "
+              << resolved << std::endl;
+  }
+  return AutotuneResult{device_key, resolved, last_chosen, true};
+}
+
 KernelConfig GetKernelConfigForDevice(int device_id,
                                       SCAMPProfileType profile_type,
                                       SCAMPPrecisionType precision,
                                       const std::string &cache_path) {
+  // 0) Per-thread override. Set by the autotune benchmark loop to force a
+  //    specific variant on a per-timed-run basis; bypasses the cache.
+  if (g_cfg_override.has_value()) {
+    return *g_cfg_override;
+  }
   KernelConfig fallback = GetDefaultKernelConfig(precision);
   try {
     GpuDeviceProps props = QueryDeviceProps(device_id);
