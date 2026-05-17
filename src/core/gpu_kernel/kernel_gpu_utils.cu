@@ -29,20 +29,6 @@ int FPTypeSize(SCAMPPrecisionType dtype) {
   return -1;
 }
 
-int GetTileHeight(SCAMPPrecisionType dtype) {
-  switch (dtype) {
-    case PRECISION_ULTRA:
-    case PRECISION_DOUBLE:
-      return TILE_HEIGHT_DP;
-    case PRECISION_MIXED:
-    case PRECISION_SINGLE:
-      return TILE_HEIGHT_SP;
-    case PRECISION_INVALID:
-      return -1;
-  }
-  return -1;
-}
-
 size_t GetProfileTypeSizeInternalGPU(SCAMPProfileType type) {
   switch (type) {
     case PROFILE_TYPE_SUM_THRESH:
@@ -61,10 +47,11 @@ size_t GetProfileTypeSizeInternalGPU(SCAMPProfileType type) {
   }
 }
 
-int get_smem(const OpInfo *info, uint64_t blocksz, int tile_height) {
+int get_smem(const OpInfo *info, uint64_t blocksz, int tile_height,
+             int diags_per_thread) {
   constexpr int num_shared_variables = 3;
   int intermediate_data_size = FPTypeSize(info->fp_type);
-  int tile_width = blocksz * DIAGS_PER_THREAD + tile_height;
+  int tile_width = blocksz * diags_per_thread + tile_height;
   int smem = (tile_width + tile_height) *
              (num_shared_variables + info->opt_args.num_extra_operands) *
              intermediate_data_size;

@@ -136,8 +136,12 @@ AutotuneResult RunAutotune(int device_id, const std::string &cache_path,
     if (verbose) {
       std::cout << "  " << ProfileTypeName(t.profile) << " "
                 << PrecisionTypeName(t.precision) << " -> blocksz=" << cfg.blocksz
-                << " tile_height=" << cfg.tile_height
-                << " blocks_per_sm=" << cfg.blocks_per_sm << "\n";
+                << " bps=" << cfg.blocks_per_sm
+                << " dpt=" << cfg.diags_per_thread
+                << " ur=" << cfg.unrolled_rows
+                << " our=" << cfg.outer_unrolled_rows
+                << " kti=" << cfg.kernel_tile_iters
+                << " (tile_height=" << cfg.tile_height() << ")\n";
     }
   }
 

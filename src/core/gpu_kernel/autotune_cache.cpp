@@ -19,6 +19,20 @@ namespace {
 constexpr const char *kHeader = "SCAMP_AUTOTUNE_V1";
 constexpr char kFieldSep = '|';
 
+// Fields per record line:
+//   device_key | profile_type | precision | blocksz | blocks_per_sm |
+//   diags_per_thread | unrolled_rows | outer_unrolled_rows |
+//   kernel_tile_iters
+// (tile_height is derived as kernel_tile_iters * outer_unrolled_rows and
+//  not stored separately.)
+//
+// No format version bump despite the field-count change: no shipped
+// production cache had populated entries to migrate, so any local V1
+// 6-field cache will trip SplitN and throw; the autotune lookup catches
+// it and falls back to the default. Re-running RunAutotune rewrites the
+// cache in the current format.
+constexpr size_t kNumRecordFields = 9;
+
 // Recursively mkdir -p. Returns 0 on success, errno on failure.
 int MkdirP(const std::string &path) {
   std::string cur;
@@ -190,7 +204,7 @@ void AutotuneCache::ParseStream(std::istream &in,
     }
 
     std::vector<std::string> fields;
-    if (!SplitN(line, kFieldSep, 6, &fields)) {
+    if (!SplitN(line, kFieldSep, kNumRecordFields, &fields)) {
       throw SCAMPException("Malformed autotune cache at " + source_label + ":" +
                            std::to_string(lineno));
     }
@@ -211,8 +225,11 @@ void AutotuneCache::ParseStream(std::istream &in,
     KernelConfig cfg{};
     try {
       cfg.blocksz = std::stoi(fields[3]);
-      cfg.tile_height = std::stoi(fields[4]);
-      cfg.blocks_per_sm = std::stoi(fields[5]);
+      cfg.blocks_per_sm = std::stoi(fields[4]);
+      cfg.diags_per_thread = std::stoi(fields[5]);
+      cfg.unrolled_rows = std::stoi(fields[6]);
+      cfg.outer_unrolled_rows = std::stoi(fields[7]);
+      cfg.kernel_tile_iters = std::stoi(fields[8]);
     } catch (const std::exception &e) {
       throw SCAMPException("Malformed integer in autotune cache at " +
                            source_label + ":" + std::to_string(lineno) +
@@ -241,14 +258,18 @@ void AutotuneCache::Save() const {
       throw SCAMPException("Cannot open autotune cache for writing: " + tmp);
     }
     out << kHeader << "\n";
-    out << "# device_key|profile_type|precision|blocksz|tile_height|blocks_per_sm\n";
+    out << "# device_key|profile_type|precision|blocksz|blocks_per_sm|"
+           "diags_per_thread|unrolled_rows|outer_unrolled_rows|"
+           "kernel_tile_iters\n";
+    out << "# (tile_height = kernel_tile_iters * outer_unrolled_rows)\n";
     for (const auto &kv : entries_) {
       const Key &k = kv.first;
       const KernelConfig &c = kv.second;
       out << k.device_key << kFieldSep << ProfileTypeName(k.profile_type)
           << kFieldSep << PrecisionTypeName(k.precision) << kFieldSep
-          << c.blocksz << kFieldSep << c.tile_height << kFieldSep
-          << c.blocks_per_sm << "\n";
+          << c.blocksz << kFieldSep << c.blocks_per_sm << kFieldSep
+          << c.diags_per_thread << kFieldSep << c.unrolled_rows << kFieldSep
+          << c.outer_unrolled_rows << kFieldSep << c.kernel_tile_iters << "\n";
     }
     out.flush();
     if (out.fail()) {

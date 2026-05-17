@@ -30,15 +30,24 @@ SCAMPError_t compute_gpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
   KernelConfig cfg = GetKernelConfigForDevice(
       t->get_cuda_id(), t->info()->profile_type, t->info()->fp_type);
   uint64_t blocksz = cfg.blocksz;
+  // num_workers / num_blocks must match the per-thread metadiagonal stride
+  // baked into the kernel (BLOCKSZ * DiagsPerThread); pull DiagsPerThread
+  // from the same cfg the kernel will be launched with.
   uint64_t num_workers = ceil((args.n_x - exclusion_total) /
-                              static_cast<double>(DIAGS_PER_THREAD));
+                              static_cast<double>(cfg.diags_per_thread));
   uint64_t num_blocks = ceil(num_workers / static_cast<double>(blocksz));
-  uint64_t smem = get_smem(t->info(), blocksz, cfg.tile_height);
+  uint64_t smem =
+      get_smem(t->info(), blocksz, cfg.tile_height(), cfg.diags_per_thread);
   if (!t->info()->silent_mode) {
     std::cout << "Launching " << num_blocks << " thread blocks of size "
-              << blocksz << " (tile_height=" << cfg.tile_height
-              << ", blocks_per_sm=" << cfg.blocks_per_sm << ") with a total of "
-              << smem << " bytes of shared memory per block." << std::endl;
+              << blocksz << " (diags_per_thread=" << cfg.diags_per_thread
+              << ", tile_height=" << cfg.tile_height()
+              << ", blocks_per_sm=" << cfg.blocks_per_sm
+              << ", unrolled_rows=" << cfg.unrolled_rows
+              << ", outer_unrolled_rows=" << cfg.outer_unrolled_rows
+              << ", kernel_tile_iters=" << cfg.kernel_tile_iters
+              << ") with a total of " << smem
+              << " bytes of shared memory per block." << std::endl;
   }
   if (exclusion_total >= args.n_x) {
     return SCAMP_NO_ERROR;

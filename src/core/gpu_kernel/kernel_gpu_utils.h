@@ -131,9 +131,9 @@ __device__ SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, type, tile_width,
   }
 }
 
-template <typename ACCUM_TYPE>
+template <typename ACCUM_TYPE, int DiagsPerThread>
 struct SCAMPThreadInfo {
-  Eigen::Array<ACCUM_TYPE, DIAGS_PER_THREAD, 1> cov;
+  Eigen::Array<ACCUM_TYPE, DiagsPerThread, 1> cov;
   uint32_t local_row;
   uint32_t local_col;
   uint32_t global_row;
@@ -168,13 +168,11 @@ size_t GetProfileTypeSizeInternalGPU(SCAMPProfileType type);
 // Get the desired block size to launch the kernel with according to tils
 int get_blocksz(Tile *t);
 
-// Gets the required amount of shared memory for the kernel. tile_height is
-// the per-variant value (KERNEL_TILE_HEIGHT for the default, etc.); passing
-// it explicitly lets the autotuner size smem for the variant it picked.
-int get_smem(const OpInfo *info, uint64_t blocksz, int tile_height);
-
-// Gets the tile height used by the kernel
-int GetTileHeight(SCAMPPrecisionType dtype);
+// Gets the required amount of shared memory for the kernel. tile_height and
+// diags_per_thread are per-variant; passing them explicitly lets the
+// autotuner size smem for the variant it picked.
+int get_smem(const OpInfo *info, uint64_t blocksz, int tile_height,
+             int diags_per_thread);
 
 // Gets the size of an element for particular SCAMP precision type
 int FPTypeSize(SCAMPPrecisionType dtype);
