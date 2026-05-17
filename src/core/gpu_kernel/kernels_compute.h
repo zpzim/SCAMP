@@ -60,13 +60,19 @@ __device__ inline ScalarType max_dist(const Eigen::ArrayBase<Derived> &dist,
 //   1NN_INDEX / MATRIX_SUMMARY /
 //     APPROX_ALL_NEIGHBORS:    max + index
 //   SUM_THRESH:                threshold-gated sum
+//
+// row_iter is a runtime int (offset into the outer parallelogram). It is
+// only used as an offset / addend (no template-arg consumers), so passing
+// it as a function argument lets the caller drop its per-iteration
+// template specialization and emit a single inlined body. See
+// do_iteration_fast's #pragma-unrolled outer loop.
 //////////////////////////////////////////////////////
 
-template <int row_iter, SCAMPProfileType PROFILE_TYPE, typename DISTANCE_TYPE,
+template <SCAMPProfileType PROFILE_TYPE, typename DISTANCE_TYPE,
           typename InputDataType, int DiagsPerThread, typename DerivedSmem,
           typename DistRowArray>
 __device__ inline void merge_to_row(
-    const SCAMPKernelInputArgs<double> &args,
+    int row_iter, const SCAMPKernelInputArgs<double> &args,
     const SCAMPThreadInfo<InputDataType, DiagsPerThread> &info,
     DerivedSmem &smem, const Eigen::ArrayBase<DistRowArray> &dist,
     DISTANCE_TYPE &distr, unsigned int &idxr) {
@@ -99,13 +105,16 @@ __device__ inline void merge_to_row(
 // profile types this is num_to_update test-and-test-and-set atomics
 // against shared memory; for SUM_THRESH it's a warp-shuffle reduction
 // followed by one atomicAdd per warp.
+//
+// row_iter is runtime; num_to_update stays compile-time (Eigen::Array
+// size + #pragma unroll bound).
 //////////////////////////////////////////////////////
 
-template <int row_iter, int num_to_update, SCAMPProfileType PROFILE_TYPE,
+template <int num_to_update, SCAMPProfileType PROFILE_TYPE,
           typename DISTANCE_TYPE, typename InputDataType, int DiagsPerThread,
           typename DerivedSmem, typename DistRowArray, typename IndexRowArray>
 __device__ inline void update_rows(
-    const SCAMPKernelInputArgs<double> &args,
+    int row_iter, const SCAMPKernelInputArgs<double> &args,
     const SCAMPThreadInfo<InputDataType, DiagsPerThread> &info,
     DerivedSmem &smem, const Eigen::ArrayBase<DistRowArray> &distr,
     const Eigen::ArrayBase<IndexRowArray> &idxr) {
@@ -166,13 +175,15 @@ __device__ inline void update_rows(
 // per-thread per-column best (best_so_far / best_so_far_index). For
 // SUM_THRESH this is a vectorized threshold-gated sum; for the others
 // it's a pairwise compare-and-swap.
+//
+// row_iter is runtime.
 //////////////////////////////////////////////////////
 
-template <int row_iter, SCAMPProfileType PROFILE_TYPE, int DiagsPerThread,
+template <SCAMPProfileType PROFILE_TYPE, int DiagsPerThread,
           typename DerivedDataType, typename DerivedSmem, typename ColDistArray,
           typename RowDistArray, typename ColIndexArray>
 __device__ inline void merge_to_column(
-    const SCAMPKernelInputArgs<double> &args,
+    int row_iter, const SCAMPKernelInputArgs<double> &args,
     const SCAMPThreadInfo<DerivedDataType, DiagsPerThread> &info,
     DerivedSmem smem, Eigen::ArrayBase<ColDistArray> &best_so_far,
     const Eigen::ArrayBase<RowDistArray> &dists_to_merge,
@@ -215,14 +226,16 @@ __device__ inline void merge_to_column(
 // Mirrors update_rows but writes to local_mp_col. Called from
 // do_iteration_fast after each row-batch to coalesce per-thread column
 // bests into the block's shared profile.
+//
+// start_index is runtime; num_to_update stays compile-time.
 //////////////////////////////////////////////////////
 
-template <int start_index, int num_to_update, SCAMPProfileType PROFILE_TYPE,
+template <int num_to_update, SCAMPProfileType PROFILE_TYPE,
           typename DerivedInputDataType, int DiagsPerThread,
           typename DerivedSmemType, typename ColDistArray,
           typename ColIndexArray>
 __device__ inline void update_cols(
-    const SCAMPKernelInputArgs<double> &args,
+    int start_index, const SCAMPKernelInputArgs<double> &args,
     SCAMPThreadInfo<DerivedInputDataType, DiagsPerThread> &info,
     DerivedSmemType &smem, Eigen::ArrayBase<ColDistArray> &distc,
     Eigen::ArrayBase<ColIndexArray> &idxc) {
@@ -274,21 +287,27 @@ __device__ inline void update_cols(
 /////////////////////////////////////////////////////
 // DO_ROW: one row of DiagsPerThread distances.
 //
-// outer_row_iter: absolute row index within the outer parallelogram
-//   (drives the per-column best_so_far offset). Range
+// outer_row_iter (runtime): absolute row index within the outer
+//   parallelogram (drives the per-column best_so_far offset). Range
 //   0..OuterUnrolledRows.
-// row_iter: the inner-loop k index (drives the per-column smem
+// row_iter (runtime): the inner-loop k index (drives the per-column smem
 //   register-window offset). Range 0..UnrolledRows.
+//
+// Both are runtime to avoid one do_row template instantiation per
+// (outer_row_iter, row_iter) pair; the caller emits a single do_row body
+// and reuses it across OUR * UR iterations of the surrounding
+// #pragma-unrolled loops. This is the main lever for keeping
+// kernel_<profile>_v<N>.cu compile times manageable when OUR is large.
 //
 // info.cov, inormc, dfc, dgc are arrays held in registers; inormr, dfr,
 // dgr are scalars (the caller indexes the row arrays).
 /////////////////////////////////////////////////////
-template <int outer_row_iter, int row_iter, SCAMPProfileType PROFILE_TYPE,
-          bool COMPUTE_ROWS, bool COMPUTE_COLS, typename DISTANCE_TYPE,
-          typename DerivedInputType, int DiagsPerThread, typename DerivedSmem,
-          typename DistColArray, typename InputColArray, typename IndexColArray>
+template <SCAMPProfileType PROFILE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
+          typename DISTANCE_TYPE, typename DerivedInputType, int DiagsPerThread,
+          typename DerivedSmem, typename DistColArray, typename InputColArray,
+          typename IndexColArray>
 __device__ inline FORCE_INLINE void do_row(
-    const SCAMPKernelInputArgs<double> &args,
+    int outer_row_iter, int row_iter, const SCAMPKernelInputArgs<double> &args,
     SCAMPThreadInfo<DerivedInputType, DiagsPerThread> &info, DerivedSmem &smem,
     Eigen::ArrayBase<DistColArray> &distc, DISTANCE_TYPE &distr,
     const Eigen::ArrayBase<InputColArray> &inormc,
@@ -308,12 +327,12 @@ __device__ inline FORCE_INLINE void do_row(
         info.cov[i] + dfc[row_iter + i] * dgr + dgc[row_iter + i] * dfr;
   }
   if constexpr (COMPUTE_COLS) {
-    merge_to_column<outer_row_iter, PROFILE_TYPE, DiagsPerThread>(
-        args, info, smem, distc, dist, idxc);
+    merge_to_column<PROFILE_TYPE, DiagsPerThread>(outer_row_iter, args, info,
+                                                  smem, distc, dist, idxc);
   }
   if constexpr (COMPUTE_ROWS) {
-    merge_to_row<outer_row_iter, PROFILE_TYPE, DISTANCE_TYPE, DerivedInputType,
-                 DiagsPerThread>(args, info, smem, dist, distr, idxr);
+    merge_to_row<PROFILE_TYPE, DISTANCE_TYPE, DerivedInputType, DiagsPerThread>(
+        outer_row_iter, args, info, smem, dist, distr, idxr);
   }
 }
 
@@ -329,6 +348,14 @@ __device__ inline FORCE_INLINE void do_row(
 //     = OuterUnrolledRows * DiagsPerThread distances
 //   - smem column reads: inner_unrolled_cols on entry, then
 //     UnrolledRows per inner iteration (after the first)
+//
+// The outer (OUR/UR-iter) and inner (UR-iter) loops are #pragma-unrolled
+// regular for-loops (not constexpr-recursive for_<N>(...) lambdas) so the
+// surrounding do_row / update_cols / update_rows / merge_to_* templates
+// only get one instantiation per (variant, precision, row/col mode)
+// regardless of OUR. This is what makes high-OUR variants compile in
+// roughly the same wall-clock as low-OUR ones; before this change the
+// OUR=16 variants were ~1.7x more expensive than OUR=4.
 ///////////////////////////////////////////////////////////////////////////////
 template <SCAMPProfileType PROFILE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
           typename DISTANCE_TYPE, int DiagsPerThread, int UnrolledRows,
@@ -338,11 +365,10 @@ __device__ void do_iteration_fast(
     SCAMPThreadInfo<DerivedDataType, DiagsPerThread> &info, DerivedSmem &smem) {
   constexpr int inner_unrolled_cols = DiagsPerThread + UnrolledRows - 1;
   constexpr int unrolled_cols = DiagsPerThread + OuterUnrolledRows - 1;
+  constexpr int outer_iters = OuterUnrolledRows / UnrolledRows;
+  static_assert(outer_iters * UnrolledRows == OuterUnrolledRows,
+                "OuterUnrolledRows must be divisible by UnrolledRows.");
 
-  // Local register-window arrays use the smem column-data type. Since
-  // MIXED was dropped, DataType always equals the cov accumulator type,
-  // but routing through DerivedSmem::DataType keeps the do_iteration_fast
-  // body decoupled from how the SCAMPThreadInfo template args got chosen.
   using SmemDataType = typename DerivedSmem::DataType;
   Eigen::Array<SmemDataType, inner_unrolled_cols, 1> dfc, dgc, inormc;
   DISTANCE_TYPE init = init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
@@ -360,10 +386,14 @@ __device__ void do_iteration_fast(
       smem.inorm_col.template segment<inner_unrolled_cols>(info.local_col);
 
   // Outer loop: process OuterUnrolledRows rows in batches of UnrolledRows.
-  for_<OuterUnrolledRows / UnrolledRows>([&](auto j) {
-    if constexpr (j.value > 0) {
+  // #pragma-unrolled regular for so do_row / update_cols / update_rows get
+  // a single template instantiation regardless of OUR (see file header).
+#pragma unroll
+  for (int j = 0; j < outer_iters; ++j) {
+    if (j > 0) {
       // Slide the column window left by UnrolledRows and load the next
-      // UnrolledRows columns into the right edge.
+      // UnrolledRows columns into the right edge. The if (j > 0) is
+      // runtime but constant-folded away in iter 0 once nvcc unrolls.
       dfc.template segment<inner_unrolled_cols - UnrolledRows>(0) =
           dfc.template segment<inner_unrolled_cols - UnrolledRows>(
               UnrolledRows);
@@ -375,55 +405,53 @@ __device__ void do_iteration_fast(
               UnrolledRows);
       dfc.template segment<UnrolledRows>(inner_unrolled_cols - UnrolledRows) =
           smem.df_col.template segment<UnrolledRows>(
-              info.local_col + j.value * UnrolledRows +
+              info.local_col + j * UnrolledRows +
               (inner_unrolled_cols - UnrolledRows));
       dgc.template segment<UnrolledRows>(inner_unrolled_cols - UnrolledRows) =
           smem.dg_col.template segment<UnrolledRows>(
-              info.local_col + j.value * UnrolledRows +
+              info.local_col + j * UnrolledRows +
               (inner_unrolled_cols - UnrolledRows));
       inormc.template segment<UnrolledRows>(inner_unrolled_cols -
                                             UnrolledRows) =
           smem.inorm_col.template segment<UnrolledRows>(
-              info.local_col + j.value * UnrolledRows +
+              info.local_col + j * UnrolledRows +
               (inner_unrolled_cols - UnrolledRows));
     }
     Eigen::Array<SmemDataType, UnrolledRows, 1> dfr =
         smem.df_row.template segment<UnrolledRows>(info.local_row +
-                                                   j.value * UnrolledRows);
+                                                   j * UnrolledRows);
     Eigen::Array<SmemDataType, UnrolledRows, 1> dgr =
         smem.dg_row.template segment<UnrolledRows>(info.local_row +
-                                                   j.value * UnrolledRows);
+                                                   j * UnrolledRows);
     Eigen::Array<SmemDataType, UnrolledRows, 1> inormr =
         smem.inorm_row.template segment<UnrolledRows>(info.local_row +
-                                                      j.value * UnrolledRows);
-    for_<UnrolledRows>([&](auto k) {
-      do_row<j.value * UnrolledRows + k.value, k.value, PROFILE_TYPE,
-             COMPUTE_ROWS, COMPUTE_COLS, DISTANCE_TYPE, DerivedDataType,
-             DiagsPerThread>(args, info, smem, distc,
-                             distr[j.value * UnrolledRows + k.value], inormc,
-                             dfc, dgc, inormr[k.value], dfr[k.value],
-                             dgr[k.value], idxc,
-                             idxr[j.value * UnrolledRows + k.value]);
-    });
+                                                      j * UnrolledRows);
+#pragma unroll
+    for (int k = 0; k < UnrolledRows; ++k) {
+      do_row<PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, DISTANCE_TYPE,
+             DerivedDataType, DiagsPerThread>(
+          /*outer_row_iter=*/j * UnrolledRows + k, /*row_iter=*/k, args, info,
+          smem, distc, distr[j * UnrolledRows + k], inormc, dfc, dgc, inormr[k],
+          dfr[k], dgr[k], idxc, idxr[j * UnrolledRows + k]);
+    }
     if constexpr (COMPUTE_COLS) {
-      update_cols<j.value * UnrolledRows, UnrolledRows, PROFILE_TYPE,
-                  DerivedDataType, DiagsPerThread>(args, info, smem, distc,
-                                                   idxc);
+      update_cols<UnrolledRows, PROFILE_TYPE, DerivedDataType, DiagsPerThread>(
+          /*start_index=*/j * UnrolledRows, args, info, smem, distc, idxc);
     }
     if constexpr (COMPUTE_ROWS) {
-      update_rows<j.value * UnrolledRows, UnrolledRows, PROFILE_TYPE,
-                  DISTANCE_TYPE, DerivedDataType, DiagsPerThread>(
-          args, info, smem, distr, idxr);
+      update_rows<UnrolledRows, PROFILE_TYPE, DISTANCE_TYPE, DerivedDataType,
+                  DiagsPerThread>(/*row_iter=*/j * UnrolledRows, args, info,
+                                  smem, distr, idxr);
     }
-  });
+  }
 
   // Flush the trailing tail of distc (positions OuterUnrolledRows
   // through unrolled_cols-1 hold bests merged but never atomic-flushed
   // by the per-batch update above).
   if constexpr (COMPUTE_COLS) {
-    update_cols<OuterUnrolledRows, unrolled_cols - OuterUnrolledRows,
-                PROFILE_TYPE, DerivedDataType, DiagsPerThread>(args, info, smem,
-                                                               distc, idxc);
+    update_cols<unrolled_cols - OuterUnrolledRows, PROFILE_TYPE,
+                DerivedDataType, DiagsPerThread>(
+        /*start_index=*/OuterUnrolledRows, args, info, smem, distc, idxc);
   }
   info.local_col += OuterUnrolledRows;
   info.local_row += OuterUnrolledRows;
@@ -465,11 +493,14 @@ __device__ inline void reduce_row(
   }
 }
 
-template <int iter, SCAMPProfileType PROFILE_TYPE, bool COMPUTE_ROWS,
-          bool COMPUTE_COLS, typename DerivedSmemType, typename DerivedDataType,
+// iter is runtime (diagonal index inside the edge row); the surrounding
+// caller #pragma-unrolls so each iter value lands as a constant in the
+// emitted code.
+template <SCAMPProfileType PROFILE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
+          typename DerivedSmemType, typename DerivedDataType,
           int DiagsPerThread, typename DerivedDist, typename DerivedDist4>
 __device__ inline void reduce_edge(
-    const SCAMPKernelInputArgs<double> &args,
+    int iter, const SCAMPKernelInputArgs<double> &args,
     const SCAMPThreadInfo<DerivedDataType, DiagsPerThread> &info,
     DerivedSmemType &smem, const Eigen::ArrayBase<DerivedDist4> &dist,
     DerivedDist &dist_row, uint32_t &idx_row, int diag, int num_diags) {
@@ -533,13 +564,6 @@ __device__ inline void do_row_edge(
   // Compute DiagsPerThread distances at the current edge position. Some
   // entries may correspond to out-of-bounds positions; the reduce_edge
   // calls below bound-check before consuming each one.
-  //
-  // Element-wise scalar form (not an Eigen array expression) keeps the
-  // same shape do_iteration_fast uses. Originally needed because
-  // PRECISION_MIXED could put info.cov (double) and the smem segments
-  // (float) at different scalar types under Eigen 5's strict promotion;
-  // now that MIXED is dropped both are the same type, but the scalar form
-  // costs nothing and is consistent with do_row.
   Eigen::Array<DISTANCE_TYPE, DiagsPerThread, 1> dist;
 #pragma unroll DiagsPerThread
   for (int i = 0; i < DiagsPerThread; ++i) {
@@ -550,11 +574,12 @@ __device__ inline void do_row_edge(
                   smem.dg_col[info.local_col + i] * dfr;
   }
 
-  for_<DiagsPerThread>([&](auto i) {
-    reduce_edge<i.value, PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
-                DerivedSmemType, DerivedDataType, DiagsPerThread>(
-        args, info, smem, dist, dist_row, idx_row, diag, num_diags);
-  });
+#pragma unroll
+  for (int i = 0; i < DiagsPerThread; ++i) {
+    reduce_edge<PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, DerivedSmemType,
+                DerivedDataType, DiagsPerThread>(
+        /*iter=*/i, args, info, smem, dist, dist_row, idx_row, diag, num_diags);
+  }
 
   if constexpr (COMPUTE_ROWS) {
     reduce_row<PROFILE_TYPE, DerivedDataType, DiagsPerThread>(
