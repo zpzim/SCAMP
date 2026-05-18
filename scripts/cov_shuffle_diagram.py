@@ -9,7 +9,7 @@ Each frame shows, for one row of work inside a tile:
     identity unchanged);
   - the SHUFFLE (cross-warp via smem hand-off for variant 6 / intra-warp
     wrap-around for variant 8) + the within-lane right-shift;
-  - the AFTER state.
+  - the AFTER state, with masked-but-still-present junk cells in (parens).
 
 The "diagonal" labels are block-local diagonal indices (column - row in
 block-local coordinates). The block has lanes 0..BLOCKSZ-1; each lane T
@@ -19,14 +19,16 @@ distc/distr) when its diagonal is outside the block's responsibility:
 
   - variant 6 (cross-warp): lane T cov[i] invalid iff (T*DPT + i - r) < 0
     (i.e., diagonal is to the left of the block's meta-diagonal range).
-    Only lane 0 of warp 0 ever produces invalid slots within a tile.
+    Only lane 0 of warp 0's column block ever produces invalid slots
+    within a tile (subject to tile_height <= 32*DPT in the first draft).
 
   - variant 8 (per-warp-independent): each warp k owns its own 32*DPT-
-    diagonal sub-range [k*32*DPT, (k+1)*32*DPT). cov in lane T cov[i]
-    at row r tracks "warp-local diagonal" (T*DPT + i - r) mod (32*DPT)
-    because the intra-warp shuffle wraps lane 0 <- lane 31. The slot is
-    INVALID for the current warp iff the row-shifted diagonal has
-    wrapped past 0 (i.e., r > T*DPT + i).
+    diagonal sub-range. Wrap-around in the intra-warp shuffle means every
+    warp's lane 0 produces invalid slots, and the invalidation walks down
+    through that warp at one slot per row.
+
+A WASTE SUMMARY at the end of each diagram counts masked cells across
+all rows displayed.
 
 Run as:
     python3 cov_shuffle_diagram.py [--blocksz N] [--dpt N] [--warp N]
@@ -45,81 +47,45 @@ import sys
 # State model
 # ---------------------------------------------------------------------------
 
-JUNK = "?"  # value held by a slot whose tracked diagonal is invalid
+JUNK = "?"  # value held by lane 0 of warp 0 in variant 6 (no predecessor)
 
 
 def initial_state(blocksz, dpt):
-    """Return list-of-lists: state[lane][slot] = diagonal-label string.
-
-    At row 0, lane T cov[i] = cov(0, T*DPT + i) on diagonal (T*DPT + i).
-    We label slots with their global block-local diagonal index.
-    """
+    """state[lane][slot] = diagonal-label string. At row 0, lane T cov[i] =
+    cov(0, T*DPT + i) on diagonal (T*DPT + i)."""
     return [[str(t * dpt + i) for i in range(dpt)] for t in range(blocksz)]
 
 
 def step_one_row(state, blocksz, dpt, warp, variant):
-    """Advance the cov state by one row.
-
-    Returns (new_state, handoff_writes, handoff_reads) where:
-      handoff_writes[warpid] = label written by lane 31 of warp warpid
-      handoff_reads[warpid] = label read by lane 0 of warp warpid (or None)
-
-    Both lists are empty for variant 8.
-    """
+    """Advance one row. Returns (new_state, handoff_writes, handoff_reads)."""
     new_state = [[None] * dpt for _ in range(blocksz)]
     handoff_writes = {}
     handoff_reads = {}
 
     warps_per_block = blocksz // warp
 
-    # Compute hand-off values BEFORE updating any lane. For variant 6, each
-    # warp's lane 31 publishes its current cov[DPT-1] for the NEXT warp's
-    # lane 0 to consume.
     if variant == 6:
         for wid in range(warps_per_block):
             lane31 = wid * warp + (warp - 1)
             handoff_writes[wid] = state[lane31][dpt - 1]
-        # The "read" by lane 0 of warp wid is what lane 31 of warp wid-1
-        # WROTE LAST ROW. For the diagram we display this row's read =
-        # last row's write. But since this function only knows THIS row,
-        # we compute "read = previous warp's published value as of this
-        # row" -- i.e., the same content lane 31 holds NOW (which IS
-        # what it would have published last row, since cov accumulates).
-        # In practice the value differs by one row of accumulation, but
-        # for the diagonal-label tracking that we care about, it is the
-        # same diagonal index.
         for wid in range(1, warps_per_block):
             handoff_reads[wid] = handoff_writes[wid - 1]
 
-    # Per-lane intra-warp shuffle: shift cov[i] right within the lane;
-    # cov[0] receives shuffled-in value.
     for warp_id in range(warps_per_block):
         for lane_in_warp in range(warp):
             T = warp_id * warp + lane_in_warp
-            # Shift right: new cov[i] = old cov[i-1] for i >= 1.
             for i in range(dpt - 1, 0, -1):
                 new_state[T][i] = state[T][i - 1]
-            # cov[0]: predecessor lane's cov[DPT-1]. Predecessor depends
-            # on variant.
             if lane_in_warp > 0:
-                # Intra-warp predecessor (both variants).
                 pred = warp_id * warp + (lane_in_warp - 1)
                 new_state[T][0] = state[pred][dpt - 1]
             else:
-                # Lane 0 of a warp.
                 if variant == 6:
                     if warp_id > 0:
-                        # Cross-warp hand-off (received from prev warp's
-                        # smem-published value).
                         new_state[T][0] = handoff_reads[warp_id]
                     else:
-                        # Lane 0 of warp 0: no predecessor warp.
                         new_state[T][0] = JUNK
                 else:  # variant 8
-                    # Per-warp-independent: wrap inside the warp from
-                    # lane 31's cov[DPT-1]. The value is "valid" as a cov
-                    # for some diagonal but for the WRONG diagonal for
-                    # lane 0's column, hence masked downstream.
                     lane31_of_warp = warp_id * warp + (warp - 1)
                     new_state[T][0] = state[lane31_of_warp][dpt - 1]
 
@@ -131,112 +97,229 @@ def step_one_row(state, blocksz, dpt, warp, variant):
 # ---------------------------------------------------------------------------
 
 def slot_validity(blocksz, dpt, warp, row, variant):
-    """Return mask[lane][slot] in {'.', 'X'} where 'X' means INVALID
-    (will be masked from distc/distr).
+    """mask[lane][slot] == True iff the slot is INVALID at `row` (masked
+    from distc/distr).
 
-    Variant 6: only lane 0 of warp 0 produces invalid slots; the slot
-    becomes invalid when its tracked diagonal goes negative.
-
-    Variant 8: each warp's lane 0 produces invalid slots, and the
-    invalidation walks down through the warp at one slot per row.
+    Variant 6: block-local mask. Lane T slot i invalid iff T*DPT+i < row.
+    Variant 8: warp-local mask. Lane T (warp-local) slot i invalid iff
+               (warp-local T)*DPT + i < row.
     """
-    mask = [['.'] * dpt for _ in range(blocksz)]
+    mask = [[False] * dpt for _ in range(blocksz)]
     warps_per_block = blocksz // warp
     for warp_id in range(warps_per_block):
         for lane_in_warp in range(warp):
             T = warp_id * warp + lane_in_warp
-            local_col = T * dpt
             for i in range(dpt):
                 if variant == 6:
-                    # cell (r, local_col + i) is in block's meta-diag range
-                    # iff local_col + i >= row.
-                    if local_col + i < row:
-                        mask[T][i] = 'X'
+                    if T * dpt + i < row:
+                        mask[T][i] = True
                 else:  # variant 8
-                    # Each warp owns 32*DPT diagonals. The slot at lane T
-                    # in warp k slot i becomes invalid when r > T*DPT + i
-                    # in WARP-LOCAL terms (i.e., relative to the warp).
-                    warp_local_T = lane_in_warp
-                    if warp_local_T * dpt + i < row:
-                        mask[T][i] = 'X'
+                    if lane_in_warp * dpt + i < row:
+                        mask[T][i] = True
     return mask
 
 
 # ---------------------------------------------------------------------------
-# ASCII rendering
+# Width / format helpers
 # ---------------------------------------------------------------------------
 
-def cell_width(state):
-    """Pick a column width wide enough for any cell label."""
-    longest = 1
-    for row in state:
-        for v in row:
-            longest = max(longest, len(str(v)))
-    return max(2, longest)
+def compute_width(blocksz, dpt, warp, rows, variant):
+    """Find the max cell width across ALL frames (state values, lane
+    headers, masked-paren variants) so every line in the diagram aligns."""
+    width = 0
+    state = initial_state(blocksz, dpt)
+    for r in range(rows + 1):
+        mask = slot_validity(blocksz, dpt, warp, r, variant)
+        for T in range(blocksz):
+            width = max(width, len("L" + str(T)))
+            for i in range(dpt):
+                v = str(state[T][i])
+                width = max(width, len(v))
+                if mask[T][i]:
+                    width = max(width, len("(" + v + ")"))
+        if r < rows:
+            state, _, _ = step_one_row(state, blocksz, dpt, warp, variant)
+    return width
 
 
-def render_state(state, mask, blocksz, dpt, warp, label=None, width=None):
-    """Render the block as a grid: rows = warps, columns = lanes.
+def fmt_cell(value, masked, width):
+    """Right-justified cell label, parenthesized if masked."""
+    if masked:
+        return ("(" + str(value) + ")").rjust(width)
+    return str(value).rjust(width)
 
-    Each lane is a column of DPT cells (slot 0 on top, slot DPT-1 on bottom).
-    Warps are separated by a horizontal rule. Each cell shows the diagonal
-    label; if the slot is INVALID per `mask`, the label is parenthesized.
-    """
-    if width is None:
-        width = cell_width(state)
 
+# ---------------------------------------------------------------------------
+# Rendering
+# ---------------------------------------------------------------------------
+
+PREFIX = "    "  # uniform row prefix; gives every line the same indent
+LABEL_W = 14     # width of the "warp N / slot N" label column on the left
+
+
+def render_state(state, mask, blocksz, dpt, warp, width, label=None):
     warps_per_block = blocksz // warp
     out = []
     if label:
-        out.append(label)
-
-    # Header: lane indices
+        out.append(PREFIX + label)
     for warp_id in range(warps_per_block):
-        # Lane index header (block-local)
-        lane_idx_row = "  warp " + str(warp_id).rjust(2) + " :"
+        head = ("warp " + str(warp_id)).ljust(LABEL_W) + ":"
         for lane_in_warp in range(warp):
             T = warp_id * warp + lane_in_warp
-            lane_idx_row += " " + ("L" + str(T)).rjust(width)
-        out.append(lane_idx_row)
-        # DPT rows: one per slot
+            head += " " + ("L" + str(T)).rjust(width)
+        out.append(PREFIX + head)
         for slot in range(dpt):
-            slot_row = "  slot " + str(slot) + "    :"
+            row = ("  slot " + str(slot)).ljust(LABEL_W) + ":"
             for lane_in_warp in range(warp):
                 T = warp_id * warp + lane_in_warp
-                v = str(state[T][slot])
-                if mask[T][slot] == 'X':
-                    v = "(" + v + ")"
-                slot_row += " " + v.rjust(width)
-            out.append(slot_row)
-        # Spacer between warps
+                row += " " + fmt_cell(state[T][slot], mask[T][slot], width)
+            out.append(PREFIX + row)
         if warp_id < warps_per_block - 1:
-            out.append("  " + "-" * (10 + (width + 1) * warp))
+            sep_len = LABEL_W + 1 + (width + 1) * warp
+            out.append(PREFIX + "-" * sep_len)
     return "\n".join(out)
 
 
 def render_handoff(handoff_writes, handoff_reads, blocksz, warp, width):
-    """Render the smem cov_handoff region usage for variant 6.
-
-    Shows: for each warp, what its lane 31 WROTE to smem, and what its
-    lane 0 READ from smem (= previous warp's lane 31's write).
-    """
     warps_per_block = blocksz // warp
-    out = ["  smem cov_handoff[warps_per_block=" + str(warps_per_block) + "]:"]
-    header = "    warp:    "
+    out = [PREFIX + "smem cov_handoff[2 * warps_per_block=" +
+           str(warps_per_block) + "]:"]
+    head = ("  warp slot").ljust(LABEL_W) + ":"
     for wid in range(warps_per_block):
-        header += " " + ("w" + str(wid)).rjust(width)
-    out.append(header)
-    write_row = "    lane31 W:"
+        head += " " + ("w" + str(wid)).rjust(width)
+    out.append(PREFIX + head)
+    write_row = ("  lane31 WRITE").ljust(LABEL_W) + ":"
     for wid in range(warps_per_block):
         v = str(handoff_writes.get(wid, "-"))
         write_row += " " + v.rjust(width)
-    out.append(write_row)
-    read_row = "    lane0  R:"
+    out.append(PREFIX + write_row)
+    read_row = ("  lane0  READ").ljust(LABEL_W) + ":"
     for wid in range(warps_per_block):
         v = handoff_reads.get(wid, None)
         s = "-" if v is None else str(v)
         read_row += " " + s.rjust(width)
-    out.append(read_row)
+    out.append(PREFIX + read_row)
+    return "\n".join(out)
+
+
+def banner(text, char="="):
+    bar = char * max(72, len(text) + 4)
+    return "\n".join([bar, "  " + text, bar])
+
+
+# ---------------------------------------------------------------------------
+# Waste model
+# ---------------------------------------------------------------------------
+
+def waste_summary(blocksz, dpt, warp, tile_height, variant):
+    """Compute analytical waste across an ENTIRE tile (tile_height rows),
+    independent of the display row count.
+
+    Returns dict with: total_cells, masked_cells, waste_pct, notes.
+
+    Total compute slots per tile per block = BLOCKSZ * DPT * tile_height.
+    Masked compute slots: cells where slot_validity is True at row r.
+
+    Closed forms (for tile_height <= 32*DPT, the "simple case" for var 6):
+      var 6: T_h * (T_h - 1) / 2          (only warp 0 contributes)
+      var 8: warps_per_block * T_h*(T_h-1)/2
+    """
+    warps_per_block = blocksz // warp
+    total = blocksz * dpt * tile_height
+    masked = 0
+    for warp_id in range(warps_per_block):
+        for lane_in_warp in range(warp):
+            T = warp_id * warp + lane_in_warp
+            for i in range(dpt):
+                # Count rows in [0, tile_height-1] where this slot is invalid.
+                if variant == 6:
+                    threshold = T * dpt + i
+                else:
+                    threshold = lane_in_warp * dpt + i
+                invalid_rows = max(0, tile_height - 1 - threshold)
+                masked += invalid_rows
+    return {
+        "total_cells": total,
+        "masked_cells": masked,
+        "waste_pct": (masked / total) * 100 if total else 0.0,
+        "warps_per_block": warps_per_block,
+    }
+
+
+def render_waste_table(blocksz, dpt, warp, tile_heights, header_note=""):
+    """Render a table: rows = tile_height, columns = variant 6/8 waste%."""
+    out = []
+    if header_note:
+        out.append(PREFIX + header_note)
+    out.append(PREFIX + "  tile_height      total cells   var 6 wasted   "
+               "var 8 wasted   8/6 ratio")
+    out.append(PREFIX + "  -----------      -----------   ------------   "
+               "------------   ---------")
+    for th in tile_heights:
+        s6 = waste_summary(blocksz, dpt, warp, th, 6)
+        s8 = waste_summary(blocksz, dpt, warp, th, 8)
+        if s6["waste_pct"] > 0:
+            ratio = "{:5.1f}x".format(s8["waste_pct"] / s6["waste_pct"])
+        else:
+            ratio = "   -  "
+        out.append(PREFIX + "  {:>11}      {:>11}   {:>9.2f}%      "
+                   "{:>9.2f}%      {}".format(
+                       th, s6["total_cells"], s6["waste_pct"],
+                       s8["waste_pct"], ratio))
+    return "\n".join(out)
+
+
+def render_waste_summary(blocksz, dpt, warp, tile_height, variant):
+    """Show waste at the demo geometry (over a tile_height sweep) AND at
+    the realistic kernel geometry (BLOCKSZ=256, warp=32, same DPT)."""
+    out = []
+    out.append(banner("compute-waste summary", "-"))
+    out.append("")
+    out.append(PREFIX + "Per-tile compute = BLOCKSZ * DPT * tile_height cells.")
+    out.append(PREFIX + "Masked cells = slots where the cov is for a diagonal")
+    out.append(PREFIX + "outside this lane/warp's responsibility; the multiply")
+    out.append(PREFIX + "is wasted (mul-adds happen, dist update is gated off).")
+    out.append("")
+
+    # Demo geometry sweep.
+    demo_heights = sorted({1, dpt, 2 * dpt, warp * dpt // 4, warp * dpt // 2,
+                           warp * dpt, 2 * warp * dpt, 4 * warp * dpt})
+    demo_heights = [h for h in demo_heights if h >= 1]
+    out.append(PREFIX + "DEMO geometry: BLOCKSZ={} DPT={} warp={} (warps_per_block={})"
+               .format(blocksz, dpt, warp, blocksz // warp))
+    out.append(render_waste_table(blocksz, dpt, warp, demo_heights))
+    out.append("")
+
+    # Realistic geometry sweep (the actual kernel's BLOCKSZ).
+    real_blocksz_dp = 256
+    real_blocksz_sp = 512
+    real_warp = 32
+    real_heights = sorted({dpt, 2 * dpt, 8 * dpt, 16 * dpt, real_warp * dpt,
+                           2 * real_warp * dpt, 4 * real_warp * dpt})
+    out.append(PREFIX + "REAL kernel DP geometry: BLOCKSZ={} DPT={} warp=32 "
+               "(warps_per_block=8)".format(real_blocksz_dp, dpt))
+    out.append(render_waste_table(real_blocksz_dp, dpt, real_warp,
+                                  real_heights))
+    out.append("")
+    out.append(PREFIX + "REAL kernel SP geometry: BLOCKSZ={} DPT={} warp=32 "
+               "(warps_per_block=16)".format(real_blocksz_sp, dpt))
+    out.append(render_waste_table(real_blocksz_sp, dpt, real_warp,
+                                  real_heights))
+    out.append("")
+
+    out.append(PREFIX + "Closed forms (valid when tile_height <= 32*DPT,")
+    out.append(PREFIX + "i.e., the junk has room to propagate through the warp):")
+    out.append(PREFIX + "  variant 6 masked cells = T_h*(T_h-1)/2")
+    out.append(PREFIX + "  variant 8 masked cells = warps_per_block * T_h*(T_h-1)/2")
+    out.append(PREFIX + "  variant 6 waste %      = (T_h - 1) / (2 * BLOCKSZ * DPT) * T_h * 100")
+    out.append(PREFIX + "    --> grows quadratically with tile_height, but")
+    out.append(PREFIX + "        with BLOCKSZ in the denominator stays small")
+    out.append(PREFIX + "        for the kernel's realistic blocksz=256/512.")
+    out.append(PREFIX + "  variant 8 waste %      = (T_h - 1) / (2 * 32 * DPT) * T_h * 100")
+    out.append(PREFIX + "    --> NO BLOCKSZ in denominator (each warp wastes")
+    out.append(PREFIX + "        independently); waste reaches ~50% at T_h = 32*DPT.")
+    out.append(PREFIX + "For T_h > 32*DPT the junk saturates the warp; the v8")
+    out.append(PREFIX + "growth slows. Even so, v8 is cheap only at tiny T_h.")
     return "\n".join(out)
 
 
@@ -244,52 +327,46 @@ def render_handoff(handoff_writes, handoff_reads, blocksz, warp, width):
 # Driver
 # ---------------------------------------------------------------------------
 
-def banner(text, char="="):
-    bar = char * max(60, len(text) + 4)
-    return "\n".join([bar, "  " + text, bar])
-
-
-def generate(blocksz, dpt, warp, rows, variant):
+def generate(blocksz, dpt, warp, rows, variant, tile_height=None):
     assert blocksz % warp == 0, "BLOCKSZ must be a multiple of warp size"
     assert dpt >= 1
+    if tile_height is None:
+        tile_height = 32 * dpt  # one column-block rotation per tile
+
     out = []
     out.append(banner(
-        "variant {} cov-shuffle: BLOCKSZ={} DPT={} WARP={} rows={}".format(
+        "variant {} cov-shuffle: BLOCKSZ={} DPT={} WARP={} ROWS={}".format(
             variant, blocksz, dpt, warp, rows)))
     if variant == 6:
         out.append(
-            "design: each lane owns a FIXED DPT-wide column slice; cov\n"
-            "        shuffles right one slot per row WITHIN a warp; lane 31\n"
-            "        of warp k publishes cov[DPT-1] to smem; lane 0 of warp\n"
-            "        k > 0 receives that value. Lane 0 of warp 0 has no\n"
-            "        predecessor and produces JUNK ('?') after row 0.\n"
-            "        Labels are block-local diagonal indices.\n")
-    elif variant == 8:
+            "  design: each lane owns a FIXED DPT-wide column slice; cov\n"
+            "  shuffles right one slot per row WITHIN a warp; lane 31 of\n"
+            "  warp k publishes cov[DPT-1] to smem; lane 0 of warp k>0\n"
+            "  receives that value. Lane 0 of warp 0 has no predecessor and\n"
+            "  produces JUNK ('?') after row 0. Labels are block-local\n"
+            "  diagonal indices.\n")
+    else:
         out.append(
-            "design: per-warp-independent. Each warp's cov shuffle WRAPS\n"
-            "        within the warp (lane 0 <- lane 31). NO smem hand-off\n"
-            "        and NO __syncthreads(). The wrapped values are valid\n"
-            "        covs for OTHER diagonals -- the slot validity mask\n"
-            "        catches them. Every warp's lane 0 produces invalid\n"
-            "        slots after some row.\n")
+            "  design: per-warp-independent. Each warp's cov shuffle WRAPS\n"
+            "  within the warp (lane 0 <- lane 31). NO smem hand-off and NO\n"
+            "  __syncthreads(). The wrapped values are valid covs for OTHER\n"
+            "  diagonals -- the slot validity mask catches them. Every\n"
+            "  warp's lane 0 produces invalid slots after some row.\n")
 
+    width = compute_width(blocksz, dpt, warp, rows, variant)
     state = initial_state(blocksz, dpt)
-    width = cell_width(state)
 
     for r in range(rows):
         out.append(banner("ROW {}".format(r)))
-        # Before
         mask = slot_validity(blocksz, dpt, warp, r, variant)
-        out.append(render_state(state, mask, blocksz, dpt, warp,
-                                label="  BEFORE row {}: cov[i] tracks "
-                                "diag (lane*DPT + i - row)".format(r),
-                                width=width))
-        # Cov update is in-place and doesn't change the diagonal each
-        # slot tracks, so we don't render a separate "after update" frame.
-        out.append("\n  (cov UPDATE in place: cov[i] += dfc[i]*dgr + "
-                   "dgc[i]*dfr -- diagonals unchanged)\n")
+        out.append(render_state(state, mask, blocksz, dpt, warp, width,
+                                label="BEFORE row {}: cov[i] tracks diag "
+                                "(lane*DPT + i - row)".format(r)))
+        out.append("")
+        out.append(PREFIX + "(cov UPDATE in place: cov[i] += dfc[i]*dgr + "
+                   "dgc[i]*dfr -- diagonals unchanged)")
+        out.append("")
 
-        # Step
         new_state, handoff_writes, handoff_reads = step_one_row(
             state, blocksz, dpt, warp, variant)
 
@@ -298,30 +375,33 @@ def generate(blocksz, dpt, warp, rows, variant):
                                       blocksz, warp, width))
             out.append("")
 
-        # After
         mask_after = slot_validity(blocksz, dpt, warp, r + 1, variant)
         out.append(render_state(new_state, mask_after, blocksz, dpt, warp,
-                                label="  AFTER row {}: cov shuffled. Cells "
-                                "in (parens) are MASKED next row.".format(r),
-                                width=width))
+                                width,
+                                label="AFTER row {}: cov shuffled. (N) cells "
+                                "are MASKED at next row.".format(r)))
         out.append("")
         state = new_state
 
+    out.append(render_waste_summary(blocksz, dpt, warp, tile_height, variant))
+    out.append("")
     out.append(banner("legend", "-"))
-    out.append("  L<T>     : lane T (block-local index)")
-    out.append("  slot <i> : cov[i] of that lane")
-    out.append("  N        : the cov slot is tracking block-local diagonal N")
-    out.append("  ?        : junk -- no predecessor produced this value")
-    out.append("  (N)      : valid cov for diagonal N, but for this lane's")
-    out.append("             column position the diagonal is outside the")
-    out.append("             block's meta-diag range; the distc/distr update")
-    out.append("             is masked.")
+    out.append("    L<T>     : lane T (block-local index)")
+    out.append("    slot <i> : cov[i] of that lane")
+    out.append("    N        : the cov slot is tracking block-local diagonal N")
+    out.append("    ?        : junk -- no predecessor produced this value")
+    out.append("    (N)      : the cov VALUE is fine, but this slot's diagonal")
+    out.append("               is outside the block's meta-diag range (var 6)")
+    out.append("               or has wrapped past warp 0 of the warp (var 8);")
+    out.append("               the distance computed here is masked from")
+    out.append("               distc / distr updates.")
     return "\n".join(out)
 
 
 def main():
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--blocksz", type=int, default=8,
                    help="threads per block (must be multiple of --warp)")
     p.add_argument("--dpt", type=int, default=2,
@@ -330,7 +410,10 @@ def main():
                    help="warp size (use 4 or 8 for compact diagrams; "
                         "real hardware is 32)")
     p.add_argument("--rows", type=int, default=3,
-                   help="number of rows of work to step through")
+                   help="number of rows of work to step through (visual frames)")
+    p.add_argument("--tile-height", type=int, default=None,
+                   help="tile_height for the waste-summary calc "
+                        "(defaults to 32 * DPT, the first-draft setting)")
     p.add_argument("--variant", type=int, default=6, choices=[6, 8],
                    help="6 = cross-warp via smem; 8 = per-warp-independent")
     args = p.parse_args()
@@ -339,7 +422,8 @@ def main():
         print("error: --blocksz must be a multiple of --warp", file=sys.stderr)
         sys.exit(1)
 
-    print(generate(args.blocksz, args.dpt, args.warp, args.rows, args.variant))
+    print(generate(args.blocksz, args.dpt, args.warp, args.rows,
+                   args.variant, args.tile_height))
 
 
 if __name__ == "__main__":
