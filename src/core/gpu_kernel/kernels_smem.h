@@ -171,7 +171,7 @@ template <SCAMPProfileType PROFILE_TYPE, typename DerivedProfile,
 __device__ inline void write_back_value(
     SCAMPKernelInputArgs<double> &args, int local_position, int global_position,
     const Eigen::ArrayBase<DerivedSmem> &smem_profile, DerivedProfile *profile,
-    uint64_t *profile_length, const float *thresholds) {
+    unsigned long long int *profile_length, const float *thresholds) {
   if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN) {
     fAtomicMax<ATOMIC_GLOBAL>(profile + global_position,
                               smem_profile[local_position]);
@@ -200,8 +200,8 @@ __device__ inline void write_back_value(
     e.ulong = smem_profile[local_position];
     if (e.floats[0] > thresholds[global_position]) {
       unsigned long long int pos =
-          do_atomicAdd<unsigned long long int, ATOMIC_GLOBAL>(
-              reinterpret_cast<unsigned long long int *>(profile_length), 1ULL);
+          do_atomicAdd<unsigned long long int, ATOMIC_GLOBAL>(profile_length,
+                                                              1ULL);
       if (pos < args.max_matches_per_tile) {
         profile[pos].corr = e.floats[0];
         profile[pos].row = e.ints[1];
@@ -223,13 +223,22 @@ __device__ void write_back(SCAMPKernelInputArgs<double> &args,
                            DerivedProfile *profile_A,
                            DerivedProfile *profile_B) {
   int global_position, local_position;
+  // The match-output atomic counter has to target *global* memory: that
+  // counter is what Profile::CopyFromDevice reads back to size the
+  // match_value_unordered vector for the host. smem.profile_a_length is the
+  // smem-cached *copy* of that counter, used inside do_tile by the
+  // NeedsCheckIfDone early-exit logic to test whether
+  // max_matches_per_tile is exhausted -- if write_back atomicAdd-s into
+  // the smem copy, the global counter stays at zero and the host sees an
+  // empty profile. Regression introduced by the Eigen port (687a70b);
+  // the pre-Eigen write_back used args.profile_{a,b}_length directly.
   if constexpr (COMPUTE_COLS) {
     global_position = tile_start_x + threadIdx.x;
     local_position = threadIdx.x;
     while (local_position < TILE_WIDTH && global_position < n_x) {
       write_back_value<PROFILE_TYPE>(args, local_position, global_position,
                                      smem.local_mp_col, profile_A,
-                                     smem.profile_a_length, args.thresholds_a);
+                                     args.profile_a_length, args.thresholds_a);
       global_position += BLOCKSZ;
       local_position += BLOCKSZ;
     }
@@ -240,7 +249,7 @@ __device__ void write_back(SCAMPKernelInputArgs<double> &args,
     while (local_position < TILE_HEIGHT && global_position < n_y) {
       write_back_value<PROFILE_TYPE>(args, local_position, global_position,
                                      smem.local_mp_row, profile_B,
-                                     smem.profile_b_length, args.thresholds_b);
+                                     args.profile_b_length, args.thresholds_b);
       global_position += BLOCKSZ;
       local_position += BLOCKSZ;
     }
