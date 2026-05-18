@@ -142,8 +142,8 @@ AutotuneResult RunAutotune(int device_id, const std::string &cache_path,
     last_chosen = cfg;
     if (verbose) {
       std::cout << "  " << ProfileTypeName(t.profile) << " "
-                << PrecisionTypeName(t.precision) << " -> blocksz=" << cfg.blocksz
-                << " bps=" << cfg.blocks_per_sm
+                << PrecisionTypeName(t.precision)
+                << " -> blocksz=" << cfg.blocksz << " bps=" << cfg.blocks_per_sm
                 << " dpt=" << cfg.diags_per_thread
                 << " ur=" << cfg.unrolled_rows
                 << " our=" << cfg.outer_unrolled_rows
@@ -224,8 +224,8 @@ AutotuneResult RunAutotuneWithBenchmark(int device_id, BenchmarkFn bench,
                   << " ur=" << cfg.unrolled_rows
                   << " our=" << cfg.outer_unrolled_rows
                   << " kti=" << cfg.kernel_tile_iters
-                  << " (tile_height=" << cfg.tile_height() << ") -> "
-                  << seconds << " s\n";
+                  << " (tile_height=" << cfg.tile_height() << ") -> " << seconds
+                  << " s\n";
       }
       if (seconds < best_seconds) {
         best_seconds = seconds;
@@ -280,8 +280,7 @@ KernelConfig GetKernelConfigForDevice(int device_id,
     // 1) User override (env var or ~/.cache/scamp/autotune.txt).
     const AutotuneCache *user = GetOrLoadUserCache(cache_path);
     auto user_hit = user->Lookup(key, profile_type, precision);
-    if (user_hit.has_value() &&
-        IsSupportedKernelConfig(*user_hit, precision)) {
+    if (user_hit.has_value() && IsSupportedKernelConfig(*user_hit, precision)) {
       return *user_hit;
     }
 
