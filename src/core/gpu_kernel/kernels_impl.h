@@ -177,13 +177,28 @@ SCAMPError_t LaunchDoTileWithGeometry(
   dim3 grid(num_blocks, 1, 1);
   // Expand the 3 row/col modes x 2 precisions = 6 do_tile<...> instantiations.
   // The macro keeps the dispatch table compact; each LAUNCH_PRECISION call
-  // emits one nvcc <<<>>> kernel-launch line.
+  // emits one nvcc <<<>>> kernel-launch line plus a cudaFuncSetAttribute
+  // call to opt into >48KB dynamic smem if the variant demands it. The
+  // default per-block dynamic smem cap is 48KB on sm_8.x; high-OUR
+  // variants (e.g. variant 5 at OUR=16, KTI=16, tile_height=256) need ~50KB
+  // for SP self-join and would otherwise fail with cudaErrorInvalidValue.
+  // The opt-in is sticky per kernel function pointer, so repeated launches
+  // pay only the first call.
 #define LAUNCH_PRECISION(DATA_T, ACCUM_T, BLOCKSZ_V, COMP_ROWS, COMP_COLS) \
-  do_tile<DATA_T, ACCUM_T, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE,         \
-          DISTANCE_TYPE, COMP_ROWS, COMP_COLS, PROFILE_TYPE,               \
-          blocks_per_sm_v, DiagsPerThread, UnrolledRows, OuterUnrolledRows,\
-          KernelTileIters, BLOCKSZ_V>                                      \
-      <<<grid, block, smem, s>>>(args, profile_A, profile_B)
+  do {                                                                    \
+    auto kfn = do_tile<DATA_T, ACCUM_T, PROFILE_OUTPUT_TYPE,               \
+                       PROFILE_DATA_TYPE, DISTANCE_TYPE, COMP_ROWS,        \
+                       COMP_COLS, PROFILE_TYPE, blocks_per_sm_v,           \
+                       DiagsPerThread, UnrolledRows, OuterUnrolledRows,    \
+                       KernelTileIters, BLOCKSZ_V>;                        \
+    if (smem > 48u * 1024u) {                                              \
+      cudaFuncSetAttribute(                                                \
+          reinterpret_cast<const void *>(kfn),                             \
+          cudaFuncAttributeMaxDynamicSharedMemorySize,                     \
+          static_cast<int>(smem));                                         \
+    }                                                                      \
+    kfn<<<grid, block, smem, s>>>(args, profile_A, profile_B);             \
+  } while (0)
 
 #define LAUNCH_FOR_ROWCOL_MODE(COMP_ROWS, COMP_COLS)             \
   switch (fp_type) {                                             \

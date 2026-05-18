@@ -83,7 +83,13 @@ void PopulateBenchmarkArgs(SCAMPArgs *args, SCAMPProfileType profile,
 namespace {
 
 // Single timed run of the synthetic workload with the cfg override set.
-// Helper for DefaultBenchmarkVariant.
+// Throws SCAMPException if the kernel launch failed (CUDA reports an
+// error post-synchronize), so the variant is reported as inf time rather
+// than silently winning. This caught a real bug: v5 (OUR=16) exceeds the
+// default 48KB per-block smem limit for SP self-join modes and silently
+// returns SCAMP_CUDA_ERROR, which do_SCAMP swallows. Without the
+// post-synchronize check the benchmark recorded the fast "failed" path
+// as the winning time and the autotune wrote a broken cfg to the cache.
 double TimeOneRun(int device_id, SCAMPProfileType profile,
                   SCAMPPrecisionType precision, const KernelConfig &cfg) {
   SCAMPArgs args;
@@ -96,12 +102,21 @@ double TimeOneRun(int device_id, SCAMPProfileType profile,
 
   std::vector<int> devices{device_id};
 
+#ifdef _HAS_CUDA_
+  // Clear any sticky CUDA error from a prior trial so we only see this
+  // trial's launches.
+  cudaGetLastError();
+#endif
   auto start = std::chrono::steady_clock::now();
   do_SCAMP(&args, devices, /*num_threads=*/0);
 #ifdef _HAS_CUDA_
-  // do_SCAMP returns once results are copied back to host; synchronize
-  // defensively to make wall clock reflect end-to-end completion.
-  cudaDeviceSynchronize();
+  cudaError_t sync_err = cudaDeviceSynchronize();
+  cudaError_t async_err = cudaGetLastError();
+  if (sync_err != cudaSuccess || async_err != cudaSuccess) {
+    cudaError_t err = sync_err != cudaSuccess ? sync_err : async_err;
+    throw SCAMPException(std::string("benchmark variant CUDA error: ") +
+                         cudaGetErrorString(err));
+  }
 #endif
   auto end = std::chrono::steady_clock::now();
   return std::chrono::duration<double>(end - start).count();

@@ -363,7 +363,20 @@ template <SCAMPProfileType PROFILE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
 __device__ void do_iteration_fast(
     const SCAMPKernelInputArgs<double> &args,
     SCAMPThreadInfo<DerivedDataType, DiagsPerThread> &info, DerivedSmem &smem) {
-  constexpr int inner_unrolled_cols = DiagsPerThread + UnrolledRows - 1;
+  // The "natural" inner_unrolled_cols would be DPT + UR - 1: the smallest
+  // window that holds DPT cols per row across UR rows. We pad it to DPT + UR
+  // so the sliding-window refill lands at byte offset
+  //   (threadIdx.x*DPT + j*UR + DPT) * sizeof(T)
+  // = DPT*(threadIdx.x + 1) * sizeof(T) + j * UR * sizeof(T)
+  // which is UR*sizeof(T)-aligned for every (DPT, UR) tuple where DPT % UR
+  // == 0 (true for all current variants). That lets vec_load emit
+  // ld.shared.v2.f32 / v4.f32 / v2.f64 for the slide instead of scalar
+  // ld.shared.{f32,f64}. The extra slot at the right edge is never read by
+  // do_row (whose max access is row_iter + DPT - 1 <= inner - 2), so the
+  // only cost is one wasted register per (dfc, dgc, inormc) = 3 per thread.
+  static_assert(DiagsPerThread % UnrolledRows == 0,
+                "DPT must be divisible by UR for aligned slide-loads.");
+  constexpr int inner_unrolled_cols = DiagsPerThread + UnrolledRows;
   constexpr int unrolled_cols = DiagsPerThread + OuterUnrolledRows - 1;
   constexpr int outer_iters = OuterUnrolledRows / UnrolledRows;
   static_assert(outer_iters * UnrolledRows == OuterUnrolledRows,
@@ -379,11 +392,18 @@ __device__ void do_iteration_fast(
   Eigen::Array<unsigned int, unrolled_cols, 1> idxc;
   Eigen::Array<unsigned int, OuterUnrolledRows, 1> idxr;
 
-  // Initial load of the column sliding-window from smem.
-  dfc = smem.df_col.template segment<inner_unrolled_cols>(info.local_col);
-  dgc = smem.dg_col.template segment<inner_unrolled_cols>(info.local_col);
-  inormc =
-      smem.inorm_col.template segment<inner_unrolled_cols>(info.local_col);
+  // Initial load of the column sliding-window from smem. smem.df_col.data()
+  // + info.local_col is aligned to DiagsPerThread * sizeof(SmemDataType)
+  // bytes (info.local_col = threadIdx.x * DiagsPerThread). vec_load emits
+  // ld.shared.v4.f32 / v2.f32 / v2.f64 etc instead of N scalar
+  // ld.shared.{f32,f64} that Eigen::Map::segment<> assignments compile to.
+  constexpr int kColAlignBytes = DiagsPerThread * sizeof(SmemDataType);
+  vec_load<inner_unrolled_cols, kColAlignBytes, SmemDataType>(
+      smem.df_col.data() + info.local_col, dfc.data());
+  vec_load<inner_unrolled_cols, kColAlignBytes, SmemDataType>(
+      smem.dg_col.data() + info.local_col, dgc.data());
+  vec_load<inner_unrolled_cols, kColAlignBytes, SmemDataType>(
+      smem.inorm_col.data() + info.local_col, inormc.data());
 
   // Outer loop: process OuterUnrolledRows rows in batches of UnrolledRows.
   // #pragma-unrolled regular for so do_row / update_cols / update_rows get
@@ -394,6 +414,9 @@ __device__ void do_iteration_fast(
       // Slide the column window left by UnrolledRows and load the next
       // UnrolledRows columns into the right edge. The if (j > 0) is
       // runtime but constant-folded away in iter 0 once nvcc unrolls.
+      // Refill smem offset = local_col + j*UR + (inner - UR) = ... + DPT,
+      // which is UR-aligned (DPT % UR == 0 enforced above), so vec_load
+      // emits ld.shared.v{UR}.{f32,f64} instead of scalar loads.
       dfc.template segment<inner_unrolled_cols - UnrolledRows>(0) =
           dfc.template segment<inner_unrolled_cols - UnrolledRows>(
               UnrolledRows);
@@ -403,29 +426,34 @@ __device__ void do_iteration_fast(
       inormc.template segment<inner_unrolled_cols - UnrolledRows>(0) =
           inormc.template segment<inner_unrolled_cols - UnrolledRows>(
               UnrolledRows);
-      dfc.template segment<UnrolledRows>(inner_unrolled_cols - UnrolledRows) =
-          smem.df_col.template segment<UnrolledRows>(
-              info.local_col + j * UnrolledRows +
-              (inner_unrolled_cols - UnrolledRows));
-      dgc.template segment<UnrolledRows>(inner_unrolled_cols - UnrolledRows) =
-          smem.dg_col.template segment<UnrolledRows>(
-              info.local_col + j * UnrolledRows +
-              (inner_unrolled_cols - UnrolledRows));
-      inormc.template segment<UnrolledRows>(inner_unrolled_cols -
-                                            UnrolledRows) =
-          smem.inorm_col.template segment<UnrolledRows>(
-              info.local_col + j * UnrolledRows +
-              (inner_unrolled_cols - UnrolledRows));
+      constexpr int kSlideAlignBytes = UnrolledRows * sizeof(SmemDataType);
+      vec_load<UnrolledRows, kSlideAlignBytes, SmemDataType>(
+          smem.df_col.data() + info.local_col + j * UnrolledRows +
+              (inner_unrolled_cols - UnrolledRows),
+          dfc.data() + (inner_unrolled_cols - UnrolledRows));
+      vec_load<UnrolledRows, kSlideAlignBytes, SmemDataType>(
+          smem.dg_col.data() + info.local_col + j * UnrolledRows +
+              (inner_unrolled_cols - UnrolledRows),
+          dgc.data() + (inner_unrolled_cols - UnrolledRows));
+      vec_load<UnrolledRows, kSlideAlignBytes, SmemDataType>(
+          smem.inorm_col.data() + info.local_col + j * UnrolledRows +
+              (inner_unrolled_cols - UnrolledRows),
+          inormc.data() + (inner_unrolled_cols - UnrolledRows));
     }
-    Eigen::Array<SmemDataType, UnrolledRows, 1> dfr =
-        smem.df_row.template segment<UnrolledRows>(info.local_row +
-                                                   j * UnrolledRows);
-    Eigen::Array<SmemDataType, UnrolledRows, 1> dgr =
-        smem.dg_row.template segment<UnrolledRows>(info.local_row +
-                                                   j * UnrolledRows);
-    Eigen::Array<SmemDataType, UnrolledRows, 1> inormr =
-        smem.inorm_row.template segment<UnrolledRows>(info.local_row +
-                                                      j * UnrolledRows);
+    // smem.df_row.data() + info.local_row + j*UnrolledRows is aligned to
+    // UnrolledRows * sizeof(SmemDataType) bytes: info.local_row is a
+    // multiple of OuterUnrolledRows (incremented by OUR at end of
+    // do_iteration_fast); OUR is a multiple of UR; j*UR is a multiple of
+    // UR. So total is a multiple of UR.
+    constexpr int kRowAlignBytes = UnrolledRows * sizeof(SmemDataType);
+    Eigen::Array<SmemDataType, UnrolledRows, 1> dfr, dgr, inormr;
+    vec_load<UnrolledRows, kRowAlignBytes, SmemDataType>(
+        smem.df_row.data() + info.local_row + j * UnrolledRows, dfr.data());
+    vec_load<UnrolledRows, kRowAlignBytes, SmemDataType>(
+        smem.dg_row.data() + info.local_row + j * UnrolledRows, dgr.data());
+    vec_load<UnrolledRows, kRowAlignBytes, SmemDataType>(
+        smem.inorm_row.data() + info.local_row + j * UnrolledRows,
+        inormr.data());
 #pragma unroll
     for (int k = 0; k < UnrolledRows; ++k) {
       do_row<PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, DISTANCE_TYPE,

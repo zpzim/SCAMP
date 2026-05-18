@@ -161,6 +161,67 @@ __device__ inline void for_(F func) {
   for_(func, std::make_index_sequence<N>());
 }
 
+// vec_load<N, AlignBytes, T>: load N elements of type T from a shared-memory
+// pointer with compile-time-known alignment, writing them into dst. Picks the
+// widest aligned PTX vector load supported by the (T, AlignBytes) tuple and
+// recursively peels off the remaining tail.
+//
+// Why this exists: Eigen::Map<Array<T,N,1>>::segment<>(off) assignments
+// compile to N scalar `ld.shared.{f32,f64}` instructions under nvcc — its
+// packet path is mostly inactive in device code. The pre-Eigen master used
+// raw `reinterpret_cast<float4 *>(smem.df_col)[c]` to issue
+// `ld.shared.v4.f32` (one transaction, 4 elements). We reclaim that
+// optimization here without giving up the Eigen Array body of the kernel.
+//
+// AlignBytes is a *worst-case* alignment guarantee from the caller, NOT a
+// runtime check. Passing too generous a value is UB. For example, in the
+// SCAMP kernel:
+//   - smem.df_col.data() + info.local_col is aligned to
+//     DiagsPerThread * sizeof(T) bytes (local_col = threadIdx.x *
+//     DiagsPerThread).
+//   - smem.df_row.data() + info.local_row + j*UR is aligned to
+//     UnrolledRows * sizeof(T) bytes (local_row is a multiple of
+//     OuterUnrolledRows, j*UR is a multiple of UR, OUR is a multiple of UR).
+//   - The sliding-window refill in do_iteration_fast lands at offset
+//     local_col + j*UR + (DiagsPerThread - 1), which is NOT cleanly aligned
+//     for any vector type — that load stays scalar.
+//
+// nvcc shared-memory PTX vector load support (sm_8x):
+//   - 32-bit elements: ld.shared.v4.f32 (16B), ld.shared.v2.f32 (8B)
+//   - 64-bit elements: ld.shared.v2.f64 (16B); no v4 for 64-bit on smem
+template <int N, int AlignBytes, typename T>
+__device__ inline void vec_load(const T *p, T *d) {
+  static_assert(N >= 0, "vec_load N must be non-negative.");
+  if constexpr (N == 0) {
+    return;
+  } else if constexpr (sizeof(T) == 4 && N >= 4 && AlignBytes >= 16) {
+    float4 v = *reinterpret_cast<const float4 *>(p);
+    d[0] = v.x;
+    d[1] = v.y;
+    d[2] = v.z;
+    d[3] = v.w;
+    // After loading 4 floats from a 16B-aligned addr, the next addr is also
+    // 16B-aligned; alignment guarantee carries through the recursion.
+    vec_load<N - 4, 16, T>(p + 4, d + 4);
+  } else if constexpr (sizeof(T) == 4 && N >= 2 && AlignBytes >= 8) {
+    float2 v = *reinterpret_cast<const float2 *>(p);
+    d[0] = v.x;
+    d[1] = v.y;
+    vec_load<N - 2, 8, T>(p + 2, d + 2);
+  } else if constexpr (sizeof(T) == 8 && N >= 2 && AlignBytes >= 16) {
+    double2 v = *reinterpret_cast<const double2 *>(p);
+    d[0] = v.x;
+    d[1] = v.y;
+    vec_load<N - 2, 16, T>(p + 2, d + 2);
+  } else {
+    // Fall through: scalar load, then recurse with a conservatively reduced
+    // alignment (we just consumed sizeof(T) bytes from a possibly larger
+    // aligned region; only the natural alignment of the scalar survives).
+    d[0] = p[0];
+    vec_load<N - 1, sizeof(T), T>(p + 1, d + 1);
+  }
+}
+
 // Gets the profile element size as used by the GPU kernels
 // This can be different than what is used in the CPU case
 size_t GetProfileTypeSizeInternalGPU(SCAMPProfileType type);
