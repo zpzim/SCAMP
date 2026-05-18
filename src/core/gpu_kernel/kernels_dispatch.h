@@ -39,13 +39,10 @@ SCAMPError_t LaunchKernel_SUM_THRESH(SCAMPKernelInputArgs<double> args,
                                      KernelConfig cfg, uint64_t num_blocks,
                                      uint64_t smem, cudaStream_t s);
 
-SCAMPError_t LaunchKernel_MATRIX_SUMMARY(SCAMPKernelInputArgs<double> args,
-                                         float *profile_A, float *profile_B,
-                                         SCAMPPrecisionType fp_type,
-                                         bool computing_rows,
-                                         bool computing_cols, KernelConfig cfg,
-                                         uint64_t num_blocks, uint64_t smem,
-                                         cudaStream_t s);
+SCAMPError_t LaunchKernel_MATRIX_SUMMARY(
+    SCAMPKernelInputArgs<double> args, float *profile_A, float *profile_B,
+    SCAMPPrecisionType fp_type, bool computing_rows, bool computing_cols,
+    KernelConfig cfg, uint64_t num_blocks, uint64_t smem, cudaStream_t s);
 
 SCAMPError_t LaunchKernel_APPROX_ALL_NEIGHBORS(
     SCAMPKernelInputArgs<double> args, SCAMPmatch *profile_A,

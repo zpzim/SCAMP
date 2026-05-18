@@ -81,7 +81,8 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
   state.warpln = threadIdx.x & 31u;
   state.warpid = threadIdx.x >> 5;
   state.srcln = (state.warpln - 1u) & 31u;
-  state.updates_remaining = state.warpln * DiagsPerThread + (DiagsPerThread - 1);
+  state.updates_remaining =
+      state.warpln * DiagsPerThread + (DiagsPerThread - 1);
   state.global_col = tile_start_col + threadIdx.x * DiagsPerThread;
   state.local_col = threadIdx.x * DiagsPerThread;
 
@@ -112,8 +113,7 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
   // dfc2 / dgc2 / inormc2 are populated lazily at the start of each rotation
   // cycle inside update_info_shfl (updates_remaining == DPT - 1).
   DISTANCE_TYPE init = init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
-  state.distc =
-      Eigen::Array<DISTANCE_TYPE, DiagsPerThread, 1>::Constant(init);
+  state.distc = Eigen::Array<DISTANCE_TYPE, DiagsPerThread, 1>::Constant(init);
   state.idxc = Eigen::Array<unsigned int, DiagsPerThread, 1>::Zero();
 
   // Tile loop. Same shape as the sliding-window do_tile but with the
@@ -193,35 +193,33 @@ SCAMPError_t LaunchDoTileShflWithGeometry(
   dim3 block(blocksz, 1, 1);
   dim3 grid(num_blocks, 1, 1);
 
-#define LAUNCH_PRECISION_SHFL(DATA_T, ACCUM_T, BLOCKSZ_V, COMP_ROWS,           \
-                              COMP_COLS)                                       \
-  do {                                                                         \
-    auto kfn =                                                                 \
-        do_tile_shfl<DATA_T, ACCUM_T, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE,   \
-                     DISTANCE_TYPE, COMP_ROWS, COMP_COLS, PROFILE_TYPE,        \
-                     blocks_per_sm_v, DiagsPerThread, OuterUnrolledRows,       \
-                     KernelTileIters, BLOCKSZ_V>;                              \
-    if (smem > 48u * 1024u) {                                                  \
-      cudaFuncSetAttribute(reinterpret_cast<const void *>(kfn),                \
-                           cudaFuncAttributeMaxDynamicSharedMemorySize,        \
-                           static_cast<int>(smem));                            \
-    }                                                                          \
-    kfn<<<grid, block, smem, s>>>(args, profile_A, profile_B);                 \
+#define LAUNCH_PRECISION_SHFL(DATA_T, ACCUM_T, BLOCKSZ_V, COMP_ROWS,          \
+                              COMP_COLS)                                      \
+  do {                                                                        \
+    auto kfn =                                                                \
+        do_tile_shfl<DATA_T, ACCUM_T, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE, \
+                     DISTANCE_TYPE, COMP_ROWS, COMP_COLS, PROFILE_TYPE,       \
+                     blocks_per_sm_v, DiagsPerThread, OuterUnrolledRows,      \
+                     KernelTileIters, BLOCKSZ_V>;                             \
+    if (smem > 48u * 1024u) {                                                 \
+      cudaFuncSetAttribute(reinterpret_cast<const void *>(kfn),               \
+                           cudaFuncAttributeMaxDynamicSharedMemorySize,       \
+                           static_cast<int>(smem));                           \
+    }                                                                         \
+    kfn<<<grid, block, smem, s>>>(args, profile_A, profile_B);                \
   } while (0)
 
-#define LAUNCH_FOR_ROWCOL_MODE_SHFL(COMP_ROWS, COMP_COLS)                 \
-  switch (fp_type) {                                                      \
-    case PRECISION_ULTRA:                                                 \
-    case PRECISION_DOUBLE:                                                \
-      LAUNCH_PRECISION_SHFL(double, double, BLOCKSZ_DP, COMP_ROWS,        \
-                            COMP_COLS);                                   \
-      break;                                                              \
-    case PRECISION_SINGLE:                                                \
-      LAUNCH_PRECISION_SHFL(float, float, BLOCKSZ_SP, COMP_ROWS,          \
-                            COMP_COLS);                                   \
-      break;                                                              \
-    default:                                                              \
-      return SCAMP_CUDA_ERROR;                                            \
+#define LAUNCH_FOR_ROWCOL_MODE_SHFL(COMP_ROWS, COMP_COLS)                      \
+  switch (fp_type) {                                                           \
+    case PRECISION_ULTRA:                                                      \
+    case PRECISION_DOUBLE:                                                     \
+      LAUNCH_PRECISION_SHFL(double, double, BLOCKSZ_DP, COMP_ROWS, COMP_COLS); \
+      break;                                                                   \
+    case PRECISION_SINGLE:                                                     \
+      LAUNCH_PRECISION_SHFL(float, float, BLOCKSZ_SP, COMP_ROWS, COMP_COLS);   \
+      break;                                                                   \
+    default:                                                                   \
+      return SCAMP_CUDA_ERROR;                                                 \
   }
 
   if (computing_rows && computing_cols) {

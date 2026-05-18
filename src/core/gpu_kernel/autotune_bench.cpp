@@ -70,12 +70,10 @@ void PopulateBenchmarkArgs(SCAMPArgs *args, SCAMPProfileType profile,
   args->is_aligned = false;
   args->silent_mode = true;
   args->max_matches_per_column = kBenchmarkMaxMatchesPerColumn;
-  args->matrix_height = (profile == PROFILE_TYPE_MATRIX_SUMMARY)
-                            ? kBenchmarkMatrixDim
-                            : 0;
-  args->matrix_width = (profile == PROFILE_TYPE_MATRIX_SUMMARY)
-                           ? kBenchmarkMatrixDim
-                           : 0;
+  args->matrix_height =
+      (profile == PROFILE_TYPE_MATRIX_SUMMARY) ? kBenchmarkMatrixDim : 0;
+  args->matrix_width =
+      (profile == PROFILE_TYPE_MATRIX_SUMMARY) ? kBenchmarkMatrixDim : 0;
 }
 
 }  // namespace

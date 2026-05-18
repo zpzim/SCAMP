@@ -1,9 +1,10 @@
 // Templated implementation of the SCAMP GPU "do_tile" kernel and the
 // LaunchDoTile<...> dispatcher helper. This header is included ONLY by the
 // per-profile-type translation units (kernel_1nn_index.cu, kernel_1nn.cu,
-// kernel_sum_thresh.cu, kernel_matrix_summary.cu, kernel_approx_all_neighbors.cu)
-// so each .cu file instantiates the template for exactly one profile type
-// rather than all five being compiled serially in a single TU.
+// kernel_sum_thresh.cu, kernel_matrix_summary.cu,
+// kernel_approx_all_neighbors.cu) so each .cu file instantiates the template
+// for exactly one profile type rather than all five being compiled serially in
+// a single TU.
 #pragma once
 
 #include <cuda.h>
@@ -76,8 +77,8 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
   const unsigned int num_diags = args.n_x - args.exclusion_upper + 1;
 
   // Load the first dot product values
-  for (int i = 0;
-       i < DiagsPerThread && thread_info.global_col + i < args.n_x; ++i) {
+  for (int i = 0; i < DiagsPerThread && thread_info.global_col + i < args.n_x;
+       ++i) {
     thread_info.cov[i] = args.cov[thread_info.global_col + i];
   }
 
@@ -168,11 +169,13 @@ template <typename PROFILE_OUTPUT_TYPE, typename PROFILE_DATA_TYPE,
           typename DISTANCE_TYPE, SCAMPProfileType PROFILE_TYPE,
           int blocks_per_sm_v, int DiagsPerThread, int UnrolledRows,
           int OuterUnrolledRows, int KernelTileIters>
-SCAMPError_t LaunchDoTileWithGeometry(
-    SCAMPKernelInputArgs<double> args, PROFILE_OUTPUT_TYPE *profile_A,
-    PROFILE_OUTPUT_TYPE *profile_B, SCAMPPrecisionType fp_type,
-    bool computing_rows, bool computing_cols, uint64_t blocksz,
-    uint64_t num_blocks, uint64_t smem, cudaStream_t s) {
+SCAMPError_t LaunchDoTileWithGeometry(SCAMPKernelInputArgs<double> args,
+                                      PROFILE_OUTPUT_TYPE *profile_A,
+                                      PROFILE_OUTPUT_TYPE *profile_B,
+                                      SCAMPPrecisionType fp_type,
+                                      bool computing_rows, bool computing_cols,
+                                      uint64_t blocksz, uint64_t num_blocks,
+                                      uint64_t smem, cudaStream_t s) {
   dim3 block(blocksz, 1, 1);
   dim3 grid(num_blocks, 1, 1);
   // Expand the 3 row/col modes x 2 precisions = 6 do_tile<...> instantiations.
@@ -185,34 +188,31 @@ SCAMPError_t LaunchDoTileWithGeometry(
   // The opt-in is sticky per kernel function pointer, so repeated launches
   // pay only the first call.
 #define LAUNCH_PRECISION(DATA_T, ACCUM_T, BLOCKSZ_V, COMP_ROWS, COMP_COLS) \
-  do {                                                                    \
-    auto kfn = do_tile<DATA_T, ACCUM_T, PROFILE_OUTPUT_TYPE,               \
-                       PROFILE_DATA_TYPE, DISTANCE_TYPE, COMP_ROWS,        \
-                       COMP_COLS, PROFILE_TYPE, blocks_per_sm_v,           \
-                       DiagsPerThread, UnrolledRows, OuterUnrolledRows,    \
-                       KernelTileIters, BLOCKSZ_V>;                        \
+  do {                                                                     \
+    auto kfn =                                                             \
+        do_tile<DATA_T, ACCUM_T, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE,   \
+                DISTANCE_TYPE, COMP_ROWS, COMP_COLS, PROFILE_TYPE,         \
+                blocks_per_sm_v, DiagsPerThread, UnrolledRows,             \
+                OuterUnrolledRows, KernelTileIters, BLOCKSZ_V>;            \
     if (smem > 48u * 1024u) {                                              \
-      cudaFuncSetAttribute(                                                \
-          reinterpret_cast<const void *>(kfn),                             \
-          cudaFuncAttributeMaxDynamicSharedMemorySize,                     \
-          static_cast<int>(smem));                                         \
+      cudaFuncSetAttribute(reinterpret_cast<const void *>(kfn),            \
+                           cudaFuncAttributeMaxDynamicSharedMemorySize,    \
+                           static_cast<int>(smem));                        \
     }                                                                      \
     kfn<<<grid, block, smem, s>>>(args, profile_A, profile_B);             \
   } while (0)
 
-#define LAUNCH_FOR_ROWCOL_MODE(COMP_ROWS, COMP_COLS)             \
-  switch (fp_type) {                                             \
-    case PRECISION_ULTRA:                                        \
-    case PRECISION_DOUBLE:                                       \
-      LAUNCH_PRECISION(double, double, BLOCKSZ_DP, COMP_ROWS,    \
-                       COMP_COLS);                               \
-      break;                                                     \
-    case PRECISION_SINGLE:                                       \
-      LAUNCH_PRECISION(float, float, BLOCKSZ_SP, COMP_ROWS,      \
-                       COMP_COLS);                               \
-      break;                                                     \
-    default:                                                     \
-      return SCAMP_CUDA_ERROR;                                   \
+#define LAUNCH_FOR_ROWCOL_MODE(COMP_ROWS, COMP_COLS)                      \
+  switch (fp_type) {                                                      \
+    case PRECISION_ULTRA:                                                 \
+    case PRECISION_DOUBLE:                                                \
+      LAUNCH_PRECISION(double, double, BLOCKSZ_DP, COMP_ROWS, COMP_COLS); \
+      break;                                                              \
+    case PRECISION_SINGLE:                                                \
+      LAUNCH_PRECISION(float, float, BLOCKSZ_SP, COMP_ROWS, COMP_COLS);   \
+      break;                                                              \
+    default:                                                              \
+      return SCAMP_CUDA_ERROR;                                            \
   }
 
   if (computing_rows && computing_cols) {

@@ -58,10 +58,9 @@ AutotuneResult RunAutotune(int device_id, const std::string &cache_path = "",
 // kernel actually uses the variant under test. Returns wall-clock
 // seconds; SCAMPException-on-failure is OK and treated as "infinite"
 // time (i.e., this variant loses).
-using BenchmarkFn = std::function<double(int device_id,
-                                         SCAMPProfileType profile_type,
-                                         SCAMPPrecisionType precision,
-                                         const KernelConfig &cfg)>;
+using BenchmarkFn = std::function<double(
+    int device_id, SCAMPProfileType profile_type, SCAMPPrecisionType precision,
+    const KernelConfig &cfg)>;
 
 // Full autotune: for each (profile, precision) tuple, time every variant
 // in kKernelVariants via `bench` and persist the winner to the cache.

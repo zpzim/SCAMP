@@ -163,7 +163,7 @@ AutotuneCache::AutotuneCache() : path_(DefaultPath()) {}
 AutotuneCache::AutotuneCache(std::string path) : path_(std::move(path)) {}
 
 bool AutotuneCache::FileExists() const {
-  struct stat st{};
+  struct stat st {};
   return ::stat(path_.c_str(), &st) == 0 && S_ISREG(st.st_mode);
 }
 
