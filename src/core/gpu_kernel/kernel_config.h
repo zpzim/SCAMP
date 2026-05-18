@@ -10,8 +10,7 @@ namespace SCAMP {
 // the autotuner can vary; blocksz is precision-tied today.
 //
 // blocksz             threads per block (BLOCKSZ_SP for single/mixed,
-//                     BLOCKSZ_DP for double/ultra). Exposed for cache
-//                     completeness; future variants could vary it.
+//                     BLOCKSZ_DP for double/ultra).
 // blocks_per_sm       __launch_bounds__ second arg (occupancy hint).
 // diags_per_thread    distance-matrix diagonals processed per thread per
 //                     fast-path iteration. Wider = fewer threads, more

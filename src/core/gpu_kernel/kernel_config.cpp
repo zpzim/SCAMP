@@ -19,10 +19,15 @@ namespace {
 //   inner_unrolled_cols = DPT + UR - 1   (column window held in regs)
 //   unrolled_cols       = DPT + OUR - 1  (distc/idxc array width)
 //
+// Sentinel: unrolled_rows == 0 marks the design-A "shfl" variant. The
+// per-profile dispatcher routes ur==0 entries to LaunchDoTileShflWith-
+// Geometry instead of LaunchDoTileWithGeometry. ur is otherwise the inner
+// row-batch size of the sliding-window kernel.
+//
 // Keep this short-ish -- every entry multiplies the do_tile template
 // instantiation count (5 profiles x 3 precisions x 3 row/col modes x
-// |kVariants|). Current: 6 variants x 45 = 270 instantiations.
-constexpr std::array<KernelVariantGeometry, 6> kVariants{{
+// |kVariants|). Current: 7 variants.
+constexpr std::array<KernelVariantGeometry, 7> kVariants{{
     // bps, DPT, ur, our, kti       (derived tile_height, inner_cols,
     //                               unrolled_cols)
     {DEFAULT_BLOCKSPERSM, DEFAULT_DIAGS_PER_THREAD, DEFAULT_UNROLLED_ROWS,
@@ -40,6 +45,10 @@ constexpr std::array<KernelVariantGeometry, 6> kVariants{{
     //                   pressure at the same tile height
     {1, 4, 4, 16, 16},
     // v5: 1,4,4,16,16 -> tile=256, low occupancy + big per-thread work
+    {2, 2, 0, 8, 8},
+    // v6: 2,2,0,8,8   -> design-A "shfl" (ur==0 sentinel), tile=64=32*DPT.
+    //                   One column-block rotation per tile (the simple
+    //                   case). No smem column buffer.
 }};
 
 int BlocksizeForPrecision(SCAMPPrecisionType precision) {

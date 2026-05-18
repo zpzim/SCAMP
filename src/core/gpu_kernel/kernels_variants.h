@@ -56,6 +56,11 @@ namespace SCAMP {
       SCAMPKernelInputArgs<double> args, OUTPUT_TYPE *profile_A,               \
       OUTPUT_TYPE *profile_B, SCAMPPrecisionType fp_type,                      \
       bool computing_rows, bool computing_cols, uint64_t blocksz,              \
+      uint64_t num_blocks, uint64_t smem, cudaStream_t s);                     \
+  SCAMPError_t LaunchVariant_##PROFILE##_v6(                                   \
+      SCAMPKernelInputArgs<double> args, OUTPUT_TYPE *profile_A,               \
+      OUTPUT_TYPE *profile_B, SCAMPPrecisionType fp_type,                      \
+      bool computing_rows, bool computing_cols, uint64_t blocksz,              \
       uint64_t num_blocks, uint64_t smem, cudaStream_t s);
 
 SCAMP_DECL_VARIANTS_FOR_PROFILE(1NN, float)
@@ -78,50 +83,14 @@ SCAMP_DECL_VARIANTS_FOR_PROFILE(APPROX_ALL_NEIGHBORS, SCAMPmatch)
 // drifted apart.
 #define SCAMP_VARIANT_DISPATCH(PROFILE)                                       \
   do {                                                                        \
+    /* TEMPORARY: v0..v5 dispatch commented out during shfl draft. Re-enable \
+     * along with re-enabling SCAMP_VARIANT_TUPLES in CMakeLists.txt before \
+     * merging. */                                                            \
+    /* v6: design-A "shfl" variant, ur==0 sentinel. */                        \
     if (cfg.blocks_per_sm == 2 && cfg.diags_per_thread == 2 &&                \
-        cfg.unrolled_rows == 2 && cfg.outer_unrolled_rows == 16 &&            \
-        cfg.kernel_tile_iters == 16) {                                        \
-      return LaunchVariant_##PROFILE##_v0(args, profile_A, profile_B,         \
-                                           fp_type, computing_rows,           \
-                                           computing_cols, cfg.blocksz,       \
-                                           num_blocks, smem, s);              \
-    }                                                                         \
-    if (cfg.blocks_per_sm == 2 && cfg.diags_per_thread == 4 &&                \
-        cfg.unrolled_rows == 2 && cfg.outer_unrolled_rows == 4 &&             \
-        cfg.kernel_tile_iters == 50) {                                        \
-      return LaunchVariant_##PROFILE##_v1(args, profile_A, profile_B,         \
-                                           fp_type, computing_rows,           \
-                                           computing_cols, cfg.blocksz,       \
-                                           num_blocks, smem, s);              \
-    }                                                                         \
-    if (cfg.blocks_per_sm == 2 && cfg.diags_per_thread == 4 &&                \
-        cfg.unrolled_rows == 4 && cfg.outer_unrolled_rows == 4 &&             \
-        cfg.kernel_tile_iters == 50) {                                        \
-      return LaunchVariant_##PROFILE##_v2(args, profile_A, profile_B,         \
-                                           fp_type, computing_rows,           \
-                                           computing_cols, cfg.blocksz,       \
-                                           num_blocks, smem, s);              \
-    }                                                                         \
-    if (cfg.blocks_per_sm == 4 && cfg.diags_per_thread == 2 &&                \
-        cfg.unrolled_rows == 2 && cfg.outer_unrolled_rows == 8 &&             \
-        cfg.kernel_tile_iters == 16) {                                        \
-      return LaunchVariant_##PROFILE##_v3(args, profile_A, profile_B,         \
-                                           fp_type, computing_rows,           \
-                                           computing_cols, cfg.blocksz,       \
-                                           num_blocks, smem, s);              \
-    }                                                                         \
-    if (cfg.blocks_per_sm == 2 && cfg.diags_per_thread == 2 &&                \
-        cfg.unrolled_rows == 2 && cfg.outer_unrolled_rows == 8 &&             \
-        cfg.kernel_tile_iters == 32) {                                        \
-      return LaunchVariant_##PROFILE##_v4(args, profile_A, profile_B,         \
-                                           fp_type, computing_rows,           \
-                                           computing_cols, cfg.blocksz,       \
-                                           num_blocks, smem, s);              \
-    }                                                                         \
-    if (cfg.blocks_per_sm == 1 && cfg.diags_per_thread == 4 &&                \
-        cfg.unrolled_rows == 4 && cfg.outer_unrolled_rows == 16 &&            \
-        cfg.kernel_tile_iters == 16) {                                        \
-      return LaunchVariant_##PROFILE##_v5(args, profile_A, profile_B,         \
+        cfg.unrolled_rows == 0 && cfg.outer_unrolled_rows == 8 &&             \
+        cfg.kernel_tile_iters == 8) {                                         \
+      return LaunchVariant_##PROFILE##_v6(args, profile_A, profile_B,         \
                                            fp_type, computing_rows,           \
                                            computing_cols, cfg.blocksz,       \
                                            num_blocks, smem, s);              \

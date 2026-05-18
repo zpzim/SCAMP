@@ -68,12 +68,20 @@ set(SCAMP_KERNEL_PROFILES
 # generates a .cu that compiles but is never callable (and one whose
 # IsSupportedKernelConfig returns false).
 set(SCAMP_VARIANT_TUPLES
-    "0|2|2|2|16|16"
-    "1|2|4|2|4|50"
-    "2|2|4|4|4|50"
-    "3|4|2|2|8|16"
-    "4|2|2|2|8|32"
-    "5|1|4|4|16|16"
+    # TEMPORARY: v0..v5 commented out during shfl variant draft work; the
+    # SCAMP_VARIANT_DISPATCH macro will still reference their
+    # LaunchVariant_*_v{0..5} symbols but those are not instantiated, so
+    # cfg lookups for v0..v5 will fail to link. Re-enable before merging.
+    #"0|2|2|2|16|16"
+    #"1|2|4|2|4|50"
+    #"2|2|4|4|4|50"
+    #"3|4|2|2|8|16"
+    #"4|2|2|2|8|32"
+    #"5|1|4|4|16|16"
+    # ur==0 marks the design-A "shfl" variant. The foreach below routes
+    # ur==0 tuples through kernel_variant_shfl.cu.in instead of the
+    # sliding-window template.
+    "6|2|2|0|8|8"
 )
 
 set(SCAMP_GENERATED_VARIANT_SOURCES "")
@@ -92,8 +100,13 @@ foreach(profile_def ${SCAMP_KERNEL_PROFILES})
     list(GET variant_fields 4 VARIANT_OUR)
     list(GET variant_fields 5 VARIANT_KTI)
     set(_out "${CMAKE_CURRENT_BINARY_DIR}/kernel_${VARIANT_PROFILE}_v${VARIANT_INDEX}.cu")
+    if(VARIANT_UR EQUAL 0)
+      set(_template "${CMAKE_CURRENT_SOURCE_DIR}/kernel_variant_shfl.cu.in")
+    else()
+      set(_template "${CMAKE_CURRENT_SOURCE_DIR}/kernel_variant.cu.in")
+    endif()
     configure_file(
-      "${CMAKE_CURRENT_SOURCE_DIR}/kernel_variant.cu.in"
+      "${_template}"
       "${_out}"
       @ONLY)
     list(APPEND SCAMP_GENERATED_VARIANT_SOURCES "${_out}")

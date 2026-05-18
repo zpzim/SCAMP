@@ -68,4 +68,35 @@ int get_smem(const OpInfo *info, uint64_t blocksz, int tile_height,
   return smem;
 }
 
+int get_smem_shfl(const OpInfo *info, uint64_t blocksz, int tile_height,
+                  int diags_per_thread) {
+  constexpr int num_shared_variables = 3;  // df_row, dg_row, inorm_row
+  int intermediate_data_size = FPTypeSize(info->fp_type);
+  // Tile width = parallelogram width. The staggered column-block rotation
+  // makes the block touch columns up to (BLOCKSZ*DPT + tile_height - 1)
+  // within one tile; smem.local_mp_col is sized accordingly so
+  // state.local_col indexing stays in bounds after rotations.
+  int tile_width_profile = blocksz * diags_per_thread + tile_height;
+  int warps_per_block = static_cast<int>(blocksz) / 32;
+
+  // Row-data region: 3 (or more with extra operands) * tile_height *
+  // sizeof(T). No column-data region.
+  int smem = tile_height *
+             (num_shared_variables + info->opt_args.num_extra_operands) *
+             intermediate_data_size;
+  int profile_data_size = GetProfileTypeSizeInternalGPU(info->profile_type);
+  if (info->computing_cols) {
+    smem += tile_width_profile * profile_data_size;
+  }
+  if (info->computing_rows) {
+    smem += tile_height * profile_data_size;
+  }
+  // cov_handoff: 2 * warps_per_block * sizeof(T) (double-buffered).
+  smem += 2 * warps_per_block * intermediate_data_size;
+  if (NeedsCheckIfDone(info->profile_type)) {
+    smem += 2 * sizeof(uint64_t);
+  }
+  return smem;
+}
+
 }  // namespace SCAMP
