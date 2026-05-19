@@ -86,8 +86,8 @@ KernelConfig GetKernelConfigForVariant(std::size_t i,
 }
 
 KernelConfig GetDefaultKernelConfig(SCAMPPrecisionType precision) {
-  // Variant 0 is the canonical default by convention.
-  return GetKernelConfigForVariant(0, precision);
+  // Variant 6 is the draft shfl variant being tested.
+  return GetKernelConfigForVariant(6, precision);
 }
 
 bool IsSupportedKernelConfig(const KernelConfig &cfg,
@@ -96,14 +96,13 @@ bool IsSupportedKernelConfig(const KernelConfig &cfg,
   if (cfg.blocksz != expected_blocksz) {
     return false;
   }
-  for (const auto &v : kVariants) {
-    if (cfg.blocks_per_sm == v.blocks_per_sm &&
-        cfg.diags_per_thread == v.diags_per_thread &&
-        cfg.unrolled_rows == v.unrolled_rows &&
-        cfg.outer_unrolled_rows == v.outer_unrolled_rows &&
-        cfg.kernel_tile_iters == v.kernel_tile_iters) {
-      return true;
-    }
+  const auto &v = kVariants[6];
+  if (cfg.blocks_per_sm == v.blocks_per_sm &&
+      cfg.diags_per_thread == v.diags_per_thread &&
+      cfg.unrolled_rows == v.unrolled_rows &&
+      cfg.outer_unrolled_rows == v.outer_unrolled_rows &&
+      cfg.kernel_tile_iters == v.kernel_tile_iters) {
+    return true;
   }
   return false;
 }

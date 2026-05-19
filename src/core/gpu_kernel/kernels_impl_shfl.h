@@ -81,15 +81,20 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
   state.warpln = threadIdx.x & 31u;
   state.warpid = threadIdx.x >> 5;
   state.srcln = (state.warpln - 1u) & 31u;
-  state.updates_remaining = state.warpln * DiagsPerThread + (DiagsPerThread - 1);
-  state.global_col = tile_start_col + threadIdx.x * DiagsPerThread;
-  state.local_col = threadIdx.x * DiagsPerThread;
+  state.updates_remaining =
+      threadIdx.x * DiagsPerThread + (DiagsPerThread - 1);
+
+#pragma unroll
+  for (int i = 0; i < DiagsPerThread; ++i) {
+    state.global_col[i] = tile_start_col + threadIdx.x * DiagsPerThread + i;
+    state.local_col[i] = threadIdx.x * DiagsPerThread + i;
+  }
 
   // Initial cov: cov(0, global_col + i) = args.cov[global_col + i].
 #pragma unroll
   for (int i = 0; i < DiagsPerThread; ++i) {
-    if (state.global_col + i < static_cast<uint32_t>(args.n_x)) {
-      state.cov[i] = static_cast<DATA_TYPE>(args.cov[state.global_col + i]);
+    if (state.global_col[i] < static_cast<uint32_t>(args.n_x)) {
+      state.cov[i] = static_cast<DATA_TYPE>(args.cov[state.global_col[i]]);
     } else {
       state.cov[i] = DATA_TYPE(0);
     }
@@ -98,7 +103,7 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
   // Initial column data: lane T loads its own DPT-wide slice from global.
 #pragma unroll
   for (int i = 0; i < DiagsPerThread; ++i) {
-    uint32_t pos = state.global_col + i;
+    uint32_t pos = state.global_col[i];
     if (pos < static_cast<uint32_t>(args.n_x)) {
       state.dfc[i] = static_cast<DATA_TYPE>(args.dfa[pos]);
       state.dgc[i] = static_cast<DATA_TYPE>(args.dga[pos]);
@@ -112,8 +117,7 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
   // dfc2 / dgc2 / inormc2 are populated lazily at the start of each rotation
   // cycle inside update_info_shfl (updates_remaining == DPT - 1).
   DISTANCE_TYPE init = init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
-  state.distc =
-      Eigen::Array<DISTANCE_TYPE, DiagsPerThread, 1>::Constant(init);
+  state.distc = Eigen::Array<DISTANCE_TYPE, DiagsPerThread, 1>::Constant(init);
   state.idxc = Eigen::Array<unsigned int, DiagsPerThread, 1>::Zero();
 
   // Tile loop. Same shape as the sliding-window do_tile but with the
@@ -130,9 +134,36 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
     // the lane is back at its leftmost slot. state.global_col is already
     // correct (rotation advanced it by 32*DPT each cycle, which matches
     // tile_start_col advancing by tile_height = 32*DPT between tiles).
-    state.local_col = threadIdx.x * DiagsPerThread;
+#pragma unroll
+    for (int i = 0; i < DiagsPerThread; ++i) {
+      state.local_col[i] = state.global_col[i] - tile_start_col;
+    }
 
     __syncthreads();
+
+#pragma unroll
+    for (int i = 0; i < DiagsPerThread; ++i) {
+      int col_idx = state.local_col[i];
+      if (col_idx >= 0 && col_idx < tile_width) {
+        if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN) {
+          state.distc[i] = smem.local_mp_col[col_idx];
+        } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX ||
+                             PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS ||
+                             PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
+          mp_entry e;
+          e.ulong = smem.local_mp_col[col_idx];
+          state.distc[i] = e.floats[0];
+          state.idxc[i] = e.ints[1];
+        } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
+          state.distc[i] = 0;
+          state.idxc[i] = 0;
+        }
+      } else {
+        state.distc[i] = init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
+        state.idxc[i] = 0;
+      }
+    }
+
 
     // FAST PATH: all of this tile's cells fit in the matrix profile range.
     // For the FIRST DRAFT we only implement the fast path; tiles needing
@@ -140,9 +171,10 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
     // (which currently does nothing). This will report wrong matches at
     // matrix edges but is sufficient for validating the kernel's
     // correctness on the bulk of the workload.
+    // FAST PATH: all of this tile's cells fit in the matrix profile range.
     if (tile_start_col + tile_width < args.n_x &&
         tile_start_row + tile_height < args.n_y &&
-        start_diag + DiagsPerThread <= num_diags) {
+        tile_start_col + BLOCKSZ * DiagsPerThread <= num_diags) {
 #pragma unroll
       for (int r = 0; r < tile_height; ++r) {
         do_row_shfl<PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, DISTANCE_TYPE,
@@ -150,8 +182,17 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
                                              smem, smem.cov_handoff);
       }
     } else {
-      // TODO(stage 5): port do_row_edge to the shfl geometry. For the
-      // draft, just skip — drives some incorrect results at tile edges.
+      // Slow Path: do_row_shfl now handles matrix bounds and exclusion zones.
+      // Must be executed by ALL threads in the block to prevent deadlock at __syncthreads().
+      for (int r = 0; r < tile_height; ++r) {
+        do_row_shfl<PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, DISTANCE_TYPE,
+                    DiagsPerThread, BLOCKSZ>(r, tile_start_row, args, state,
+                                             smem, smem.cov_handoff);
+      }
+    }
+
+    if constexpr (COMPUTE_COLS) {
+      flush_all_cols_to_smem<PROFILE_TYPE>(state, smem);
     }
 
     __syncthreads();
@@ -193,35 +234,33 @@ SCAMPError_t LaunchDoTileShflWithGeometry(
   dim3 block(blocksz, 1, 1);
   dim3 grid(num_blocks, 1, 1);
 
-#define LAUNCH_PRECISION_SHFL(DATA_T, ACCUM_T, BLOCKSZ_V, COMP_ROWS,           \
-                              COMP_COLS)                                       \
-  do {                                                                         \
-    auto kfn =                                                                 \
-        do_tile_shfl<DATA_T, ACCUM_T, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE,   \
-                     DISTANCE_TYPE, COMP_ROWS, COMP_COLS, PROFILE_TYPE,        \
-                     blocks_per_sm_v, DiagsPerThread, OuterUnrolledRows,       \
-                     KernelTileIters, BLOCKSZ_V>;                              \
-    if (smem > 48u * 1024u) {                                                  \
-      cudaFuncSetAttribute(reinterpret_cast<const void *>(kfn),                \
-                           cudaFuncAttributeMaxDynamicSharedMemorySize,        \
-                           static_cast<int>(smem));                            \
-    }                                                                          \
-    kfn<<<grid, block, smem, s>>>(args, profile_A, profile_B);                 \
+#define LAUNCH_PRECISION_SHFL(DATA_T, ACCUM_T, BLOCKSZ_V, COMP_ROWS,          \
+                              COMP_COLS)                                      \
+  do {                                                                        \
+    auto kfn =                                                                \
+        do_tile_shfl<DATA_T, ACCUM_T, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE, \
+                     DISTANCE_TYPE, COMP_ROWS, COMP_COLS, PROFILE_TYPE,       \
+                     blocks_per_sm_v, DiagsPerThread, OuterUnrolledRows,      \
+                     KernelTileIters, BLOCKSZ_V>;                             \
+    if (smem > 48u * 1024u) {                                                 \
+      cudaFuncSetAttribute(reinterpret_cast<const void *>(kfn),               \
+                           cudaFuncAttributeMaxDynamicSharedMemorySize,       \
+                           static_cast<int>(smem));                           \
+    }                                                                         \
+    kfn<<<grid, block, smem, s>>>(args, profile_A, profile_B);                \
   } while (0)
 
-#define LAUNCH_FOR_ROWCOL_MODE_SHFL(COMP_ROWS, COMP_COLS)                 \
-  switch (fp_type) {                                                      \
-    case PRECISION_ULTRA:                                                 \
-    case PRECISION_DOUBLE:                                                \
-      LAUNCH_PRECISION_SHFL(double, double, BLOCKSZ_DP, COMP_ROWS,        \
-                            COMP_COLS);                                   \
-      break;                                                              \
-    case PRECISION_SINGLE:                                                \
-      LAUNCH_PRECISION_SHFL(float, float, BLOCKSZ_SP, COMP_ROWS,          \
-                            COMP_COLS);                                   \
-      break;                                                              \
-    default:                                                              \
-      return SCAMP_CUDA_ERROR;                                            \
+#define LAUNCH_FOR_ROWCOL_MODE_SHFL(COMP_ROWS, COMP_COLS)                      \
+  switch (fp_type) {                                                           \
+    case PRECISION_ULTRA:                                                      \
+    case PRECISION_DOUBLE:                                                     \
+      LAUNCH_PRECISION_SHFL(double, double, BLOCKSZ_DP, COMP_ROWS, COMP_COLS); \
+      break;                                                                   \
+    case PRECISION_SINGLE:                                                     \
+      LAUNCH_PRECISION_SHFL(float, float, BLOCKSZ_SP, COMP_ROWS, COMP_COLS);   \
+      break;                                                                   \
+    default:                                                                   \
+      return SCAMP_CUDA_ERROR;                                                 \
   }
 
   if (computing_rows && computing_cols) {

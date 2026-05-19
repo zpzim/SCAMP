@@ -75,9 +75,13 @@ find_package(Threads REQUIRED)
 
 # Placeholder required before enable_language(CUDA); set_cuda_architectures() replaces this.
 # SM 75 (Turing) is valid for all supported CUDA versions (10.0+).
+if (DEFINED CMAKE_CUDA_ARCHITECTURES)
+  set(USER_SPECIFIED_CUDA_ARCHITECTURES ${CMAKE_CUDA_ARCHITECTURES})
+endif()
 if (NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
   set(CMAKE_CUDA_ARCHITECTURES 75)
 endif()
+
 
 if(FORCE_NO_CUDA)
   unset(CMAKE_CUDA_COMPILER)

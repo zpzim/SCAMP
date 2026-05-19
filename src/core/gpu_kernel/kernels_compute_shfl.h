@@ -81,8 +81,8 @@ struct SCAMPShflState {
   uint32_t warpln;
   uint32_t warpid;
   uint32_t srcln;
-  uint32_t global_col;
-  uint32_t local_col;
+  Eigen::Array<uint32_t, DPT, 1> global_col;
+  Eigen::Array<uint32_t, DPT, 1> local_col;
 };
 
 // One rotation step. Called when updates_remaining < DPT. Flushes one
@@ -105,11 +105,12 @@ __device__ inline void update_info_shfl(
   static_assert(updates_remaining >= 0 && updates_remaining < DPT,
                 "updates_remaining must index a column slot");
 
+  constexpr int BLOCKSZ = DerivedSmem::BLOCKSZ;
+
   if constexpr (updates_remaining == DPT - 1) {
-    const uint32_t new_global_col = state.global_col + 32 * DPT;
 #pragma unroll DPT
     for (int i = 0; i < DPT; ++i) {
-      uint32_t pos = new_global_col + i;
+      uint32_t pos = state.global_col[i] + BLOCKSZ * DPT;
       if (pos < static_cast<uint32_t>(args.n_x)) {
         state.dfc2[i] = static_cast<T>(args.dfa[pos]);
         state.dgc2[i] = static_cast<T>(args.dga[pos]);
@@ -130,18 +131,18 @@ __device__ inline void update_info_shfl(
   if constexpr (COMPUTE_COLS) {
     if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN) {
       fAtomicMax<ATOMIC_BLOCK>(
-          smem.local_mp_col.data() + state.local_col + col_to_update,
+          smem.local_mp_col.data() + state.local_col[col_to_update],
           state.distc[col_to_update]);
     } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX ||
                          PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY ||
                          PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
       MPatomicMax<ATOMIC_BLOCK>(
           reinterpret_cast<uint64_t *>(smem.local_mp_col.data()) +
-              state.local_col + col_to_update,
+              state.local_col[col_to_update],
           state.distc[col_to_update], state.idxc[col_to_update]);
     } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
       do_atomicAdd<double, ATOMIC_BLOCK>(
-          smem.local_mp_col.data() + state.local_col + col_to_update,
+          smem.local_mp_col.data() + state.local_col[col_to_update],
           static_cast<double>(state.distc[col_to_update]));
     }
   }
@@ -153,10 +154,11 @@ __device__ inline void update_info_shfl(
   state.distc[col_to_update] = init_dist<DistType, PROFILE_TYPE>();
   state.idxc[col_to_update] = 0;
 
+  state.global_col[col_to_update] += BLOCKSZ * DPT;
+  state.local_col[col_to_update] += BLOCKSZ * DPT;
+
   if constexpr (updates_remaining == 0) {
-    state.global_col += 32 * DPT;
-    state.local_col += 32 * DPT;
-    state.updates_remaining = 32 * DPT;
+    state.updates_remaining = BLOCKSZ * DPT;
   }
 }
 
@@ -228,13 +230,40 @@ __device__ inline void merge_to_column_shfl(
   }
 }
 
+template <SCAMPProfileType PROFILE_TYPE, typename T, typename DistType, int DPT,
+          typename DerivedSmem>
+__device__ inline void flush_all_cols_to_smem(
+    SCAMPShflState<T, DistType, DPT> &state, DerivedSmem &smem) {
+#pragma unroll DPT
+  for (int i = 0; i < DPT; ++i) {
+    if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN) {
+      fAtomicMax<ATOMIC_BLOCK>(
+          smem.local_mp_col.data() + state.local_col[i],
+          state.distc[i]);
+    } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX ||
+                         PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY ||
+                         PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
+      MPatomicMax<ATOMIC_BLOCK>(
+          reinterpret_cast<uint64_t *>(smem.local_mp_col.data()) +
+              state.local_col[i],
+          state.distc[i], state.idxc[i]);
+    } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
+      do_atomicAdd<double, ATOMIC_BLOCK>(
+          smem.local_mp_col.data() + state.local_col[i],
+          static_cast<double>(state.distc[i]));
+      state.distc[i] = 0.0;
+    }
+  }
+}
+
 // Per-lane per-row row profile update. Reduces the lane's DPT dist values
 // into a single (distr, idxr) for max-style profiles, or a sum for
 // SUM_THRESH. Caller handles the warp-reduce + atomic.
 template <SCAMPProfileType PROFILE_TYPE, typename DistType, int DPT,
           typename DerivedDist>
 __device__ inline void merge_to_row_shfl_lane(
-    const SCAMPKernelInputArgs<double> &args, uint32_t global_col,
+    const SCAMPKernelInputArgs<double> &args,
+    const Eigen::Array<uint32_t, DPT, 1> &global_col,
     const Eigen::ArrayBase<DerivedDist> &dist, DistType &distr,
     unsigned int &idxr) {
   if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN) {
@@ -249,7 +278,7 @@ __device__ inline void merge_to_row_shfl_lane(
     for (int i = 0; i < DPT; ++i) {
       if (dist[i] > distr) {
         distr = dist[i];
-        idxr = global_col + i;
+        idxr = global_col[i];
       }
     }
   } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
@@ -264,10 +293,13 @@ __device__ inline void merge_to_row_shfl_lane(
 // Warp-wide reduce of (distr, idxr) followed by one atomic to smem from
 // lane 0. For max-style profiles this is a max-with-argmax butterfly; for
 // SUM_THRESH it's a sum butterfly. One atomic per warp per row.
-template <SCAMPProfileType PROFILE_TYPE, typename DistType, typename DerivedSmem>
-__device__ inline void warp_reduce_and_flush_row(
-    int row_in_tile, DistType distr, unsigned int idxr, uint32_t warpln,
-    DerivedSmem &smem) {
+template <SCAMPProfileType PROFILE_TYPE, typename DistType,
+          typename DerivedSmem>
+__device__ inline void warp_reduce_and_flush_row(int row_in_tile,
+                                                 DistType distr,
+                                                 unsigned int idxr,
+                                                 uint32_t warpln,
+                                                 DerivedSmem &smem) {
   if constexpr (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
     DistType sum = distr;
 #pragma unroll
@@ -275,8 +307,8 @@ __device__ inline void warp_reduce_and_flush_row(
       sum += __shfl_down_sync(0xffffffffu, sum, delta);
     }
     if (warpln == 0) {
-      do_atomicAdd<double, ATOMIC_BLOCK>(
-          smem.local_mp_row.data() + row_in_tile, static_cast<double>(sum));
+      do_atomicAdd<double, ATOMIC_BLOCK>(smem.local_mp_row.data() + row_in_tile,
+                                         static_cast<double>(sum));
     }
   } else {
     // Max-style reduction: track (distr, idxr) as a pair, propagate the
@@ -324,20 +356,40 @@ __device__ inline void do_row_shfl(
   constexpr int DPT = DiagsPerThread;
   constexpr int warps_per_block = BLOCKSZ / 32;
 
+  const uint32_t global_row =
+      tile_start_row + static_cast<uint32_t>(row_in_tile);
+  const int read_slot = row_in_tile & 1;
+  const int prev_warpid = (state.warpid + warps_per_block - 1) % warps_per_block;
+  const DerivedDataType cross_warp_in =
+      (global_row > 0)
+          ? cov_handoff_smem[read_slot * warps_per_block + prev_warpid]
+          : DerivedDataType(0);
+
+  if (state.warpln == 0 && global_row > 0) {
+    state.cov[0] = cross_warp_in;
+  }
+
+
+
   const DerivedDataType dfr = smem.df_row[row_in_tile];
   const DerivedDataType dgr = smem.dg_row[row_in_tile];
   const DerivedDataType inormr = smem.inorm_row[row_in_tile];
-  const uint32_t global_row = tile_start_row + static_cast<uint32_t>(row_in_tile);
 
   // Compute DPT distances and update cov in place. Mask invalid slots by
   // setting dist to init_dist.
+  const unsigned int num_diags = args.n_x - args.exclusion_upper + 1;
   Eigen::Array<DISTANCE_TYPE, DPT, 1> dist;
 #pragma unroll DPT
   for (int i = 0; i < DPT; ++i) {
-    DISTANCE_TYPE d = static_cast<DISTANCE_TYPE>(state.cov[i] * state.inormc[i] *
-                                                 inormr);
+    DISTANCE_TYPE d =
+        static_cast<DISTANCE_TYPE>(state.cov[i] * state.inormc[i] * inormr);
     state.cov[i] = state.cov[i] + state.dfc[i] * dgr + state.dgc[i] * dfr;
-    bool slot_valid = (static_cast<int>(state.local_col) + i >= row_in_tile);
+    int diag = static_cast<int>(state.local_col[i]) - row_in_tile;
+    bool slot_valid = (diag >= 0 &&
+                       diag < static_cast<int>(BLOCKSZ * DPT) &&
+                       global_row < static_cast<uint32_t>(args.n_y) &&
+                       state.global_col[i] < static_cast<uint32_t>(args.n_x) &&
+                       (state.global_col[i] - global_row) < num_diags);
     dist[i] = slot_valid ? d : init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
   }
 
@@ -375,38 +427,21 @@ __device__ inline void do_row_shfl(
   // read-of-row-(r+1) (publish), AND read-of-row-r happens-before
   // write-of-row-(r+1) into the same slot (no overwrite).
   // -----------------------------------------------------------------
-  const int read_slot = row_in_tile & 1;
   const int write_slot = read_slot ^ 1;
 
-  // READ first (before WRITE), with both in different slots so the order
-  // within a warp doesn't matter for correctness.
-  DerivedDataType cross_warp_in = DerivedDataType(0);
-  if (state.warpid > 0 && state.warpln == 0 && row_in_tile > 0) {
-    cross_warp_in = cov_handoff_smem[read_slot * warps_per_block +
-                                     state.warpid - 1];
-  }
-
-  // WRITE second: lane 31 publishes the pre-shuffle cov[DPT-1] for warp
-  // k+1's lane 0 to read at row r+1.
   if (state.warpln == 31) {
     cov_handoff_smem[write_slot * warps_per_block + state.warpid] =
         state.cov[DPT - 1];
   }
 
-  // Intra-warp cov shuffle. shfl_sync from srcln gives lane 0 the value
-  // from lane 31 of its own warp; we override below for warp k > 0.
-  const DerivedDataType wrap_in = __shfl_sync(
-      0xffffffffu, state.cov[DPT - 1], static_cast<int>(state.srcln));
+  const DerivedDataType wrap_in = __shfl_sync(0xffffffffu, state.cov[DPT - 1],
+                                              static_cast<int>(state.srcln));
 
 #pragma unroll
   for (int i = DPT - 1; i > 0; --i) {
     state.cov[i] = state.cov[i - 1];
   }
-  if (state.warpln == 0 && state.warpid > 0 && row_in_tile > 0) {
-    state.cov[0] = cross_warp_in;
-  } else {
-    state.cov[0] = wrap_in;
-  }
+  state.cov[0] = wrap_in;
 
   // -----------------------------------------------------------------
   // Column-block rotation (staggered per lane).
@@ -415,6 +450,7 @@ __device__ inline void do_row_shfl(
     do_update_info_shfl<COMPUTE_COLS, PROFILE_TYPE>(args, state, smem);
   }
   --state.updates_remaining;
+
 
   // End-of-row sync. Orders this row's lane-31 WRITE before next row's
   // lane-0 READ of the same slot (publish), AND this row's lane-0 READ
@@ -451,14 +487,14 @@ __device__ inline void do_row_shfl(
 // vs. the sliding-window v4 footprint at tile_height=256 of ~33 KB. Big
 // occupancy headroom on smem-bound configurations.
 
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE,
-          SCAMPProfileType type, int tile_width, int tile_height,
-          int warps_per_block>
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, SCAMPProfileType type,
+          int tile_width, int tile_height, int warps_per_block>
 struct SCAMPShflSmem {
   __device__ SCAMPShflSmem(char *smem, bool compute_rows, bool compute_columns,
                            int extra_operands);
 
   using DataType = DATA_TYPE;
+  static constexpr int BLOCKSZ = warps_per_block * 32;
 
   Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>> df_row;
   Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>> dg_row;
@@ -473,13 +509,13 @@ struct SCAMPShflSmem {
   uint64_t *profile_b_length;
 };
 
-template <typename DATA_TYPE, typename PROFILE_DATA_TYPE,
-          SCAMPProfileType type, int tile_width, int tile_height,
-          int warps_per_block>
-__device__ SCAMPShflSmem<DATA_TYPE, PROFILE_DATA_TYPE, type, tile_width,
-                         tile_height, warps_per_block>::
-    SCAMPShflSmem(char *smem, bool compute_rows, bool compute_columns,
-                  int extra_operands)
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, SCAMPProfileType type,
+          int tile_width, int tile_height, int warps_per_block>
+__device__
+SCAMPShflSmem<DATA_TYPE, PROFILE_DATA_TYPE, type, tile_width, tile_height,
+              warps_per_block>::SCAMPShflSmem(char *smem, bool compute_rows,
+                                              bool compute_columns,
+                                              int extra_operands)
     : df_row(nullptr),
       dg_row(nullptr),
       inorm_row(nullptr),
@@ -621,8 +657,7 @@ template <typename SMEM_TYPE, typename PROFILE_DATA_TYPE,
           int tile_width, int tile_height, int BLOCKSZ,
           SCAMPProfileType PROFILE_TYPE>
 __device__ void init_smem_shfl(SCAMPKernelInputArgs<double> &args,
-                               SMEM_TYPE &smem,
-                               PROFILE_OUTPUT_TYPE *profile_a,
+                               SMEM_TYPE &smem, PROFILE_OUTPUT_TYPE *profile_a,
                                PROFILE_OUTPUT_TYPE *profile_b,
                                uint32_t col_start, uint32_t row_start) {
   if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX ||
