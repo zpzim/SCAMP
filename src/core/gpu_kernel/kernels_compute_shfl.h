@@ -96,8 +96,8 @@ struct SCAMPShflState {
 // sizeof(T)) / 128) cache-line fetches per warp per rotation per data
 // array.
 template <int updates_remaining, bool COMPUTE_COLS,
-          SCAMPProfileType PROFILE_TYPE, bool FAST_PATH, typename T, typename DistType, int DPT,
-          typename DerivedSmem>
+          SCAMPProfileType PROFILE_TYPE, bool FAST_PATH, typename T,
+          typename DistType, int DPT, typename DerivedSmem>
 __device__ inline void update_info_shfl(
     const SCAMPKernelInputArgs<double> &args,
     SCAMPShflState<T, DistType, DPT> &state, DerivedSmem &smem) {
@@ -159,31 +159,35 @@ __device__ inline void update_info_shfl(
 // Runtime dispatch to the compile-time-templated update_info_shfl body
 // corresponding to the current updates_remaining value. The if-constexpr
 // branches collapse for small DPT.
-template <bool COMPUTE_COLS, SCAMPProfileType PROFILE_TYPE, bool FAST_PATH, typename T,
-          typename DistType, int DPT, typename DerivedSmem>
+template <bool COMPUTE_COLS, SCAMPProfileType PROFILE_TYPE, bool FAST_PATH,
+          typename T, typename DistType, int DPT, typename DerivedSmem>
 __device__ inline void do_update_info_shfl(
     const SCAMPKernelInputArgs<double> &args,
     SCAMPShflState<T, DistType, DPT> &state, DerivedSmem &smem) {
   if constexpr (DPT >= 4) {
     if (state.updates_remaining == 3) {
-      update_info_shfl<3, COMPUTE_COLS, PROFILE_TYPE, FAST_PATH>(args, state, smem);
+      update_info_shfl<3, COMPUTE_COLS, PROFILE_TYPE, FAST_PATH>(args, state,
+                                                                 smem);
       return;
     }
   }
   if constexpr (DPT >= 3) {
     if (state.updates_remaining == 2) {
-      update_info_shfl<2, COMPUTE_COLS, PROFILE_TYPE, FAST_PATH>(args, state, smem);
+      update_info_shfl<2, COMPUTE_COLS, PROFILE_TYPE, FAST_PATH>(args, state,
+                                                                 smem);
       return;
     }
   }
   if constexpr (DPT >= 2) {
     if (state.updates_remaining == 1) {
-      update_info_shfl<1, COMPUTE_COLS, PROFILE_TYPE, FAST_PATH>(args, state, smem);
+      update_info_shfl<1, COMPUTE_COLS, PROFILE_TYPE, FAST_PATH>(args, state,
+                                                                 smem);
       return;
     }
   }
   if (state.updates_remaining == 0) {
-    update_info_shfl<0, COMPUTE_COLS, PROFILE_TYPE, FAST_PATH>(args, state, smem);
+    update_info_shfl<0, COMPUTE_COLS, PROFILE_TYPE, FAST_PATH>(args, state,
+                                                               smem);
   }
 }
 
@@ -231,9 +235,8 @@ __device__ inline void flush_all_cols_to_smem(
 #pragma unroll DPT
   for (int i = 0; i < DPT; ++i) {
     if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN) {
-      fAtomicMax<ATOMIC_BLOCK>(
-          smem.local_mp_col.data() + state.local_col[i],
-          state.distc[i]);
+      fAtomicMax<ATOMIC_BLOCK>(smem.local_mp_col.data() + state.local_col[i],
+                               state.distc[i]);
     } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX ||
                          PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY ||
                          PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
@@ -341,8 +344,7 @@ __device__ inline void warp_reduce_and_flush_row(int row_in_tile,
 //                      is selected by `row_in_tile & 1`.
 template <SCAMPProfileType PROFILE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
           typename DISTANCE_TYPE, int DiagsPerThread, int BLOCKSZ,
-          bool FAST_PATH,
-          typename DerivedDataType, typename DerivedSmem>
+          bool FAST_PATH, typename DerivedDataType, typename DerivedSmem>
 __device__ inline void do_row_shfl(
     int row_in_tile, uint32_t tile_start_row,
     const SCAMPKernelInputArgs<double> &args,
@@ -354,7 +356,8 @@ __device__ inline void do_row_shfl(
   const uint32_t global_row =
       tile_start_row + static_cast<uint32_t>(row_in_tile);
   const int read_slot = row_in_tile & 1;
-  const int prev_warpid = (state.warpid + warps_per_block - 1) % warps_per_block;
+  const int prev_warpid =
+      (state.warpid + warps_per_block - 1) % warps_per_block;
   const DerivedDataType cross_warp_in =
       (global_row > 0)
           ? cov_handoff_smem[read_slot * warps_per_block + prev_warpid]
@@ -363,8 +366,6 @@ __device__ inline void do_row_shfl(
   if (state.warpln == 0 && global_row > 0) {
     state.cov[0] = cross_warp_in;
   }
-
-
 
   const DerivedDataType dfr = smem.df_row[row_in_tile];
   const DerivedDataType dgr = smem.dg_row[row_in_tile];
@@ -384,11 +385,10 @@ __device__ inline void do_row_shfl(
     if constexpr (FAST_PATH) {
       slot_valid = (diag >= 0) & (diag < static_cast<int>(BLOCKSZ * DPT));
     } else {
-      slot_valid = (diag >= 0) &
-                    (diag < static_cast<int>(BLOCKSZ * DPT)) &
-                    (global_row < static_cast<uint32_t>(args.n_y)) &
-                    (state.global_col[i] < static_cast<uint32_t>(args.n_x)) &
-                    ((state.global_col[i] - global_row) < num_diags);
+      slot_valid = (diag >= 0) & (diag < static_cast<int>(BLOCKSZ * DPT)) &
+                   (global_row < static_cast<uint32_t>(args.n_y)) &
+                   (state.global_col[i] < static_cast<uint32_t>(args.n_x)) &
+                   ((state.global_col[i] - global_row) < num_diags);
     }
     dist[i] = slot_valid ? d : init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
   }
@@ -447,10 +447,10 @@ __device__ inline void do_row_shfl(
   // Column-block rotation (staggered per lane).
   // -----------------------------------------------------------------
   if (state.updates_remaining < DPT) {
-    do_update_info_shfl<COMPUTE_COLS, PROFILE_TYPE, FAST_PATH>(args, state, smem);
+    do_update_info_shfl<COMPUTE_COLS, PROFILE_TYPE, FAST_PATH>(args, state,
+                                                               smem);
   }
   --state.updates_remaining;
-
 
   // End-of-row sync. Orders this row's lane-31 WRITE before next row's
   // lane-0 READ of the same slot (publish), AND this row's lane-0 READ

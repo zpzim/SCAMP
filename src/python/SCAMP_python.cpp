@@ -127,14 +127,14 @@ bool KeyIsOkForProfileType(std::string key, SCAMP::SCAMPProfileType type) {
   static const std::set<std::string> nn_index = {
       "verbose", "precision", "pearson", "gpus", "threads", "max_tile_size"};
   static const std::set<std::string> sum_thresh = {
-      "verbose", "precision", "pearson", "gpus", "threads", "threshold",
-      "max_tile_size"};
+      "verbose", "precision", "pearson",      "gpus",
+      "threads", "threshold", "max_tile_size"};
   static const std::set<std::string> knn = {
-      "verbose", "precision", "pearson", "gpus", "threads", "threshold",
-      "max_tile_size"};
+      "verbose", "precision", "pearson",      "gpus",
+      "threads", "threshold", "max_tile_size"};
   static const std::set<std::string> matrix = {
-      "verbose", "precision", "pearson", "gpus", "threads", "threshold",
-      "mheight", "mwidth", "max_tile_size"};
+      "verbose",   "precision", "pearson", "gpus",         "threads",
+      "threshold", "mheight",   "mwidth",  "max_tile_size"};
 
   switch (type) {
     case SCAMP::PROFILE_TYPE_1NN_INDEX:

@@ -102,7 +102,8 @@ bool IsSupportedKernelConfig(const KernelConfig &cfg,
       cfg.unrolled_rows == v.unrolled_rows &&
       cfg.outer_unrolled_rows == v.outer_unrolled_rows &&
       cfg.kernel_tile_iters == v.kernel_tile_iters) {
-    if (cfg.blocksz == 64 || cfg.blocksz == 128 || cfg.blocksz == 256 || cfg.blocksz == 512) {
+    if (cfg.blocksz == 64 || cfg.blocksz == 128 || cfg.blocksz == 256 ||
+        cfg.blocksz == 512) {
       return true;
     }
   }

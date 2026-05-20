@@ -184,7 +184,8 @@ int main(int argc, char **argv) {
   bool gpu_used = !devices.empty();
   int max_tile_size_to_use = FLAGS_max_tile_size;
   gflags::CommandLineFlagInfo tile_size_info;
-  if (gflags::GetCommandLineFlagInfo("max_tile_size", &tile_size_info) && tile_size_info.is_default) {
+  if (gflags::GetCommandLineFlagInfo("max_tile_size", &tile_size_info) &&
+      tile_size_info.is_default) {
     if (gpu_used) {
       max_tile_size_to_use = 512000;
     } else {
