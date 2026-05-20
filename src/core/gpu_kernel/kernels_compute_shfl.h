@@ -74,7 +74,6 @@ template <typename T, typename DistType, int DPT>
 struct SCAMPShflState {
   Eigen::Array<T, DPT, 1> cov;
   Eigen::Array<T, DPT, 1> dfc, dgc, inormc;
-  Eigen::Array<T, DPT, 1> dfc2, dgc2, inormc2;
   Eigen::Array<DistType, DPT, 1> distc;
   Eigen::Array<unsigned int, DPT, 1> idxc;
   int updates_remaining;
@@ -97,7 +96,7 @@ struct SCAMPShflState {
 // sizeof(T)) / 128) cache-line fetches per warp per rotation per data
 // array.
 template <int updates_remaining, bool COMPUTE_COLS,
-          SCAMPProfileType PROFILE_TYPE, typename T, typename DistType, int DPT,
+          SCAMPProfileType PROFILE_TYPE, bool FAST_PATH, typename T, typename DistType, int DPT,
           typename DerivedSmem>
 __device__ inline void update_info_shfl(
     const SCAMPKernelInputArgs<double> &args,
@@ -106,25 +105,6 @@ __device__ inline void update_info_shfl(
                 "updates_remaining must index a column slot");
 
   constexpr int BLOCKSZ = DerivedSmem::BLOCKSZ;
-
-  if constexpr (updates_remaining == DPT - 1) {
-#pragma unroll DPT
-    for (int i = 0; i < DPT; ++i) {
-      uint32_t pos = state.global_col[i] + BLOCKSZ * DPT;
-      if (pos < static_cast<uint32_t>(args.n_x)) {
-        state.dfc2[i] = static_cast<T>(args.dfa[pos]);
-        state.dgc2[i] = static_cast<T>(args.dga[pos]);
-        state.inormc2[i] = static_cast<T>(args.normsa[pos]);
-      } else {
-        // Out-of-bounds slot: zero is safe because any cell touching this
-        // column is past n_x and will never produce a kept profile entry.
-        state.dfc2[i] = T(0);
-        state.dgc2[i] = T(0);
-        state.inormc2[i] = T(0);
-      }
-    }
-  }
-
   constexpr int col_to_update = (DPT - 1) - updates_remaining;
 
   // Flush this slot's accumulated distc/idxc to the smem column profile.
@@ -147,10 +127,24 @@ __device__ inline void update_info_shfl(
     }
   }
 
-  // Swap the staged next-block value into the active slot.
-  state.dfc[col_to_update] = state.dfc2[col_to_update];
-  state.dgc[col_to_update] = state.dgc2[col_to_update];
-  state.inormc[col_to_update] = state.inormc2[col_to_update];
+  // Load the next block's column data directly from global memory.
+  uint32_t pos = state.global_col[col_to_update] + BLOCKSZ * DPT;
+  if constexpr (FAST_PATH) {
+    state.dfc[col_to_update] = static_cast<T>(args.dfa[pos]);
+    state.dgc[col_to_update] = static_cast<T>(args.dga[pos]);
+    state.inormc[col_to_update] = static_cast<T>(args.normsa[pos]);
+  } else {
+    if (pos < static_cast<uint32_t>(args.n_x)) {
+      state.dfc[col_to_update] = static_cast<T>(args.dfa[pos]);
+      state.dgc[col_to_update] = static_cast<T>(args.dga[pos]);
+      state.inormc[col_to_update] = static_cast<T>(args.normsa[pos]);
+    } else {
+      state.dfc[col_to_update] = T(0);
+      state.dgc[col_to_update] = T(0);
+      state.inormc[col_to_update] = T(0);
+    }
+  }
+
   state.distc[col_to_update] = init_dist<DistType, PROFILE_TYPE>();
   state.idxc[col_to_update] = 0;
 
@@ -165,31 +159,31 @@ __device__ inline void update_info_shfl(
 // Runtime dispatch to the compile-time-templated update_info_shfl body
 // corresponding to the current updates_remaining value. The if-constexpr
 // branches collapse for small DPT.
-template <bool COMPUTE_COLS, SCAMPProfileType PROFILE_TYPE, typename T,
+template <bool COMPUTE_COLS, SCAMPProfileType PROFILE_TYPE, bool FAST_PATH, typename T,
           typename DistType, int DPT, typename DerivedSmem>
 __device__ inline void do_update_info_shfl(
     const SCAMPKernelInputArgs<double> &args,
     SCAMPShflState<T, DistType, DPT> &state, DerivedSmem &smem) {
   if constexpr (DPT >= 4) {
     if (state.updates_remaining == 3) {
-      update_info_shfl<3, COMPUTE_COLS, PROFILE_TYPE>(args, state, smem);
+      update_info_shfl<3, COMPUTE_COLS, PROFILE_TYPE, FAST_PATH>(args, state, smem);
       return;
     }
   }
   if constexpr (DPT >= 3) {
     if (state.updates_remaining == 2) {
-      update_info_shfl<2, COMPUTE_COLS, PROFILE_TYPE>(args, state, smem);
+      update_info_shfl<2, COMPUTE_COLS, PROFILE_TYPE, FAST_PATH>(args, state, smem);
       return;
     }
   }
   if constexpr (DPT >= 2) {
     if (state.updates_remaining == 1) {
-      update_info_shfl<1, COMPUTE_COLS, PROFILE_TYPE>(args, state, smem);
+      update_info_shfl<1, COMPUTE_COLS, PROFILE_TYPE, FAST_PATH>(args, state, smem);
       return;
     }
   }
   if (state.updates_remaining == 0) {
-    update_info_shfl<0, COMPUTE_COLS, PROFILE_TYPE>(args, state, smem);
+    update_info_shfl<0, COMPUTE_COLS, PROFILE_TYPE, FAST_PATH>(args, state, smem);
   }
 }
 
@@ -347,6 +341,7 @@ __device__ inline void warp_reduce_and_flush_row(int row_in_tile,
 //                      is selected by `row_in_tile & 1`.
 template <SCAMPProfileType PROFILE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
           typename DISTANCE_TYPE, int DiagsPerThread, int BLOCKSZ,
+          bool FAST_PATH,
           typename DerivedDataType, typename DerivedSmem>
 __device__ inline void do_row_shfl(
     int row_in_tile, uint32_t tile_start_row,
@@ -385,11 +380,16 @@ __device__ inline void do_row_shfl(
         static_cast<DISTANCE_TYPE>(state.cov[i] * state.inormc[i] * inormr);
     state.cov[i] = state.cov[i] + state.dfc[i] * dgr + state.dgc[i] * dfr;
     int diag = static_cast<int>(state.local_col[i]) - row_in_tile;
-    bool slot_valid = (diag >= 0 &&
-                       diag < static_cast<int>(BLOCKSZ * DPT) &&
-                       global_row < static_cast<uint32_t>(args.n_y) &&
-                       state.global_col[i] < static_cast<uint32_t>(args.n_x) &&
-                       (state.global_col[i] - global_row) < num_diags);
+    bool slot_valid;
+    if constexpr (FAST_PATH) {
+      slot_valid = (diag >= 0) & (diag < static_cast<int>(BLOCKSZ * DPT));
+    } else {
+      slot_valid = (diag >= 0) &
+                    (diag < static_cast<int>(BLOCKSZ * DPT)) &
+                    (global_row < static_cast<uint32_t>(args.n_y)) &
+                    (state.global_col[i] < static_cast<uint32_t>(args.n_x)) &
+                    ((state.global_col[i] - global_row) < num_diags);
+    }
     dist[i] = slot_valid ? d : init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
   }
 
@@ -447,7 +447,7 @@ __device__ inline void do_row_shfl(
   // Column-block rotation (staggered per lane).
   // -----------------------------------------------------------------
   if (state.updates_remaining < DPT) {
-    do_update_info_shfl<COMPUTE_COLS, PROFILE_TYPE>(args, state, smem);
+    do_update_info_shfl<COMPUTE_COLS, PROFILE_TYPE, FAST_PATH>(args, state, smem);
   }
   --state.updates_remaining;
 

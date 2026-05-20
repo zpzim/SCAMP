@@ -162,17 +162,47 @@ int main(int argc, char **argv) {
         "--window=<window_size> to specify your subsequence length.\n");
     return 1;
   }
-  if (FLAGS_max_tile_size < 1024) {
+  std::vector<int> devices = ParseIntList(FLAGS_gpus);
+#ifdef _HAS_CUDA_
+  if (devices.empty() && !FLAGS_no_gpu) {
+    // Use all available devices
+    if (FLAGS_print_debug_info) {
+      printf("using all devices\n");
+    }
+    int num_dev;
+    cudaGetDeviceCount(&num_dev);
+    for (int i = 0; i < num_dev; ++i) {
+      devices.push_back(i);
+    }
+  }
+#else
+  // We cannot use gpus if we don't have CUDA
+  ASSERT(devices.empty(),
+         "This binary was not built with CUDA, --gpus cannot be used with this "
+         "binary.");
+#endif
+
+  bool gpu_used = !devices.empty();
+  int max_tile_size_to_use = FLAGS_max_tile_size;
+  gflags::CommandLineFlagInfo tile_size_info;
+  if (gflags::GetCommandLineFlagInfo("max_tile_size", &tile_size_info) && tile_size_info.is_default) {
+    if (gpu_used) {
+      max_tile_size_to_use = 512000;
+    } else {
+      max_tile_size_to_use = 128000;
+    }
+  }
+
+  if (max_tile_size_to_use < 1024) {
     printf("Error: max tile size must be at least 1024\n");
     return 1;
   }
-  if (FLAGS_max_tile_size / 2 < FLAGS_window) {
+  if (max_tile_size_to_use / 2 < FLAGS_window) {
     printf(
         "Error: Tile length and width must be at least 2x larger than the "
         "window size. Please set a larger --max_tile_size=<max_tile_size>\n");
     return 1;
   }
-  std::vector<int> devices = ParseIntList(FLAGS_gpus);
   if (FLAGS_input_a_file_name.empty()) {
     printf(
         "Error: primary input filename must be specified using "
@@ -213,27 +243,9 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-#ifdef _HAS_CUDA_
-  if (devices.empty() && !FLAGS_no_gpu) {
-    // Use all available devices
-    if (FLAGS_print_debug_info) {
-      printf("using all devices\n");
-    }
-    int num_dev;
-    cudaGetDeviceCount(&num_dev);
-    for (int i = 0; i < num_dev; ++i) {
-      devices.push_back(i);
-    }
-  }
-#else
-  // We cannot use gpus if we don't have CUDA
-  ASSERT(devices.empty(),
-         "This binary was not built with CUDA, --gpus cannot be used with this "
-         "binary.");
-#endif
   SCAMP::SCAMPArgs args;
   args.window = FLAGS_window;
-  args.max_tile_size = FLAGS_max_tile_size;
+  args.max_tile_size = max_tile_size_to_use;
   args.has_b = !self_join;
   args.distributed_start_row = FLAGS_global_row;
   args.distributed_start_col = FLAGS_global_col;

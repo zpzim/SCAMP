@@ -124,15 +124,17 @@ SCAMP::SCAMPArgs GetDefaultSCAMPArgs() {
 }
 
 bool KeyIsOkForProfileType(std::string key, SCAMP::SCAMPProfileType type) {
-  static const std::set<std::string> nn_index = {"verbose", "precision",
-                                                 "pearson", "gpus", "threads"};
+  static const std::set<std::string> nn_index = {
+      "verbose", "precision", "pearson", "gpus", "threads", "max_tile_size"};
   static const std::set<std::string> sum_thresh = {
-      "verbose", "precision", "pearson", "gpus", "threads", "threshold"};
+      "verbose", "precision", "pearson", "gpus", "threads", "threshold",
+      "max_tile_size"};
   static const std::set<std::string> knn = {
-      "verbose", "precision", "pearson", "gpus", "threads", "threshold"};
+      "verbose", "precision", "pearson", "gpus", "threads", "threshold",
+      "max_tile_size"};
   static const std::set<std::string> matrix = {
-      "verbose", "precision", "pearson", "gpus",
-      "threads", "threshold", "mheight", "mwidth"};
+      "verbose", "precision", "pearson", "gpus", "threads", "threshold",
+      "mheight", "mwidth", "max_tile_size"};
 
   switch (type) {
     case SCAMP::PROFILE_TYPE_1NN_INDEX:
@@ -177,6 +179,12 @@ void get_args_based_on_kwargs(SCAMP::SCAMPArgs* args, py::kwargs kwargs,
         throw std::invalid_argument(
             "Invalid matrix width specified: value must be greater than 0");
       }
+    } else if (key == "max_tile_size") {
+      args->max_tile_size = item.second.cast<int>();
+      if (args->max_tile_size <= 0) {
+        throw std::invalid_argument(
+            "Invalid max_tile_size specified: value must be greater than 0");
+      }
     } else if (key == "precision") {
       std::string ptype = item.second.cast<std::string>();
       if (ptype == "single") {
@@ -216,6 +224,22 @@ bool setup_and_do_SCAMP(SCAMP::SCAMPArgs* args, py::kwargs kwargs) {
   if (kwargs) {
     get_args_based_on_kwargs(args, kwargs, pearson, gpus, num_cpus);
   }
+  // Determine if a GPU is used for execution.
+  bool gpu_used = false;
+  if (kwargs && kwargs.contains("gpus")) {
+    gpu_used = !gpus.empty();
+  } else if (kwargs && kwargs.contains("threads") && num_cpus > 0) {
+    gpu_used = false;
+  } else {
+    gpu_used = (SCAMP::num_available_gpus() > 0);
+  }
+
+  // If a GPU is used and max_tile_size was not explicitly specified,
+  // set it to 512k (512000) by default.
+  if (gpu_used && (!kwargs || !kwargs.contains("max_tile_size"))) {
+    args->max_tile_size = 512000;
+  }
+
   // If an empty list of GPUs was specified we should use CPU only.
   if (kwargs.contains("gpus") && gpus.empty()) {
     if (num_cpus <= 0) {

@@ -81,7 +81,7 @@ set(SCAMP_VARIANT_TUPLES
     # ur==0 marks the design-A "shfl" variant. The foreach below routes
     # ur==0 tuples through kernel_variant_shfl.cu.in instead of the
     # sliding-window template.
-    "6|2|2|0|8|8"
+    "6|8|4|0|8|8"
 )
 
 set(SCAMP_GENERATED_VARIANT_SOURCES "")

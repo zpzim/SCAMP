@@ -45,8 +45,8 @@ constexpr std::array<KernelVariantGeometry, 7> kVariants{{
     //                   pressure at the same tile height
     {1, 4, 4, 16, 16},
     // v5: 1,4,4,16,16 -> tile=256, low occupancy + big per-thread work
-    {2, 2, 0, 8, 8},
-    // v6: 2,2,0,8,8   -> design-A "shfl" (ur==0 sentinel), tile=64=32*DPT.
+    {8, 4, 0, 8, 8},
+    // v6: 8,4,0,8,8   -> design-A "shfl" (ur==0 sentinel), tile=64=32*DPT.
     //                   One column-block rotation per tile (the simple
     //                   case). No smem column buffer.
 }};
@@ -76,7 +76,11 @@ KernelConfig GetKernelConfigForVariant(std::size_t i,
                                        SCAMPPrecisionType precision) {
   assert(i < kVariants.size());
   KernelConfig cfg{};
-  cfg.blocksz = BlocksizeForPrecision(precision);
+  if (i == 6) {
+    cfg.blocksz = 128;
+  } else {
+    cfg.blocksz = BlocksizeForPrecision(precision);
+  }
   cfg.blocks_per_sm = kVariants[i].blocks_per_sm;
   cfg.diags_per_thread = kVariants[i].diags_per_thread;
   cfg.unrolled_rows = kVariants[i].unrolled_rows;
@@ -92,17 +96,19 @@ KernelConfig GetDefaultKernelConfig(SCAMPPrecisionType precision) {
 
 bool IsSupportedKernelConfig(const KernelConfig &cfg,
                              SCAMPPrecisionType precision) {
-  int expected_blocksz = BlocksizeForPrecision(precision);
-  if (cfg.blocksz != expected_blocksz) {
-    return false;
-  }
   const auto &v = kVariants[6];
   if (cfg.blocks_per_sm == v.blocks_per_sm &&
       cfg.diags_per_thread == v.diags_per_thread &&
       cfg.unrolled_rows == v.unrolled_rows &&
       cfg.outer_unrolled_rows == v.outer_unrolled_rows &&
       cfg.kernel_tile_iters == v.kernel_tile_iters) {
-    return true;
+    if (cfg.blocksz == 64 || cfg.blocksz == 128 || cfg.blocksz == 256 || cfg.blocksz == 512) {
+      return true;
+    }
+  }
+  int expected_blocksz = BlocksizeForPrecision(precision);
+  if (cfg.blocksz != expected_blocksz) {
+    return false;
   }
   return false;
 }

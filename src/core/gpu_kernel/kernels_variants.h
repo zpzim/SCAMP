@@ -87,7 +87,7 @@ SCAMP_DECL_VARIANTS_FOR_PROFILE(APPROX_ALL_NEIGHBORS, SCAMPmatch)
      * along with re-enabling SCAMP_VARIANT_TUPLES in CMakeLists.txt before \
      * merging. */                                                            \
     /* v6: design-A "shfl" variant, ur==0 sentinel. */                        \
-    if (cfg.blocks_per_sm == 2 && cfg.diags_per_thread == 2 &&                \
+    if (cfg.blocks_per_sm == 8 && cfg.diags_per_thread == 4 &&                \
         cfg.unrolled_rows == 0 && cfg.outer_unrolled_rows == 8 &&             \
         cfg.kernel_tile_iters == 8) {                                         \
       return LaunchVariant_##PROFILE##_v6(args, profile_A, profile_B,         \
