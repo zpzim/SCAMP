@@ -130,8 +130,7 @@ int main(int argc, char **argv) {
     }
     try {
       for (int dev : tune_devices) {
-        SCAMP::RunAutotuneWithBenchmark(dev,
-                                        &SCAMP::DefaultBenchmarkVariant,
+        SCAMP::RunAutotuneWithBenchmark(dev, &SCAMP::DefaultBenchmarkVariant,
                                         /*cache_path=*/"",
                                         /*verbose=*/true);
       }

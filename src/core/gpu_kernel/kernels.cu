@@ -39,12 +39,11 @@ SCAMPError_t compute_gpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
   // cfg.unrolled_rows == 0 marks the design-A "shfl" variant (see
   // kernel_config.cpp). Its smem layout drops the column-data regions and
   // adds a small cov_handoff region, so size it via get_smem_shfl.
-  uint64_t smem =
-      (cfg.unrolled_rows == 0)
-          ? get_smem_shfl(t->info(), blocksz, cfg.tile_height(),
-                          cfg.diags_per_thread)
-          : get_smem(t->info(), blocksz, cfg.tile_height(),
-                     cfg.diags_per_thread);
+  uint64_t smem = (cfg.unrolled_rows == 0)
+                      ? get_smem_shfl(t->info(), blocksz, cfg.tile_height(),
+                                      cfg.diags_per_thread)
+                      : get_smem(t->info(), blocksz, cfg.tile_height(),
+                                 cfg.diags_per_thread);
   if (!t->info()->silent_mode) {
     std::cout << "Launching " << num_blocks << " thread blocks of size "
               << blocksz << " (diags_per_thread=" << cfg.diags_per_thread

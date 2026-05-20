@@ -191,9 +191,9 @@ __device__ inline void merge_to_column(
   constexpr int unrolled_diags = DiagsPerThread;
   static_assert(RowDistArray::RowsAtCompileTime == unrolled_diags,
                 "dists_to_merge must have DiagsPerThread rows.");
-  static_assert(ColDistArray::RowsAtCompileTime ==
-                    ColIndexArray::RowsAtCompileTime,
-                "best_so_far and best_so_far_index sizes must match.");
+  static_assert(
+      ColDistArray::RowsAtCompileTime == ColIndexArray::RowsAtCompileTime,
+      "best_so_far and best_so_far_index sizes must match.");
   if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN) {
 #pragma unroll unrolled_diags
     for (int i = 0; i < unrolled_diags; ++i) {
@@ -321,8 +321,8 @@ __device__ inline FORCE_INLINE void do_row(
   Eigen::Array<DISTANCE_TYPE, unrolled_diags, 1> dist;
 #pragma unroll unrolled_diags
   for (int i = 0; i < unrolled_diags; ++i) {
-    dist[i] = static_cast<DISTANCE_TYPE>(info.cov[i] * inormc[row_iter + i] *
-                                         inormr);
+    dist[i] =
+        static_cast<DISTANCE_TYPE>(info.cov[i] * inormc[row_iter + i] * inormr);
     info.cov[i] =
         info.cov[i] + dfc[row_iter + i] * dgr + dgc[row_iter + i] * dfr;
   }
@@ -509,8 +509,7 @@ __device__ inline void reduce_row(
                        PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY ||
                        PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
     MPatomicMax_check<ATOMIC_BLOCK>(
-        reinterpret_cast<uint64_t *>(smem.local_mp_row.data()) +
-            info.local_row,
+        reinterpret_cast<uint64_t *>(smem.local_mp_row.data()) + info.local_row,
         dist_row, idx_row, -2);
   } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
     do_atomicAdd<double, ATOMIC_BLOCK>(
@@ -539,9 +538,8 @@ __device__ inline void reduce_edge(
           dist_row = fmaxf(dist_row, dist[iter]);
         }
         if constexpr (COMPUTE_COLS) {
-          fAtomicMax<ATOMIC_BLOCK>(smem.local_mp_col.data() + info.local_col +
-                                       iter,
-                                   dist[iter]);
+          fAtomicMax<ATOMIC_BLOCK>(
+              smem.local_mp_col.data() + info.local_col + iter, dist[iter]);
         }
       }
     } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX ||
@@ -595,9 +593,8 @@ __device__ inline void do_row_edge(
   Eigen::Array<DISTANCE_TYPE, DiagsPerThread, 1> dist;
 #pragma unroll DiagsPerThread
   for (int i = 0; i < DiagsPerThread; ++i) {
-    dist[i] =
-        static_cast<DISTANCE_TYPE>(info.cov[i] *
-                                   smem.inorm_col[info.local_col + i] * inormr);
+    dist[i] = static_cast<DISTANCE_TYPE>(
+        info.cov[i] * smem.inorm_col[info.local_col + i] * inormr);
     info.cov[i] = info.cov[i] + smem.df_col[info.local_col + i] * dgr +
                   smem.dg_col[info.local_col + i] * dfr;
   }
