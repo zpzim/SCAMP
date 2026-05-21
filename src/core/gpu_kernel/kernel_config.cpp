@@ -26,8 +26,8 @@ namespace {
 //
 // Keep this short-ish -- every entry multiplies the do_tile template
 // instantiation count (5 profiles x 3 precisions x 3 row/col modes x
-// |kVariants|). Current: 7 variants.
-constexpr std::array<KernelVariantGeometry, 7> kVariants{{
+// |kVariants|).
+constexpr std::array<KernelVariantGeometry, 9> kVariants{{
     // bps, DPT, ur, our, kti       (derived tile_height, inner_cols,
     //                               unrolled_cols)
     {DEFAULT_BLOCKSPERSM, DEFAULT_DIAGS_PER_THREAD, DEFAULT_UNROLLED_ROWS,
@@ -49,6 +49,21 @@ constexpr std::array<KernelVariantGeometry, 7> kVariants{{
     // v6: 8,4,0,8,8   -> design-A "shfl" (ur==0 sentinel), tile=64=32*DPT.
     //                   One column-block rotation per tile (the simple
     //                   case). No smem column buffer.
+    {8, 4, 0, 8, 16},
+    // v7: 8,4,0,8,16  -> shfl, tile_height=128 = 32*DPT (the max allowed
+    //                   for DPT=4 before the masked-cell triangle grows
+    //                   past warp 0). Same registers as v6, but 2x the
+    //                   rows per tile to amortize per-tile init/flush
+    //                   overhead. Smem footprint ~7.7 KB (still fits 8
+    //                   blocks/SM at sm_86's 100KB).
+    {4, 8, 0, 8, 32},
+    // v8: 4,8,0,8,32  -> shfl, tile_height=256 = 32*DPT for DPT=8.
+    //                   DPT=8 doubles per-thread compute per row (better
+    //                   sync amortization) but doubles register-array
+    //                   load -> needs bps=4 (SP path) to fit the 65536
+    //                   regs/SM budget. For DP path the dispatcher will
+    //                   force bps=2 if necessary; if it spills the
+    //                   benchmark will catch it as slower than v6.
 }};
 
 int BlocksizeForPrecision(SCAMPPrecisionType precision) {
@@ -76,7 +91,10 @@ KernelConfig GetKernelConfigForVariant(std::size_t i,
                                        SCAMPPrecisionType precision) {
   assert(i < kVariants.size());
   KernelConfig cfg{};
-  if (i == 6) {
+  // shfl variants (ur==0 sentinel) default to blocksz=128; the autotune
+  // sweep will also try 64/256/512 via the blocksz axis. Sliding-window
+  // variants default to the precision-tied BLOCKSZ_DP/BLOCKSZ_SP.
+  if (kVariants[i].unrolled_rows == 0) {
     cfg.blocksz = 128;
   } else {
     cfg.blocksz = BlocksizeForPrecision(precision);
@@ -96,20 +114,23 @@ KernelConfig GetDefaultKernelConfig(SCAMPPrecisionType precision) {
 
 bool IsSupportedKernelConfig(const KernelConfig &cfg,
                              SCAMPPrecisionType precision) {
-  const auto &v = kVariants[6];
-  if (cfg.blocks_per_sm == v.blocks_per_sm &&
-      cfg.diags_per_thread == v.diags_per_thread &&
-      cfg.unrolled_rows == v.unrolled_rows &&
-      cfg.outer_unrolled_rows == v.outer_unrolled_rows &&
-      cfg.kernel_tile_iters == v.kernel_tile_iters) {
-    if (cfg.blocksz == 64 || cfg.blocksz == 128 || cfg.blocksz == 256 ||
-        cfg.blocksz == 512) {
-      return true;
+  (void)precision;
+  // All enabled variants (v0, v1, v3, v4, v6) accept any of the standard
+  // blocksz values — both the sliding-window and shfl LaunchDoTile helpers
+  // dispatch by runtime blocksz so the autotuner can sweep that axis too.
+  constexpr int kEnabledVariants[] = {0, 1, 2, 3, 4, 5, 6, 7, 8};
+  for (int idx : kEnabledVariants) {
+    const auto &v = kVariants[idx];
+    if (cfg.blocks_per_sm == v.blocks_per_sm &&
+        cfg.diags_per_thread == v.diags_per_thread &&
+        cfg.unrolled_rows == v.unrolled_rows &&
+        cfg.outer_unrolled_rows == v.outer_unrolled_rows &&
+        cfg.kernel_tile_iters == v.kernel_tile_iters) {
+      if (cfg.blocksz == 64 || cfg.blocksz == 128 || cfg.blocksz == 256 ||
+          cfg.blocksz == 512) {
+        return true;
+      }
     }
-  }
-  int expected_blocksz = BlocksizeForPrecision(precision);
-  if (cfg.blocksz != expected_blocksz) {
-    return false;
   }
   return false;
 }

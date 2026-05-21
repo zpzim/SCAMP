@@ -68,20 +68,22 @@ set(SCAMP_KERNEL_PROFILES
 # generates a .cu that compiles but is never callable (and one whose
 # IsSupportedKernelConfig returns false).
 set(SCAMP_VARIANT_TUPLES
-    # TEMPORARY: v0..v5 commented out during shfl variant draft work; the
-    # SCAMP_VARIANT_DISPATCH macro will still reference their
-    # LaunchVariant_*_v{0..5} symbols but those are not instantiated, so
-    # cfg lookups for v0..v5 will fail to link. Re-enable before merging.
-    #"0|2|2|2|16|16"
-    #"1|2|4|2|4|50"
-    #"2|2|4|4|4|50"
-    #"3|4|2|2|8|16"
-    #"4|2|2|2|8|32"
-    #"5|1|4|4|16|16"
+    # Bake-off: sliding-window variants v0/v1/v3/v4 enabled alongside v6
+    # (shfl) so the autotune cache can route to any of them for perf
+    # comparison. v2/v5 still skipped (v2 = v1 with deeper unroll, v5 is
+    # bps=1 niche).
+    "0|2|2|2|16|16"
+    "1|2|4|2|4|50"
+    "2|2|4|4|4|50"
+    "3|4|2|2|8|16"
+    "4|2|2|2|8|32"
+    "5|1|4|4|16|16"
     # ur==0 marks the design-A "shfl" variant. The foreach below routes
     # ur==0 tuples through kernel_variant_shfl.cu.in instead of the
     # sliding-window template.
     "6|8|4|0|8|8"
+    "7|8|4|0|8|16"
+    "8|4|8|0|8|32"
 )
 
 set(SCAMP_GENERATED_VARIANT_SOURCES "")

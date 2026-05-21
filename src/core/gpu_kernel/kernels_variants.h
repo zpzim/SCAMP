@@ -61,6 +61,16 @@ namespace SCAMP {
       SCAMPKernelInputArgs<double> args, OUTPUT_TYPE *profile_A,               \
       OUTPUT_TYPE *profile_B, SCAMPPrecisionType fp_type, bool computing_rows, \
       bool computing_cols, uint64_t blocksz, uint64_t num_blocks,              \
+      uint64_t smem, cudaStream_t s);                                          \
+  SCAMPError_t LaunchVariant_##PROFILE##_v7(                                   \
+      SCAMPKernelInputArgs<double> args, OUTPUT_TYPE *profile_A,               \
+      OUTPUT_TYPE *profile_B, SCAMPPrecisionType fp_type, bool computing_rows, \
+      bool computing_cols, uint64_t blocksz, uint64_t num_blocks,              \
+      uint64_t smem, cudaStream_t s);                                          \
+  SCAMPError_t LaunchVariant_##PROFILE##_v8(                                   \
+      SCAMPKernelInputArgs<double> args, OUTPUT_TYPE *profile_A,               \
+      OUTPUT_TYPE *profile_B, SCAMPPrecisionType fp_type, bool computing_rows, \
+      bool computing_cols, uint64_t blocksz, uint64_t num_blocks,              \
       uint64_t smem, cudaStream_t s);
 
 SCAMP_DECL_VARIANTS_FOR_PROFILE(1NN, float)
@@ -83,14 +93,75 @@ SCAMP_DECL_VARIANTS_FOR_PROFILE(APPROX_ALL_NEIGHBORS, SCAMPmatch)
 // drifted apart.
 #define SCAMP_VARIANT_DISPATCH(PROFILE)                                        \
   do {                                                                         \
-    /* TEMPORARY: v0..v5 dispatch commented out during shfl draft. Re-enable   \
-     * along with re-enabling SCAMP_VARIANT_TUPLES in CMakeLists.txt before    \
-     * merging. */                                                             \
+    /* v0: 2,2,2,16,16 -> tile=256, eigen-port default. */                     \
+    if (cfg.blocks_per_sm == 2 && cfg.diags_per_thread == 2 &&                 \
+        cfg.unrolled_rows == 2 && cfg.outer_unrolled_rows == 16 &&             \
+        cfg.kernel_tile_iters == 16) {                                         \
+      return LaunchVariant_##PROFILE##_v0(args, profile_A, profile_B, fp_type, \
+                                          computing_rows, computing_cols,      \
+                                          cfg.blocksz, num_blocks, smem, s);   \
+    }                                                                          \
+    /* v1: 2,4,2,4,50 -> tile=200, master-like DPT=4 sliding-window. */        \
+    if (cfg.blocks_per_sm == 2 && cfg.diags_per_thread == 4 &&                 \
+        cfg.unrolled_rows == 2 && cfg.outer_unrolled_rows == 4 &&              \
+        cfg.kernel_tile_iters == 50) {                                         \
+      return LaunchVariant_##PROFILE##_v1(args, profile_A, profile_B, fp_type, \
+                                          computing_rows, computing_cols,      \
+                                          cfg.blocksz, num_blocks, smem, s);   \
+    }                                                                          \
+    /* v2: 2,4,4,4,50 -> tile=200, v1 + deeper inner-unroll (UR=4). */         \
+    if (cfg.blocks_per_sm == 2 && cfg.diags_per_thread == 4 &&                 \
+        cfg.unrolled_rows == 4 && cfg.outer_unrolled_rows == 4 &&              \
+        cfg.kernel_tile_iters == 50) {                                         \
+      return LaunchVariant_##PROFILE##_v2(args, profile_A, profile_B, fp_type, \
+                                          computing_rows, computing_cols,      \
+                                          cfg.blocksz, num_blocks, smem, s);   \
+    }                                                                          \
+    /* v3: 4,2,2,8,16 -> tile=128, higher occupancy + smaller tile. */         \
+    if (cfg.blocks_per_sm == 4 && cfg.diags_per_thread == 2 &&                 \
+        cfg.unrolled_rows == 2 && cfg.outer_unrolled_rows == 8 &&              \
+        cfg.kernel_tile_iters == 16) {                                         \
+      return LaunchVariant_##PROFILE##_v3(args, profile_A, profile_B, fp_type, \
+                                          computing_rows, computing_cols,      \
+                                          cfg.blocksz, num_blocks, smem, s);   \
+    }                                                                          \
+    /* v4: 2,2,2,8,32 -> tile=256, smaller outer-unroll. */                    \
+    if (cfg.blocks_per_sm == 2 && cfg.diags_per_thread == 2 &&                 \
+        cfg.unrolled_rows == 2 && cfg.outer_unrolled_rows == 8 &&              \
+        cfg.kernel_tile_iters == 32) {                                         \
+      return LaunchVariant_##PROFILE##_v4(args, profile_A, profile_B, fp_type, \
+                                          computing_rows, computing_cols,      \
+                                          cfg.blocksz, num_blocks, smem, s);   \
+    }                                                                          \
+    /* v5: 1,4,4,16,16 -> tile=256, low occupancy + big per-thread work. */    \
+    if (cfg.blocks_per_sm == 1 && cfg.diags_per_thread == 4 &&                 \
+        cfg.unrolled_rows == 4 && cfg.outer_unrolled_rows == 16 &&             \
+        cfg.kernel_tile_iters == 16) {                                         \
+      return LaunchVariant_##PROFILE##_v5(args, profile_A, profile_B, fp_type, \
+                                          computing_rows, computing_cols,      \
+                                          cfg.blocksz, num_blocks, smem, s);   \
+    }                                                                          \
     /* v6: design-A "shfl" variant, ur==0 sentinel. */                         \
     if (cfg.blocks_per_sm == 8 && cfg.diags_per_thread == 4 &&                 \
         cfg.unrolled_rows == 0 && cfg.outer_unrolled_rows == 8 &&              \
         cfg.kernel_tile_iters == 8) {                                          \
       return LaunchVariant_##PROFILE##_v6(args, profile_A, profile_B, fp_type, \
+                                          computing_rows, computing_cols,      \
+                                          cfg.blocksz, num_blocks, smem, s);   \
+    }                                                                          \
+    /* v7: 8,4,0,8,16 -> shfl + tile_height=128 (max for DPT=4). */            \
+    if (cfg.blocks_per_sm == 8 && cfg.diags_per_thread == 4 &&                 \
+        cfg.unrolled_rows == 0 && cfg.outer_unrolled_rows == 8 &&              \
+        cfg.kernel_tile_iters == 16) {                                         \
+      return LaunchVariant_##PROFILE##_v7(args, profile_A, profile_B, fp_type, \
+                                          computing_rows, computing_cols,      \
+                                          cfg.blocksz, num_blocks, smem, s);   \
+    }                                                                          \
+    /* v8: 4,8,0,8,32 -> shfl + DPT=8 + tile_height=256, bps=4. */             \
+    if (cfg.blocks_per_sm == 4 && cfg.diags_per_thread == 8 &&                 \
+        cfg.unrolled_rows == 0 && cfg.outer_unrolled_rows == 8 &&              \
+        cfg.kernel_tile_iters == 32) {                                         \
+      return LaunchVariant_##PROFILE##_v8(args, profile_A, profile_B, fp_type, \
                                           computing_rows, computing_cols,      \
                                           cfg.blocksz, num_blocks, smem, s);   \
     }                                                                          \

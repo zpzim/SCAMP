@@ -51,15 +51,16 @@
 namespace SCAMP {
 
 // Per-thread register state for the shfl kernel. The sliding-window kernel
-// uses SCAMPThreadInfo; this is the shfl-specific extension. All Eigen
-// arrays are DPT wide.
+// uses SCAMPThreadInfo; this is the shfl-specific extension.
 //
 //   cov                 — running accumulator. Shuffles right within warp
 //                         each row.
-//   dfc / dgc / inormc  — the lane's CURRENT 32*DPT-column block.
-//   dfc2 / dgc2 /
-//     inormc2           — staged NEXT block, pre-fetched from global memory
-//                         at the start of a rotation cycle.
+//   dfc / dgc / inormc  — the lane's CURRENT column data. Each slot's entry
+//                         is re-fetched from global memory at rotation
+//                         time inside update_info_shfl (no separate
+//                         staging array; the L1/TEX cache absorbs the
+//                         repeat reads when adjacent lanes rotate close
+//                         in time).
 //   distc / idxc        — per-lane per-column best-so-far. Flushed to smem
 //                         when the slot rotates.
 //   updates_remaining   — rotation countdown. Initialized staggered per
@@ -68,8 +69,21 @@ namespace SCAMP {
 //   warpln / warpid /
 //     srcln             — cached lane / warp identifiers.
 //   global_col /
-//     local_col         — anchor of the lane's CURRENT block in global and
-//                         block-local coordinates.
+//     local_col         — per-slot global / block-local column anchor.
+//                         Per-slot (not scalar) because the staggered
+//                         rotation has each slot's column block advance
+//                         independently within a cycle.
+//
+// Register accounting (per thread):
+//   5 T-typed arrays of DPT (cov, dfc, dgc, inormc, distc)
+//   3 uint32_t arrays of DPT (idxc, global_col, local_col)
+//   For T = float (SP): 8 * DPT 32-bit registers from arrays.
+//   For T = double (DP): 12 * DPT 32-bit registers from arrays
+//     (doubles are 64-bit, taking 2 32-bit reg slots).
+// Plus ~10 scalar regs. To fit bps=8 with blocksz=128 (the 65536-regs /
+// 8 / 128 = 64 regs/thread ceiling), DPT*8 + 10 must stay <= 64 for SP,
+// implying DPT <= 6. DPT=8 needs bps=4 for SP; for DP, DPT=4 is already
+// near the bps=8 ceiling so DPT=8 DP needs bps=2.
 template <typename T, typename DistType, int DPT>
 struct SCAMPShflState {
   Eigen::Array<T, DPT, 1> cov;
@@ -159,11 +173,55 @@ __device__ inline void update_info_shfl(
 // Runtime dispatch to the compile-time-templated update_info_shfl body
 // corresponding to the current updates_remaining value. The if-constexpr
 // branches collapse for small DPT.
+//
+// MUST cover the full [0, DPT) range; the caller fires this whenever
+// state.updates_remaining < DPT, and any missing value would leave the
+// corresponding slot un-rotated -- which silently de-syncs state.global_col
+// against tile_start_col across tile boundaries and eventually underflows
+// the per-tile state.local_col reset (manifests as a 0xfffff... smem OOB
+// in flush_all_cols_to_smem).
 template <bool COMPUTE_COLS, SCAMPProfileType PROFILE_TYPE, bool FAST_PATH,
           typename T, typename DistType, int DPT, typename DerivedSmem>
 __device__ inline void do_update_info_shfl(
     const SCAMPKernelInputArgs<double> &args,
     SCAMPShflState<T, DistType, DPT> &state, DerivedSmem &smem) {
+  // The runtime dispatch ladder below has explicit cases for
+  // updates_remaining = 0..7 and MUST cover the full [0, DPT) range that
+  // the caller can fire with. Bump the ladder + this assert in lockstep
+  // if a variant ever needs DPT > 8.
+  static_assert(DPT <= 8,
+                "do_update_info_shfl only dispatches updates_remaining = 0..7; "
+                "extend the ladder before bumping DPT past 8 (otherwise "
+                "slots 0..(DPT-9) are silently skipped, which de-syncs "
+                "state.global_col against tile_start_col across tiles).");
+  if constexpr (DPT >= 8) {
+    if (state.updates_remaining == 7) {
+      update_info_shfl<7, COMPUTE_COLS, PROFILE_TYPE, FAST_PATH>(args, state,
+                                                                 smem);
+      return;
+    }
+  }
+  if constexpr (DPT >= 7) {
+    if (state.updates_remaining == 6) {
+      update_info_shfl<6, COMPUTE_COLS, PROFILE_TYPE, FAST_PATH>(args, state,
+                                                                 smem);
+      return;
+    }
+  }
+  if constexpr (DPT >= 6) {
+    if (state.updates_remaining == 5) {
+      update_info_shfl<5, COMPUTE_COLS, PROFILE_TYPE, FAST_PATH>(args, state,
+                                                                 smem);
+      return;
+    }
+  }
+  if constexpr (DPT >= 5) {
+    if (state.updates_remaining == 4) {
+      update_info_shfl<4, COMPUTE_COLS, PROFILE_TYPE, FAST_PATH>(args, state,
+                                                                 smem);
+      return;
+    }
+  }
   if constexpr (DPT >= 4) {
     if (state.updates_remaining == 3) {
       update_info_shfl<3, COMPUTE_COLS, PROFILE_TYPE, FAST_PATH>(args, state,

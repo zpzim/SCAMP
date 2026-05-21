@@ -7,8 +7,10 @@
 
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
 #include <random>
+#include <string>
 #include <vector>
 
 #include "autotune.h"
@@ -30,18 +32,41 @@ namespace {
 // (kAutotuneTargets x kNumKernelVariants trials) under a minute on a
 // fast GPU, large enough to amortize launch overhead so the timing
 // reflects steady-state kernel cost.
-constexpr int kBenchmarkInputLength = 65536;
+//
+// kBenchmarkInputLength is the default; SCAMP_AUTOTUNE_INPUT_LENGTH (env)
+// overrides it so callers can run the autotuner at a larger problem size
+// when small-N timings are dominated by launch overhead rather than
+// steady-state kernel cost. Sweep time scales roughly linearly with N^2
+// (the per-trial kernel cost), so doubling N quadruples the sweep time;
+// values above ~1M get impractical for a full sweep.
+constexpr int kBenchmarkInputLengthDefault = 131072;
 constexpr int kBenchmarkWindow = 200;
 constexpr double kBenchmarkSumThreshold = 0.5;
 constexpr int kBenchmarkMatrixDim = 100;
 constexpr int kBenchmarkMaxMatchesPerColumn = 5;
+
+int BenchmarkInputLength() {
+  static const int len = [] {
+    const char *env = std::getenv("SCAMP_AUTOTUNE_INPUT_LENGTH");
+    if (env != nullptr && env[0] != '\0') {
+      try {
+        int parsed = std::stoi(env);
+        if (parsed > kBenchmarkWindow) return parsed;
+      } catch (const std::exception &) {
+      }
+    }
+    return kBenchmarkInputLengthDefault;
+  }();
+  return len;
+}
 
 std::vector<double> &SharedSyntheticInput() {
   // Reuse the same random input across all trials so per-variant timings
   // are comparable; seeding deterministically also makes the autotune
   // pass reproducible across invocations.
   static const std::vector<double> input = [] {
-    std::vector<double> v(kBenchmarkInputLength);
+    int n = BenchmarkInputLength();
+    std::vector<double> v(n);
     std::mt19937_64 rng(0xDEADBEEFULL);
     std::normal_distribution<double> dist(0.0, 1.0);
     for (auto &x : v) x = dist(rng);
@@ -56,7 +81,7 @@ void PopulateBenchmarkArgs(SCAMPArgs *args, SCAMPProfileType profile,
   args->timeseries_b.clear();
   args->has_b = false;
   args->window = kBenchmarkWindow;
-  args->max_tile_size = 131072;
+  args->max_tile_size = 512000;
   args->distributed_start_row = -1;
   args->distributed_start_col = -1;
   args->distance_threshold = kBenchmarkSumThreshold;
@@ -64,7 +89,7 @@ void PopulateBenchmarkArgs(SCAMPArgs *args, SCAMPProfileType profile,
   args->profile_type = profile;
   args->profile_a.type = profile;
   args->profile_b.type = profile;
-  args->computing_rows = false;
+  args->computing_rows = true;
   args->computing_columns = true;
   args->keep_rows_separate = false;
   args->is_aligned = false;
@@ -140,8 +165,13 @@ double TimeOneRun(int device_id, SCAMPProfileType profile,
 double DefaultBenchmarkVariant(int device_id, SCAMPProfileType profile,
                                SCAMPPrecisionType precision,
                                const KernelConfig &cfg) {
+  // 1 warmup + 1 timed keeps the sweep fast for iterative dev (the
+  // blocksz x variant matrix is 4 x kNumKernelVariants trials per target,
+  // so a deep run count multiplies that). 1 timed run gives noisy
+  // min-times; the cross-target scoring downstream tolerates a few % of
+  // noise. Bump these back to 1/3 for a production-quality sweep.
   constexpr int kBenchmarkWarmupRuns = 1;
-  constexpr int kBenchmarkTimedRuns = 3;
+  constexpr int kBenchmarkTimedRuns = 1;
   for (int i = 0; i < kBenchmarkWarmupRuns; ++i) {
     (void)TimeOneRun(device_id, profile, precision, cfg);
   }
