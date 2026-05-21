@@ -29,6 +29,18 @@ add_library(qt_kernels ${CMAKE_CURRENT_SOURCE_DIR}/qt_kernels.cu)
 # they cannot recompile. To update the contents for a new device, run the
 # autotuner locally and merge the result into data/autotune_cache.txt, then
 # rebuild.
+#
+# CMAKE_CONFIGURE_DEPENDS is REQUIRED here: file(READ ...) snapshots the file
+# contents into a CMake variable at configure time and does NOT establish a
+# dependency on the source file. Without this hint, editing
+# data/autotune_cache.txt and re-running `cmake --build` will silently leave
+# the old contents baked into the binary -- the user's new entries appear
+# correct on disk but the runtime lookup misses them and falls through to
+# the previous defaults. Listing the file here makes CMake re-run configure
+# (and thus re-execute the file(READ) + configure_file) whenever it changes.
+set_property(DIRECTORY "${CMAKE_SOURCE_DIR}"
+             APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+             "${CMAKE_SOURCE_DIR}/data/autotune_cache.txt")
 file(READ "${CMAKE_SOURCE_DIR}/data/autotune_cache.txt"
      SCAMP_BUILTIN_AUTOTUNE_CONTENT)
 configure_file(

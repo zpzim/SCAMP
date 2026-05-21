@@ -10,6 +10,7 @@
 #ifdef _HAS_CUDA_
 #include <cuda_runtime.h>
 #include "core/gpu_kernel/autotune.h"
+#include "core/gpu_kernel/autotune_bench.h"
 #endif
 
 namespace py = pybind11;
@@ -445,10 +446,28 @@ int run_autotune(const std::vector<int>& devices,
       throw std::invalid_argument(
           "No CUDA devices available; pyscamp.autotune() needs at least one.");
     }
-    for (int i = 0; i < num_dev; ++i) targets.push_back(i);
+    // Default to device 0 only -- a full sweep takes O(minutes) and the
+    // typical multi-GPU box has identical devices, so tuning them all
+    // burns wall time on identical configs. Callers who really do want
+    // to tune multiple distinct GPUs should pass devices=[0, 1, ...]
+    // explicitly. Mirrors the CLI --autotune behavior in main.cpp.
+    if (num_dev > 1) {
+      py::print("pyscamp.autotune():", num_dev,
+                "GPUs visible; tuning device 0 only (pass devices=[...]"
+                " to override).");
+    }
+    targets.push_back(0);
   }
+  // RunAutotuneWithBenchmark (not the older RunAutotune stub) is what
+  // actually sweeps the variant x blocksz matrix and picks the fastest
+  // cfg per (profile, precision). RunAutotune just writes the
+  // compile-time default for every target and would actively make
+  // performance worse on devices where the shipped data/autotune_cache.txt
+  // already has good entries (the user-cache write clobbers the built-in
+  // lookup). The CLI's --autotune path uses this same function.
   for (int dev : targets) {
-    SCAMP::RunAutotune(dev, cache_path, /*verbose=*/true);
+    SCAMP::RunAutotuneWithBenchmark(dev, &SCAMP::DefaultBenchmarkVariant,
+                                    cache_path, /*verbose=*/true);
   }
   return static_cast<int>(targets.size());
 #endif
