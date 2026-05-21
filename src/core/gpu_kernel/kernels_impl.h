@@ -187,7 +187,7 @@ SCAMPError_t LaunchDoTileWithGeometry(SCAMPKernelInputArgs<double> args,
   // for SP self-join and would otherwise fail with cudaErrorInvalidValue.
   // The opt-in is sticky per kernel function pointer, so repeated launches
   // pay only the first call.
-#define LAUNCH_PRECISION_AT_BLOCKSZ(DATA_T, ACCUM_T, BLOCKSZ_V, COMP_ROWS,  \
+#define LAUNCH_PRECISION_AT_BLOCKSZ(DATA_T, ACCUM_T, BLOCKSZ_V, COMP_ROWS, \
                                     COMP_COLS)                             \
   do {                                                                     \
     auto kfn =                                                             \
@@ -208,34 +208,30 @@ SCAMPError_t LaunchDoTileWithGeometry(SCAMPKernelInputArgs<double> args,
 // instantiation; the 4-way switch lets the autotuner sweep blocksz without
 // recompiling. Same as v6, BLOCKSZ values are restricted to the
 // IsSupportedKernelConfig whitelist (64/128/256/512).
-#define LAUNCH_PRECISION(DATA_T, ACCUM_T, COMP_ROWS, COMP_COLS)            \
-  do {                                                                     \
-    if (blocksz == 64) {                                                   \
-      LAUNCH_PRECISION_AT_BLOCKSZ(DATA_T, ACCUM_T, 64, COMP_ROWS,          \
-                                  COMP_COLS);                              \
-    } else if (blocksz == 128) {                                           \
-      LAUNCH_PRECISION_AT_BLOCKSZ(DATA_T, ACCUM_T, 128, COMP_ROWS,         \
-                                  COMP_COLS);                              \
-    } else if (blocksz == 256) {                                           \
-      LAUNCH_PRECISION_AT_BLOCKSZ(DATA_T, ACCUM_T, 256, COMP_ROWS,         \
-                                  COMP_COLS);                              \
-    } else {                                                               \
-      LAUNCH_PRECISION_AT_BLOCKSZ(DATA_T, ACCUM_T, 512, COMP_ROWS,         \
-                                  COMP_COLS);                              \
-    }                                                                      \
+#define LAUNCH_PRECISION(DATA_T, ACCUM_T, COMP_ROWS, COMP_COLS)                \
+  do {                                                                         \
+    if (blocksz == 64) {                                                       \
+      LAUNCH_PRECISION_AT_BLOCKSZ(DATA_T, ACCUM_T, 64, COMP_ROWS, COMP_COLS);  \
+    } else if (blocksz == 128) {                                               \
+      LAUNCH_PRECISION_AT_BLOCKSZ(DATA_T, ACCUM_T, 128, COMP_ROWS, COMP_COLS); \
+    } else if (blocksz == 256) {                                               \
+      LAUNCH_PRECISION_AT_BLOCKSZ(DATA_T, ACCUM_T, 256, COMP_ROWS, COMP_COLS); \
+    } else {                                                                   \
+      LAUNCH_PRECISION_AT_BLOCKSZ(DATA_T, ACCUM_T, 512, COMP_ROWS, COMP_COLS); \
+    }                                                                          \
   } while (0)
 
-#define LAUNCH_FOR_ROWCOL_MODE(COMP_ROWS, COMP_COLS)              \
-  switch (fp_type) {                                              \
-    case PRECISION_ULTRA:                                         \
-    case PRECISION_DOUBLE:                                        \
-      LAUNCH_PRECISION(double, double, COMP_ROWS, COMP_COLS);     \
-      break;                                                      \
-    case PRECISION_SINGLE:                                        \
-      LAUNCH_PRECISION(float, float, COMP_ROWS, COMP_COLS);       \
-      break;                                                      \
-    default:                                                      \
-      return SCAMP_CUDA_ERROR;                                    \
+#define LAUNCH_FOR_ROWCOL_MODE(COMP_ROWS, COMP_COLS)          \
+  switch (fp_type) {                                          \
+    case PRECISION_ULTRA:                                     \
+    case PRECISION_DOUBLE:                                    \
+      LAUNCH_PRECISION(double, double, COMP_ROWS, COMP_COLS); \
+      break;                                                  \
+    case PRECISION_SINGLE:                                    \
+      LAUNCH_PRECISION(float, float, COMP_ROWS, COMP_COLS);   \
+      break;                                                  \
+    default:                                                  \
+      return SCAMP_CUDA_ERROR;                                \
   }
 
   if (computing_rows && computing_cols) {

@@ -273,9 +273,8 @@ AutotuneResult RunAutotuneWithBenchmark(int device_id, BenchmarkFn bench,
   for (std::size_t tidx = 0; tidx < kAutotuneTargets.size(); ++tidx) {
     const auto &t = kAutotuneTargets[tidx];
     if (verbose) {
-      std::cout << "  [target " << (tidx + 1) << "/"
-                << kAutotuneTargets.size() << "] "
-                << ProfileTypeName(t.profile) << " "
+      std::cout << "  [target " << (tidx + 1) << "/" << kAutotuneTargets.size()
+                << "] " << ProfileTypeName(t.profile) << " "
                 << PrecisionTypeName(t.precision) << ":\n";
     }
     double best_seconds = std::numeric_limits<double>::infinity();
@@ -320,8 +319,8 @@ AutotuneResult RunAutotuneWithBenchmark(int device_id, BenchmarkFn bench,
           std::cout << "    [" << trials_done << "/" << total_trials << " "
                     << std::fixed << std::setprecision(1) << pct
                     << "% eta=" << static_cast<int>(eta_s) << "s] "
-                    << std::defaultfloat
-                    << "v" << i << " blocksz=" << cfg.blocksz
+                    << std::defaultfloat << "v" << i
+                    << " blocksz=" << cfg.blocksz
                     << ": bps=" << cfg.blocks_per_sm
                     << " dpt=" << cfg.diags_per_thread
                     << " ur=" << cfg.unrolled_rows
@@ -406,8 +405,8 @@ AutotuneResult RunAutotuneWithBenchmark(int device_id, BenchmarkFn bench,
     trial_scores.reserve(kNumKernelVariants * kNumSweepBlocksizes);
 
     // Per-target best, used as denominator.
-    std::vector<double> per_target_best(kAutotuneTargets.size(),
-                                        std::numeric_limits<double>::infinity());
+    std::vector<double> per_target_best(
+        kAutotuneTargets.size(), std::numeric_limits<double>::infinity());
     for (std::size_t tidx = 0; tidx < kAutotuneTargets.size(); ++tidx) {
       for (double t_s : timings[tidx]) {
         if (t_s < per_target_best[tidx]) per_target_best[tidx] = t_s;
@@ -432,8 +431,8 @@ AutotuneResult RunAutotuneWithBenchmark(int device_id, BenchmarkFn bench,
         }
         if (n == 0) continue;
         double geomean = std::exp(log_sum / static_cast<double>(n));
-        trial_scores.push_back({i, kSweepBlocksizes[bsz_idx], geomean, n, wins,
-                                worst_ratio});
+        trial_scores.push_back(
+            {i, kSweepBlocksizes[bsz_idx], geomean, n, wins, worst_ratio});
       }
     }
     std::sort(trial_scores.begin(), trial_scores.end(),
@@ -449,11 +448,11 @@ AutotuneResult RunAutotuneWithBenchmark(int device_id, BenchmarkFn bench,
     int rank = 1;
     for (const auto &s : trial_scores) {
       std::cout << "    " << std::setw(4) << rank << "  "
-                << "v" << s.variant_idx << " bsz=" << std::setw(3)
-                << s.blocksz << "        "
-                << std::fixed << std::setprecision(3) << s.geomean_ratio
-                << "    " << std::setprecision(2) << s.worst_ratio
-                << "    " << s.num_wins << "/" << s.num_targets << "\n";
+                << "v" << s.variant_idx << " bsz=" << std::setw(3) << s.blocksz
+                << "        " << std::fixed << std::setprecision(3)
+                << s.geomean_ratio << "    " << std::setprecision(2)
+                << s.worst_ratio << "    " << s.num_wins << "/" << s.num_targets
+                << "\n";
       ++rank;
     }
     std::cout << std::defaultfloat;
@@ -463,7 +462,8 @@ AutotuneResult RunAutotuneWithBenchmark(int device_id, BenchmarkFn bench,
                 << " blocksz=" << top.blocksz << " (geomean " << std::fixed
                 << std::setprecision(3) << top.geomean_ratio
                 << "x of per-target best, worst-case " << std::setprecision(2)
-                << top.worst_ratio << "x)\n" << std::defaultfloat;
+                << top.worst_ratio << "x)\n"
+                << std::defaultfloat;
     }
     std::cout << "\n";
     std::cout << "  wrote " << kAutotuneTargets.size() << " entries to "
