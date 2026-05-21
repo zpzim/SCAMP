@@ -342,6 +342,17 @@ if (CMAKE_CUDA_COMPILER)
   target_link_libraries(SCAMP autotune_bench)
 endif()
 
+# Unit tests. enable_testing() must run at the top-level CMakeLists scope
+# so that `ctest` invoked from the build directory picks up tests added
+# in subdirectories. Tests are opt-in via -DBUILD_SCAMP_TESTS=ON (default
+# OFF) so a casual end-user `cmake --build .` doesn't pay the
+# compile cost. CI / contributors flip the flag.
+option(BUILD_SCAMP_TESTS "Build SCAMP's C++ unit tests" OFF)
+if (BUILD_SCAMP_TESTS)
+  enable_testing()
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/test/cpp)
+endif()
+
 # clang-format target
 function(prepend var prefix)
   set(listVar "")

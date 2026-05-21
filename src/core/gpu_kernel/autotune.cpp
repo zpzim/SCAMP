@@ -4,6 +4,8 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
+#include <cstring>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -12,6 +14,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "autotune_cache.h"
@@ -472,6 +475,111 @@ AutotuneResult RunAutotuneWithBenchmark(int device_id, BenchmarkFn bench,
   return AutotuneResult{device_key, resolved, last_chosen, true};
 }
 
+// Dedup set for one-shot cache-miss warnings. The lookup is on the hot
+// path (every kernel launch consults the cache), so we only want to
+// emit the warning the FIRST time we miss for a given
+// (device_key, profile, precision) tuple per process.
+namespace {
+struct WarnKey {
+  std::string device_key;
+  SCAMPProfileType profile_type;
+  SCAMPPrecisionType precision;
+  bool operator==(const WarnKey &o) const {
+    return device_key == o.device_key && profile_type == o.profile_type &&
+           precision == o.precision;
+  }
+};
+struct WarnKeyHash {
+  size_t operator()(const WarnKey &k) const noexcept {
+    size_t h = std::hash<std::string>{}(k.device_key);
+    h = h * 31 + std::hash<int>{}(static_cast<int>(k.profile_type));
+    h = h * 31 + std::hash<int>{}(static_cast<int>(k.precision));
+    return h;
+  }
+};
+std::mutex &WarnSetMutex() {
+  static std::mutex m;
+  return m;
+}
+std::unordered_set<WarnKey, WarnKeyHash> &WarnSet() {
+  static std::unordered_set<WarnKey, WarnKeyHash> s;
+  return s;
+}
+// Returns true if SCAMP_AUTOTUNE_QUIET is set to a non-empty value that is
+// not "0" or "false". Lets pyscamp (and any other library embedder)
+// silence the cache-miss warning at import time without threading a flag
+// through compute_gpu_resources_and_launch -> the pure lookup function.
+//
+// Read fresh on every check so a user toggling the env var between
+// kernel launches takes effect immediately (e.g. in a notebook).
+bool AutotuneWarningsQuieted() {
+  const char *v = std::getenv("SCAMP_AUTOTUNE_QUIET");
+  if (v == nullptr) return false;
+  if (v[0] == '\0') return false;
+  if (std::strcmp(v, "0") == 0) return false;
+  if (std::strcmp(v, "false") == 0) return false;
+  if (std::strcmp(v, "FALSE") == 0) return false;
+  return true;
+}
+
+bool ShouldEmitWarning(const std::string &device_key,
+                       SCAMPProfileType profile, SCAMPPrecisionType precision) {
+  if (AutotuneWarningsQuieted()) return false;
+  std::lock_guard<std::mutex> lock(WarnSetMutex());
+  WarnKey k{device_key, profile, precision};
+  auto [_, inserted] = WarnSet().insert(k);
+  return inserted;
+}
+}  // namespace
+
+void ResetAutotuneWarnings() {
+  std::lock_guard<std::mutex> lock(WarnSetMutex());
+  WarnSet().clear();
+}
+
+KernelConfig LookupKernelConfigForDeviceKey(
+    const std::string &device_key, SCAMPProfileType profile_type,
+    SCAMPPrecisionType precision, const AutotuneCache *user_cache,
+    const AutotuneCache *builtin_cache, const KernelConfig &fallback) {
+  // 1) User override (env var or ~/.cache/scamp/autotune.txt).
+  if (user_cache != nullptr) {
+    auto user_hit = user_cache->Lookup(device_key, profile_type, precision);
+    if (user_hit.has_value() && IsSupportedKernelConfig(*user_hit, precision)) {
+      return *user_hit;
+    }
+  }
+
+  // 2) Built-in cache embedded at build time from data/autotune_cache.txt.
+  if (builtin_cache != nullptr) {
+    auto builtin_hit =
+        builtin_cache->Lookup(device_key, profile_type, precision);
+    if (builtin_hit.has_value() &&
+        IsSupportedKernelConfig(*builtin_hit, precision)) {
+      return *builtin_hit;
+    }
+  }
+
+  // 3) Compile-time default + one-shot warning so the user knows their
+  //    device isn't in either cache and they should consider running
+  //    --autotune. Fires once per (device, profile, precision) per process.
+  if (ShouldEmitWarning(device_key, profile_type, precision)) {
+    std::cerr
+        << "SCAMP: no autotune entry for device '" << device_key << "' / "
+        << ProfileTypeName(profile_type) << " / "
+        << PrecisionTypeName(precision)
+        << "; using compile-time default (blocksz=" << fallback.blocksz
+        << " bps=" << fallback.blocks_per_sm
+        << " dpt=" << fallback.diags_per_thread
+        << " ur=" << fallback.unrolled_rows
+        << " our=" << fallback.outer_unrolled_rows
+        << " kti=" << fallback.kernel_tile_iters << ").\n"
+        << "  Run `SCAMP --autotune` or `pyscamp.autotune()` to benchmark a "
+           "better config for this device.\n"
+        << "  (Suppressing further warnings for this tuple.)\n";
+  }
+  return fallback;
+}
+
 KernelConfig GetKernelConfigForDevice(int device_id,
                                       SCAMPProfileType profile_type,
                                       SCAMPPrecisionType precision,
@@ -485,26 +593,11 @@ KernelConfig GetKernelConfigForDevice(int device_id,
   try {
     GpuDeviceProps props = QueryDeviceProps(device_id);
     std::string key = props.CacheKey();
-
     std::lock_guard<std::mutex> lock(SharedCacheMutex());
-
-    // 1) User override (env var or ~/.cache/scamp/autotune.txt).
     const AutotuneCache *user = GetOrLoadUserCache(cache_path);
-    auto user_hit = user->Lookup(key, profile_type, precision);
-    if (user_hit.has_value() && IsSupportedKernelConfig(*user_hit, precision)) {
-      return *user_hit;
-    }
-
-    // 2) Built-in cache embedded at build time from data/autotune_cache.txt.
     const AutotuneCache *builtin = GetOrLoadBuiltinCache();
-    auto builtin_hit = builtin->Lookup(key, profile_type, precision);
-    if (builtin_hit.has_value() &&
-        IsSupportedKernelConfig(*builtin_hit, precision)) {
-      return *builtin_hit;
-    }
-
-    // 3) Compile-time default.
-    return fallback;
+    return LookupKernelConfigForDeviceKey(key, profile_type, precision, user,
+                                          builtin, fallback);
   } catch (const SCAMPException &) {
     return fallback;
   } catch (const std::exception &) {
