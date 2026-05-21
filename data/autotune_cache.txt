@@ -50,7 +50,11 @@ NVIDIA_GeForce_RTX_3080__sm_86|APPROX_ALL_NEIGHBORS|DOUBLE|64|1|4|4|16|16
 NVIDIA_GeForce_RTX_3080__sm_86|APPROX_ALL_NEIGHBORS|SINGLE|256|1|4|4|16|16
 
 Tesla_P100-DGXS-16GB__sm_60|APPROX_ALL_NEIGHBORS|SINGLE|512|2|4|4|4|50
-Tesla_P100-DGXS-16GB__sm_60|APPROX_ALL_NEIGHBORS|DOUBLE|256|4|2|2|8|16
+# v3 was the autotune winner for this target, but v3 was retired (see
+# SCAMP_VARIANT_TUPLES). v5 was the runner-up on the cross-target
+# score sweep for P100 and is the closest replacement; substituting
+# rather than dropping the line keeps the warning quiet on this device.
+Tesla_P100-DGXS-16GB__sm_60|APPROX_ALL_NEIGHBORS|DOUBLE|256|1|4|4|16|16
 Tesla_P100-DGXS-16GB__sm_60|MATRIX_SUMMARY|SINGLE|256|1|4|4|16|16
 Tesla_P100-DGXS-16GB__sm_60|MATRIX_SUMMARY|DOUBLE|256|2|2|2|16|16
 Tesla_P100-DGXS-16GB__sm_60|SUM_THRESH|SINGLE|256|1|4|4|16|16

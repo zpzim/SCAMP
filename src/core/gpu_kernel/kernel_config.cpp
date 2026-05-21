@@ -4,6 +4,9 @@
 #include <cassert>
 
 #include "kernel_constants.h"
+// Generated from SCAMP_VARIANT_TUPLES in CMakeLists.txt. Provides the
+// kVariants[] constexpr array at namespace SCAMP scope.
+#include "kernel_variants_table.h"
 
 namespace SCAMP {
 
@@ -24,47 +27,16 @@ namespace {
 // Geometry instead of LaunchDoTileWithGeometry. ur is otherwise the inner
 // row-batch size of the sliding-window kernel.
 //
-// Keep this short-ish -- every entry multiplies the do_tile template
-// instantiation count (5 profiles x 3 precisions x 3 row/col modes x
-// |kVariants|).
-constexpr std::array<KernelVariantGeometry, 9> kVariants{{
-    // bps, DPT, ur, our, kti       (derived tile_height, inner_cols,
-    //                               unrolled_cols)
-    {DEFAULT_BLOCKSPERSM, DEFAULT_DIAGS_PER_THREAD, DEFAULT_UNROLLED_ROWS,
-     DEFAULT_OUTER_UNROLLED_ROWS, DEFAULT_KERNEL_TILE_ITERS},
-    // v0: 2,2,2,16,16 -> tile=256, eigen-port default sliding-window shape
-    {2, 4, 2, 4, 50},
-    // v1: 2,4,2,4,50  -> tile=200, DPT=4 with master-like tile height
-    {2, 4, 4, 4, 50},
-    // v2: 2,4,4,4,50  -> tile=200, matches pre-Eigen-port master's 4x4
-    //                   hand-unroll exactly (OUR/UR=1 inner iteration)
-    {4, 2, 2, 8, 16},
-    // v3: 4,2,2,8,16  -> tile=128, higher occupancy + smaller tile
-    {2, 2, 2, 8, 32},
-    // v4: 2,2,2,8,32  -> tile=256, smaller outer-unroll = less register
-    //                   pressure at the same tile height
-    {1, 4, 4, 16, 16},
-    // v5: 1,4,4,16,16 -> tile=256, low occupancy + big per-thread work
-    {8, 4, 0, 8, 8},
-    // v6: 8,4,0,8,8   -> design-A "shfl" (ur==0 sentinel), tile=64=32*DPT.
-    //                   One column-block rotation per tile (the simple
-    //                   case). No smem column buffer.
-    {8, 4, 0, 8, 16},
-    // v7: 8,4,0,8,16  -> shfl, tile_height=128 = 32*DPT (the max allowed
-    //                   for DPT=4 before the masked-cell triangle grows
-    //                   past warp 0). Same registers as v6, but 2x the
-    //                   rows per tile to amortize per-tile init/flush
-    //                   overhead. Smem footprint ~7.7 KB (still fits 8
-    //                   blocks/SM at sm_86's 100KB).
-    {4, 8, 0, 8, 32},
-    // v8: 4,8,0,8,32  -> shfl, tile_height=256 = 32*DPT for DPT=8.
-    //                   DPT=8 doubles per-thread compute per row (better
-    //                   sync amortization) but doubles register-array
-    //                   load -> needs bps=4 (SP path) to fit the 65536
-    //                   regs/SM budget. For DP path the dispatcher will
-    //                   force bps=2 if necessary; if it spills the
-    //                   benchmark will catch it as slower than v6.
-}};
+// The kVariants[] array is generated from SCAMP_VARIANT_TUPLES in
+// src/core/gpu_kernel/CMakeLists.txt. Adding, removing, or reordering
+// variants is a single-source-of-truth edit there -- the include
+// below is the only place this file consumes the table. See
+// kernel_variants_table.h.in for the @-substitution template.
+//
+// Historical note: an earlier iteration had 9 entries (v0..v8).
+// v1, v3, v4, v7 (pre-prune labels) were retired after the multi-
+// device autotune sweep showed they never won any (profile,
+// precision) target, then the labels were compacted to 0..4.
 
 int BlocksizeForPrecision(SCAMPPrecisionType precision) {
   switch (precision) {
@@ -108,17 +80,23 @@ KernelConfig GetKernelConfigForVariant(std::size_t i,
 }
 
 KernelConfig GetDefaultKernelConfig(SCAMPPrecisionType precision) {
-  // Variant 6 is the draft shfl variant being tested.
-  return GetKernelConfigForVariant(6, precision);
+  // v3 (the shfl variant with the smallest tile -- pre-prune label v6)
+  // is the safest default: it wins one 3080 target outright, has the
+  // tightest worst-case ratio in the cross-target score table on every
+  // GPU we've measured, and uses the least smem so it fits cleanly even
+  // on older devices.
+  return GetKernelConfigForVariant(3, precision);
 }
 
 bool IsSupportedKernelConfig(const KernelConfig &cfg,
                              SCAMPPrecisionType precision) {
   (void)precision;
-  // All enabled variants (v0, v1, v3, v4, v6) accept any of the standard
-  // blocksz values — both the sliding-window and shfl LaunchDoTile helpers
-  // dispatch by runtime blocksz so the autotuner can sweep that axis too.
-  constexpr int kEnabledVariants[] = {0, 1, 2, 3, 4, 5, 6, 7, 8};
+  // All of kVariants is currently enabled (the table is the curated set
+  // -- the pre-prune holes for v1/v3/v4/v7 were compacted out). Each
+  // variant accepts any of the standard blocksz values -- both the
+  // sliding-window and shfl LaunchDoTile helpers dispatch by runtime
+  // blocksz so the autotuner can sweep that axis too.
+  constexpr int kEnabledVariants[] = {0, 1, 2, 3, 4};
   for (int idx : kEnabledVariants) {
     const auto &v = kVariants[idx];
     if (cfg.blocks_per_sm == v.blocks_per_sm &&

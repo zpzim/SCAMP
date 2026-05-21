@@ -56,7 +56,8 @@ add_library(gpu_utils
     ${CMAKE_CURRENT_SOURCE_DIR}/autotune.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/builtin_autotune_cache.cpp
 )
-target_include_directories(gpu_utils PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(gpu_utils PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
+                                              ${CMAKE_CURRENT_BINARY_DIR})
 # gpu_utils needs Eigen too: kernel_gpu_utils.h now declares Eigen::Map
 # fields inside SCAMPSmem and Eigen::Array inside SCAMPThreadInfo.
 target_link_libraries(gpu_utils kernel_common common CUDA::cudart Eigen3::Eigen)
@@ -74,58 +75,116 @@ set(SCAMP_KERNEL_PROFILES
     "APPROX_ALL_NEIGHBORS|SCAMPmatch|uint64_t|float"
 )
 
-# Variant geometry tuples: index|bps|dpt|ur|our|kti. MUST stay in sync with
-# kKernelVariants in kernel_config.cpp and the SCAMP_VARIANT_DISPATCH cases
-# in kernels_variants.h. Adding a row here without updating the other two
-# generates a .cu that compiles but is never callable (and one whose
-# IsSupportedKernelConfig returns false).
+# Variant geometry tuples -- the SINGLE source of truth for which kernel
+# variants are enabled. Format: bps|dpt|ur|our|kti (no explicit index --
+# variant N is the Nth entry in this list). The foreach below generates
+# from this list:
+#   * kernel_<profile>_v<N>.cu per (profile, variant) tuple via
+#     kernel_variant.cu.in / kernel_variant_shfl.cu.in.
+#   * kernel_variants_table.h with the kVariants[] init list consumed by
+#     kernel_config.cpp.
+#   * kernels_variants.h with the SCAMP_DECL_VARIANTS_FOR_PROFILE +
+#     SCAMP_VARIANT_DISPATCH macros consumed by the per-profile .cu
+#     dispatcher TUs.
+#
+# Adding or reordering a tuple here propagates through all three
+# automatically; no other files need touching. Retiring a tuple removes
+# its .cu, its forward decl, its dispatch case, and its kVariants entry
+# in one step.
 set(SCAMP_VARIANT_TUPLES
-    # Bake-off: sliding-window variants v0/v1/v3/v4 enabled alongside v6
-    # (shfl) so the autotune cache can route to any of them for perf
-    # comparison. v2/v5 still skipped (v2 = v1 with deeper unroll, v5 is
-    # bps=1 niche).
-    "0|2|2|2|16|16"
-    "1|2|4|2|4|50"
-    "2|2|4|4|4|50"
-    "3|4|2|2|8|16"
-    "4|2|2|2|8|32"
-    "5|1|4|4|16|16"
+    # bps|dpt|ur|our|kti
+    "2|2|2|16|16"       # sliding-window, eigen-port default (tile=256)
+    "2|4|4|4|50"        # sliding-window, master-like 4x4 hand-unroll (tile=200)
+    "1|4|4|16|16"       # sliding-window, big tile / low occupancy (tile=256)
     # ur==0 marks the design-A "shfl" variant. The foreach below routes
     # ur==0 tuples through kernel_variant_shfl.cu.in instead of the
     # sliding-window template.
-    "6|8|4|0|8|8"
-    "7|8|4|0|8|16"
-    "8|4|8|0|8|32"
+    "8|4|0|8|8"         # shfl, DPT=4, tile=64
+    "4|8|0|8|32"        # shfl, DPT=8, tile=256
 )
 
+# Build the three @-substitution strings (kVariants init body, forward
+# decl block, dispatch ladder body) by walking SCAMP_VARIANT_TUPLES.
+# kVariants index is the foreach iteration counter; we no longer carry
+# explicit indices in the tuple strings.
+list(LENGTH SCAMP_VARIANT_TUPLES SCAMP_NUM_VARIANTS)
+set(_kvariants_init "")
+set(_variant_decls "")
+set(_variant_dispatch "")
+set(_variant_idx 0)
 set(SCAMP_GENERATED_VARIANT_SOURCES "")
-foreach(profile_def ${SCAMP_KERNEL_PROFILES})
-  string(REPLACE "|" ";" profile_fields "${profile_def}")
-  list(GET profile_fields 0 VARIANT_PROFILE)
-  list(GET profile_fields 1 VARIANT_PROFILE_OUTPUT_TYPE)
-  list(GET profile_fields 2 VARIANT_PROFILE_DATA_TYPE)
-  list(GET profile_fields 3 VARIANT_DISTANCE_TYPE)
-  foreach(variant_tuple ${SCAMP_VARIANT_TUPLES})
-    string(REPLACE "|" ";" variant_fields "${variant_tuple}")
-    list(GET variant_fields 0 VARIANT_INDEX)
-    list(GET variant_fields 1 VARIANT_BPS)
-    list(GET variant_fields 2 VARIANT_DPT)
-    list(GET variant_fields 3 VARIANT_UR)
-    list(GET variant_fields 4 VARIANT_OUR)
-    list(GET variant_fields 5 VARIANT_KTI)
+foreach(variant_tuple ${SCAMP_VARIANT_TUPLES})
+  string(REPLACE "|" ";" variant_fields "${variant_tuple}")
+  list(GET variant_fields 0 VARIANT_BPS)
+  list(GET variant_fields 1 VARIANT_DPT)
+  list(GET variant_fields 2 VARIANT_UR)
+  list(GET variant_fields 3 VARIANT_OUR)
+  list(GET variant_fields 4 VARIANT_KTI)
+  set(VARIANT_INDEX ${_variant_idx})
+
+  # 1) Per-variant kVariants[] initializer row. Newline-terminated so
+  #    `configure_file` produces a multi-line array body.
+  string(APPEND _kvariants_init
+    "    {${VARIANT_BPS}, ${VARIANT_DPT}, ${VARIANT_UR}, ${VARIANT_OUR}, ${VARIANT_KTI}},  // v${VARIANT_INDEX}\n")
+
+  # 2) Per-variant forward decl, contributing to the body of the
+  #    SCAMP_DECL_VARIANTS_FOR_PROFILE macro. Every line ends with \
+  #    so the macro spans correctly. NB: in CMake quoted strings \\
+  #    is the way to emit a single backslash literal.
+  string(APPEND _variant_decls
+    "  SCAMPError_t LaunchVariant_##PROFILE##_v${VARIANT_INDEX}(\\\n"
+    "      SCAMPKernelInputArgs<double> args, OUTPUT_TYPE *profile_A,\\\n"
+    "      OUTPUT_TYPE *profile_B, SCAMPPrecisionType fp_type,\\\n"
+    "      bool computing_rows, bool computing_cols, uint64_t blocksz,\\\n"
+    "      uint64_t num_blocks, uint64_t smem, cudaStream_t s);\\\n")
+
+  # 3) Per-variant dispatch if-block, contributing to the body of the
+  #    SCAMP_VARIANT_DISPATCH macro.
+  string(APPEND _variant_dispatch
+    "    /* v${VARIANT_INDEX}: ${VARIANT_BPS},${VARIANT_DPT},${VARIANT_UR},${VARIANT_OUR},${VARIANT_KTI} */\\\n"
+    "    if (cfg.blocks_per_sm == ${VARIANT_BPS} &&\\\n"
+    "        cfg.diags_per_thread == ${VARIANT_DPT} &&\\\n"
+    "        cfg.unrolled_rows == ${VARIANT_UR} &&\\\n"
+    "        cfg.outer_unrolled_rows == ${VARIANT_OUR} &&\\\n"
+    "        cfg.kernel_tile_iters == ${VARIANT_KTI}) {\\\n"
+    "      return LaunchVariant_##PROFILE##_v${VARIANT_INDEX}(\\\n"
+    "          args, profile_A, profile_B, fp_type, computing_rows,\\\n"
+    "          computing_cols, cfg.blocksz, num_blocks, smem, s);\\\n"
+    "    }\\\n")
+
+  # 4) Per-(profile, variant) .cu file generation, same as before -- the
+  #    variant-specific .cu instantiates do_tile for this geometry.
+  foreach(profile_def ${SCAMP_KERNEL_PROFILES})
+    string(REPLACE "|" ";" profile_fields "${profile_def}")
+    list(GET profile_fields 0 VARIANT_PROFILE)
+    list(GET profile_fields 1 VARIANT_PROFILE_OUTPUT_TYPE)
+    list(GET profile_fields 2 VARIANT_PROFILE_DATA_TYPE)
+    list(GET profile_fields 3 VARIANT_DISTANCE_TYPE)
     set(_out "${CMAKE_CURRENT_BINARY_DIR}/kernel_${VARIANT_PROFILE}_v${VARIANT_INDEX}.cu")
     if(VARIANT_UR EQUAL 0)
       set(_template "${CMAKE_CURRENT_SOURCE_DIR}/kernel_variant_shfl.cu.in")
     else()
       set(_template "${CMAKE_CURRENT_SOURCE_DIR}/kernel_variant.cu.in")
     endif()
-    configure_file(
-      "${_template}"
-      "${_out}"
-      @ONLY)
+    configure_file("${_template}" "${_out}" @ONLY)
     list(APPEND SCAMP_GENERATED_VARIANT_SOURCES "${_out}")
   endforeach()
+
+  math(EXPR _variant_idx "${_variant_idx} + 1")
 endforeach()
+
+set(SCAMP_KVARIANTS_INIT "${_kvariants_init}")
+set(SCAMP_VARIANT_DECLS "${_variant_decls}")
+set(SCAMP_VARIANT_DISPATCH_BODY "${_variant_dispatch}")
+
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/kernel_variants_table.h.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/kernel_variants_table.h"
+  @ONLY)
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/kernels_variants.h.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/kernels_variants.h"
+  @ONLY)
 
 add_library(gpu_kernels
     ${CMAKE_CURRENT_SOURCE_DIR}/kernels.cu
@@ -136,7 +195,8 @@ add_library(gpu_kernels
     ${CMAKE_CURRENT_SOURCE_DIR}/kernel_approx_all_neighbors.cu
     ${SCAMP_GENERATED_VARIANT_SOURCES}
 )
-target_include_directories(gpu_kernels PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(gpu_kernels PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
+                                                ${CMAKE_CURRENT_BINARY_DIR})
 # Eigen3::Eigen is defined by src/core/cpu_kernel/CMakeLists.txt, which the
 # parent src/core/CMakeLists.txt processes before this directory. We use
 # Eigen's fixed-size arrays in the device-side compute templates for cleaner
