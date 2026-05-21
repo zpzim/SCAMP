@@ -277,8 +277,17 @@ jobs:
           set -e
           cd $GITHUB_WORKSPACE
           mkdir build && cd build
-          cmake -DFORCE_CUDA=1 ..
+          cmake -DFORCE_CUDA=1 -DBUILD_SCAMP_TESTS=ON ..
           cmake --build . --config Release --parallel 2
+
+      - name: Run C++ unit tests
+        shell: bash
+        # Tests are CUDA-toolchain-required but GPU-runtime-free, so
+        # they run on the build-only runners that have no NVIDIA driver.
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE/build
+          ctest --output-on-failure --build-config Release
 
   build-cuda-versions:
     name: cuda-build ${{ matrix.cuda }} ${{ matrix.os }}
@@ -314,8 +323,15 @@ jobs:
           set -e
           cd $GITHUB_WORKSPACE
           mkdir build && cd build
-          cmake -DFORCE_CUDA=1 ..
+          cmake -DFORCE_CUDA=1 -DBUILD_SCAMP_TESTS=ON ..
           cmake --build . --config Release --parallel 2
+
+      - name: Run C++ unit tests
+        shell: bash
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE/build
+          ctest --output-on-failure --build-config Release
 
   build-and-test-cuda:
     runs-on: self-hosted
@@ -331,9 +347,16 @@ jobs:
           set -e
           cd $GITHUB_WORKSPACE
           mkdir build && cd build
-          cmake -DFORCE_CUDA=1 ..
+          cmake -DFORCE_CUDA=1 -DBUILD_SCAMP_TESTS=ON ..
           cmake --build . --config Release --parallel 2
-          
+
+      - name: Run C++ unit tests
+        shell: bash
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE/build
+          ctest --output-on-failure --build-config Release
+
       - name: Basic CUDA Tests SCAMP
         shell: bash
         run: |
