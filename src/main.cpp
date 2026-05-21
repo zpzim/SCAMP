@@ -127,15 +127,16 @@ int main(int argc, char **argv) {
         return 1;
       }
       if (num_dev > 1) {
-	std::cout << "Warning: autotune will only use the first gpu device for tuning.";
+        std::cout << "Warning: autotune will only use the first gpu device for "
+                     "tuning.";
       }
       tune_devices.push_back(0);
     }
-    for (const int& dev: tune_devices) {
+    for (const int &dev : tune_devices) {
       try {
-          SCAMP::RunAutotuneWithBenchmark(dev, &SCAMP::DefaultBenchmarkVariant,
-                                          /*cache_path=*/"",
-                                          /*verbose=*/true);
+        SCAMP::RunAutotuneWithBenchmark(dev, &SCAMP::DefaultBenchmarkVariant,
+                                        /*cache_path=*/"",
+                                        /*verbose=*/true);
       } catch (const std::exception &e) {
         std::cerr << "Autotune failed: " << e.what() << std::endl;
         return 1;
