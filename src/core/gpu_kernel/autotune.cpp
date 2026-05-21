@@ -522,8 +522,8 @@ bool AutotuneWarningsQuieted() {
   return true;
 }
 
-bool ShouldEmitWarning(const std::string &device_key,
-                       SCAMPProfileType profile, SCAMPPrecisionType precision) {
+bool ShouldEmitWarning(const std::string &device_key, SCAMPProfileType profile,
+                       SCAMPPrecisionType precision) {
   if (AutotuneWarningsQuieted()) return false;
   std::lock_guard<std::mutex> lock(WarnSetMutex());
   WarnKey k{device_key, profile, precision};
@@ -537,10 +537,12 @@ void ResetAutotuneWarnings() {
   WarnSet().clear();
 }
 
-KernelConfig LookupKernelConfigForDeviceKey(
-    const std::string &device_key, SCAMPProfileType profile_type,
-    SCAMPPrecisionType precision, const AutotuneCache *user_cache,
-    const AutotuneCache *builtin_cache, const KernelConfig &fallback) {
+KernelConfig LookupKernelConfigForDeviceKey(const std::string &device_key,
+                                            SCAMPProfileType profile_type,
+                                            SCAMPPrecisionType precision,
+                                            const AutotuneCache *user_cache,
+                                            const AutotuneCache *builtin_cache,
+                                            const KernelConfig &fallback) {
   // 1) User override (env var or ~/.cache/scamp/autotune.txt).
   if (user_cache != nullptr) {
     auto user_hit = user_cache->Lookup(device_key, profile_type, precision);

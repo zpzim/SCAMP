@@ -102,10 +102,12 @@ KernelConfig GetKernelConfigForDevice(int device_id,
 // same tuple are silent. ResetAutotuneWarnings() clears the dedup set
 // (used by tests).
 class AutotuneCache;  // fwd
-KernelConfig LookupKernelConfigForDeviceKey(
-    const std::string &device_key, SCAMPProfileType profile_type,
-    SCAMPPrecisionType precision, const AutotuneCache *user_cache,
-    const AutotuneCache *builtin_cache, const KernelConfig &fallback);
+KernelConfig LookupKernelConfigForDeviceKey(const std::string &device_key,
+                                            SCAMPProfileType profile_type,
+                                            SCAMPPrecisionType precision,
+                                            const AutotuneCache *user_cache,
+                                            const AutotuneCache *builtin_cache,
+                                            const KernelConfig &fallback);
 
 // Clear the cache-miss warning dedup set. Tests use this; production
 // code shouldn't need to call it.

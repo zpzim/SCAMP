@@ -169,8 +169,8 @@ void Test_CacheMissEmitsWarningAndReturnsFallback() {
   auto user = MakeCacheFromString("SCAMP_AUTOTUNE_V1\n");  // empty cache
   std::string out = CaptureStderr([&]() {
     auto cfg = SCAMP::LookupKernelConfigForDeviceKey(
-        "UnknownDevice", SCAMP::PROFILE_TYPE_1NN_INDEX,
-        SCAMP::PRECISION_SINGLE, user.get(), nullptr, FallbackConfig());
+        "UnknownDevice", SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_SINGLE,
+        user.get(), nullptr, FallbackConfig());
     EXPECT_TRUE(ConfigsEqual(cfg, FallbackConfig()));
   });
   EXPECT_TRUE(out.find("UnknownDevice") != std::string::npos);
@@ -185,13 +185,13 @@ void Test_CacheMissWarningIsOneShot() {
   auto user = MakeCacheFromString("SCAMP_AUTOTUNE_V1\n");
   std::string first = CaptureStderr([&]() {
     SCAMP::LookupKernelConfigForDeviceKey(
-        "UnknownDevice", SCAMP::PROFILE_TYPE_1NN_INDEX,
-        SCAMP::PRECISION_SINGLE, user.get(), nullptr, FallbackConfig());
+        "UnknownDevice", SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_SINGLE,
+        user.get(), nullptr, FallbackConfig());
   });
   std::string second = CaptureStderr([&]() {
     SCAMP::LookupKernelConfigForDeviceKey(
-        "UnknownDevice", SCAMP::PROFILE_TYPE_1NN_INDEX,
-        SCAMP::PRECISION_SINGLE, user.get(), nullptr, FallbackConfig());
+        "UnknownDevice", SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_SINGLE,
+        user.get(), nullptr, FallbackConfig());
   });
   EXPECT_TRUE(!first.empty());
   EXPECT_TRUE(second.empty());  // warning should be deduped
@@ -238,13 +238,13 @@ void Test_CacheMissWarningIsPerTuple() {
   auto user = MakeCacheFromString("SCAMP_AUTOTUNE_V1\n");
   std::string a = CaptureStderr([&]() {
     SCAMP::LookupKernelConfigForDeviceKey(
-        "UnknownDevice", SCAMP::PROFILE_TYPE_1NN_INDEX,
-        SCAMP::PRECISION_SINGLE, user.get(), nullptr, FallbackConfig());
+        "UnknownDevice", SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_SINGLE,
+        user.get(), nullptr, FallbackConfig());
   });
   std::string b = CaptureStderr([&]() {
     SCAMP::LookupKernelConfigForDeviceKey(
-        "UnknownDevice", SCAMP::PROFILE_TYPE_1NN_INDEX,
-        SCAMP::PRECISION_DOUBLE, user.get(), nullptr, FallbackConfig());
+        "UnknownDevice", SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_DOUBLE,
+        user.get(), nullptr, FallbackConfig());
   });
   EXPECT_TRUE(!a.empty());
   EXPECT_TRUE(!b.empty());  // different precision should emit a new warning
