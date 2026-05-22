@@ -103,17 +103,46 @@ Choosing the benchmark workload size
 """"""""""""""""""""""""""""""""""""
 
 The synthetic workload used per trial is sized via
-``SCAMP_AUTOTUNE_INPUT_LENGTH`` (default 131072). Larger values are
-slower (work scales like *n²*) but the per-variant ranking better
-matches a production-scale workload — at small *n* the FFT/stats prelude
-dominates and trial timings collapse into the noise floor. For
-production-quality tuning we recommend 256K-512K:
+``SCAMP_AUTOTUNE_INPUT_LENGTH`` (default 131072 = 128K elements). Work
+scales like *n²*, so doubling the size roughly quadruples the sweep's
+wall-clock cost — but the per-variant ranking gets tighter as *n* grows:
+at small *n* the FFT/stats prelude dominates and trial timings collapse
+toward the noise floor, while at production sizes the kernel work
+swamps the prelude and the ranking is dominated by what you actually
+care about.
+
+Empirical comparison on an RTX 3080 across the standard 10
+(profile, precision) targets:
+
+============== ============== ============== ============== ===============
+Input length   Sweep wall     Cross-target   Worst-case     Per-target
+                              geomean        ratio          winners
+============== ============== ============== ============== ===============
+65536 (64K)    ~4 min         1.325          2.25           shift vs 128K
+131072 (128K)  ~8 min         1.308          3.47           baseline
+262144 (256K)  ~25 min        1.278          2.77           best-quality
+============== ============== ============== ============== ===============
+
+The geomean ratio above is the cross-target "best recommended default"
+score (lower is better — 1.000 would mean a single variant tied with
+every per-target winner). The 256K column is meaningfully tighter
+than 128K — and importantly, the per-target *winners* themselves
+shift between the rows (e.g. SUM_THRESH/DOUBLE picks different
+variants at 64K vs 128K vs 256K), so a short autotune doesn't just
+mis-rank the cross-target default, it also picks suboptimal entries
+for individual cache rows.
+
+The default (128K) is a deliberate "casual dev experience" pick that
+finishes in a few minutes and gets within ~3% geomean of 256K. For
+production-quality tuning before submitting a built-in cache entry to
+``data/autotune_cache.txt``, run with 256K or 512K:
 
 .. code-block:: console
 
-   $ SCAMP_AUTOTUNE_INPUT_LENGTH=524288 SCAMP --autotune
+   $ SCAMP_AUTOTUNE_INPUT_LENGTH=262144 SCAMP --autotune
+   $ SCAMP_AUTOTUNE_INPUT_LENGTH=524288 SCAMP --autotune  # tighter still
 
-The trade-off is wall-clock: a 524288 sweep can take 10-15 minutes.
+The trade-off is wall-clock: 524288 takes ~1.5+ hours on a recent GPU.
 
 Choosing the device(s)
 """"""""""""""""""""""
