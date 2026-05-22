@@ -353,9 +353,9 @@ __device__ inline FORCE_INLINE void do_row(
 // regular for-loops (not constexpr-recursive for_<N>(...) lambdas) so the
 // surrounding do_row / update_cols / update_rows / merge_to_* templates
 // only get one instantiation per (variant, precision, row/col mode)
-// regardless of OUR. This is what makes high-OUR variants compile in
-// roughly the same wall-clock as low-OUR ones; before this change the
-// OUR=16 variants were ~1.7x more expensive than OUR=4.
+// regardless of OUR. Keeps per-variant compile time roughly independent
+// of OUR; the recursive-lambda form would pay an OUR-proportional cost
+// (template instantiation per outer-loop k) for no codegen win.
 ///////////////////////////////////////////////////////////////////////////////
 template <SCAMPProfileType PROFILE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
           typename DISTANCE_TYPE, int DiagsPerThread, int UnrolledRows,

@@ -13,13 +13,14 @@ include(SCAMPMacros)
 #                               do_tile<...> kernel for exactly one variant
 #                               geometry, across the 2 precisions x 3 row/col modes.
 #
-# 5 profiles x 6 variants = 30 generated TUs. Splitting this way lets the
-# build dispatch variant compilation to make/ninja's -jN. Adding a profile:
-# add an entry to SCAMP_KERNEL_PROFILES below + create a kernel_<profile>.cu
-# dispatcher + add the SCAMP_DECL_VARIANTS_FOR_PROFILE block in
-# kernels_variants.h. Adding a variant: add an entry to SCAMP_VARIANT_TUPLES
-# below + add an entry to kKernelVariants (kernel_config.cpp) + add the
-# matching dispatch case in SCAMP_VARIANT_DISPATCH (kernels_variants.h).
+# One TU per (profile, variant) lets make/ninja dispatch variant
+# compilation to -jN.
+#
+# Adding a profile: add an entry to SCAMP_KERNEL_PROFILES below + create
+# a kernel_<profile>.cu dispatcher.
+# Adding a variant: add an entry to SCAMP_VARIANT_TUPLES below; the
+# foreach in this file regenerates the dispatch table + kVariants[]
+# entry + per-(profile, variant) .cu files automatically.
 
 add_library(qt_kernels ${CMAKE_CURRENT_SOURCE_DIR}/qt_kernels.cu)
 
@@ -58,8 +59,8 @@ add_library(gpu_utils
 )
 target_include_directories(gpu_utils PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
                                               ${CMAKE_CURRENT_BINARY_DIR})
-# gpu_utils needs Eigen too: kernel_gpu_utils.h now declares Eigen::Map
-# fields inside SCAMPSmem and Eigen::Array inside SCAMPThreadInfo.
+# Eigen3::Eigen for the Eigen::Map / Eigen::Array fields in
+# kernel_gpu_utils.h's SCAMPSmem / SCAMPThreadInfo.
 target_link_libraries(gpu_utils kernel_common common CUDA::cudart Eigen3::Eigen)
 
 # Per-profile metadata: name + PROFILE_OUTPUT_TYPE + PROFILE_DATA_TYPE +
@@ -93,20 +94,20 @@ set(SCAMP_KERNEL_PROFILES
 # in one step.
 set(SCAMP_VARIANT_TUPLES
     # bps|dpt|ur|our|kti
-    "2|2|2|16|16"       # sliding-window, eigen-port default (tile=256)
-    "2|4|4|4|50"        # sliding-window, master-like 4x4 hand-unroll (tile=200)
+    "2|2|2|16|16"       # sliding-window, DPT=2 baseline (tile=256)
+    "2|4|4|4|50"        # sliding-window, DPT=4 + 4x4 hand-unroll (tile=200)
     "1|4|4|16|16"       # sliding-window, big tile / low occupancy (tile=256)
-    # ur==0 marks the design-A "shfl" variant. The foreach below routes
-    # ur==0 tuples through kernel_variant_shfl.cu.in instead of the
-    # sliding-window template.
+    # ur==0 marks the "shfl" (cov-shuffle) variant. The foreach below
+    # routes ur==0 tuples through kernel_variant_shfl.cu.in instead of
+    # the sliding-window template.
     "8|4|0|8|8"         # shfl, DPT=4, tile=64
     "4|8|0|8|32"        # shfl, DPT=8, tile=256
 )
 
 # Build the three @-substitution strings (kVariants init body, forward
 # decl block, dispatch ladder body) by walking SCAMP_VARIANT_TUPLES.
-# kVariants index is the foreach iteration counter; we no longer carry
-# explicit indices in the tuple strings.
+# Variant N is the Nth entry in the list (foreach iteration counter);
+# there are no explicit indices in the tuple strings.
 list(LENGTH SCAMP_VARIANT_TUPLES SCAMP_NUM_VARIANTS)
 set(_kvariants_init "")
 set(_variant_decls "")
@@ -152,8 +153,9 @@ foreach(variant_tuple ${SCAMP_VARIANT_TUPLES})
     "          computing_cols, cfg.blocksz, num_blocks, smem, s);\\\n"
     "    }\\\n")
 
-  # 4) Per-(profile, variant) .cu file generation, same as before -- the
-  #    variant-specific .cu instantiates do_tile for this geometry.
+  # 4) Per-(profile, variant) .cu generation: one TU that instantiates
+  #    do_tile for this geometry across the 2 precisions x 3 row/col
+  #    modes = 6 do_tile bodies per file.
   foreach(profile_def ${SCAMP_KERNEL_PROFILES})
     string(REPLACE "|" ";" profile_fields "${profile_def}")
     list(GET profile_fields 0 VARIANT_PROFILE)

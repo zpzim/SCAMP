@@ -3,7 +3,7 @@
 // Lookup at kernel launch time (see GetKernelConfigForDevice) consults
 // these sources in order:
 //
-//   0. Thread-local override (Set/ClearKernelConfigOverride). Used by
+//   0. Process-wide override (Set/ClearKernelConfigOverride). Used by
 //      the autotune benchmark loop to force one specific variant per
 //      timed run; not normally set.
 //   1. User override file. Path comes from AutotuneCache::DefaultPath()
@@ -42,12 +42,6 @@ struct AutotuneResult {
                             // useful as a sanity check).
   bool wrote_cache;         // True if the cache file was rewritten.
 };
-
-// Backward-compat thin wrapper: writes the compile-time default
-// (kKernelVariants[0]) for every (profile, precision) tuple. Does NOT
-// benchmark variants. Use RunAutotuneWithBenchmark to actually tune.
-AutotuneResult RunAutotune(int device_id, const std::string &cache_path = "",
-                           bool verbose = true);
 
 // Signature for the per-trial workload runner. Implementations live in
 // autotune_bench.cpp (which depends on scamp_op); the function is
@@ -134,14 +128,16 @@ KernelConfig LookupKernelConfigForDeviceKey(const std::string &device_key,
 // code shouldn't need to call it.
 void ResetAutotuneWarnings();
 
-// Set / clear a thread-local KernelConfig override. While set,
+// Set / clear a process-wide KernelConfig override. While set,
 // GetKernelConfigForDevice returns the override and skips the cache
 // lookup. The autotune benchmark loop uses this to force one specific
-// variant per timed run.
+// variant per timed run; it has to be process-wide because do_SCAMP
+// dispatches work to std::async workers that would not see a
+// thread_local set on the autotune main thread.
 //
-// Override must be cleared before the thread returns to normal use,
-// otherwise the override leaks into subsequent SCAMP calls on the same
-// thread. (Pattern: RAII scope guard.)
+// Override must be cleared before returning to normal use, otherwise
+// it leaks into subsequent SCAMP calls in the process. (Pattern: RAII
+// scope guard.)
 void SetKernelConfigOverride(const KernelConfig &cfg);
 void ClearKernelConfigOverride();
 

@@ -12,31 +12,23 @@ namespace SCAMP {
 
 namespace {
 
-// Enumerated launch-geometry variants. Index 0 is the canonical default
-// (matches DEFAULT_* constants from kernel_constants.h). Each entry must
-// have a matching VARIANT_BRANCH in the LaunchDoTile switch in
-// kernels_impl.h.
+// Enumerated launch-geometry variants. Each entry must have a matching
+// VARIANT_BRANCH in the LaunchDoTile switch in kernels_impl.h.
 //
 // Constraint: OuterUnrolledRows must be divisible by UnrolledRows (the
 // outer for_<OUR/UR> loop). Derived sizes that drive register pressure:
 //   inner_unrolled_cols = DPT + UR - 1   (column window held in regs)
 //   unrolled_cols       = DPT + OUR - 1  (distc/idxc array width)
 //
-// Sentinel: unrolled_rows == 0 marks the design-A "shfl" variant. The
-// per-profile dispatcher routes ur==0 entries to LaunchDoTileShflWith-
-// Geometry instead of LaunchDoTileWithGeometry. ur is otherwise the inner
-// row-batch size of the sliding-window kernel.
+// Sentinel: unrolled_rows == 0 marks the "shfl" (cov-shuffle) variant.
+// The per-profile dispatcher routes ur==0 entries to
+// LaunchDoTileShflWithGeometry instead of LaunchDoTileWithGeometry.
+// ur is otherwise the inner row-batch size of the sliding-window kernel.
 //
 // The kVariants[] array is generated from SCAMP_VARIANT_TUPLES in
-// src/core/gpu_kernel/CMakeLists.txt. Adding, removing, or reordering
-// variants is a single-source-of-truth edit there -- the include
-// below is the only place this file consumes the table. See
+// src/core/gpu_kernel/CMakeLists.txt -- single source of truth for
+// which variant geometries the binary supports. See
 // kernel_variants_table.h.in for the @-substitution template.
-//
-// Historical note: an earlier iteration had 9 entries (v0..v8).
-// v1, v3, v4, v7 (pre-prune labels) were retired after the multi-
-// device autotune sweep showed they never won any (profile,
-// precision) target, then the labels were compacted to 0..4.
 
 int BlocksizeForPrecision(SCAMPPrecisionType precision) {
   switch (precision) {
@@ -80,25 +72,27 @@ KernelConfig GetKernelConfigForVariant(std::size_t i,
 }
 
 KernelConfig GetDefaultKernelConfig(SCAMPPrecisionType precision) {
-  // v3 (the shfl variant with the smallest tile -- pre-prune label v6)
-  // is the safest default: it wins one 3080 target outright, has the
-  // tightest worst-case ratio in the cross-target score table on every
-  // GPU we've measured, and uses the least smem so it fits cleanly even
-  // on older devices.
-  return GetKernelConfigForVariant(3, precision);
+  // The shfl variant with the smallest tile is the safest default: it
+  // has the tightest worst-case ratio in the cross-target score table
+  // on every GPU we've measured, and uses the least smem so it fits
+  // cleanly even on older devices. By convention this is the first
+  // shfl (ur==0) entry in SCAMP_VARIANT_TUPLES.
+  for (std::size_t i = 0; i < kVariants.size(); ++i) {
+    if (kVariants[i].unrolled_rows == 0) {
+      return GetKernelConfigForVariant(i, precision);
+    }
+  }
+  // No shfl variant configured -- fall back to v0.
+  return GetKernelConfigForVariant(0, precision);
 }
 
 bool IsSupportedKernelConfig(const KernelConfig &cfg,
                              SCAMPPrecisionType precision) {
   (void)precision;
-  // All of kVariants is currently enabled (the table is the curated set
-  // -- the pre-prune holes for v1/v3/v4/v7 were compacted out). Each
-  // variant accepts any of the standard blocksz values -- both the
-  // sliding-window and shfl LaunchDoTile helpers dispatch by runtime
-  // blocksz so the autotuner can sweep that axis too.
-  constexpr int kEnabledVariants[] = {0, 1, 2, 3, 4};
-  for (int idx : kEnabledVariants) {
-    const auto &v = kVariants[idx];
+  // Both the sliding-window and shfl LaunchDoTile helpers dispatch by
+  // runtime blocksz, so the autotuner is free to sweep that axis for
+  // any variant tuple in kVariants.
+  for (const auto &v : kVariants) {
     if (cfg.blocks_per_sm == v.blocks_per_sm &&
         cfg.diags_per_thread == v.diags_per_thread &&
         cfg.unrolled_rows == v.unrolled_rows &&

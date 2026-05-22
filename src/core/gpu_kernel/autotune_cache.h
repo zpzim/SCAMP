@@ -17,7 +17,9 @@ namespace SCAMP {
 // version marker; future format changes bump it and ignore older files.
 //
 //   SCAMP_AUTOTUNE_V1
-//   <device_key>|<profile_type>|<precision>|<blocksz>|<tile_height>|<blocks_per_sm>
+//   <device_key>|<profile_type>|<precision>|<blocksz>|<blocks_per_sm>
+//     |<diags_per_thread>|<unrolled_rows>|<outer_unrolled_rows>
+//     |<kernel_tile_iters>
 //   ...
 //
 // Comment lines starting with '#' and blank lines are ignored.

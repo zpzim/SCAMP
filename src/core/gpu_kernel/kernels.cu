@@ -36,7 +36,7 @@ SCAMPError_t compute_gpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
   uint64_t num_workers = ceil((args.n_x - exclusion_total) /
                               static_cast<double>(cfg.diags_per_thread));
   uint64_t num_blocks = ceil(num_workers / static_cast<double>(blocksz));
-  // cfg.unrolled_rows == 0 marks the design-A "shfl" variant (see
+  // cfg.unrolled_rows == 0 marks the cov-shuffle "shfl" variant (see
   // kernel_config.cpp). Its smem layout drops the column-data regions and
   // adds a small cov_handoff region, so size it via get_smem_shfl.
   uint64_t smem = (cfg.unrolled_rows == 0)

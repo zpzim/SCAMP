@@ -1,6 +1,5 @@
-// Design A "cov-shuffle" GPU kernel — experimental variant for the autotuner.
-// Drafted as part of the variant-7 / variant-8 experiment; see the PR
-// description for design tradeoffs.
+// "cov-shuffle" GPU kernel: per-row covariance values walk lane-to-lane
+// via warp shuffles rather than being held in shared memory.
 //
 // Algorithm (per warp, per row of work):
 //   - Lane T owns a FIXED DPT-wide column slice. Ownership rolls over every
@@ -13,7 +12,7 @@
 //     lane (T-1)'s post-update cov[DPT-1] into cov[0]. Net effect: each
 //     diagonal's cov walks one slot per row through the warp.
 //
-// Cross-warp boundary handling — the bit the prototype got wrong:
+// Cross-warp boundary handling:
 //   - Lane 31 of warp k publishes its post-update cov[DPT-1] into a tiny
 //     smem hand-off region.
 //   - Lane 0 of warp k > 0 reads warp k-1's published value.

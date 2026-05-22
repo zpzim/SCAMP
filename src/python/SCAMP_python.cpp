@@ -459,13 +459,8 @@ int run_autotune(const std::vector<int>& devices,
     }
     targets.push_back(0);
   }
-  // RunAutotuneWithBenchmark (not the older RunAutotune stub) is what
-  // actually sweeps the variant x blocksz matrix and picks the fastest
-  // cfg per (profile, precision). RunAutotune just writes the
-  // compile-time default for every target and would actively make
-  // performance worse on devices where the shipped data/autotune_cache.txt
-  // already has good entries (the user-cache write clobbers the built-in
-  // lookup). The CLI's --autotune path uses this same function.
+  // Shares its bench impl + verbose progress format with the CLI's
+  // --autotune path (main.cpp dispatches here too).
   for (int dev : targets) {
     SCAMP::RunAutotuneWithBenchmark(dev, &SCAMP::DefaultBenchmarkVariant,
                                     cache_path, /*verbose=*/true);

@@ -221,12 +221,6 @@ old values."**
    with ``strings build/SCAMP | grep <your_device_key>``; the embedded
    string should match the on-disk file.
 
-**"** ``pyscamp.autotune()`` **finishes in milliseconds without printing any
-trials."**
-   You're on a version older than the fix that switched the Python
-   binding from the ``RunAutotune`` stub to ``RunAutotuneWithBenchmark``.
-   Upgrade pyscamp (or run from a recent main branch).
-
 **"My configs aren't being respected on a multi-GPU box."**
    The cache is keyed by sanitized device name + compute capability
    (e.g. ``NVIDIA_GeForce_RTX_3080__sm_86``). If you have two different

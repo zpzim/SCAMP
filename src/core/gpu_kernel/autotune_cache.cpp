@@ -23,12 +23,6 @@ constexpr char kFieldSep = '|';
 //   kernel_tile_iters
 // (tile_height is derived as kernel_tile_iters * outer_unrolled_rows and
 //  not stored separately.)
-//
-// No format version bump despite the field-count change: no shipped
-// production cache had populated entries to migrate, so any local V1
-// 6-field cache will trip SplitN and throw; the autotune lookup catches
-// it and falls back to the default. Re-running RunAutotune rewrites the
-// cache in the current format.
 constexpr size_t kNumRecordFields = 9;
 
 // Split a string on a delimiter into exactly n parts. Returns false if the

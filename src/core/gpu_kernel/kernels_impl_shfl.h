@@ -1,6 +1,6 @@
-// Top-level kernel and launcher for the design-A "cov-shuffle" variant.
-// Mirrors kernels_impl.h's do_tile + LaunchDoTileWithGeometry but uses
-// the shfl algorithm + SCAMPShflSmem layout.
+// Top-level kernel and launcher for the cov-shuffle variant. Mirrors
+// kernels_impl.h's do_tile + LaunchDoTileWithGeometry but uses the
+// shfl-based cov propagation + SCAMPShflSmem layout.
 
 #pragma once
 
@@ -33,10 +33,12 @@ namespace SCAMP {
 //   KernelTileIters — outer iterations per tile (tile_height = OUR * KTI)
 //   BLOCKSZ        — threads per block
 //
-// MUST hold: tile_height (= OUR * KTI) <= 32 * DPT for the FIRST DRAFT.
-// Larger tile_height would require multiple column rotations per tile,
-// which works in principle (the prototype handles it) but is left for
-// a follow-up so the first version stays simple to validate.
+// MUST hold: tile_height (= OUR * KTI) <= 32 * DPT. Larger tile_height
+// would require multiple column rotations per tile (update_info_shfl
+// would need to fire more than once per tile_height/32 rows). Today the
+// kernel only fires it once -- the variants in kVariants all satisfy
+// tile_height <= 32*DPT, and the autotuner doesn't sweep configs that
+// would violate it.
 template <typename DATA_TYPE, typename ACCUM_TYPE, typename PROFILE_OUTPUT_TYPE,
           typename PROFILE_DATA_TYPE, typename DISTANCE_TYPE, bool COMPUTE_ROWS,
           bool COMPUTE_COLS, SCAMPProfileType PROFILE_TYPE, int blocks_per_sm,

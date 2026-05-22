@@ -235,7 +235,7 @@ int get_blocksz(Tile *t);
 int get_smem(const OpInfo *info, uint64_t blocksz, int tile_height,
              int diags_per_thread);
 
-// Same but for the design-A "shfl" variant: skips the column data smem
+// Same but for the cov-shuffle "shfl" variant: skips the column data smem
 // regions (df_col/dg_col/inorm_col live in per-lane registers in the shfl
 // kernel) and adds the cov_handoff hand-off region (2 * warps_per_block
 // scalars, double-buffered).

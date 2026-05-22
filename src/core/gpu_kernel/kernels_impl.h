@@ -248,15 +248,10 @@ SCAMPError_t LaunchDoTileWithGeometry(SCAMPKernelInputArgs<double> args,
   return SCAMP_NO_ERROR;
 }
 
-// LaunchDoTile (the cfg switch over enumerated variants) used to live here
-// as a template that each kernel_<X>.cu instantiated -- pulling all 6
-// variants' LaunchDoTileWithGeometry instantiations into one TU. That made
-// each kernel_<X>.cu compile 36 do_tile bodies serially.
-//
-// Post-split the cfg switch lives in kernels_variants.h as a
+// The cfg-keyed dispatch switch lives in kernels_variants.h as a
 // SCAMP_VARIANT_DISPATCH macro inside each per-profile dispatcher .cu
-// file, and each variant's LaunchDoTileWithGeometry instantiation lives in
+// file. Each variant's LaunchDoTileWithGeometry instantiation lives in
 // its own generated kernel_<profile>_v<N>.cu (via configure_file from
-// kernel_variant.cu.in). 30 small files instead of 5 big ones.
+// kernel_variant.cu.in), so per-(profile, variant) TUs build in parallel.
 
 }  // namespace SCAMP

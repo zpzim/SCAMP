@@ -52,15 +52,15 @@ constexpr std::array<ProfilePrecisionPair, 10> kAutotuneTargets{{
 // different cache_path is requested.
 //   user_cache    -- file at AutotuneCache::DefaultPath() (resolves to
 //                    $SCAMP_AUTOTUNE_CACHE / $XDG_CACHE_HOME / $HOME on
-//                    POSIX or %LOCALAPPDATA% on Windows). Devs write
-//                    here when running RunAutotune locally.
+//                    POSIX or %LOCALAPPDATA% on Windows). Written by
+//                    `SCAMP --autotune` / `pyscamp.autotune()`.
 //   builtin_cache -- parsed from kBuiltinAutotuneCache (embedded at build
 //                    time from data/autotune_cache.txt). Ships with the
 //                    binary; conda-forge / pip-wheel users rely on this.
 //
-// We do not currently invalidate either cache when the underlying source
-// changes -- callers that want fresh data should restart the process or
-// call RunAutotune() which loads + saves explicitly.
+// We do not invalidate either cache when the underlying source changes;
+// RunAutotuneWithBenchmark explicitly resets state.user_cache after a
+// sweep so subsequent lookups in the same process see fresh entries.
 struct CacheState {
   std::unique_ptr<AutotuneCache> user_cache;
   std::string loaded_user_path;
@@ -138,74 +138,6 @@ void SetKernelConfigOverride(const KernelConfig &cfg) {
 void ClearKernelConfigOverride() {
   std::lock_guard<std::mutex> lock(g_cfg_override_mutex);
   g_cfg_override.reset();
-}
-
-AutotuneResult RunAutotune(int device_id, const std::string &cache_path,
-                           bool verbose) {
-  GpuDeviceProps props = QueryDeviceProps(device_id);
-  std::string device_key = props.CacheKey();
-  std::string resolved =
-      cache_path.empty() ? AutotuneCache::DefaultPath() : cache_path;
-
-  AutotuneCache disk_cache(resolved);
-  // Load any existing entries so we don't clobber records from other devices
-  // that share the same cache file.
-  disk_cache.Load();
-
-  if (verbose) {
-    std::cout << "SCAMP autotune\n"
-              << "  device      : " << props.name << " (sm_"
-              << props.compute_major << props.compute_minor << ", "
-              << props.sm_count << " SMs)\n"
-              << "  override    : " << resolved << "\n"
-              << "  device key  : " << device_key << "\n"
-              << "\n"
-              << "  NOTE: Results are written to the user override path\n"
-              << "  above. To ship these defaults to end users (incl.\n"
-              << "  conda-forge / pip-wheel installs that cannot recompile),\n"
-              << "  merge the new lines into data/autotune_cache.txt and\n"
-              << "  open a PR. The built-in cache embedded in the binary is\n"
-              << "  refreshed from that file at build time.\n"
-              << "\n";
-  }
-
-  KernelConfig last_chosen{};
-  for (const auto &t : kAutotuneTargets) {
-    // Today there is only one supported KernelConfig per (profile, precision):
-    // the compile-time default. Future PRs will add alternative variants and
-    // benchmark them here, then pick the fastest. The cache file is already
-    // shaped to receive per-tuple records.
-    KernelConfig cfg = GetDefaultKernelConfig(t.precision);
-    disk_cache.Store(device_key, t.profile, t.precision, cfg);
-    last_chosen = cfg;
-    if (verbose) {
-      std::cout << "  " << ProfileTypeName(t.profile) << " "
-                << PrecisionTypeName(t.precision)
-                << " -> blocksz=" << cfg.blocksz << " bps=" << cfg.blocks_per_sm
-                << " dpt=" << cfg.diags_per_thread
-                << " ur=" << cfg.unrolled_rows
-                << " our=" << cfg.outer_unrolled_rows
-                << " kti=" << cfg.kernel_tile_iters
-                << " (tile_height=" << cfg.tile_height() << ")\n";
-    }
-  }
-
-  disk_cache.Save();
-
-  // Invalidate any process-wide cached copy of the user override so
-  // subsequent kernel launches pick up the fresh entries.
-  {
-    std::lock_guard<std::mutex> lock(SharedCacheMutex());
-    SharedCacheState().user_cache.reset();
-    SharedCacheState().loaded_user_path.clear();
-  }
-
-  if (verbose) {
-    std::cout << "  wrote " << kAutotuneTargets.size() << " entries to "
-              << resolved << std::endl;
-  }
-
-  return AutotuneResult{device_key, resolved, last_chosen, true};
 }
 
 AutotuneResult RunAutotuneWithBenchmark(int device_id, BenchmarkFn bench,
@@ -315,10 +247,10 @@ AutotuneResult RunAutotuneWithBenchmarkForDeviceKey(
     // Sweep (variant geometry, blocksz) jointly. Both LaunchDoTile and
     // LaunchDoTileShfl dispatch by runtime blocksz, and
     // IsSupportedKernelConfig admits 64/128/256/512 for any enabled
-    // variant -- the autotuner used to pick a single precision-tied
-    // blocksz (256 DP / 512 SP) per variant, hiding configs that win at
-    // 128 (e.g. shfl is occupancy-bound and tighter blocks let more
-    // run concurrently).
+    // variant. The joint sweep is important: tighter blocks let more
+    // shfl blocks run concurrently on occupancy-bound GPUs, so a single
+    // precision-tied default (e.g. 256 DP / 512 SP) would hide wins
+    // that only show up at 128.
     for (std::size_t i = 0; i < kNumKernelVariants; ++i) {
       for (int bsz_idx = 0; bsz_idx < kNumSweepBlocksizes; ++bsz_idx) {
         int bsz = kSweepBlocksizes[bsz_idx];
