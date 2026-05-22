@@ -127,18 +127,19 @@ SCAMP::SCAMPArgs GetDefaultSCAMPArgs() {
 
 bool KeyIsOkForProfileType(std::string key, SCAMP::SCAMPProfileType type) {
   static const std::set<std::string> nn_index = {
-      "verbose", "precision",          "pearson",      "gpus",
+      "verbose", "precision",           "pearson",      "gpus",
       "threads", "allow_trivial_match", "max_tile_size"};
   static const std::set<std::string> sum_thresh = {
-      "verbose",   "precision",          "pearson",      "gpus", "threads",
+      "verbose",   "precision",           "pearson",      "gpus", "threads",
       "threshold", "allow_trivial_match", "max_tile_size"};
   static const std::set<std::string> knn = {
-      "verbose",   "precision",          "pearson",      "gpus", "threads",
+      "verbose",   "precision",           "pearson",      "gpus", "threads",
       "threshold", "allow_trivial_match", "max_tile_size"};
   static const std::set<std::string> matrix = {
-      "verbose", "precision",          "pearson",       "gpus",
-      "threads", "threshold",          "mheight",       "mwidth",
-      "allow_trivial_match", "max_tile_size"};
+      "verbose",      "precision", "pearson",
+      "gpus",         "threads",   "threshold",
+      "mheight",      "mwidth",    "allow_trivial_match",
+      "max_tile_size"};
 
   switch (type) {
     case SCAMP::PROFILE_TYPE_1NN_INDEX:
