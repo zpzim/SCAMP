@@ -28,18 +28,20 @@ namespace SCAMP {
 
 namespace {
 
-// Workload-shape constants. The default (128K) is sized to keep a full
-// autotune sweep (10 targets x num_variants x 4 blocksz settings)
-// under ~10 minutes on a recent GPU while still amortizing launch
-// overhead so per-trial timings reflect steady-state kernel cost.
+// Workload-shape constants. The default (256K) is sized so trial
+// timings reflect steady-state kernel cost rather than launch
+// overhead, while keeping a full sweep (10 targets x num_variants x
+// 4 blocksz settings) tractable on a recent GPU (~25 min on an
+// RTX 3080). Smaller defaults produced noisier rankings that
+// occasionally flipped per-target winners between back-to-back
+// sweeps; see docs/source/autotune.rst for the measured comparison.
 //
-// SCAMP_AUTOTUNE_INPUT_LENGTH (env) overrides this so callers can dial
-// up the workload for production-quality ranking. Sweep time grows
-// with N^2 (per-trial kernel cost is ~quadratic), so doubling N
-// roughly quadruples the sweep wall clock; see
-// docs/source/autotune.rst for a per-N comparison and guidance on
-// when the larger size pays off.
-constexpr int kBenchmarkInputLengthDefault = 131072;
+// SCAMP_AUTOTUNE_INPUT_LENGTH (env) overrides this. Sweep time grows
+// with N^2 (per-trial kernel cost is ~quadratic), so users on older
+// or slower GPUs can dial it down (131072 = "casual" tuning that
+// finishes in ~8 min) and users producing data/autotune_cache.txt
+// entries to ship in a release can dial it up (524288 = ~1.5 h).
+constexpr int kBenchmarkInputLengthDefault = 262144;
 constexpr int kBenchmarkWindow = 200;
 constexpr double kBenchmarkSumThreshold = 0.5;
 constexpr int kBenchmarkMatrixDim = 100;
