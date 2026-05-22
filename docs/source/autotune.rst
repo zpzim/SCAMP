@@ -30,9 +30,11 @@ TL;DR
      >>> import pyscamp
      >>> pyscamp.autotune()
 
-  This takes a few minutes to run and persists its choices to disk
-  (``~/.cache/scamp/autotune.txt`` on Linux by default). All subsequent
-  SCAMP runs will pick up your tuned config automatically.
+  This takes a few minutes to run and persists its choices to disk. The
+  default location is ``~/.cache/scamp/autotune.txt`` on Linux/macOS and
+  ``%LOCALAPPDATA%\scamp\autotune.txt`` on Windows. All subsequent SCAMP
+  runs will pick up your tuned config automatically. See
+  :ref:`autotune-default-path` for the full resolution rules.
 
 How lookups work
 ----------------
@@ -45,8 +47,9 @@ The lookup tries these sources in order; the first hit wins:
    loop to force a specific variant per timed trial. Not a user-facing
    knob.
 
-2. **User cache** — ``~/.cache/scamp/autotune.txt`` by default
-   (see :ref:`autotune-default-path` for the full resolution rules).
+2. **User cache** — ``~/.cache/scamp/autotune.txt`` on Linux/macOS or
+   ``%LOCALAPPDATA%\scamp\autotune.txt`` on Windows by default (see
+   :ref:`autotune-default-path` for the full resolution rules).
    Written by ``SCAMP --autotune`` / ``pyscamp.autotune()``. If you've
    tuned for your GPU, this is what gets used.
 
@@ -68,11 +71,18 @@ Default cache location
 ``--autotune`` writes to (and ``GetKernelConfigForDevice`` reads from)
 the first of these paths that resolves:
 
-1. ``$SCAMP_AUTOTUNE_CACHE`` — when set, used verbatim.
+1. ``$SCAMP_AUTOTUNE_CACHE`` — when set, used verbatim (Linux, macOS,
+   and Windows).
 2. ``$XDG_CACHE_HOME/scamp/autotune.txt`` — when ``XDG_CACHE_HOME`` is
-   set (Linux default for users following the XDG Base Directory spec).
-3. ``$HOME/.cache/scamp/autotune.txt`` — on most Linux/Mac setups this
-   is where you'll end up.
+   set (Linux default for users following the XDG Base Directory spec;
+   honored on Windows too if explicitly set).
+3. Platform-specific user dir:
+
+   * Linux / macOS: ``$HOME/.cache/scamp/autotune.txt``.
+   * Windows: ``%LOCALAPPDATA%\scamp\autotune.txt`` (typically
+     ``C:\Users\<you>\AppData\Local\scamp\autotune.txt``), falling back
+     to ``%USERPROFILE%\.cache\scamp\autotune.txt`` if ``LOCALAPPDATA``
+     is unset.
 
 The parent directory is created automatically by ``Save()`` if it
 doesn't exist, so you don't need to ``mkdir -p`` it yourself.
@@ -83,10 +93,11 @@ Running the autotuner
 ``SCAMP --autotune`` (or ``pyscamp.autotune()``) sweeps every enabled
 variant × every supported block size for every ``(profile_type,
 precision)`` pair and persists the per-tuple winner to the user cache.
-A full sweep is roughly 9 variants × 4 block sizes × 10 targets = 360
-benchmark trials. With the default benchmark workload (131K-element
-synthetic self-join) the sweep takes ~3-5 minutes on a recent GPU; the
-output is verbose by default so you can see progress.
+A full sweep is the current variant count × 4 block sizes × 10 targets;
+with the 5 variants enabled today that's 200 benchmark trials. With
+the default benchmark workload (131K-element synthetic self-join) the
+sweep takes ~3-5 minutes on a recent GPU; the output is verbose by
+default so you can see progress.
 
 Choosing the benchmark workload size
 """"""""""""""""""""""""""""""""""""
@@ -139,9 +150,10 @@ default config, just not as fast as it could be. Two follow-ups:
   the warning for that tuple on subsequent runs and gives you a
   measurable speed-up.
 
-* Optionally open a PR adding your device's lines from
-  ``~/.cache/scamp/autotune.txt`` into ``data/autotune_cache.txt`` so
-  the next release ships those entries to other users of your GPU.
+* Optionally open a PR adding your device's lines from the user cache
+  (see :ref:`autotune-default-path` for its location on your platform)
+  into ``data/autotune_cache.txt`` so the next release ships those
+  entries to other users of your GPU.
 
 Silencing the warning
 """""""""""""""""""""
@@ -173,7 +185,11 @@ The user cache is a plain-text file at the location described in
 
 .. code-block:: console
 
+   # Linux / macOS:
    $ rm ~/.cache/scamp/autotune.txt
+
+   # Windows (PowerShell):
+   > Remove-Item "$env:LOCALAPPDATA\scamp\autotune.txt"
 
 The next SCAMP run will fall through to the built-in cache (and emit a
 miss warning if your device isn't shipped). Running ``--autotune``
@@ -218,7 +234,8 @@ trials."**
    then re-run with ``--gpus=1`` (or ``devices=[1]``) for the second.
 
 **"I want to test a specific variant by hand."**
-   Edit ``~/.cache/scamp/autotune.txt`` directly: each line is
-   ``device_key|profile|precision|blocksz|bps|dpt|ur|our|kti``. Lines
-   that name an unknown variant are silently rejected at lookup time
-   and the next source is consulted, so it's safe to experiment.
+   Edit the user cache directly (``~/.cache/scamp/autotune.txt`` on
+   Linux/macOS, ``%LOCALAPPDATA%\scamp\autotune.txt`` on Windows): each
+   line is ``device_key|profile|precision|blocksz|bps|dpt|ur|our|kti``.
+   Lines that name an unknown variant are silently rejected at lookup
+   time and the next source is consulted, so it's safe to experiment.

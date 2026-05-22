@@ -26,7 +26,12 @@ namespace SCAMP {
 //   1. Path passed to the constructor explicitly
 //   2. $SCAMP_AUTOTUNE_CACHE if set
 //   3. $XDG_CACHE_HOME/scamp/autotune.txt
-//   4. $HOME/.cache/scamp/autotune.txt
+//   4. Platform-specific user dir:
+//        Linux/macOS: $HOME/.cache/scamp/autotune.txt
+//        Windows:     %LOCALAPPDATA%\scamp\autotune.txt
+//                     (falls back to %USERPROFILE%\.cache\scamp\autotune.txt
+//                      when LOCALAPPDATA is unset, for layout symmetry with
+//                      POSIX hosts).
 class AutotuneCache {
  public:
   // Resolve the default cache path according to the rules above.

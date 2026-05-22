@@ -103,9 +103,12 @@ DEFINE_string(gpus, "",
               "tries to use all available GPUs on the system");
 DEFINE_bool(autotune, false,
             "Run the SCAMP GPU kernel autotuner for the selected device(s), "
-            "persist the chosen kernel configuration to "
-            "$SCAMP_AUTOTUNE_CACHE (or ~/.cache/scamp/autotune.txt by "
-            "default), and exit without running a matrix profile job.");
+            "persist the chosen kernel configuration to the user cache "
+            "($SCAMP_AUTOTUNE_CACHE if set; otherwise "
+            "$XDG_CACHE_HOME/scamp/autotune.txt, "
+            "$HOME/.cache/scamp/autotune.txt on Linux/macOS, "
+            "or %LOCALAPPDATA%\\scamp\\autotune.txt on Windows), and exit "
+            "without running a matrix profile job.");
 
 int main(int argc, char **argv) {
   bool self_join, computing_rows, computing_cols;

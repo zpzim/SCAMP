@@ -50,8 +50,10 @@ constexpr std::array<ProfilePrecisionPair, 10> kAutotuneTargets{{
 
 // Process-wide lazy caches: loaded once on first lookup, cleared if a
 // different cache_path is requested.
-//   user_cache    -- file at $SCAMP_AUTOTUNE_CACHE / ~/.cache/scamp/...
-//                    Devs write here when running RunAutotune locally.
+//   user_cache    -- file at AutotuneCache::DefaultPath() (resolves to
+//                    $SCAMP_AUTOTUNE_CACHE / $XDG_CACHE_HOME / $HOME on
+//                    POSIX or %LOCALAPPDATA% on Windows). Devs write
+//                    here when running RunAutotune locally.
 //   builtin_cache -- parsed from kBuiltinAutotuneCache (embedded at build
 //                    time from data/autotune_cache.txt). Ships with the
 //                    binary; conda-forge / pip-wheel users rely on this.
@@ -571,7 +573,8 @@ KernelConfig LookupKernelConfigForDeviceKey(const std::string &device_key,
                                             const AutotuneCache *user_cache,
                                             const AutotuneCache *builtin_cache,
                                             const KernelConfig &fallback) {
-  // 1) User override (env var or ~/.cache/scamp/autotune.txt).
+  // 1) User override (env var or user-dir cache; see
+  //    AutotuneCache::DefaultPath for the per-platform path).
   if (user_cache != nullptr) {
     auto user_hit = user_cache->Lookup(device_key, profile_type, precision);
     if (user_hit.has_value() && IsSupportedKernelConfig(*user_hit, precision)) {

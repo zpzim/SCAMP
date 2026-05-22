@@ -6,8 +6,11 @@
 //   0. Thread-local override (Set/ClearKernelConfigOverride). Used by
 //      the autotune benchmark loop to force one specific variant per
 //      timed run; not normally set.
-//   1. User override file. Defaults to $SCAMP_AUTOTUNE_CACHE or
-//      ~/.cache/scamp/autotune.txt. RunAutotuneWithBenchmark writes here.
+//   1. User override file. Path comes from AutotuneCache::DefaultPath()
+//      ($SCAMP_AUTOTUNE_CACHE, then $XDG_CACHE_HOME/scamp/autotune.txt,
+//      then $HOME/.cache/scamp/autotune.txt on Linux/macOS or
+//      %LOCALAPPDATA%\scamp\autotune.txt on Windows).
+//      RunAutotuneWithBenchmark writes here.
 //   2. Built-in cache embedded in the binary at build time from
 //      data/autotune_cache.txt (see builtin_autotune_cache.h). Ships
 //      with the binary so conda-forge / pip-wheel users get tuned
