@@ -242,19 +242,29 @@ jobs:
           python test_pyscamp.py
           python ./run_tests.py --executable pyscamp
 
-  build-cuda-cli:
+  build-cuda-versions:
+    name: cuda-build ${{ matrix.cuda }} ${{ matrix.os }} ${{ matrix.compiler }}
     strategy:
       fail-fast: false
+      # We test two CUDA versions chosen to span the breakpoints we care about:
+      # 12.8.0 (CCCL 2.8.x with the arch-token bug) and 13.0.0 (CCCL 3.0 fix
+      # plus the sm_110/Blackwell rename). Each Jimver/cuda-toolkit cache
+      # entry is ~4GB, so the matrix is sized to stay close to GitHub's 10GB
+      # cache budget per repo. ubuntu+clang++ is included at 13.0.0 only as
+      # a smoke test for clang as the host compiler; nvcc owns CUDA codegen
+      # so the marginal coverage of testing it on every version is low.
       matrix:
         os: [ubuntu-latest, windows-latest]
+        cuda: ['12.8.0', '13.0.0']
         compiler: [g++, clang++, cl]
-        cuda: ['12.9.1']
         exclude:
           - os: ubuntu-latest
             compiler: cl
           - os: windows-latest
             compiler: g++
           - os: windows-latest
+            compiler: clang++
+          - cuda: '12.8.0'
             compiler: clang++
 
     runs-on: ${{ matrix.os }}
@@ -282,52 +292,9 @@ jobs:
 
       - name: Run C++ unit tests
         shell: bash
-        # Tests are CUDA-toolchain-required but GPU-runtime-free, so
-        # they run on the build-only runners that have no NVIDIA driver.
-        run: |
-          set -e
-          cd $GITHUB_WORKSPACE/build
-          ctest --output-on-failure --build-config Release
-
-  build-cuda-versions:
-    name: cuda-build ${{ matrix.cuda }} ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-        cuda: ['12.6.0', '12.8.0', '13.0.0']
-        compiler: [g++, cl]
-        exclude:
-          - os: ubuntu-latest
-            compiler: cl
-          - os: windows-latest
-            compiler: g++
-
-    runs-on: ${{ matrix.os }}
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: 'true'
-      - uses: Jimver/cuda-toolkit@v0.2.30
-        id: cuda-toolkit
-        with:
-          cuda: ${{ matrix.cuda }}
-
-      - name: Prep Build
-        run: echo "CXX=${{ matrix.compiler }}" >> $GITHUB_ENV
-
-      - name: Build SCAMP
-        shell: bash
-        run: |
-          set -e
-          cd $GITHUB_WORKSPACE
-          mkdir build && cd build
-          cmake -DFORCE_CUDA=1 -DBUILD_SCAMP_TESTS=ON ..
-          cmake --build . --config Release --parallel 2
-
-      - name: Run C++ unit tests
-        shell: bash
+        # The unit-test suite (autotune cache) needs the CUDA toolchain
+        # to build but does not launch any CUDA kernels at runtime, so it
+        # runs on the build-only runners that have no NVIDIA driver.
         run: |
           set -e
           cd $GITHUB_WORKSPACE/build
@@ -349,14 +316,7 @@ jobs:
           mkdir build && cd build
           cmake -DFORCE_CUDA=1 -DBUILD_SCAMP_TESTS=ON ..
           cmake --build . --config Release --parallel 2
-
-      - name: Run C++ unit tests
-        shell: bash
-        run: |
-          set -e
-          cd $GITHUB_WORKSPACE/build
-          ctest --output-on-failure --build-config Release
-
+          
       - name: Basic CUDA Tests SCAMP
         shell: bash
         run: |
