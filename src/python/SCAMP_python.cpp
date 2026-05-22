@@ -516,7 +516,16 @@ PYBIND11_MODULE(pyscamp, m) {
   // pyscamp.autotune()) is still reachable: the autotune() docstring
   // says so, and users can re-enable the warning per-process via the
   // env var.
+  // setenv() is POSIX-only; MSVC's CRT has _putenv_s() which always
+  // overwrites, so emulate overwrite=0 (only set if not present) by
+  // checking the existing value first.
+#ifdef _WIN32
+  if (std::getenv("SCAMP_AUTOTUNE_QUIET") == nullptr) {
+    _putenv_s("SCAMP_AUTOTUNE_QUIET", "1");
+  }
+#else
   setenv("SCAMP_AUTOTUNE_QUIET", "1", /*overwrite=*/0);
+#endif
 
   m.doc() = R"pbdoc(
         pyscamp: Python bindings for SCAMP

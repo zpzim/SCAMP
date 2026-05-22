@@ -249,7 +249,11 @@ AutotuneResult RunAutotuneWithBenchmark(int device_id, BenchmarkFn bench,
       kAutotuneTargets.size(),
       std::vector<double>(kNumKernelVariants * kNumSweepBlocksizes,
                           std::numeric_limits<double>::infinity()));
-  auto trial_slot = [](std::size_t v, int bsz_idx) {
+  // Capture kNumSweepBlocksizes explicitly: MSVC requires non-empty
+  // captures even for constexpr variables referenced in the body
+  // ([] alone trips C3493 there). Clang/GCC are looser and accept it
+  // without capture.
+  auto trial_slot = [kNumSweepBlocksizes](std::size_t v, int bsz_idx) {
     return v * kNumSweepBlocksizes + bsz_idx;
   };
 

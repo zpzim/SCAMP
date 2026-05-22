@@ -9,10 +9,10 @@
 // Tiny in-file harness (no gtest dep). Failures bump a counter and the
 // process exits non-zero so ctest reports the failure. Each test is a
 // function called from main(); add new ones the same way.
-#include <unistd.h>  // getpid() for unique tmp-file naming
 
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -25,6 +25,39 @@
 #include "core/gpu_kernel/kernel_config.h"
 
 namespace {
+
+// Portable setenv/unsetenv: MSVC's CRT has no setenv()/unsetenv() but
+// provides _putenv_s(). Use those under _WIN32; everything else gets the
+// POSIX implementations.
+int PortableSetenv(const char *name, const char *value) {
+#ifdef _WIN32
+  return _putenv_s(name, value);
+#else
+  return setenv(name, value, /*overwrite=*/1);
+#endif
+}
+
+int PortableUnsetenv(const char *name) {
+#ifdef _WIN32
+  // _putenv_s with an empty string removes the variable.
+  return _putenv_s(name, "");
+#else
+  return unsetenv(name);
+#endif
+}
+
+// Returns a tmp file path unique to this process (counter increments on
+// each call). Used so concurrent test runs don't collide. We avoid
+// getpid() because MSVC's CRT spells it _getpid(); std::filesystem and
+// a static counter give the same uniqueness without the ifdef churn.
+std::string MakeTempPath(const char *stem) {
+  static int counter = 0;
+  ++counter;
+  std::filesystem::path p = std::filesystem::temp_directory_path();
+  p /= std::string("scamp_test_") + stem + "_" +
+       std::to_string(counter) + ".txt";
+  return p.string();
+}
 
 int g_failures = 0;
 const char *g_current_test = nullptr;
@@ -203,7 +236,7 @@ void Test_CacheMissWarningIsOneShot() {
 void Test_QuietEnvSuppressesWarning() {
   SCAMP::ResetAutotuneWarnings();
   auto user = MakeCacheFromString("SCAMP_AUTOTUNE_V1\n");
-  setenv("SCAMP_AUTOTUNE_QUIET", "1", /*overwrite=*/1);
+  PortableSetenv("SCAMP_AUTOTUNE_QUIET", "1");
   std::string out = CaptureStderr([&]() {
     auto cfg = SCAMP::LookupKernelConfigForDeviceKey(
         "UnknownDeviceQuiet", SCAMP::PROFILE_TYPE_1NN_INDEX,
@@ -211,7 +244,7 @@ void Test_QuietEnvSuppressesWarning() {
     EXPECT_TRUE(ConfigsEqual(cfg, FallbackConfig()));
   });
   EXPECT_TRUE(out.empty());
-  unsetenv("SCAMP_AUTOTUNE_QUIET");
+  PortableUnsetenv("SCAMP_AUTOTUNE_QUIET");
 }
 
 // (Contract #2) Edge-case env values: "0" and "false" mean DO emit the
@@ -220,14 +253,14 @@ void Test_QuietEnv_FalseyValuesStillWarn() {
   for (const char *val : {"0", "false", ""}) {
     SCAMP::ResetAutotuneWarnings();
     auto user = MakeCacheFromString("SCAMP_AUTOTUNE_V1\n");
-    setenv("SCAMP_AUTOTUNE_QUIET", val, /*overwrite=*/1);
+    PortableSetenv("SCAMP_AUTOTUNE_QUIET", val);
     std::string out = CaptureStderr([&]() {
       SCAMP::LookupKernelConfigForDeviceKey(
           "FalseyEnvCheck", SCAMP::PROFILE_TYPE_1NN_INDEX,
           SCAMP::PRECISION_SINGLE, user.get(), nullptr, FallbackConfig());
     });
     EXPECT_TRUE(!out.empty());
-    unsetenv("SCAMP_AUTOTUNE_QUIET");
+    PortableUnsetenv("SCAMP_AUTOTUNE_QUIET");
   }
 }
 
@@ -285,41 +318,70 @@ void Test_MultiDeviceCacheLookup() {
   EXPECT_EQ(b.blocksz, 256);
 }
 
-// (Contract #3) DefaultPath honors $SCAMP_AUTOTUNE_CACHE when set.
+// (Contract #3) DefaultPath honors $SCAMP_AUTOTUNE_CACHE when set. The
+// override path is opaque -- DefaultPath returns it verbatim regardless of
+// platform, so we use a tmp file path that's valid on both POSIX and
+// Windows.
 void Test_DefaultPath_EnvVarOverride() {
-  setenv("SCAMP_AUTOTUNE_CACHE", "/tmp/scamp_test_override_path.txt",
-         /*overwrite=*/1);
+  std::string override_path = MakeTempPath("override");
+  PortableSetenv("SCAMP_AUTOTUNE_CACHE", override_path.c_str());
   std::string p = SCAMP::AutotuneCache::DefaultPath();
-  EXPECT_EQ(p, std::string("/tmp/scamp_test_override_path.txt"));
-  unsetenv("SCAMP_AUTOTUNE_CACHE");
+  EXPECT_EQ(p, override_path);
+  PortableUnsetenv("SCAMP_AUTOTUNE_CACHE");
 }
 
 // (Contract #3) DefaultPath honors $XDG_CACHE_HOME when SCAMP_AUTOTUNE_CACHE
-// is absent.
+// is absent. XDG_CACHE_HOME is honored on all platforms (it's a SCAMP
+// convention here, not a strict XDG-base-dir-spec compliance), so this
+// test asserts the same layout on Windows too.
 void Test_DefaultPath_XdgCacheHome() {
-  unsetenv("SCAMP_AUTOTUNE_CACHE");
-  setenv("XDG_CACHE_HOME", "/tmp/scamp_test_xdg_cache", /*overwrite=*/1);
+  PortableUnsetenv("SCAMP_AUTOTUNE_CACHE");
+  std::filesystem::path xdg = std::filesystem::temp_directory_path() /
+                              "scamp_test_xdg_cache";
+  PortableSetenv("XDG_CACHE_HOME", xdg.string().c_str());
   std::string p = SCAMP::AutotuneCache::DefaultPath();
-  EXPECT_EQ(p, std::string("/tmp/scamp_test_xdg_cache/scamp/autotune.txt"));
-  unsetenv("XDG_CACHE_HOME");
+  std::filesystem::path expected = xdg / "scamp" / "autotune.txt";
+  // DefaultPath builds the XDG path with '/' on both platforms (it's a
+  // POSIX-style convention); compare via filesystem::path so '/' vs '\\'
+  // normalization doesn't matter.
+  EXPECT_TRUE(std::filesystem::path(p).lexically_normal() ==
+              expected.lexically_normal());
+  PortableUnsetenv("XDG_CACHE_HOME");
 }
 
-// (Contract #3) DefaultPath falls back to $HOME/.cache when neither env var
-// is set.
-void Test_DefaultPath_HomeFallback() {
-  unsetenv("SCAMP_AUTOTUNE_CACHE");
-  unsetenv("XDG_CACHE_HOME");
-  setenv("HOME", "/tmp/scamp_test_home", /*overwrite=*/1);
+// (Contract #3) DefaultPath falls back to a platform-appropriate user dir
+// when neither override nor XDG_CACHE_HOME is set. On POSIX this is
+// $HOME/.cache/scamp/autotune.txt; on Windows it's LOCALAPPDATA/scamp/
+// autotune.txt. The test sets the relevant env var to a tmp dir, runs
+// DefaultPath(), and asserts the result equals the expected layout.
+void Test_DefaultPath_UserDirFallback() {
+  PortableUnsetenv("SCAMP_AUTOTUNE_CACHE");
+  PortableUnsetenv("XDG_CACHE_HOME");
+  std::filesystem::path tmp_user_dir =
+      std::filesystem::temp_directory_path() / "scamp_test_user_dir";
+#ifdef _WIN32
+  PortableSetenv("LOCALAPPDATA", tmp_user_dir.string().c_str());
+  std::filesystem::path expected =
+      tmp_user_dir / "scamp" / "autotune.txt";
+#else
+  PortableSetenv("HOME", tmp_user_dir.string().c_str());
+  std::filesystem::path expected =
+      tmp_user_dir / ".cache" / "scamp" / "autotune.txt";
+#endif
   std::string p = SCAMP::AutotuneCache::DefaultPath();
-  EXPECT_EQ(p, std::string("/tmp/scamp_test_home/.cache/scamp/autotune.txt"));
-  unsetenv("HOME");
+  EXPECT_TRUE(std::filesystem::path(p).lexically_normal() ==
+              expected.lexically_normal());
+#ifdef _WIN32
+  PortableUnsetenv("LOCALAPPDATA");
+#else
+  PortableUnsetenv("HOME");
+#endif
 }
 
 // Round-trip: write a cache to disk, read it back, lookup should hit.
 void Test_DiskRoundTrip() {
   SCAMP::ResetAutotuneWarnings();
-  std::string path = "/tmp/scamp_test_cache_" +
-                     std::to_string(static_cast<long>(getpid())) + ".txt";
+  std::string path = MakeTempPath("disk_roundtrip");
 
   SCAMP::AutotuneCache writer(path);
   SCAMP::KernelConfig cfg = SupportedConfig();
@@ -335,7 +397,68 @@ void Test_DiskRoundTrip() {
   if (found.has_value()) {
     EXPECT_TRUE(ConfigsEqual(*found, cfg));
   }
-  std::remove(path.c_str());
+  std::error_code ec;
+  std::filesystem::remove(std::filesystem::path(path), ec);
+}
+
+// Save() must create intermediate directories. Exercise the
+// create_directories code path by writing into a tmp subdir that doesn't
+// yet exist.
+void Test_SaveCreatesParentDirectories() {
+  SCAMP::ResetAutotuneWarnings();
+  std::filesystem::path nested =
+      std::filesystem::temp_directory_path() / "scamp_test_mkdir" /
+      "deep" / "nested";
+  std::error_code ec;
+  std::filesystem::remove_all(nested.parent_path().parent_path(), ec);
+  std::filesystem::path file = nested / "autotune.txt";
+
+  SCAMP::AutotuneCache writer(file.string());
+  writer.Store("DeviceMkdir", SCAMP::PROFILE_TYPE_1NN_INDEX,
+               SCAMP::PRECISION_SINGLE, SupportedConfig());
+  writer.Save();
+
+  EXPECT_TRUE(std::filesystem::is_regular_file(file));
+  std::filesystem::remove_all(
+      std::filesystem::temp_directory_path() / "scamp_test_mkdir", ec);
+}
+
+// Save() must atomically replace an existing cache file (otherwise a
+// stale cache could be served if two processes race). std::rename does
+// not replace on Windows; std::filesystem::rename does. Catch the
+// regression by overwriting an existing file.
+void Test_SaveReplacesExistingFile() {
+  SCAMP::ResetAutotuneWarnings();
+  std::string path = MakeTempPath("replace");
+
+  // First write: one entry.
+  {
+    SCAMP::AutotuneCache writer(path);
+    SCAMP::KernelConfig cfg = SupportedConfig();
+    cfg.blocksz = 64;
+    writer.Store("DeviceReplace", SCAMP::PROFILE_TYPE_1NN_INDEX,
+                 SCAMP::PRECISION_SINGLE, cfg);
+    writer.Save();
+  }
+  // Second write to the same path: a different entry.
+  {
+    SCAMP::AutotuneCache writer(path);
+    SCAMP::KernelConfig cfg = SupportedConfig();  // blocksz = 128
+    writer.Store("DeviceReplace", SCAMP::PROFILE_TYPE_1NN_INDEX,
+                 SCAMP::PRECISION_SINGLE, cfg);
+    writer.Save();
+  }
+  // Reader should see the second write.
+  SCAMP::AutotuneCache reader(path);
+  reader.Load();
+  auto found = reader.Lookup("DeviceReplace", SCAMP::PROFILE_TYPE_1NN_INDEX,
+                             SCAMP::PRECISION_SINGLE);
+  EXPECT_TRUE(found.has_value());
+  if (found.has_value()) {
+    EXPECT_EQ(found->blocksz, 128);
+  }
+  std::error_code ec;
+  std::filesystem::remove(std::filesystem::path(path), ec);
 }
 
 // Malformed cache: a non-empty bad line throws SCAMPException. The
@@ -377,8 +500,11 @@ int main() {
       {"Test_MultiDeviceCacheLookup", Test_MultiDeviceCacheLookup},
       {"Test_DefaultPath_EnvVarOverride", Test_DefaultPath_EnvVarOverride},
       {"Test_DefaultPath_XdgCacheHome", Test_DefaultPath_XdgCacheHome},
-      {"Test_DefaultPath_HomeFallback", Test_DefaultPath_HomeFallback},
+      {"Test_DefaultPath_UserDirFallback", Test_DefaultPath_UserDirFallback},
       {"Test_DiskRoundTrip", Test_DiskRoundTrip},
+      {"Test_SaveCreatesParentDirectories",
+       Test_SaveCreatesParentDirectories},
+      {"Test_SaveReplacesExistingFile", Test_SaveReplacesExistingFile},
       {"Test_MalformedLineThrows", Test_MalformedLineThrows},
   };
   int n = sizeof(cases) / sizeof(cases[0]);

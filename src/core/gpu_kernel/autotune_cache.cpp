@@ -1,14 +1,12 @@
 #include "autotune_cache.h"
 
-#include <sys/stat.h>
-#include <cerrno>
-#include <cstdio>
 #include <cstdlib>
-#include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <system_error>
 
 #include "common/scamp_exception.h"
 
@@ -32,32 +30,6 @@ constexpr char kFieldSep = '|';
 // it and falls back to the default. Re-running RunAutotune rewrites the
 // cache in the current format.
 constexpr size_t kNumRecordFields = 9;
-
-// Recursively mkdir -p. Returns 0 on success, errno on failure.
-int MkdirP(const std::string &path) {
-  std::string cur;
-  for (size_t i = 0; i < path.size(); ++i) {
-    cur.push_back(path[i]);
-    if (path[i] == '/' && !cur.empty() && cur != "/") {
-      if (::mkdir(cur.c_str(), 0700) != 0 && errno != EEXIST) {
-        return errno;
-      }
-    }
-  }
-  if (!path.empty() && path.back() != '/') {
-    if (::mkdir(path.c_str(), 0700) != 0 && errno != EEXIST) {
-      return errno;
-    }
-  }
-  return 0;
-}
-
-std::string ParentDir(const std::string &path) {
-  size_t slash = path.find_last_of('/');
-  if (slash == std::string::npos) return ".";
-  if (slash == 0) return "/";
-  return path.substr(0, slash);
-}
 
 // Split a string on a delimiter into exactly n parts. Returns false if the
 // count does not match.
@@ -151,9 +123,21 @@ std::string AutotuneCache::DefaultPath() {
   if (const char *xdg = std::getenv("XDG_CACHE_HOME")) {
     return std::string(xdg) + "/scamp/autotune.txt";
   }
+#ifdef _WIN32
+  // Windows: prefer %LOCALAPPDATA%\scamp\autotune.txt; fall back to
+  // %USERPROFILE%\.cache\scamp\autotune.txt to mirror the POSIX layout
+  // for users who have an existing cache there.
+  if (const char *localappdata = std::getenv("LOCALAPPDATA")) {
+    return std::string(localappdata) + "\\scamp\\autotune.txt";
+  }
+  if (const char *userprofile = std::getenv("USERPROFILE")) {
+    return std::string(userprofile) + "\\.cache\\scamp\\autotune.txt";
+  }
+#else
   if (const char *home = std::getenv("HOME")) {
     return std::string(home) + "/.cache/scamp/autotune.txt";
   }
+#endif
   // Last resort: write to current directory.
   return "./scamp_autotune.txt";
 }
@@ -163,8 +147,9 @@ AutotuneCache::AutotuneCache() : path_(DefaultPath()) {}
 AutotuneCache::AutotuneCache(std::string path) : path_(std::move(path)) {}
 
 bool AutotuneCache::FileExists() const {
-  struct stat st {};
-  return ::stat(path_.c_str(), &st) == 0 && S_ISREG(st.st_mode);
+  std::error_code ec;
+  return std::filesystem::is_regular_file(
+      std::filesystem::path(path_), ec);
 }
 
 void AutotuneCache::LoadFromString(const std::string &contents) {
@@ -241,12 +226,16 @@ void AutotuneCache::ParseStream(std::istream &in,
 }
 
 void AutotuneCache::Save() const {
-  std::string parent = ParentDir(path_);
-  if (parent != "." && parent != "/") {
-    int err = MkdirP(parent);
-    if (err != 0) {
-      throw SCAMPException("Cannot create autotune cache directory '" + parent +
-                           "': " + std::strerror(err));
+  std::filesystem::path path_fs(path_);
+  std::filesystem::path parent = path_fs.parent_path();
+  if (!parent.empty()) {
+    std::error_code ec;
+    std::filesystem::create_directories(parent, ec);
+    // create_directories returns false (no error code) if the dir already
+    // existed; only an actual filesystem error sets ec.
+    if (ec) {
+      throw SCAMPException("Cannot create autotune cache directory '" +
+                           parent.string() + "': " + ec.message());
     }
   }
 
@@ -276,9 +265,16 @@ void AutotuneCache::Save() const {
       throw SCAMPException("Write to autotune cache failed: " + tmp);
     }
   }
-  if (std::rename(tmp.c_str(), path_.c_str()) != 0) {
+  // std::filesystem::rename atomically replaces the destination on both
+  // POSIX (via rename(2)) and Windows (via MoveFileExW with
+  // MOVEFILE_REPLACE_EXISTING). std::rename from <cstdio> does NOT replace
+  // on Windows, so use the filesystem variant for portability.
+  std::error_code ec;
+  std::filesystem::rename(std::filesystem::path(tmp),
+                          std::filesystem::path(path_), ec);
+  if (ec) {
     throw SCAMPException("Cannot rename " + tmp + " to " + path_ + ": " +
-                         std::strerror(errno));
+                         ec.message());
   }
 }
 
