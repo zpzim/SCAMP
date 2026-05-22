@@ -317,8 +317,8 @@ void Test_FutureVersionHeaderSilentlyEmpties() {
   // Lookup falls through to the fallback and emits the one-shot warning.
   std::string warn = CaptureStderr([&]() {
     auto cfg = SCAMP::LookupKernelConfigForDeviceKey(
-        "FakeDeviceA", SCAMP::PROFILE_TYPE_1NN_INDEX,
-        SCAMP::PRECISION_SINGLE, cache.get(), nullptr, FallbackConfig());
+        "FakeDeviceA", SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_SINGLE,
+        cache.get(), nullptr, FallbackConfig());
     EXPECT_TRUE(ConfigsEqual(cfg, FallbackConfig()));
   });
   EXPECT_TRUE(warn.find("no autotune entry") != std::string::npos);
@@ -330,8 +330,8 @@ void Test_FutureVersionHeaderSilentlyEmpties() {
 void Test_MissingHeaderSilentlyEmpties() {
   SCAMP::ResetAutotuneWarnings();
   // No header line, just data -- the loader has to refuse to ingest it.
-  auto cache = MakeCacheFromString(
-      "FakeDeviceA|1NN_INDEX|SINGLE|128|8|4|0|8|8\n");
+  auto cache =
+      MakeCacheFromString("FakeDeviceA|1NN_INDEX|SINGLE|128|8|4|0|8|8\n");
   EXPECT_EQ(cache->size(), static_cast<size_t>(0));
 }
 
@@ -350,7 +350,7 @@ void Test_PartiallyStaleCachePreservesGoodEntries() {
   SCAMP::ResetAutotuneWarnings();
   auto user = MakeCacheFromString(
       "SCAMP_AUTOTUNE_V1\n"
-      "MixedDevice|1NN_INDEX|SINGLE|128|8|4|0|8|8\n"   // matches SupportedConfig
+      "MixedDevice|1NN_INDEX|SINGLE|128|8|4|0|8|8\n"  // matches SupportedConfig
       "MixedDevice|1NN_INDEX|DOUBLE|128|99|99|99|99|99\n"  // stale: bogus tuple
       "MixedDevice|SUM_THRESH|DOUBLE|99|99|99|99|99|99\n"  // stale: bogus tuple
   );
@@ -359,8 +359,8 @@ void Test_PartiallyStaleCachePreservesGoodEntries() {
   // The good entry hits -- lookup returns SupportedConfig, no warning.
   std::string ok_out = CaptureStderr([&]() {
     auto cfg = SCAMP::LookupKernelConfigForDeviceKey(
-        "MixedDevice", SCAMP::PROFILE_TYPE_1NN_INDEX,
-        SCAMP::PRECISION_SINGLE, user.get(), nullptr, FallbackConfig());
+        "MixedDevice", SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_SINGLE,
+        user.get(), nullptr, FallbackConfig());
     EXPECT_TRUE(ConfigsEqual(cfg, SupportedConfig()));
   });
   EXPECT_TRUE(ok_out.empty());  // good entry => no warning
@@ -368,16 +368,16 @@ void Test_PartiallyStaleCachePreservesGoodEntries() {
   // The two stale entries fall through to fallback + warn.
   std::string stale1_out = CaptureStderr([&]() {
     auto cfg = SCAMP::LookupKernelConfigForDeviceKey(
-        "MixedDevice", SCAMP::PROFILE_TYPE_1NN_INDEX,
-        SCAMP::PRECISION_DOUBLE, user.get(), nullptr, FallbackConfig());
+        "MixedDevice", SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_DOUBLE,
+        user.get(), nullptr, FallbackConfig());
     EXPECT_TRUE(ConfigsEqual(cfg, FallbackConfig()));
   });
   EXPECT_TRUE(stale1_out.find("no autotune entry") != std::string::npos);
 
   std::string stale2_out = CaptureStderr([&]() {
     auto cfg = SCAMP::LookupKernelConfigForDeviceKey(
-        "MixedDevice", SCAMP::PROFILE_TYPE_SUM_THRESH,
-        SCAMP::PRECISION_DOUBLE, user.get(), nullptr, FallbackConfig());
+        "MixedDevice", SCAMP::PROFILE_TYPE_SUM_THRESH, SCAMP::PRECISION_DOUBLE,
+        user.get(), nullptr, FallbackConfig());
     EXPECT_TRUE(ConfigsEqual(cfg, FallbackConfig()));
   });
   EXPECT_TRUE(stale2_out.find("no autotune entry") != std::string::npos);
@@ -717,8 +717,7 @@ int main() {
        Test_UnsupportedVariantInCacheFallsThrough},
       {"Test_FutureVersionHeaderSilentlyEmpties",
        Test_FutureVersionHeaderSilentlyEmpties},
-      {"Test_MissingHeaderSilentlyEmpties",
-       Test_MissingHeaderSilentlyEmpties},
+      {"Test_MissingHeaderSilentlyEmpties", Test_MissingHeaderSilentlyEmpties},
       {"Test_PartiallyStaleCachePreservesGoodEntries",
        Test_PartiallyStaleCachePreservesGoodEntries},
       {"Test_StaleUserCacheFallsThroughToBuiltin",
