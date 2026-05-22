@@ -210,7 +210,36 @@ AutotuneResult RunAutotuneWithBenchmark(int device_id, BenchmarkFn bench,
                                         const std::string &cache_path,
                                         bool verbose) {
   GpuDeviceProps props = QueryDeviceProps(device_id);
-  std::string device_key = props.CacheKey();
+  if (verbose) {
+    // Device-identifying banner. Printing GPU name/SM count requires a
+    // real cudaDeviceProp, so it lives in this CUDA-aware wrapper. The
+    // ForDeviceKey overload below prints a shorter banner of its own.
+    std::string resolved =
+        cache_path.empty() ? AutotuneCache::DefaultPath() : cache_path;
+    std::cout << "SCAMP autotune (benchmarked)\n"
+              << "  device      : " << props.name << " (sm_"
+              << props.compute_major << props.compute_minor << ", "
+              << props.sm_count << " SMs)\n"
+              << "  override    : " << resolved << "\n"
+              << "  device key  : " << props.CacheKey() << "\n"
+              << "  variants    : " << kNumKernelVariants << "\n"
+              << "  trials/tuple: " << kNumKernelVariants
+              << " (one per variant)\n"
+              << "\n"
+              << "  NOTE: Per-(profile, precision) winners are written to the\n"
+              << "  user override path. To ship them, merge the relevant\n"
+              << "  lines into data/autotune_cache.txt and open a PR.\n\n";
+  }
+  // Inner call runs the sweep + cache write. Suppress the inner banner
+  // since we just printed the (richer) device-specific one.
+  return RunAutotuneWithBenchmarkForDeviceKey(
+      props.CacheKey(), device_id, bench, cache_path, /*verbose=*/verbose,
+      /*print_banner=*/false);
+}
+
+AutotuneResult RunAutotuneWithBenchmarkForDeviceKey(
+    const std::string &device_key, int device_id, BenchmarkFn bench,
+    const std::string &cache_path, bool verbose, bool print_banner) {
   std::string resolved =
       cache_path.empty() ? AutotuneCache::DefaultPath() : cache_path;
 
@@ -219,20 +248,15 @@ AutotuneResult RunAutotuneWithBenchmark(int device_id, BenchmarkFn bench,
   // share the cache file.
   disk_cache.Load();
 
-  if (verbose) {
-    std::cout << "SCAMP autotune (benchmarked)\n"
-              << "  device      : " << props.name << " (sm_"
-              << props.compute_major << props.compute_minor << ", "
-              << props.sm_count << " SMs)\n"
+  if (verbose && print_banner) {
+    // Shorter device-key-only banner (no GPU-specific info, which would
+    // require a cudaDeviceProp we don't have here).
+    std::cout << "SCAMP autotune (benchmarked, by device key)\n"
               << "  override    : " << resolved << "\n"
               << "  device key  : " << device_key << "\n"
               << "  variants    : " << kNumKernelVariants << "\n"
               << "  trials/tuple: " << kNumKernelVariants
-              << " (one per variant)\n"
-              << "\n"
-              << "  NOTE: Per-(profile, precision) winners are written to the\n"
-              << "  user override path. To ship them, merge the relevant\n"
-              << "  lines into data/autotune_cache.txt and open a PR.\n\n";
+              << " (one per variant)\n\n";
   }
 
   // Collect every (variant_idx, blocksz) timing across every target so we

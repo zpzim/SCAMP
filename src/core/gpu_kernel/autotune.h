@@ -72,6 +72,24 @@ AutotuneResult RunAutotuneWithBenchmark(int device_id, BenchmarkFn bench,
                                         const std::string &cache_path = "",
                                         bool verbose = true);
 
+// Lower-level overload: identical to RunAutotuneWithBenchmark but takes
+// the resolved device_key directly instead of querying CUDA for it.
+//
+// device_id is passed through to `bench` (the bench impl in
+// autotune_bench.cpp uses it; a synthetic test bench can ignore it).
+// print_banner=false suppresses the device-key banner (the wrapper sets
+// this when it already printed a richer banner of its own).
+//
+// Exists so unit tests can exercise the full bench-driven autotune
+// pathway -- variant sweep, winner selection, disk write, and re-load
+// -- on hosts without a CUDA device. Production code should call
+// RunAutotuneWithBenchmark(device_id, ...) which builds the device_key
+// from a real cudaDeviceProp.
+AutotuneResult RunAutotuneWithBenchmarkForDeviceKey(
+    const std::string &device_key, int device_id, BenchmarkFn bench,
+    const std::string &cache_path = "", bool verbose = true,
+    bool print_banner = true);
+
 // Look up the configuration the autotuner persisted for this device,
 // falling back to GetDefaultKernelConfig(precision) if no source has a
 // match (or the entry isn't a kernel variant the current binary was

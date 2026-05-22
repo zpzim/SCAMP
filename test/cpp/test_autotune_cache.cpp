@@ -459,6 +459,121 @@ void Test_SaveReplacesExistingFile() {
   std::filesystem::remove(std::filesystem::path(path), ec);
 }
 
+// Full-pipeline test for RunAutotuneWithBenchmarkForDeviceKey: drives the
+// real autotuner with a synthetic BenchmarkFn (no CUDA), then verifies
+// that:
+//   - the cache file is written at the requested path,
+//   - it contains one entry per (profile, precision) target,
+//   - each entry's chosen variant matches what the fake bench rigged to
+//     win (different variants for different targets),
+//   - LookupKernelConfigForDeviceKey on the reloaded cache returns the
+//     same configs.
+//
+// This is the CI hook that lets us exercise the autotune codepath on
+// hosts without a GPU: the autotune machinery doesn't care that bench
+// is synthetic, only that it returns finite seconds per trial.
+void Test_AutotuneFullPipeline_FakeBench() {
+  SCAMP::ResetAutotuneWarnings();
+  std::string path = MakeTempPath("autotune_pipeline");
+  std::error_code ec;
+  std::filesystem::remove(std::filesystem::path(path), ec);
+
+  // Per-target rigged winners: which (variant_idx, blocksz) should
+  // come out fastest for each (profile, precision) tuple. Keep these in
+  // sync with kAutotuneTargets in autotune.cpp; the order matters
+  // because the bench function indexes into this table by
+  // (profile, precision).
+  struct RiggedWinner {
+    SCAMP::SCAMPProfileType profile;
+    SCAMP::SCAMPPrecisionType precision;
+    std::size_t variant_idx;
+    int blocksz;
+  };
+  // Mix variants across targets so a wrong-winner bug shows up. v3+v4
+  // are the shfl variants (ur==0); v0/v1/v2 are sliding-window. We
+  // intentionally rig some targets to non-default winners.
+  const RiggedWinner rigged[] = {
+      {SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_DOUBLE, 3, 64},
+      {SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_SINGLE, 4, 64},
+      {SCAMP::PROFILE_TYPE_1NN, SCAMP::PRECISION_DOUBLE, 2, 128},
+      {SCAMP::PROFILE_TYPE_1NN, SCAMP::PRECISION_SINGLE, 2, 256},
+      {SCAMP::PROFILE_TYPE_SUM_THRESH, SCAMP::PRECISION_DOUBLE, 4, 64},
+      {SCAMP::PROFILE_TYPE_SUM_THRESH, SCAMP::PRECISION_SINGLE, 4, 128},
+      {SCAMP::PROFILE_TYPE_MATRIX_SUMMARY, SCAMP::PRECISION_DOUBLE, 2, 64},
+      {SCAMP::PROFILE_TYPE_MATRIX_SUMMARY, SCAMP::PRECISION_SINGLE, 2, 128},
+      {SCAMP::PROFILE_TYPE_APPROX_ALL_NEIGHBORS,
+       SCAMP::PRECISION_DOUBLE, 2, 64},
+      {SCAMP::PROFILE_TYPE_APPROX_ALL_NEIGHBORS,
+       SCAMP::PRECISION_SINGLE, 2, 256},
+  };
+  auto winner_for = [&rigged](SCAMP::SCAMPProfileType p,
+                              SCAMP::SCAMPPrecisionType prec) {
+    for (const auto &r : rigged) {
+      if (r.profile == p && r.precision == prec) return &r;
+    }
+    return static_cast<const RiggedWinner *>(nullptr);
+  };
+
+  // Fake bench: 0.5s for the rigged winner, 1.5s otherwise. The variant
+  // is identified by matching the geometry tuple in cfg against the
+  // geometry the autotuner gets from GetKernelVariantGeometry(idx),
+  // since the BenchmarkFn signature doesn't pass variant_idx directly.
+  auto fake_bench = [&](int /*device_id*/, SCAMP::SCAMPProfileType p,
+                        SCAMP::SCAMPPrecisionType prec,
+                        const SCAMP::KernelConfig &cfg) -> double {
+    const RiggedWinner *win = winner_for(p, prec);
+    if (win == nullptr) return 1.0;
+    const auto &g = SCAMP::GetKernelVariantGeometry(win->variant_idx);
+    bool matches = cfg.blocks_per_sm == g.blocks_per_sm &&
+                   cfg.diags_per_thread == g.diags_per_thread &&
+                   cfg.unrolled_rows == g.unrolled_rows &&
+                   cfg.outer_unrolled_rows == g.outer_unrolled_rows &&
+                   cfg.kernel_tile_iters == g.kernel_tile_iters &&
+                   cfg.blocksz == win->blocksz;
+    return matches ? 0.5 : 1.5;
+  };
+
+  std::string device_key = "FakeGPU_for_autotune_pipeline_test__sm_86";
+  // Capture stderr+stdout so the test's output isn't littered with
+  // autotune progress lines.
+  std::string captured = CaptureStderr([&]() {
+    SCAMP::RunAutotuneWithBenchmarkForDeviceKey(
+        device_key, /*device_id=*/-1, fake_bench, path, /*verbose=*/false);
+  });
+  (void)captured;
+
+  // Cache file must exist.
+  EXPECT_TRUE(std::filesystem::is_regular_file(std::filesystem::path(path)));
+
+  // Reload and verify every target's winner matches the rig.
+  SCAMP::AutotuneCache reader(path);
+  reader.Load();
+  for (const auto &r : rigged) {
+    auto found = reader.Lookup(device_key, r.profile, r.precision);
+    EXPECT_TRUE(found.has_value());
+    if (!found.has_value()) continue;
+    const auto &g = SCAMP::GetKernelVariantGeometry(r.variant_idx);
+    EXPECT_EQ(found->blocks_per_sm, g.blocks_per_sm);
+    EXPECT_EQ(found->diags_per_thread, g.diags_per_thread);
+    EXPECT_EQ(found->unrolled_rows, g.unrolled_rows);
+    EXPECT_EQ(found->outer_unrolled_rows, g.outer_unrolled_rows);
+    EXPECT_EQ(found->kernel_tile_iters, g.kernel_tile_iters);
+    EXPECT_EQ(found->blocksz, r.blocksz);
+  }
+
+  // LookupKernelConfigForDeviceKey should return the rigged winner for
+  // a known target, with the user cache holding the just-written file.
+  auto cfg = SCAMP::LookupKernelConfigForDeviceKey(
+      device_key, SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_DOUBLE,
+      &reader, nullptr, FallbackConfig());
+  const auto &g_winner = SCAMP::GetKernelVariantGeometry(3);
+  EXPECT_EQ(cfg.blocksz, 64);
+  EXPECT_EQ(cfg.blocks_per_sm, g_winner.blocks_per_sm);
+  EXPECT_EQ(cfg.diags_per_thread, g_winner.diags_per_thread);
+
+  std::filesystem::remove(std::filesystem::path(path), ec);
+}
+
 // Malformed cache: a non-empty bad line throws SCAMPException. The
 // kHeader-mismatch case clears entries silently (existing behavior); we
 // don't test that here because it's an intentional escape hatch for
@@ -502,6 +617,8 @@ int main() {
       {"Test_DiskRoundTrip", Test_DiskRoundTrip},
       {"Test_SaveCreatesParentDirectories", Test_SaveCreatesParentDirectories},
       {"Test_SaveReplacesExistingFile", Test_SaveReplacesExistingFile},
+      {"Test_AutotuneFullPipeline_FakeBench",
+       Test_AutotuneFullPipeline_FakeBench},
       {"Test_MalformedLineThrows", Test_MalformedLineThrows},
   };
   int n = sizeof(cases) / sizeof(cases[0]);
