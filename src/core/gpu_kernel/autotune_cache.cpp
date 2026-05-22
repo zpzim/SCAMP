@@ -148,8 +148,7 @@ AutotuneCache::AutotuneCache(std::string path) : path_(std::move(path)) {}
 
 bool AutotuneCache::FileExists() const {
   std::error_code ec;
-  return std::filesystem::is_regular_file(
-      std::filesystem::path(path_), ec);
+  return std::filesystem::is_regular_file(std::filesystem::path(path_), ec);
 }
 
 void AutotuneCache::LoadFromString(const std::string &contents) {

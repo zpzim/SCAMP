@@ -54,8 +54,8 @@ std::string MakeTempPath(const char *stem) {
   static int counter = 0;
   ++counter;
   std::filesystem::path p = std::filesystem::temp_directory_path();
-  p /= std::string("scamp_test_") + stem + "_" +
-       std::to_string(counter) + ".txt";
+  p /= std::string("scamp_test_") + stem + "_" + std::to_string(counter) +
+       ".txt";
   return p.string();
 }
 
@@ -336,8 +336,8 @@ void Test_DefaultPath_EnvVarOverride() {
 // test asserts the same layout on Windows too.
 void Test_DefaultPath_XdgCacheHome() {
   PortableUnsetenv("SCAMP_AUTOTUNE_CACHE");
-  std::filesystem::path xdg = std::filesystem::temp_directory_path() /
-                              "scamp_test_xdg_cache";
+  std::filesystem::path xdg =
+      std::filesystem::temp_directory_path() / "scamp_test_xdg_cache";
   PortableSetenv("XDG_CACHE_HOME", xdg.string().c_str());
   std::string p = SCAMP::AutotuneCache::DefaultPath();
   std::filesystem::path expected = xdg / "scamp" / "autotune.txt";
@@ -361,8 +361,7 @@ void Test_DefaultPath_UserDirFallback() {
       std::filesystem::temp_directory_path() / "scamp_test_user_dir";
 #ifdef _WIN32
   PortableSetenv("LOCALAPPDATA", tmp_user_dir.string().c_str());
-  std::filesystem::path expected =
-      tmp_user_dir / "scamp" / "autotune.txt";
+  std::filesystem::path expected = tmp_user_dir / "scamp" / "autotune.txt";
 #else
   PortableSetenv("HOME", tmp_user_dir.string().c_str());
   std::filesystem::path expected =
@@ -406,9 +405,8 @@ void Test_DiskRoundTrip() {
 // yet exist.
 void Test_SaveCreatesParentDirectories() {
   SCAMP::ResetAutotuneWarnings();
-  std::filesystem::path nested =
-      std::filesystem::temp_directory_path() / "scamp_test_mkdir" /
-      "deep" / "nested";
+  std::filesystem::path nested = std::filesystem::temp_directory_path() /
+                                 "scamp_test_mkdir" / "deep" / "nested";
   std::error_code ec;
   std::filesystem::remove_all(nested.parent_path().parent_path(), ec);
   std::filesystem::path file = nested / "autotune.txt";
@@ -502,8 +500,7 @@ int main() {
       {"Test_DefaultPath_XdgCacheHome", Test_DefaultPath_XdgCacheHome},
       {"Test_DefaultPath_UserDirFallback", Test_DefaultPath_UserDirFallback},
       {"Test_DiskRoundTrip", Test_DiskRoundTrip},
-      {"Test_SaveCreatesParentDirectories",
-       Test_SaveCreatesParentDirectories},
+      {"Test_SaveCreatesParentDirectories", Test_SaveCreatesParentDirectories},
       {"Test_SaveReplacesExistingFile", Test_SaveReplacesExistingFile},
       {"Test_MalformedLineThrows", Test_MalformedLineThrows},
   };
