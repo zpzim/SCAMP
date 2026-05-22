@@ -24,6 +24,48 @@ namespace SCAMP {
 //
 // Comment lines starting with '#' and blank lines are ignored.
 //
+// ============================================================
+// Upgrade compatibility (when SCAMP_VARIANT_TUPLES changes, or the
+// kernel implementation changes such that an old tuned config is no
+// longer best):
+// ============================================================
+//
+// The intent is "users keep their existing tuned cache by default, and
+// only re-tune when they explicitly want to or when a release forces
+// it." Concretely:
+//
+//   - Add / remove / reorder a variant in SCAMP_VARIANT_TUPLES:
+//     no version bump needed. The runtime lookup matches by
+//     (bps,dpt,ur,our,kti) tuple and falls through to the next cache
+//     source on an unsupported tuple (see
+//     LookupKernelConfigForDeviceKey + IsSupportedKernelConfig).
+//     Per-(device, profile, precision) entries are independent --
+//     editing the variant table only invalidates the cache entries
+//     that named a now-removed tuple; everything else still hits.
+//
+//   - Change the on-disk record schema (e.g. add a column):
+//     bump kHeader from SCAMP_AUTOTUNE_V<N> to V<N+1>. ParseStream
+//     silently treats a non-matching header as an empty cache, so an
+//     end-user upgrading their pyscamp pip wheel won't see a
+//     SCAMPException -- they just fall through to the new release's
+//     built-in cache (or the cache-miss warning) and can re-tune at
+//     their leisure.
+//
+//   - Change kernel semantics with the SAME tuple still valid (e.g.
+//     refactor do_iteration_fast so a "DPT=4 OUR=16" kernel emits
+//     materially different instructions): the existing cache will
+//     still match by tuple, but the recorded winner may no longer be
+//     the actual fastest cfg. If the regression is meaningful, bump
+//     kHeader to force everyone to re-tune; if it isn't, leave the
+//     header alone and let users opt-in to re-tuning.
+//
+// Each of the cases above is covered by a unit test in
+// test/cpp/test_autotune_cache.cpp (Test_UnsupportedVariantInCache...,
+// Test_FutureVersionHeaderSilentlyEmpties,
+// Test_PartiallyStaleCachePreservesGoodEntries,
+// Test_StaleUserCacheFallsThroughToBuiltin). Adding a new failure
+// mode to the cache should land with a matching test there.
+//
 // Cache file location (in priority order):
 //   1. Path passed to the constructor explicitly
 //   2. $SCAMP_AUTOTUNE_CACHE if set

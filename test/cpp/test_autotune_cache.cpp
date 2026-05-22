@@ -299,6 +299,111 @@ void Test_UnsupportedVariantInCacheFallsThrough() {
   EXPECT_TRUE(ConfigsEqual(cfg, FallbackConfig()));
 }
 
+// Upgrade strategy contract: a cache file with a future / unknown
+// version header is silently treated as empty -- NOT a parse error.
+// This is the escape hatch we use when a kernel-semantics change
+// invalidates older caches: bump kHeader (V1 -> V2), and a binary
+// holding the old header transparently re-falls through to the
+// built-in cache / one-shot warning, prompting the user to re-tune.
+// Must not throw -- a user upgrading their pip-installed pyscamp
+// shouldn't see SCAMPException on import.
+void Test_FutureVersionHeaderSilentlyEmpties() {
+  SCAMP::ResetAutotuneWarnings();
+  auto cache = MakeCacheFromString(
+      "SCAMP_AUTOTUNE_V99\n"
+      "FakeDeviceA|1NN_INDEX|SINGLE|128|8|4|0|8|8\n");
+  // Parsed cache holds zero entries even though the body had one.
+  EXPECT_EQ(cache->size(), static_cast<size_t>(0));
+  // Lookup falls through to the fallback and emits the one-shot warning.
+  std::string warn = CaptureStderr([&]() {
+    auto cfg = SCAMP::LookupKernelConfigForDeviceKey(
+        "FakeDeviceA", SCAMP::PROFILE_TYPE_1NN_INDEX,
+        SCAMP::PRECISION_SINGLE, cache.get(), nullptr, FallbackConfig());
+    EXPECT_TRUE(ConfigsEqual(cfg, FallbackConfig()));
+  });
+  EXPECT_TRUE(warn.find("no autotune entry") != std::string::npos);
+}
+
+// A cache with no version header at all (including the empty-file
+// case) is also a silent miss, not a throw. Same rationale as the
+// future-version test.
+void Test_MissingHeaderSilentlyEmpties() {
+  SCAMP::ResetAutotuneWarnings();
+  // No header line, just data -- the loader has to refuse to ingest it.
+  auto cache = MakeCacheFromString(
+      "FakeDeviceA|1NN_INDEX|SINGLE|128|8|4|0|8|8\n");
+  EXPECT_EQ(cache->size(), static_cast<size_t>(0));
+}
+
+// Upgrade strategy contract: when SCAMP_VARIANT_TUPLES adds or removes
+// a variant, existing user caches survive on a per-entry basis. Entries
+// that name a current (bps,dpt,ur,our,kti) tuple still hit; entries
+// pointing at a since-retired tuple fall through to the next source
+// or the warning. This is the everyday "we shipped a new release that
+// touched the variant table; existing users keep their good entries
+// without seeing a SCAMPException" scenario.
+//
+// The cache here mixes one good entry (matching SupportedConfig) with
+// two stale entries (clearly-bogus tuples that won't match any current
+// kVariants row), all for the same device but different targets.
+void Test_PartiallyStaleCachePreservesGoodEntries() {
+  SCAMP::ResetAutotuneWarnings();
+  auto user = MakeCacheFromString(
+      "SCAMP_AUTOTUNE_V1\n"
+      "MixedDevice|1NN_INDEX|SINGLE|128|8|4|0|8|8\n"   // matches SupportedConfig
+      "MixedDevice|1NN_INDEX|DOUBLE|128|99|99|99|99|99\n"  // stale: bogus tuple
+      "MixedDevice|SUM_THRESH|DOUBLE|99|99|99|99|99|99\n"  // stale: bogus tuple
+  );
+  EXPECT_EQ(user->size(), static_cast<size_t>(3));  // all three loaded
+
+  // The good entry hits -- lookup returns SupportedConfig, no warning.
+  std::string ok_out = CaptureStderr([&]() {
+    auto cfg = SCAMP::LookupKernelConfigForDeviceKey(
+        "MixedDevice", SCAMP::PROFILE_TYPE_1NN_INDEX,
+        SCAMP::PRECISION_SINGLE, user.get(), nullptr, FallbackConfig());
+    EXPECT_TRUE(ConfigsEqual(cfg, SupportedConfig()));
+  });
+  EXPECT_TRUE(ok_out.empty());  // good entry => no warning
+
+  // The two stale entries fall through to fallback + warn.
+  std::string stale1_out = CaptureStderr([&]() {
+    auto cfg = SCAMP::LookupKernelConfigForDeviceKey(
+        "MixedDevice", SCAMP::PROFILE_TYPE_1NN_INDEX,
+        SCAMP::PRECISION_DOUBLE, user.get(), nullptr, FallbackConfig());
+    EXPECT_TRUE(ConfigsEqual(cfg, FallbackConfig()));
+  });
+  EXPECT_TRUE(stale1_out.find("no autotune entry") != std::string::npos);
+
+  std::string stale2_out = CaptureStderr([&]() {
+    auto cfg = SCAMP::LookupKernelConfigForDeviceKey(
+        "MixedDevice", SCAMP::PROFILE_TYPE_SUM_THRESH,
+        SCAMP::PRECISION_DOUBLE, user.get(), nullptr, FallbackConfig());
+    EXPECT_TRUE(ConfigsEqual(cfg, FallbackConfig()));
+  });
+  EXPECT_TRUE(stale2_out.find("no autotune entry") != std::string::npos);
+}
+
+// Upgrade-with-builtin scenario: user cache is fully stale (e.g. user
+// upgraded pyscamp across a header-version bump), but the new release
+// ships a built-in cache that has the device. The built-in entry
+// must win -- otherwise the upgrade would silently regress the user.
+void Test_StaleUserCacheFallsThroughToBuiltin() {
+  SCAMP::ResetAutotuneWarnings();
+  auto user = MakeCacheFromString(
+      "SCAMP_AUTOTUNE_V99\n"  // future version => silently empty
+      "MyGPU|1NN_INDEX|SINGLE|128|8|4|0|8|8\n");
+  auto builtin = MakeCacheFromString(
+      "SCAMP_AUTOTUNE_V1\n"
+      "MyGPU|1NN_INDEX|SINGLE|128|8|4|0|8|8\n");
+  std::string out = CaptureStderr([&]() {
+    auto cfg = SCAMP::LookupKernelConfigForDeviceKey(
+        "MyGPU", SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_SINGLE,
+        user.get(), builtin.get(), FallbackConfig());
+    EXPECT_TRUE(ConfigsEqual(cfg, SupportedConfig()));
+  });
+  EXPECT_TRUE(out.empty());  // built-in hit => no warning
+}
+
 // Multi-device cache: looking up device A returns A's entry, device B
 // returns B's entry. Regression for the "P100 entries clobbered 3080
 // entries" bug-class.
@@ -610,6 +715,14 @@ int main() {
       {"Test_CacheMissWarningIsPerTuple", Test_CacheMissWarningIsPerTuple},
       {"Test_UnsupportedVariantInCacheFallsThrough",
        Test_UnsupportedVariantInCacheFallsThrough},
+      {"Test_FutureVersionHeaderSilentlyEmpties",
+       Test_FutureVersionHeaderSilentlyEmpties},
+      {"Test_MissingHeaderSilentlyEmpties",
+       Test_MissingHeaderSilentlyEmpties},
+      {"Test_PartiallyStaleCachePreservesGoodEntries",
+       Test_PartiallyStaleCachePreservesGoodEntries},
+      {"Test_StaleUserCacheFallsThroughToBuiltin",
+       Test_StaleUserCacheFallsThroughToBuiltin},
       {"Test_MultiDeviceCacheLookup", Test_MultiDeviceCacheLookup},
       {"Test_DefaultPath_EnvVarOverride", Test_DefaultPath_EnvVarOverride},
       {"Test_DefaultPath_XdgCacheHome", Test_DefaultPath_XdgCacheHome},

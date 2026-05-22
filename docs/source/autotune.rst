@@ -210,6 +210,42 @@ To bypass the user cache entirely without deleting it, point
 
 The built-in cache still applies; only the user override is bypassed.
 
+What happens to my cache when I upgrade SCAMP?
+----------------------------------------------
+
+By default, an existing user cache survives the upgrade — the file
+format is keyed by the variant geometry tuple
+``(blocks_per_sm, diags_per_thread, unrolled_rows, outer_unrolled_rows,
+kernel_tile_iters)``, not by a position in some table, so cache entries
+that still match a current kernel variant continue to hit.
+
+The three things that can happen to an existing entry after an upgrade:
+
+* **The new SCAMP build still has your entry's variant tuple.** Lookup
+  succeeds and you keep your tuned config. This is the common case
+  when a release just adds new variants.
+* **The new build retired your entry's variant.** The runtime rejects
+  the entry (it doesn't match any current variant), falls through to
+  the built-in cache, and — if that also misses — to the compile-time
+  default plus a one-shot "no autotune entry" warning. Other entries
+  in the same cache file are unaffected; only the one(s) naming the
+  retired variant fall through. You can ignore the warning, or run
+  ``--autotune`` again to refresh the affected ``(device, profile,
+  precision)`` tuples.
+* **The release bumped the cache file's version header.** This is
+  reserved for hard-incompatibility changes (the file schema changed,
+  or kernel semantics shifted enough that *every* tuned config is
+  stale). The new SCAMP silently treats the file as empty —
+  ``--autotune`` is required to get back to a tuned state. SCAMP will
+  not throw or refuse to run; you'll just see the cache-miss warning
+  until you re-tune.
+
+You don't need to delete your cache after a SCAMP upgrade. Run
+``--autotune`` again if a release note tells you to (or if you see
+the cache-miss warning after an upgrade and want to make it go away);
+otherwise, your existing entries keep being used wherever they remain
+applicable.
+
 Troubleshooting
 ---------------
 
