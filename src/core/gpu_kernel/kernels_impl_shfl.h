@@ -173,8 +173,15 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
         (tile_start_col + BLOCKSZ * DiagsPerThread <= num_diags) &&
         (tile_start_col >= args.exclusion_upper + tile_height);
 
+    // NB: the row loop below is deliberately NOT #pragma unroll'd.
+    // tile_height is up to 32*DPT = 256 for the DPT=8 variants, and
+    // do_row_shfl ends with __syncthreads() -- unrolling would inline
+    // the per-row body (cross-warp publish + read, distc merge,
+    // intra-warp shfl, update_info_shfl dispatch with 8 inlined slot
+    // bodies for DPT=8) 256 times per kernel-template combo, ballooning
+    // compile time without buying inter-iteration ILP since the barrier
+    // serializes adjacent rows anyway.
     if (fast_path) {
-#pragma unroll
       for (int r = 0; r < tile_height; ++r) {
         do_row_shfl<PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, DISTANCE_TYPE,
                     DiagsPerThread, BLOCKSZ, true>(
