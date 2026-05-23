@@ -6,11 +6,16 @@
 namespace SCAMP {
 
 // KernelConfig holds the runtime-tunable launch parameters for the SCAMP
-// do_tile<...> CUDA kernel. Each field except blocksz is a "variant axis"
-// the autotuner can vary; blocksz is precision-tied today.
+// do_tile<...> CUDA kernel. Every field is a "variant axis" the
+// autotuner can vary independently.
 //
-// blocksz             threads per block (BLOCKSZ_SP for single/mixed,
-//                     BLOCKSZ_DP for double/ultra).
+// blocksz             threads per block. The kernel is instantiated for
+//                     {64,128,256,512} per variant; the autotuner sweeps
+//                     this axis and the on-disk cache can store any of
+//                     them. The cold-start fallback uses the per-variant
+//                     default_blocksz_{dp,sp} declared in
+//                     SCAMP_VARIANT_TUPLES (see src/core/gpu_kernel/
+//                     CMakeLists.txt).
 // blocks_per_sm       __launch_bounds__ second arg (occupancy hint).
 // diags_per_thread    distance-matrix diagonals processed per thread per
 //                     fast-path iteration. Wider = fewer threads, more
@@ -47,21 +52,28 @@ struct KernelConfig {
   }
 };
 
-// The defaults are the DEFAULT_* constants from kernel_constants.h, with
-// blocksz derived from precision. Variant 0 in the table matches these.
+// Cold-start fallback when no autotune cache entry exists for the device
+// + (profile, precision) tuple. Returns the first shfl variant (the
+// safest universal default; see GetDefaultKernelConfig impl for the
+// rationale). The autotune cache always wins over this when present.
 KernelConfig GetDefaultKernelConfig(SCAMPPrecisionType precision);
 
-// Enumerated launch-geometry variants. Each variant's full tuple must have
-// a matching branch in the LaunchDoTile switch in kernels_impl.h.
+// Enumerated launch-geometry variants, generated from SCAMP_VARIANT_TUPLES
+// in src/core/gpu_kernel/CMakeLists.txt. Each variant's full tuple must
+// have a matching branch in the LaunchDoTile switch in kernels_impl.h.
 //
-// blocksz is filled in per-precision at lookup time (via
-// GetKernelConfigForVariant); only the variable axes are enumerated here.
+// default_blocksz_{dp,sp} is the per-precision cold-start blocksz. The
+// kernel is instantiated for every blocksz in {64,128,256,512}, so the
+// autotune sweep and the cache can pick any of them at runtime; these
+// fields only feed GetKernelConfigForVariant when no cache hit exists.
 struct KernelVariantGeometry {
   int blocks_per_sm;
   int diags_per_thread;
   int unrolled_rows;
   int outer_unrolled_rows;
   int kernel_tile_iters;
+  int default_blocksz_dp;
+  int default_blocksz_sp;
 };
 
 extern const std::size_t kNumKernelVariants;

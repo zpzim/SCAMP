@@ -12,11 +12,9 @@ lives, and how to use it.
 TL;DR
 -----
 
-* Most users do nothing. SCAMP ships with tuned configs for common GPUs
-  baked into the binary; the autotuner only needs to run when your GPU
-  isn't in that built-in list.
+* SCAMP ships with tuned configs for some GPUs, but it is not comprehensive.
 
-* If you see a one-line warning at the top of a SCAMP run that starts
+  If you see a one-line warning at the top of a SCAMP run that starts
   with ``SCAMP: no autotune entry for device '<name>' ...``, your GPU
   isn't in the built-in cache. Run one of these once, then forget about
   it:
@@ -29,6 +27,10 @@ TL;DR
      # Python:
      >>> import pyscamp
      >>> pyscamp.autotune()
+
+  If you are a pyscamp user, you will not recieve any messages about missing
+  autotune entries by default, but you can enable them with
+  ``SCAMP_AUTOTUNE_QUIET=0`` (see :ref:`autotune-miss-warning`).
 
   This takes a few minutes to run and persists its choices to disk. The
   default location is ``~/.cache/scamp/autotune.txt`` on Linux/macOS and
@@ -95,8 +97,8 @@ variant × every supported block size for every ``(profile_type,
 precision)`` pair and persists the per-tuple winner to the user cache.
 A full sweep is the current variant count × 4 block sizes × 10 targets;
 with the 5 variants enabled today that's 200 benchmark trials. With
-the default benchmark workload (131K-element synthetic self-join) the
-sweep takes ~3-5 minutes on a recent GPU; the output is verbose by
+the default benchmark workload (256K-element synthetic self-join) the
+sweep takes ~10-20 minutes on a recent GPU; the output is verbose by
 default so you can see progress.
 
 Choosing the benchmark workload size
@@ -143,7 +145,12 @@ or with a larger value when you're producing entries to ship in
    $ SCAMP_AUTOTUNE_INPUT_LENGTH=131072 SCAMP --autotune  # fast/casual
    $ SCAMP_AUTOTUNE_INPUT_LENGTH=524288 SCAMP --autotune  # tighter still
 
-The trade-off is wall-clock: 524288 takes ~1.5+ hours on a recent GPU.
+The trade-off is wall-clock: 256k takes 16x longer than 128k.
+
+Another important note is that if you don't plan on running large joins in
+practice, tuning with a smaller input size is more relevant to your workload.
+If you will only use SCAMP on smaller inputs there is no need to tune for a
+larger size.
 
 Choosing the device(s)
 """"""""""""""""""""""
@@ -297,5 +304,8 @@ old values."**
    Edit the user cache directly (``~/.cache/scamp/autotune.txt`` on
    Linux/macOS, ``%LOCALAPPDATA%\scamp\autotune.txt`` on Windows): each
    line is ``device_key|profile|precision|blocksz|bps|dpt|ur|our|kti``.
+   However, you must specify a valid variant defined in 
+   ``src/core/gpu_kernel/CMakeLists.txt``; the variants have to be
+   specified at BUILD time for them to be included in the SCAMP binary.
    Lines that name an unknown variant are silently rejected at lookup
    time and the next source is consulted, so it's safe to experiment.

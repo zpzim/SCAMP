@@ -4,7 +4,6 @@
 
 #include "common/common.h"
 #include "core/tile.h"
-#include "kernel_constants.h"
 
 #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 600
 // Double atomicAdd is implemented
@@ -24,10 +23,6 @@ static __inline__ __device__ double atomicAdd(double *address, double val) {
 #endif
 
 namespace SCAMP {
-
-// Launch constants moved to kernel_constants.h so they can be consumed from
-// host-only translation units (e.g. kernel_config.cpp) without pulling in
-// the CUDA device intrinsics defined later in this header.
 
 // Describes the SCOPE of an atomic operation in a GPU kernel
 enum SCAMPAtomicType { ATOMIC_BLOCK, ATOMIC_GLOBAL, ATOMIC_SYSTEM };
@@ -225,9 +220,6 @@ __device__ inline void vec_load(const T *p, T *d) {
 // Gets the profile element size as used by the GPU kernels
 // This can be different than what is used in the CPU case
 size_t GetProfileTypeSizeInternalGPU(SCAMPProfileType type);
-
-// Get the desired block size to launch the kernel with according to tils
-int get_blocksz(Tile *t);
 
 // Gets the required amount of shared memory for the kernel. tile_height and
 // diags_per_thread are per-variant; passing them explicitly lets the

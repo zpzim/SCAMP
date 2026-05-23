@@ -8,11 +8,6 @@
 //      AutotuneCache::DefaultPath)
 //   2. This built-in cache
 //   3. GetDefaultKernelConfig() as a last resort
-//
-// Conda-forge / pip wheel users have no way to recompile a different binary;
-// for them this built-in cache is the only way they get GPU-specific tuning.
-// Developers update the on-disk data/autotune_cache.txt and open a PR; the
-// next release ships those entries to end users.
 #pragma once
 
 namespace SCAMP {

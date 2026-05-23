@@ -3,14 +3,11 @@
 #include <array>
 #include <cassert>
 
-#include "kernel_constants.h"
 // Generated from SCAMP_VARIANT_TUPLES in CMakeLists.txt. Provides the
 // kVariants[] constexpr array at namespace SCAMP scope.
 #include "kernel_variants_table.h"
 
 namespace SCAMP {
-
-namespace {
 
 // Enumerated launch-geometry variants. Each entry must have a matching
 // VARIANT_BRANCH in the LaunchDoTile switch in kernels_impl.h.
@@ -30,20 +27,6 @@ namespace {
 // which variant geometries the binary supports. See
 // kernel_variants_table.h.in for the @-substitution template.
 
-int BlocksizeForPrecision(SCAMPPrecisionType precision) {
-  switch (precision) {
-    case PRECISION_ULTRA:
-    case PRECISION_DOUBLE:
-      return BLOCKSZ_DP;
-    case PRECISION_SINGLE:
-      return BLOCKSZ_SP;
-    default:
-      return BLOCKSZ_DP;
-  }
-}
-
-}  // namespace
-
 const std::size_t kNumKernelVariants = kVariants.size();
 
 const KernelVariantGeometry &GetKernelVariantGeometry(std::size_t i) {
@@ -55,13 +38,22 @@ KernelConfig GetKernelConfigForVariant(std::size_t i,
                                        SCAMPPrecisionType precision) {
   assert(i < kVariants.size());
   KernelConfig cfg{};
-  // shfl variants (ur==0 sentinel) default to blocksz=128; the autotune
-  // sweep will also try 64/256/512 via the blocksz axis. Sliding-window
-  // variants default to the precision-tied BLOCKSZ_DP/BLOCKSZ_SP.
-  if (kVariants[i].unrolled_rows == 0) {
-    cfg.blocksz = 128;
-  } else {
-    cfg.blocksz = BlocksizeForPrecision(precision);
+  // Cold-start blocksz comes from the variant's per-precision default.
+  // The autotune sweep also tries the other three values in
+  // {64,128,256,512} via the independent blocksz axis, and the on-disk
+  // cache can store any of them; these defaults only feed the path
+  // where no cache entry exists for this device + (profile, precision).
+  switch (precision) {
+    case PRECISION_ULTRA:
+    case PRECISION_DOUBLE:
+      cfg.blocksz = kVariants[i].default_blocksz_dp;
+      break;
+    case PRECISION_SINGLE:
+      cfg.blocksz = kVariants[i].default_blocksz_sp;
+      break;
+    default:
+      cfg.blocksz = kVariants[i].default_blocksz_dp;
+      break;
   }
   cfg.blocks_per_sm = kVariants[i].blocks_per_sm;
   cfg.diags_per_thread = kVariants[i].diags_per_thread;

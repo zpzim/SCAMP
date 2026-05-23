@@ -69,6 +69,15 @@ time):
 * ``SCAMP_ENABLE_BINARY_DISTRIBUTION`` — for binary wheel / conda-forge
   builds; tells the build to bake in defaults appropriate for
   redistribution rather than for the developer's local box.
+* ``SCAMP_USE_EXTERNAL_EIGEN`` — link against a system-installed Eigen
+  (``find_package(Eigen3 5.0.0 REQUIRED NO_MODULE)``) instead of the
+  vendored ``third_party/eigen`` submodule. Off by default; set to a
+  truthy value in distro-package recipes (e.g. conda-forge) where
+  Eigen is managed independently. The version constraint requires
+  Eigen >= 5.0.0 either way — upstream Eigen still publishes the
+  CMake package as ``Eigen3`` and the target as ``Eigen3::Eigen``
+  even at major version 5.x, so no source-side changes are needed
+  when toggling this.
 * ``SCAMP_USE_CLANG_TIDY`` — run clang-tidy on the SCAMP sources during
   the build. Off by default.
 

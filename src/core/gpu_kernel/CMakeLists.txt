@@ -93,15 +93,24 @@ set(SCAMP_KERNEL_PROFILES
 # its .cu, its forward decl, its dispatch case, and its kVariants entry
 # in one step.
 set(SCAMP_VARIANT_TUPLES
-    # bps|dpt|ur|our|kti
-    "2|2|2|16|16"       # sliding-window, DPT=2 baseline (tile=256)
-    "2|4|4|4|50"        # sliding-window, DPT=4 + 4x4 hand-unroll (tile=200)
-    "1|4|4|16|16"       # sliding-window, big tile / low occupancy (tile=256)
+    # bps|dpt|ur|our|kti|default_blocksz_dp|default_blocksz_sp
+    #
+    # default_blocksz_{dp,sp} is the per-precision cold-start blocksz the
+    # runtime uses when the autotune cache misses for this variant. The
+    # kernel still gets instantiated for every blocksz in {64,128,256,512}
+    # (the autotuner sweeps that axis independently and the on-disk cache
+    # can store any of them), so these defaults only matter on the very
+    # first untuned run on a device. They live with the variant geometry
+    # so the variant author controls them explicitly per-precision rather
+    # than having a separate precision-tied constant make the decision.
+    "2|2|2|16|16|256|512"       # sliding-window, DPT=2 baseline (tile=256)
+    "2|4|4|4|50|256|512"        # sliding-window, DPT=4 + 4x4 hand-unroll (tile=200)
+    "1|4|4|16|16|256|512"       # sliding-window, big tile / low occupancy (tile=256)
     # ur==0 marks the "shfl" (cov-shuffle) variant. The foreach below
     # routes ur==0 tuples through kernel_variant_shfl.cu.in instead of
     # the sliding-window template.
-    "8|4|0|8|8"         # shfl, DPT=4, tile=64
-    "4|8|0|8|32"        # shfl, DPT=8, tile=256
+    "8|4|0|8|8|128|128"         # shfl, DPT=4, tile=64
+    "4|8|0|8|32|128|128"        # shfl, DPT=8, tile=256
 )
 
 # Build the three @-substitution strings (kVariants init body, forward
@@ -121,12 +130,14 @@ foreach(variant_tuple ${SCAMP_VARIANT_TUPLES})
   list(GET variant_fields 2 VARIANT_UR)
   list(GET variant_fields 3 VARIANT_OUR)
   list(GET variant_fields 4 VARIANT_KTI)
+  list(GET variant_fields 5 VARIANT_DEFAULT_BLOCKSZ_DP)
+  list(GET variant_fields 6 VARIANT_DEFAULT_BLOCKSZ_SP)
   set(VARIANT_INDEX ${_variant_idx})
 
   # 1) Per-variant kVariants[] initializer row. Newline-terminated so
   #    `configure_file` produces a multi-line array body.
   string(APPEND _kvariants_init
-    "    {${VARIANT_BPS}, ${VARIANT_DPT}, ${VARIANT_UR}, ${VARIANT_OUR}, ${VARIANT_KTI}},  // v${VARIANT_INDEX}\n")
+    "    {${VARIANT_BPS}, ${VARIANT_DPT}, ${VARIANT_UR}, ${VARIANT_OUR}, ${VARIANT_KTI}, ${VARIANT_DEFAULT_BLOCKSZ_DP}, ${VARIANT_DEFAULT_BLOCKSZ_SP}},  // v${VARIANT_INDEX}\n")
 
   # 2) Per-variant forward decl, contributing to the body of the
   #    SCAMP_DECL_VARIANTS_FOR_PROFILE macro. Every line ends with \
@@ -199,11 +210,19 @@ add_library(gpu_kernels
 )
 target_include_directories(gpu_kernels PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
                                                 ${CMAKE_CURRENT_BINARY_DIR})
-# Eigen3::Eigen is defined by src/core/cpu_kernel/CMakeLists.txt, which the
-# parent src/core/CMakeLists.txt processes before this directory. We use
-# Eigen's fixed-size arrays in the device-side compute templates for cleaner
-# expression syntax than hand-unrolled C arrays; the headers are
-# device-callable when --expt-relaxed-constexpr is on (set at top level).
+# Eigen3::Eigen is set up by src/core/cpu_kernel/CMakeLists.txt (which
+# the parent src/core/CMakeLists.txt processes before this directory)
+# as either:
+#   - a header-only INTERFACE target pointing at third_party/eigen
+#     (default), or
+#   - the real imported target from `find_package(Eigen3 5.0.0 ...)` when
+#     SCAMP_USE_EXTERNAL_EIGEN=1 (distro recipes; see environment.rst).
+# Upstream Eigen still publishes itself as the `Eigen3` CMake package
+# and `Eigen3::Eigen` target even at version 5.x, so either path
+# produces the same link spelling here. We use Eigen's fixed-size
+# arrays in the device-side compute templates for cleaner expression
+# syntax than hand-unrolled C arrays; the headers are device-callable
+# when --expt-relaxed-constexpr is on (set at top level).
 target_link_libraries(gpu_kernels gpu_utils kernel_common common Eigen3::Eigen)
 
 # autotune_bench: the autotune benchmark loop. Lives in its own library so
