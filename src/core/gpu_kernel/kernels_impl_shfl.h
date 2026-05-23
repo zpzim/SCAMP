@@ -142,25 +142,42 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
 
     __syncthreads();
 
+    // Re-seed per-thread distc from the smem column profile so distc
+    // continues across tiles. SCAMPShflSmem only allocates local_mp_col
+    // when COMPUTE_COLS is true (the COLS-off ab-join lower-triangle
+    // path leaves the Map's backing pointer at the nullptr sentinel),
+    // so the smem read MUST be gated on COMPUTE_COLS -- the read on
+    // Ampere happened to be masked by post-load checks, but on Pascal
+    // the kernel deref-traps before getting there. When COMPUTE_COLS
+    // is off the per-thread distc is never consumed (merge_to_column
+    // is also COMPUTE_COLS-gated), so we just seed it with init_dist.
+    if constexpr (COMPUTE_COLS) {
 #pragma unroll
-    for (int i = 0; i < DiagsPerThread; ++i) {
-      int col_idx = state.local_col[i];
-      if (col_idx >= 0 && col_idx < tile_width) {
-        if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN) {
-          state.distc[i] = smem.local_mp_col[col_idx];
-        } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX ||
-                             PROFILE_TYPE ==
-                                 PROFILE_TYPE_APPROX_ALL_NEIGHBORS ||
-                             PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
-          mp_entry e;
-          e.ulong = smem.local_mp_col[col_idx];
-          state.distc[i] = e.floats[0];
-          state.idxc[i] = e.ints[1];
-        } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
-          state.distc[i] = 0;
+      for (int i = 0; i < DiagsPerThread; ++i) {
+        int col_idx = state.local_col[i];
+        if (col_idx >= 0 && col_idx < tile_width) {
+          if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN) {
+            state.distc[i] = smem.local_mp_col[col_idx];
+          } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX ||
+                               PROFILE_TYPE ==
+                                   PROFILE_TYPE_APPROX_ALL_NEIGHBORS ||
+                               PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
+            mp_entry e;
+            e.ulong = smem.local_mp_col[col_idx];
+            state.distc[i] = e.floats[0];
+            state.idxc[i] = e.ints[1];
+          } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
+            state.distc[i] = 0;
+            state.idxc[i] = 0;
+          }
+        } else {
+          state.distc[i] = init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
           state.idxc[i] = 0;
         }
-      } else {
+      }
+    } else {
+#pragma unroll
+      for (int i = 0; i < DiagsPerThread; ++i) {
         state.distc[i] = init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
         state.idxc[i] = 0;
       }
