@@ -540,7 +540,10 @@ KernelConfig LookupKernelConfigForDeviceKey(const std::string &device_key,
         << " kti=" << fallback.kernel_tile_iters << ").\n"
         << "  Run `SCAMP --autotune` or `pyscamp.autotune()` to benchmark a "
            "better config for this device.\n"
-        << "  (Suppressing further warnings for this tuple.)\n";
+        << "  (Suppressing further warnings for this tuple. Set "
+           "SCAMP_AUTOTUNE_QUIET=1 in the environment to silence this "
+           "warning entirely -- useful for test runners and CI loops that "
+           "invoke SCAMP many times.)\n";
   }
   return fallback;
 }

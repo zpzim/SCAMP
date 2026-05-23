@@ -7,6 +7,12 @@ from tqdm import tqdm
 import argparse
 import subprocess
 
+# Silence the per-process "no autotune entry for device ..." stderr warning
+# from every SCAMP / pyscamp invocation. This harness runs SCAMP hundreds
+# of times per session against synthetic inputs, so the warning would
+# otherwise spam the log without adding information. Setting the env var
+# before any pyscamp import or subprocess.call ensures every child sees it.
+os.environ.setdefault('SCAMP_AUTOTUNE_QUIET', '1')
 
 extra_opts = ''
 outfile = '/dev/null'
@@ -218,11 +224,25 @@ def run_scamp(inputs, a, b, window, tilesz, max_matches, thresh, ptype, rrows, r
     args += f' --max_matches_per_column={max_matches}'
 
   print(args)
-  
+
+  # Remove any output files left by a prior subtest so a SCAMP crash
+  # surfaces as "no output produced" rather than silently re-reading the
+  # previous run's results and reporting them as this run's. Without this
+  # cleanup a CLI abort midway through the matrix could pass the test
+  # against stale data (e.g. on a device where the default kernel variant
+  # hits an unspecified launch failure).
+  for stale in ('mp_columns_out', 'mp_columns_out_index',
+                'mp_rows_out', 'mp_rows_out_index'):
+    if os.path.exists(stale):
+      os.remove(stale)
+
   ret = subprocess.call(os.path.abspath(executable) + ' ' + args, shell=True)
-  
+  if ret != 0:
+    raise RuntimeError(
+        f'SCAMP exited with code {ret} for command: {executable} {args}')
+
   mp_columns_out = read_file_to_array('mp_columns_out')
-  mp_columns_out_index = read_file_to_array('mp_columns_out_index')  
+  mp_columns_out_index = read_file_to_array('mp_columns_out_index')
   mp_rows_out = read_file_to_array('mp_rows_out')
   mp_rows_out_index = read_file_to_array('mp_rows_out_index')
 

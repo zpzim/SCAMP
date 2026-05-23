@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Silence the per-process autotune-cache-miss warning. The harness runs
+# SCAMP many times against synthetic inputs and the warning would
+# otherwise spam the log without adding information.
+export SCAMP_AUTOTUNE_QUIET=1
 
 EXECUTABLE=$1
 OUTFILE=$2
