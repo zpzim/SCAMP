@@ -142,45 +142,32 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
 
     __syncthreads();
 
-    // Re-seed per-thread distc from the smem column profile so distc
-    // continues across tiles. SCAMPShflSmem only allocates local_mp_col
-    // when COMPUTE_COLS is true (the COLS-off ab-join lower-triangle
-    // path leaves the Map's backing pointer at the nullptr sentinel),
-    // so the smem read MUST be gated on COMPUTE_COLS -- the read on
-    // Ampere happened to be masked by post-load checks, but on Pascal
-    // the kernel deref-traps before getting there. When COMPUTE_COLS
-    // is off the per-thread distc is never consumed (merge_to_column
-    // is also COMPUTE_COLS-gated), so we just seed it with init_dist.
-    if constexpr (COMPUTE_COLS) {
+    // Reset per-thread distc/idxc for this tile. Cross-tile continuity
+    // does NOT require pre-loading from smem.local_mp_col here: the
+    // merge happens at the END of each tile inside flush_all_cols_to_smem
+    // via atomicMax (MPatomicMax for the index-bearing profile types,
+    // atomicAdd for SUM_THRESH), so smem.local_mp_col[col_idx] correctly
+    // becomes max(prior_global, this_tile_max) without ever needing to
+    // seed distc with the prior value. Starting distc at init_dist (or
+    // 0 for SUM_THRESH) is functionally equivalent.
+    //
+    // FUTURE OPT (max-style profiles only: 1NN, 1NN_INDEX,
+    // APPROX_ALL_NEIGHBORS, MATRIX_SUMMARY): pre-load
+    // smem.local_mp_col[col_idx] into a per-slot "check" register and
+    // pass it to fAtomicMax_check / MPatomicMax_check at flush time --
+    // skipping the atomic CAS entirely when this tile's distc didn't
+    // beat the prior global. Correctness requires also refreshing the
+    // check inside update_info_shfl when a slot rotates mid-tile, and
+    // the extra DPT registers may regress occupancy on v4 (DPT=8 SP is
+    // already register-pressured). Measured perf-neutral vs the prior
+    // pre-load form at 1M-scale on RTX 3080, so don't adopt without a
+    // micro-benchmark on smaller GPUs or workloads where the matrix
+    // profile has converged and most atomics would no-op.
+    const DISTANCE_TYPE kDistcInit = init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
 #pragma unroll
-      for (int i = 0; i < DiagsPerThread; ++i) {
-        int col_idx = state.local_col[i];
-        if (col_idx >= 0 && col_idx < tile_width) {
-          if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN) {
-            state.distc[i] = smem.local_mp_col[col_idx];
-          } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN_INDEX ||
-                               PROFILE_TYPE ==
-                                   PROFILE_TYPE_APPROX_ALL_NEIGHBORS ||
-                               PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
-            mp_entry e;
-            e.ulong = smem.local_mp_col[col_idx];
-            state.distc[i] = e.floats[0];
-            state.idxc[i] = e.ints[1];
-          } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
-            state.distc[i] = 0;
-            state.idxc[i] = 0;
-          }
-        } else {
-          state.distc[i] = init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
-          state.idxc[i] = 0;
-        }
-      }
-    } else {
-#pragma unroll
-      for (int i = 0; i < DiagsPerThread; ++i) {
-        state.distc[i] = init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
-        state.idxc[i] = 0;
-      }
+    for (int i = 0; i < DiagsPerThread; ++i) {
+      state.distc[i] = kDistcInit;
+      state.idxc[i] = 0;
     }
 
     // FAST PATH: all of this tile's cells fit in the matrix profile range.
