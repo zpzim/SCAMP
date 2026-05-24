@@ -135,10 +135,7 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
     // the lane is back at its leftmost slot. state.global_col is already
     // correct (rotation advanced it by 32*DPT each cycle, which matches
     // tile_start_col advancing by tile_height = 32*DPT between tiles).
-#pragma unroll
-    for (int i = 0; i < DiagsPerThread; ++i) {
-      state.local_col[i] = state.global_col[i] - tile_start_col;
-    }
+    state.local_col = state.global_col - tile_start_col;
 
     __syncthreads();
 
@@ -163,12 +160,8 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
     // pre-load form at 1M-scale on RTX 3080, so don't adopt without a
     // micro-benchmark on smaller GPUs or workloads where the matrix
     // profile has converged and most atomics would no-op.
-    const DISTANCE_TYPE kDistcInit = init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
-#pragma unroll
-    for (int i = 0; i < DiagsPerThread; ++i) {
-      state.distc[i] = kDistcInit;
-      state.idxc[i] = 0;
-    }
+    state.distc.setConstant(init_dist<DISTANCE_TYPE, PROFILE_TYPE>());
+    state.idxc.setZero();
 
     // FAST PATH: all of this tile's cells fit in the matrix profile range.
     // SLOW PATH: fallback to handle matrix bounds and exclusion zones.
