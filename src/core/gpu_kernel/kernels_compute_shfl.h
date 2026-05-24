@@ -430,25 +430,40 @@ __device__ inline void do_row_shfl(
 
   // Compute DPT distances and update cov in place. Mask invalid slots by
   // setting dist to init_dist.
+  //
+  // EXPERIMENTAL: expressed as Eigen array ops on fixed-size DPT-wide
+  // Eigen::Array members. The manual #pragma-unroll'd loop did the same
+  // thing scalar-by-scalar; the array form lets Eigen express the same
+  // operations as expression templates that nvcc can still fully unroll
+  // for small DPT. If perf regresses, fall back to the per-element loop.
   const unsigned int num_diags = args.n_x - args.exclusion_upper + 1;
-  Eigen::Array<DISTANCE_TYPE, DPT, 1> dist;
-#pragma unroll DPT
-  for (int i = 0; i < DPT; ++i) {
-    DISTANCE_TYPE d =
-        static_cast<DISTANCE_TYPE>(state.cov[i] * state.inormc[i] * inormr);
-    state.cov[i] = state.cov[i] + state.dfc[i] * dgr + state.dgc[i] * dfr;
-    int diag = static_cast<int>(state.local_col[i]) - row_in_tile;
-    bool slot_valid;
-    if constexpr (FAST_PATH) {
-      slot_valid = (diag >= 0) & (diag < static_cast<int>(BLOCKSZ * DPT));
+  const Eigen::Array<DISTANCE_TYPE, DPT, 1> d_raw =
+      (state.cov * state.inormc * inormr).template cast<DISTANCE_TYPE>();
+  // Cov update uses OLD cov on RHS only -- no aliasing with the d_raw
+  // expression above because d_raw was already evaluated into its own
+  // storage by the assignment.
+  state.cov = state.cov + state.dfc * dgr + state.dgc * dfr;
+
+  // Slot validity. diag is computed as a signed int array so negative
+  // values from the (local_col - row_in_tile) subtraction survive
+  // the comparison. The row-out-of-range case in the SLOW PATH short-
+  // circuits to all-false because no per-element predicate can recover
+  // it (mirrors the bitwise-AND chain in the manual-loop form).
+  const Eigen::Array<int, DPT, 1> diag =
+      state.local_col.template cast<int>() - row_in_tile;
+  constexpr int kMaxDiag = BLOCKSZ * DPT;
+  Eigen::Array<bool, DPT, 1> slot_valid = (diag >= 0) && (diag < kMaxDiag);
+  if constexpr (!FAST_PATH) {
+    if (global_row >= static_cast<uint32_t>(args.n_y)) {
+      slot_valid.setZero();
     } else {
-      slot_valid = (diag >= 0) & (diag < static_cast<int>(BLOCKSZ * DPT)) &
-                   (global_row < static_cast<uint32_t>(args.n_y)) &
-                   (state.global_col[i] < static_cast<uint32_t>(args.n_x)) &
-                   ((state.global_col[i] - global_row) < num_diags);
+      slot_valid = slot_valid &&
+                   (state.global_col < static_cast<uint32_t>(args.n_x)) &&
+                   ((state.global_col - global_row) < num_diags);
     }
-    dist[i] = slot_valid ? d : init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
   }
+  const Eigen::Array<DISTANCE_TYPE, DPT, 1> dist = slot_valid.select(
+      d_raw, init_dist<DISTANCE_TYPE, PROFILE_TYPE>());
 
   if constexpr (COMPUTE_COLS) {
     merge_to_column_shfl<PROFILE_TYPE>(args, global_row, state, dist);
