@@ -509,9 +509,14 @@ __device__ inline void do_row_shfl(
   const DerivedDataType wrap_in = __shfl_sync(0xffffffffu, state.cov[DPT - 1],
                                               static_cast<int>(state.srcln));
 
-#pragma unroll
-  for (int i = DPT - 1; i > 0; --i) {
-    state.cov[i] = state.cov[i - 1];
+  // Shift cov[i] = cov[i-1] for i in [1, DPT); insert wrap_in at cov[0].
+  // .eval() forces a temporary so the tail/head overlap doesn't alias
+  // (writing cov[1] would otherwise clobber cov[0]'s value before the
+  // next iteration). For DPT <= 8 the temporary is a small register
+  // array that nvcc folds into the same registers as the destination.
+  if constexpr (DPT > 1) {
+    state.cov.template tail<DPT - 1>() =
+        state.cov.template head<DPT - 1>().eval();
   }
   state.cov[0] = wrap_in;
 
