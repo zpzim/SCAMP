@@ -28,9 +28,11 @@ TL;DR
      >>> import pyscamp
      >>> pyscamp.autotune()
 
-  If you are a pyscamp user, you will not recieve any messages about missing
-  autotune entries by default, but you can enable them with
-  ``SCAMP_AUTOTUNE_QUIET=0`` (see :ref:`autotune-miss-warning`).
+  The first SCAMP / pyscamp launch on a device without a cache entry
+  prints a one-shot per-process warning recommending you run
+  ``--autotune`` (subsequent launches in the same process are silent;
+  see :ref:`autotune-miss-warning`). Silence it entirely with
+  ``SCAMP_AUTOTUNE_QUIET=1``.
 
   This takes a few minutes to run and persists its choices to disk. The
   default location is ``~/.cache/scamp/autotune.txt`` on Linux/macOS and
@@ -195,21 +197,60 @@ default config, just not as fast as it could be. Two follow-ups:
 Silencing the warning
 """""""""""""""""""""
 
-The warning prints to stderr by default for CLI users (where it shows up
-plainly on the terminal) and is silenced by default for pyscamp users
-(where stray stderr output in a notebook is unwelcome — pyscamp's module
-init sets ``SCAMP_AUTOTUNE_QUIET=1`` if it isn't already set).
-
-You can override the default in either direction with the
-``SCAMP_AUTOTUNE_QUIET`` environment variable:
+The warning prints to stderr by default for both the CLI and pyscamp.
+Silence it via the ``SCAMP_AUTOTUNE_QUIET`` environment variable:
 
 .. code-block:: console
 
-   # Force-silence the warning (e.g. in a CI run):
+   # Force-silence the warning (e.g. in a CI run or notebook session):
    $ SCAMP_AUTOTUNE_QUIET=1 SCAMP ...
+   $ SCAMP_AUTOTUNE_QUIET=1 python -c "import pyscamp; pyscamp.selfjoin(...)"
 
-   # Force-enable it under pyscamp (set the env var before importing):
-   $ SCAMP_AUTOTUNE_QUIET=0 python -c "import pyscamp; pyscamp.selfjoin(...)"
+Other autotune environment variables
+------------------------------------
+
+A handful of additional env vars let you tune SCAMP's autotune /
+launch-time behavior without rebuilding. All are read on first use and
+their value is cached for the lifetime of the process — re-export
+changes after first use have no effect.
+
+``SCAMP_AUTOTUNE_PRECISION_FILTER``
+    ``SINGLE`` | ``DOUBLE`` | ``all`` (default). Restricts ``SCAMP
+    --autotune`` (and ``pyscamp.autotune()``) to one precision.
+    Filtered targets are reported as ``SKIPPED`` and their cache entries
+    are left untouched, so you can re-run for the other precision
+    without losing the existing entries.
+
+``SCAMP_AUTOTUNE_VARIANT_FILTER``
+    ``shfl`` | ``sliding-window`` (also ``sw`` / ``smem``) | ``all``
+    (default). Restricts the autotune sweep to one variant family.
+    ``shfl`` matches every variant with ``unrolled_rows == 0`` (the
+    cov-shuffle kernel); the other names match the sliding-window
+    kernel. Useful when iterating on a specific kernel family without
+    sweeping the other.
+
+``SCAMP_AUTOTUNE_WARMUP_RUNS``
+    Per-trial warmup count for the autotuner's bench function. Default
+    ``0``: the first launch of a given ``(variant, blocksz)``
+    instantiation is typically only a few percent slower than
+    steady-state because most JIT / module-load cost is amortized by
+    the process-level first launch, and the cross-target geomean
+    ranking tolerates a few percent of noise. Set to ``1`` (or more)
+    when trial timings look noisy or on a colder GPU/driver where the
+    first launch of a never-before-seen template instantiation takes
+    significantly longer than steady-state. Value is cached at first
+    autotune call.
+
+``SCAMP_FORCE_VARIANT``
+    Index of a single GPU kernel variant to force for every
+    ``(profile, precision)`` launch, bypassing the autotune cache and
+    cold-start default. The precision still picks the cold-start
+    blocksz; the full ``{64, 128, 256, 512}`` blocksz axis is NOT
+    swept here. Used by CI to exercise each compiled variant against
+    the correctness test suite without writing per-variant cache
+    files. Valid indices are reported by ``SCAMP --list_variants``.
+    Out-of-range or malformed values silently fall through to the
+    normal lookup path. Value is cached at first kernel launch.
 
 The value is interpreted as truthy unless it's exactly ``0``, ``false``,
 ``FALSE``, or empty.

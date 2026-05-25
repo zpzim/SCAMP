@@ -626,18 +626,28 @@ KernelConfig GetKernelConfigForDevice(int device_id,
   //     still picks the cold-start blocksz (via GetKernelConfigForVariant),
   //     so the autotuner's blocksz sweep is NOT replayed here -- variants
   //     get tested at their cold-start defaults only.
-  if (const char *fv = std::getenv("SCAMP_FORCE_VARIANT");
-      fv != nullptr && *fv != '\0') {
+  //
+  // Cached at first call: this sits on the per-tile-launch hot path, so
+  // re-reading the env on every lookup would add a syscall per tile.
+  // Setting SCAMP_FORCE_VARIANT after a SCAMP/pyscamp call has launched
+  // any kernels in the process has no effect; restart the process.
+  // Range value (>= kNumKernelVariants) and malformed parses are cached
+  // as -1 ("no override") so the env-var fast path stays a single read.
+  static const int kForcedVariant = []() {
+    const char *fv = std::getenv("SCAMP_FORCE_VARIANT");
+    if (fv == nullptr || *fv == '\0') return -1;
     try {
-      int variant_idx = std::stoi(fv);
-      if (variant_idx >= 0 &&
-          variant_idx < static_cast<int>(kNumKernelVariants)) {
-        return GetKernelConfigForVariant(static_cast<std::size_t>(variant_idx),
-                                         precision);
+      int parsed = std::stoi(fv);
+      if (parsed >= 0 && parsed < static_cast<int>(kNumKernelVariants)) {
+        return parsed;
       }
     } catch (const std::exception &) {
-      // Malformed value -- fall through to the normal lookup path.
     }
+    return -1;
+  }();
+  if (kForcedVariant >= 0) {
+    return GetKernelConfigForVariant(static_cast<std::size_t>(kForcedVariant),
+                                     precision);
   }
   KernelConfig fallback = GetDefaultKernelConfig(profile_type, precision);
   try {

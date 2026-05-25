@@ -61,6 +61,13 @@ constexpr int hw_threads_per_sm() {
 // when BLOCKSZ * variant_bps exceeds the per-SM thread ceiling.
 //
 // Returns max(1, min(target/blocksz, hw/blocksz)).
+//
+// The hw_threads default arg is evaluated at the call site, so when the
+// usual __launch_bounds__(BLOCKSZ, safe_bps(target, BLOCKSZ)) call expands
+// in __global__ code, hw_threads_per_sm() resolves under the current
+// __CUDA_ARCH__ guard and the per-arch hw cap is baked into each per-arch
+// device compilation pass. Callers that explicitly want a different cap
+// (e.g. host-side overrides for testing) pass it as the third argument.
 constexpr int safe_bps(int target_threads_per_sm, int blocksz,
                        int hw_threads = hw_threads_per_sm()) {
   if (blocksz <= 0) return 1;

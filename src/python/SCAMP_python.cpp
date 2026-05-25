@@ -2,7 +2,6 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <cmath>
-#include <cstdlib>  // setenv() for SCAMP_AUTOTUNE_QUIET defaulting in module init
 #include <thread>
 #include "common/common.h"
 #include "common/scamp_args.h"
@@ -505,33 +504,6 @@ std::vector<std::tuple<int64_t, int64_t, float>> (*ab_join_KNN)(
     const py::kwargs&) = &scamp_knn;
 
 PYBIND11_MODULE(pyscamp, m) {
-  // Quiet the autotune cache-miss warning by default for Python users.
-  // The C++ binary writes a one-shot warning to stderr the first time
-  // SCAMP launches a kernel for a (device, profile, precision) tuple
-  // not in any cache; the CLI tool wants that visible, but Python users
-  // calling pyscamp.selfjoin(...) from a notebook generally don't want
-  // uninvited stderr output. Setting SCAMP_AUTOTUNE_QUIET=1 at module
-  // import time silences that warning. Users who do want to see the
-  // recommendation can override at the shell with
-  // `SCAMP_AUTOTUNE_QUIET=0` before importing pyscamp -- setenv with
-  // overwrite=0 only sets the variable when it is not already present,
-  // so an explicit user value wins.
-  //
-  // The warning's underlying purpose (telling users to run
-  // pyscamp.autotune()) is still reachable: the autotune() docstring
-  // says so, and users can re-enable the warning per-process via the
-  // env var.
-  // setenv() is POSIX-only; MSVC's CRT has _putenv_s() which always
-  // overwrites, so emulate overwrite=0 (only set if not present) by
-  // checking the existing value first.
-#ifdef _WIN32
-  if (std::getenv("SCAMP_AUTOTUNE_QUIET") == nullptr) {
-    _putenv_s("SCAMP_AUTOTUNE_QUIET", "1");
-  }
-#else
-  setenv("SCAMP_AUTOTUNE_QUIET", "1", /*overwrite=*/0);
-#endif
-
   m.doc() = R"pbdoc(
         pyscamp: Python bindings for SCAMP
         ----------------------------------
