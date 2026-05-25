@@ -615,6 +615,26 @@ KernelConfig GetKernelConfigForDevice(int device_id,
   if (auto override = GetKernelConfigOverride(); override.has_value()) {
     return *override;
   }
+  // 0a) SCAMP_FORCE_VARIANT=<index> env var. Forces a specific variant
+  //     for every (profile, precision) launch and bypasses the cache.
+  //     Used by CI to exercise each variant against the full correctness
+  //     test suite without writing per-variant cache files. The precision
+  //     still picks the cold-start blocksz (via GetKernelConfigForVariant),
+  //     so the autotuner's blocksz sweep is NOT replayed here -- variants
+  //     get tested at their cold-start defaults only.
+  if (const char *fv = std::getenv("SCAMP_FORCE_VARIANT");
+      fv != nullptr && *fv != '\0') {
+    try {
+      int variant_idx = std::stoi(fv);
+      if (variant_idx >= 0 &&
+          variant_idx < static_cast<int>(kNumKernelVariants)) {
+        return GetKernelConfigForVariant(
+            static_cast<std::size_t>(variant_idx), precision);
+      }
+    } catch (const std::exception &) {
+      // Malformed value -- fall through to the normal lookup path.
+    }
+  }
   KernelConfig fallback = GetDefaultKernelConfig(profile_type, precision);
   try {
     GpuDeviceProps props = QueryDeviceProps(device_id);

@@ -1,6 +1,7 @@
 #ifdef _HAS_CUDA_
 #include <cuda_runtime.h>
 #include "core/gpu_kernel/autotune.h"
+#include "core/gpu_kernel/kernel_config.h"
 #ifdef _HAS_CUDA_
 #include "core/gpu_kernel/autotune_bench.h"
 #endif
@@ -109,10 +110,39 @@ DEFINE_bool(autotune, false,
             "$HOME/.cache/scamp/autotune.txt on Linux/macOS, "
             "or %LOCALAPPDATA%\\scamp\\autotune.txt on Windows), and exit "
             "without running a matrix profile job.");
+DEFINE_bool(list_variants, false,
+            "Print the index and geometry of each GPU kernel variant compiled "
+            "into this binary (one per line) and exit. Used by CI to enumerate "
+            "variants for SCAMP_FORCE_VARIANT-based per-variant correctness "
+            "testing without hardcoding the variant count.");
 
 int main(int argc, char **argv) {
   bool self_join, computing_rows, computing_cols;
   gflags::ParseCommandLineFlags(&argc, &argv, true);
+
+  // --list_variants prints the variant table and exits. One line per
+  // variant in a stable, machine-parseable format that CI shell scripts
+  // can iterate over without hardcoding the count.
+  if (FLAGS_list_variants) {
+#ifdef _HAS_CUDA_
+    for (std::size_t i = 0; i < SCAMP::kNumKernelVariants; ++i) {
+      const auto &v = SCAMP::GetKernelVariantGeometry(i);
+      std::cout << "v" << i
+                << " bps=" << v.blocks_per_sm
+                << " dpt=" << v.diags_per_thread
+                << " ur=" << v.unrolled_rows
+                << " our=" << v.outer_unrolled_rows
+                << " kti=" << v.kernel_tile_iters
+                << " family=" << (v.unrolled_rows == 0 ? "shfl" : "sliding-window")
+                << "\n";
+    }
+    return 0;
+#else
+    std::cerr << "Error: --list_variants requires a CUDA-enabled build."
+              << std::endl;
+    return 1;
+#endif
+  }
 
   // --autotune short-circuits the normal join path: it queries the GPU(s),
   // records the best kernel configuration for each (profile_type, precision)
