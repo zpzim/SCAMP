@@ -36,8 +36,8 @@ template <typename DATA_TYPE, typename ACCUM_TYPE, typename PROFILE_OUTPUT_TYPE,
           bool COMPUTE_COLS, SCAMPProfileType PROFILE_TYPE,
           int target_threads_per_sm, int DiagsPerThread, int UnrolledRows,
           int OuterUnrolledRows, int KernelTileIters, int BLOCKSZ>
-__global__ void __launch_bounds__(
-    BLOCKSZ, safe_bps(target_threads_per_sm, BLOCKSZ, kHwThreadsPerSm))
+__global__ void __launch_bounds__(BLOCKSZ, safe_bps(target_threads_per_sm,
+                                                    BLOCKSZ, kHwThreadsPerSm))
     do_tile(SCAMPKernelInputArgs<double> args, PROFILE_OUTPUT_TYPE *profile_A,
             PROFILE_OUTPUT_TYPE *profile_B) {
   constexpr int tile_height = KernelTileIters * OuterUnrolledRows;
@@ -196,20 +196,20 @@ SCAMPError_t LaunchDoTileWithGeometry(SCAMPKernelInputArgs<double> args,
   // for SP self-join and would otherwise fail with cudaErrorInvalidValue.
   // The opt-in is sticky per kernel function pointer, so repeated launches
   // pay only the first call.
-#define LAUNCH_PRECISION_AT_BLOCKSZ(DATA_T, ACCUM_T, TARGET_THREADS,       \
-                                    BLOCKSZ_V, COMP_ROWS, COMP_COLS)       \
-  do {                                                                     \
-    auto kfn =                                                             \
-        do_tile<DATA_T, ACCUM_T, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE,   \
-                DISTANCE_TYPE, COMP_ROWS, COMP_COLS, PROFILE_TYPE,         \
-                TARGET_THREADS, DiagsPerThread, UnrolledRows,              \
-                OuterUnrolledRows, KernelTileIters, BLOCKSZ_V>;            \
-    if (smem > 48u * 1024u) {                                              \
-      cudaFuncSetAttribute(reinterpret_cast<const void *>(kfn),            \
-                           cudaFuncAttributeMaxDynamicSharedMemorySize,    \
-                           static_cast<int>(smem));                        \
-    }                                                                      \
-    kfn<<<grid, block, smem, s>>>(args, profile_A, profile_B);             \
+#define LAUNCH_PRECISION_AT_BLOCKSZ(DATA_T, ACCUM_T, TARGET_THREADS,     \
+                                    BLOCKSZ_V, COMP_ROWS, COMP_COLS)     \
+  do {                                                                   \
+    auto kfn =                                                           \
+        do_tile<DATA_T, ACCUM_T, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE, \
+                DISTANCE_TYPE, COMP_ROWS, COMP_COLS, PROFILE_TYPE,       \
+                TARGET_THREADS, DiagsPerThread, UnrolledRows,            \
+                OuterUnrolledRows, KernelTileIters, BLOCKSZ_V>;          \
+    if (smem > 48u * 1024u) {                                            \
+      cudaFuncSetAttribute(reinterpret_cast<const void *>(kfn),          \
+                           cudaFuncAttributeMaxDynamicSharedMemorySize,  \
+                           static_cast<int>(smem));                      \
+    }                                                                    \
+    kfn<<<grid, block, smem, s>>>(args, profile_A, profile_B);           \
   } while (0)
 
 // Dispatch the sliding-window kernel on the runtime blocksz, mirroring the
@@ -235,19 +235,19 @@ SCAMPError_t LaunchDoTileWithGeometry(SCAMPKernelInputArgs<double> args,
     }                                                                        \
   } while (0)
 
-#define LAUNCH_FOR_ROWCOL_MODE(COMP_ROWS, COMP_COLS)                          \
-  switch (fp_type) {                                                          \
-    case PRECISION_ULTRA:                                                     \
-    case PRECISION_DOUBLE:                                                    \
-      LAUNCH_PRECISION(double, double, default_blocksz_dp, COMP_ROWS,         \
-                       COMP_COLS);                                            \
-      break;                                                                  \
-    case PRECISION_SINGLE:                                                    \
-      LAUNCH_PRECISION(float, float, default_blocksz_sp, COMP_ROWS,           \
-                       COMP_COLS);                                            \
-      break;                                                                  \
-    default:                                                                  \
-      return SCAMP_CUDA_ERROR;                                                \
+#define LAUNCH_FOR_ROWCOL_MODE(COMP_ROWS, COMP_COLS)                  \
+  switch (fp_type) {                                                  \
+    case PRECISION_ULTRA:                                             \
+    case PRECISION_DOUBLE:                                            \
+      LAUNCH_PRECISION(double, double, default_blocksz_dp, COMP_ROWS, \
+                       COMP_COLS);                                    \
+      break;                                                          \
+    case PRECISION_SINGLE:                                            \
+      LAUNCH_PRECISION(float, float, default_blocksz_sp, COMP_ROWS,   \
+                       COMP_COLS);                                    \
+      break;                                                          \
+    default:                                                          \
+      return SCAMP_CUDA_ERROR;                                        \
   }
 
   if (computing_rows && computing_cols) {

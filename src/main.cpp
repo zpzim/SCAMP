@@ -127,14 +127,11 @@ int main(int argc, char **argv) {
 #ifdef _HAS_CUDA_
     for (std::size_t i = 0; i < SCAMP::kNumKernelVariants; ++i) {
       const auto &v = SCAMP::GetKernelVariantGeometry(i);
-      std::cout << "v" << i
-                << " bps=" << v.blocks_per_sm
-                << " dpt=" << v.diags_per_thread
-                << " ur=" << v.unrolled_rows
+      std::cout << "v" << i << " bps=" << v.blocks_per_sm
+                << " dpt=" << v.diags_per_thread << " ur=" << v.unrolled_rows
                 << " our=" << v.outer_unrolled_rows
-                << " kti=" << v.kernel_tile_iters
-                << " family=" << (v.unrolled_rows == 0 ? "shfl" : "sliding-window")
-                << "\n";
+                << " kti=" << v.kernel_tile_iters << " family="
+                << (v.unrolled_rows == 0 ? "shfl" : "sliding-window") << "\n";
     }
     return 0;
 #else

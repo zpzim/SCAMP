@@ -44,8 +44,8 @@ template <typename DATA_TYPE, typename ACCUM_TYPE, typename PROFILE_OUTPUT_TYPE,
           bool COMPUTE_COLS, SCAMPProfileType PROFILE_TYPE,
           int target_threads_per_sm, int DiagsPerThread, int OuterUnrolledRows,
           int KernelTileIters, int BLOCKSZ>
-__global__ void __launch_bounds__(
-    BLOCKSZ, safe_bps(target_threads_per_sm, BLOCKSZ, kHwThreadsPerSm))
+__global__ void __launch_bounds__(BLOCKSZ, safe_bps(target_threads_per_sm,
+                                                    BLOCKSZ, kHwThreadsPerSm))
     do_tile_shfl(SCAMPKernelInputArgs<double> args,
                  PROFILE_OUTPUT_TYPE *profile_A,
                  PROFILE_OUTPUT_TYPE *profile_B) {
@@ -331,19 +331,19 @@ SCAMPError_t LaunchDoTileShflWithGeometry(
     }                                                                          \
   } while (0)
 
-#define LAUNCH_FOR_ROWCOL_MODE_SHFL(COMP_ROWS, COMP_COLS)                   \
-  switch (fp_type) {                                                        \
-    case PRECISION_ULTRA:                                                   \
-    case PRECISION_DOUBLE:                                                  \
+#define LAUNCH_FOR_ROWCOL_MODE_SHFL(COMP_ROWS, COMP_COLS)                  \
+  switch (fp_type) {                                                       \
+    case PRECISION_ULTRA:                                                  \
+    case PRECISION_DOUBLE:                                                 \
       LAUNCH_PRECISION_SHFL(double, double, default_blocksz_dp, COMP_ROWS, \
-                            COMP_COLS);                                     \
-      break;                                                                \
-    case PRECISION_SINGLE:                                                  \
-      LAUNCH_PRECISION_SHFL(float, float, default_blocksz_sp, COMP_ROWS,    \
-                            COMP_COLS);                                     \
-      break;                                                                \
-    default:                                                                \
-      return SCAMP_CUDA_ERROR;                                              \
+                            COMP_COLS);                                    \
+      break;                                                               \
+    case PRECISION_SINGLE:                                                 \
+      LAUNCH_PRECISION_SHFL(float, float, default_blocksz_sp, COMP_ROWS,   \
+                            COMP_COLS);                                    \
+      break;                                                               \
+    default:                                                               \
+      return SCAMP_CUDA_ERROR;                                             \
   }
 
   if (computing_rows && computing_cols) {

@@ -482,8 +482,8 @@ __device__ inline void do_row_shfl(
                    ((state.global_col - global_row) < num_diags);
     }
   }
-  const Eigen::Array<DISTANCE_TYPE, DPT, 1> dist = slot_valid.select(
-      d_raw, init_dist<DISTANCE_TYPE, PROFILE_TYPE>());
+  const Eigen::Array<DISTANCE_TYPE, DPT, 1> dist =
+      slot_valid.select(d_raw, init_dist<DISTANCE_TYPE, PROFILE_TYPE>());
 
   if constexpr (COMPUTE_COLS) {
     merge_to_column_shfl<PROFILE_TYPE>(args, global_row, state, dist);

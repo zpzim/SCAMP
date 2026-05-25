@@ -53,8 +53,8 @@ std::string AsciiLower(const char *s) {
   std::string out;
   if (s == nullptr) return out;
   for (const char *c = s; *c; ++c) {
-    out.push_back(static_cast<char>(
-        std::tolower(static_cast<unsigned char>(*c))));
+    out.push_back(
+        static_cast<char>(std::tolower(static_cast<unsigned char>(*c))));
   }
   return out;
 }
@@ -64,11 +64,12 @@ std::string AsciiLower(const char *s) {
 // matches ULTRA targets (no ULTRA-specific targets exist today but the
 // behavior is documented in case one is added).
 bool AutotuneTargetEnabled(SCAMPPrecisionType precision) {
-  const std::string filt = AsciiLower(std::getenv("SCAMP_AUTOTUNE_PRECISION_FILTER"));
+  const std::string filt =
+      AsciiLower(std::getenv("SCAMP_AUTOTUNE_PRECISION_FILTER"));
   if (filt.empty() || filt == "all") return true;
   if (filt == "single") return precision == PRECISION_SINGLE;
-  if (filt == "double") return precision == PRECISION_DOUBLE ||
-                               precision == PRECISION_ULTRA;
+  if (filt == "double")
+    return precision == PRECISION_DOUBLE || precision == PRECISION_ULTRA;
   // Unknown value -- don't silently skip targets, treat as no-op.
   return true;
 }
@@ -79,7 +80,8 @@ bool AutotuneTargetEnabled(SCAMPPrecisionType precision) {
 // src/core/gpu_kernel/CMakeLists.txt to route variants through
 // kernel_variant_shfl.cu.in instead of the sliding-window template).
 bool AutotuneVariantEnabled(std::size_t variant_idx) {
-  const std::string filt = AsciiLower(std::getenv("SCAMP_AUTOTUNE_VARIANT_FILTER"));
+  const std::string filt =
+      AsciiLower(std::getenv("SCAMP_AUTOTUNE_VARIANT_FILTER"));
   if (filt.empty() || filt == "all") return true;
   const auto &geom = GetKernelVariantGeometry(variant_idx);
   if (filt == "shfl") return geom.unrolled_rows == 0;
@@ -278,8 +280,9 @@ AutotuneResult RunAutotuneWithBenchmarkForDeviceKey(
     const auto &t = kAutotuneTargets[tidx];
     if (!AutotuneTargetEnabled(t.precision)) {
       if (verbose) {
-        std::cout << "  [target " << (tidx + 1) << "/" << kAutotuneTargets.size()
-                  << "] " << ProfileTypeName(t.profile) << " "
+        std::cout << "  [target " << (tidx + 1) << "/"
+                  << kAutotuneTargets.size() << "] "
+                  << ProfileTypeName(t.profile) << " "
                   << PrecisionTypeName(t.precision)
                   << ":  SKIPPED (SCAMP_AUTOTUNE_PRECISION_FILTER)\n";
       }
@@ -337,8 +340,7 @@ AutotuneResult RunAutotuneWithBenchmarkForDeviceKey(
           std::cout << "    [" << trials_done << "/" << total_trials << " "
                     << std::fixed << std::setprecision(1) << pct
                     << "% eta=" << static_cast<int>(eta_s) << "s] "
-                    << "v" << i
-                    << " blocksz=" << cfg.blocksz
+                    << "v" << i << " blocksz=" << cfg.blocksz
                     << ": bps=" << cfg.blocks_per_sm
                     << " dpt=" << cfg.diags_per_thread
                     << " ur=" << cfg.unrolled_rows
@@ -628,8 +630,8 @@ KernelConfig GetKernelConfigForDevice(int device_id,
       int variant_idx = std::stoi(fv);
       if (variant_idx >= 0 &&
           variant_idx < static_cast<int>(kNumKernelVariants)) {
-        return GetKernelConfigForVariant(
-            static_cast<std::size_t>(variant_idx), precision);
+        return GetKernelConfigForVariant(static_cast<std::size_t>(variant_idx),
+                                         precision);
       }
     } catch (const std::exception &) {
       // Malformed value -- fall through to the normal lookup path.
