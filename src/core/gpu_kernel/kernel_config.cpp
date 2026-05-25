@@ -69,19 +69,55 @@ KernelConfig GetKernelConfigForVariant(std::size_t i,
   return cfg;
 }
 
-KernelConfig GetDefaultKernelConfig(SCAMPPrecisionType precision) {
-  // The shfl variant with the smallest tile is the safest default: it
-  // has the tightest worst-case ratio in the cross-target score table
-  // on every GPU we've measured, and uses the least smem so it fits
-  // cleanly even on older devices. By convention this is the first
-  // shfl (ur==0) entry in SCAMP_VARIANT_TUPLES.
+namespace {
+
+// Find the first variant of the requested family (shfl == ur==0, or
+// sliding-window == ur!=0). Returns kVariants.size() if no match. By
+// convention the FIRST entry of each family in SCAMP_VARIANT_TUPLES is
+// the family's intended default -- variant authors should keep the
+// best generalist for that family at the front of the list.
+std::size_t FindFirstVariantOfFamily(bool want_shfl) {
   for (std::size_t i = 0; i < kVariants.size(); ++i) {
-    if (kVariants[i].unrolled_rows == 0) {
-      return GetKernelConfigForVariant(i, precision);
-    }
+    if ((kVariants[i].unrolled_rows == 0) == want_shfl) return i;
   }
-  // No shfl variant configured -- fall back to v0.
-  return GetKernelConfigForVariant(0, precision);
+  return kVariants.size();
+}
+
+// Per-profile-type variant family preference, based on which family
+// wins each profile in the cross-(profile,precision) autotune sweep on
+// the RTX 3080 sm_86:
+//   - shfl wins 1NN_INDEX + SUM_THRESH (warp-reduces atomics before
+//     the final atomicMax/atomicAdd, which dominates these profiles).
+//   - sliding-window wins 1NN / MATRIX_SUMMARY / AAN (light per-row
+//     atomics; the SW variant's smem column buffer + heavy inner-loop
+//     unroll dominates).
+// Same for both precisions -- DP/SP just picks a different blocksz via
+// DefaultBlockszForPrecision applied to the chosen variant.
+bool ProfileTypePrefersShfl(SCAMPProfileType profile) {
+  switch (profile) {
+    case PROFILE_TYPE_1NN_INDEX:
+    case PROFILE_TYPE_SUM_THRESH:
+      return true;
+    default:
+      return false;
+  }
+}
+
+}  // namespace
+
+KernelConfig GetDefaultKernelConfig(SCAMPProfileType profile_type,
+                                    SCAMPPrecisionType precision) {
+  const bool want_shfl = ProfileTypePrefersShfl(profile_type);
+  std::size_t idx = FindFirstVariantOfFamily(want_shfl);
+  if (idx == kVariants.size()) {
+    // Preferred family not present in this build's variant table.
+    // Fall back to the other family.
+    idx = FindFirstVariantOfFamily(!want_shfl);
+  }
+  // If kVariants is empty there's nothing we can do; v0 is at least
+  // a well-defined index when at least one variant exists.
+  if (idx == kVariants.size()) idx = 0;
+  return GetKernelConfigForVariant(idx, precision);
 }
 
 bool IsSupportedKernelConfig(const KernelConfig &cfg,

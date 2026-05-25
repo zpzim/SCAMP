@@ -291,7 +291,7 @@ AutotuneResult RunAutotuneWithBenchmarkForDeviceKey(
                 << PrecisionTypeName(t.precision) << ":\n";
     }
     double best_seconds = std::numeric_limits<double>::infinity();
-    KernelConfig best_cfg = GetDefaultKernelConfig(t.precision);
+    KernelConfig best_cfg = GetDefaultKernelConfig(t.profile, t.precision);
     // Sweep (variant geometry, blocksz) jointly. Both LaunchDoTile and
     // LaunchDoTileShfl dispatch by runtime blocksz, and
     // IsSupportedKernelConfig admits 64/128/256/512 for any enabled
@@ -615,7 +615,7 @@ KernelConfig GetKernelConfigForDevice(int device_id,
   if (auto override = GetKernelConfigOverride(); override.has_value()) {
     return *override;
   }
-  KernelConfig fallback = GetDefaultKernelConfig(precision);
+  KernelConfig fallback = GetDefaultKernelConfig(profile_type, precision);
   try {
     GpuDeviceProps props = QueryDeviceProps(device_id);
     std::string key = props.CacheKey();

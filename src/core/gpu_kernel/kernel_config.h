@@ -53,10 +53,12 @@ struct KernelConfig {
 };
 
 // Cold-start fallback when no autotune cache entry exists for the device
-// + (profile, precision) tuple. Returns the first shfl variant (the
-// safest universal default; see GetDefaultKernelConfig impl for the
-// rationale). The autotune cache always wins over this when present.
-KernelConfig GetDefaultKernelConfig(SCAMPPrecisionType precision);
+// + (profile, precision) tuple. Returns a variant chosen for this
+// (profile, precision) -- see GetDefaultKernelConfig impl for the per-
+// profile mapping rationale. The autotune cache always wins over this
+// when present.
+KernelConfig GetDefaultKernelConfig(SCAMPProfileType profile_type,
+                                    SCAMPPrecisionType precision);
 
 // Enumerated launch-geometry variants, generated from SCAMP_VARIANT_TUPLES
 // in src/core/gpu_kernel/CMakeLists.txt. Each variant's full tuple must
