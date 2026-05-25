@@ -109,9 +109,12 @@ std::unique_ptr<SCAMP::AutotuneCache> MakeCacheFromString(
   return c;
 }
 
-// A KernelConfig that DOES match a registered kVariants entry (v6) so it
-// passes IsSupportedKernelConfig. We use this as the "hit" config in
-// positive tests.
+// A KernelConfig that DOES match a registered kVariants entry (the
+// dpt=4 tile=128 shfl variant) so it passes IsSupportedKernelConfig.
+// We use this as the "hit" config in positive tests. If the variant
+// table changes such that no entry has this (bps,dpt,ur,our,kti) tuple,
+// update this helper + the matching cache-fixture strings below to
+// pick a (bps,dpt,ur,our,kti) tuple that does still exist.
 SCAMP::KernelConfig SupportedConfig() {
   SCAMP::KernelConfig c{};
   c.blocksz = 128;
@@ -119,7 +122,7 @@ SCAMP::KernelConfig SupportedConfig() {
   c.diags_per_thread = 4;
   c.unrolled_rows = 0;
   c.outer_unrolled_rows = 8;
-  c.kernel_tile_iters = 8;
+  c.kernel_tile_iters = 16;
   return c;
 }
 
@@ -153,7 +156,7 @@ void Test_UserCacheHit() {
   SCAMP::ResetAutotuneWarnings();
   auto user = MakeCacheFromString(
       "SCAMP_AUTOTUNE_V1\n"
-      "FakeDeviceA|1NN_INDEX|SINGLE|128|8|4|0|8|8\n");
+      "FakeDeviceA|1NN_INDEX|SINGLE|128|8|4|0|8|16\n");
   std::string out = CaptureStderr([&]() {
     auto cfg = SCAMP::LookupKernelConfigForDeviceKey(
         "FakeDeviceA", SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_SINGLE,
@@ -168,7 +171,7 @@ void Test_BuiltinCacheHit() {
   SCAMP::ResetAutotuneWarnings();
   auto builtin = MakeCacheFromString(
       "SCAMP_AUTOTUNE_V1\n"
-      "FakeDeviceA|1NN_INDEX|SINGLE|128|8|4|0|8|8\n");
+      "FakeDeviceA|1NN_INDEX|SINGLE|128|8|4|0|8|16\n");
   std::string out = CaptureStderr([&]() {
     auto cfg = SCAMP::LookupKernelConfigForDeviceKey(
         "FakeDeviceA", SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_SINGLE,
@@ -186,7 +189,7 @@ void Test_UserCacheBeatsBuiltin() {
   // entry should win.
   auto user = MakeCacheFromString(
       "SCAMP_AUTOTUNE_V1\n"
-      "FakeDeviceA|1NN_INDEX|SINGLE|128|8|4|0|8|8\n");
+      "FakeDeviceA|1NN_INDEX|SINGLE|128|8|4|0|8|16\n");
   auto builtin = MakeCacheFromString(
       "SCAMP_AUTOTUNE_V1\n"
       "FakeDeviceA|1NN_INDEX|SINGLE|256|2|2|2|16|16\n");
@@ -311,7 +314,7 @@ void Test_FutureVersionHeaderSilentlyEmpties() {
   SCAMP::ResetAutotuneWarnings();
   auto cache = MakeCacheFromString(
       "SCAMP_AUTOTUNE_V99\n"
-      "FakeDeviceA|1NN_INDEX|SINGLE|128|8|4|0|8|8\n");
+      "FakeDeviceA|1NN_INDEX|SINGLE|128|8|4|0|8|16\n");
   // Parsed cache holds zero entries even though the body had one.
   EXPECT_EQ(cache->size(), static_cast<size_t>(0));
   // Lookup falls through to the fallback and emits the one-shot warning.
@@ -331,7 +334,7 @@ void Test_MissingHeaderSilentlyEmpties() {
   SCAMP::ResetAutotuneWarnings();
   // No header line, just data -- the loader has to refuse to ingest it.
   auto cache =
-      MakeCacheFromString("FakeDeviceA|1NN_INDEX|SINGLE|128|8|4|0|8|8\n");
+      MakeCacheFromString("FakeDeviceA|1NN_INDEX|SINGLE|128|8|4|0|8|16\n");
   EXPECT_EQ(cache->size(), static_cast<size_t>(0));
 }
 
@@ -350,7 +353,7 @@ void Test_PartiallyStaleCachePreservesGoodEntries() {
   SCAMP::ResetAutotuneWarnings();
   auto user = MakeCacheFromString(
       "SCAMP_AUTOTUNE_V1\n"
-      "MixedDevice|1NN_INDEX|SINGLE|128|8|4|0|8|8\n"  // matches SupportedConfig
+      "MixedDevice|1NN_INDEX|SINGLE|128|8|4|0|8|16\n"  // matches SupportedConfig
       "MixedDevice|1NN_INDEX|DOUBLE|128|99|99|99|99|99\n"  // stale: bogus tuple
       "MixedDevice|SUM_THRESH|DOUBLE|99|99|99|99|99|99\n"  // stale: bogus tuple
   );
@@ -391,10 +394,10 @@ void Test_StaleUserCacheFallsThroughToBuiltin() {
   SCAMP::ResetAutotuneWarnings();
   auto user = MakeCacheFromString(
       "SCAMP_AUTOTUNE_V99\n"  // future version => silently empty
-      "MyGPU|1NN_INDEX|SINGLE|128|8|4|0|8|8\n");
+      "MyGPU|1NN_INDEX|SINGLE|128|8|4|0|8|16\n");
   auto builtin = MakeCacheFromString(
       "SCAMP_AUTOTUNE_V1\n"
-      "MyGPU|1NN_INDEX|SINGLE|128|8|4|0|8|8\n");
+      "MyGPU|1NN_INDEX|SINGLE|128|8|4|0|8|16\n");
   std::string out = CaptureStderr([&]() {
     auto cfg = SCAMP::LookupKernelConfigForDeviceKey(
         "MyGPU", SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_SINGLE,
@@ -411,7 +414,7 @@ void Test_MultiDeviceCacheLookup() {
   SCAMP::ResetAutotuneWarnings();
   auto cache = MakeCacheFromString(
       "SCAMP_AUTOTUNE_V1\n"
-      "DeviceA|1NN_INDEX|SINGLE|128|8|4|0|8|8\n"
+      "DeviceA|1NN_INDEX|SINGLE|128|8|4|0|8|16\n"
       "DeviceB|1NN_INDEX|SINGLE|256|2|2|2|16|16\n");
   auto a = SCAMP::LookupKernelConfigForDeviceKey(
       "DeviceA", SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_SINGLE,
@@ -594,21 +597,21 @@ void Test_AutotuneFullPipeline_FakeBench() {
     std::size_t variant_idx;
     int blocksz;
   };
-  // Mix variants across targets so a wrong-winner bug shows up. v3+v4
-  // are the shfl variants (ur==0); v0/v1/v2 are sliding-window. We
-  // intentionally rig some targets to non-default winners.
+  // Mix variants across targets so a wrong-winner bug shows up. With the
+  // current 4-variant table (v0/v1 sliding-window, v2/v3 shfl) we hit
+  // every index at least once.
   const RiggedWinner rigged[] = {
       {SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_DOUBLE, 3, 64},
-      {SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_SINGLE, 4, 64},
-      {SCAMP::PROFILE_TYPE_1NN, SCAMP::PRECISION_DOUBLE, 2, 128},
-      {SCAMP::PROFILE_TYPE_1NN, SCAMP::PRECISION_SINGLE, 2, 256},
-      {SCAMP::PROFILE_TYPE_SUM_THRESH, SCAMP::PRECISION_DOUBLE, 4, 64},
-      {SCAMP::PROFILE_TYPE_SUM_THRESH, SCAMP::PRECISION_SINGLE, 4, 128},
-      {SCAMP::PROFILE_TYPE_MATRIX_SUMMARY, SCAMP::PRECISION_DOUBLE, 2, 64},
-      {SCAMP::PROFILE_TYPE_MATRIX_SUMMARY, SCAMP::PRECISION_SINGLE, 2, 128},
-      {SCAMP::PROFILE_TYPE_APPROX_ALL_NEIGHBORS, SCAMP::PRECISION_DOUBLE, 2,
+      {SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_SINGLE, 2, 128},
+      {SCAMP::PROFILE_TYPE_1NN, SCAMP::PRECISION_DOUBLE, 0, 64},
+      {SCAMP::PROFILE_TYPE_1NN, SCAMP::PRECISION_SINGLE, 1, 256},
+      {SCAMP::PROFILE_TYPE_SUM_THRESH, SCAMP::PRECISION_DOUBLE, 2, 64},
+      {SCAMP::PROFILE_TYPE_SUM_THRESH, SCAMP::PRECISION_SINGLE, 2, 128},
+      {SCAMP::PROFILE_TYPE_MATRIX_SUMMARY, SCAMP::PRECISION_DOUBLE, 0, 64},
+      {SCAMP::PROFILE_TYPE_MATRIX_SUMMARY, SCAMP::PRECISION_SINGLE, 1, 128},
+      {SCAMP::PROFILE_TYPE_APPROX_ALL_NEIGHBORS, SCAMP::PRECISION_DOUBLE, 0,
        64},
-      {SCAMP::PROFILE_TYPE_APPROX_ALL_NEIGHBORS, SCAMP::PRECISION_SINGLE, 2,
+      {SCAMP::PROFILE_TYPE_APPROX_ALL_NEIGHBORS, SCAMP::PRECISION_SINGLE, 1,
        256},
   };
   auto winner_for = [&rigged](SCAMP::SCAMPProfileType p,
