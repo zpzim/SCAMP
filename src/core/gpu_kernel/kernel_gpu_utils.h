@@ -33,39 +33,39 @@ enum SCAMPAtomicType { ATOMIC_BLOCK, ATOMIC_GLOBAL, ATOMIC_SYSTEM };
 // otherwise be silently clamped by ptxas, leaving the actual occupancy
 // nondeterministic).
 //
-// Values from the CUDA C++ Programming Guide "Compute Capability" tables:
-//   sm_86 (GA10x) and sm_89 (AD10x): 1536 threads/SM
-//   sm_50/60/70/80/90 and AD102+ datacenter: 2048 threads/SM
+// Values from the CUDA C++ Programming Guide "Compute Capability" tables.
 // During host compilation (__CUDA_ARCH__ undefined) we return the more
 // permissive 2048 so any host-side use of this constant doesn't accidentally
 // under-cap; the launch_bounds itself is only consumed by ptxas during
 // device compilation where the right __CUDA_ARCH__ guard applies.
-constexpr int kHwThreadsPerSm =
-#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ == 860 || __CUDA_ARCH__ == 890)
-    1536;
-#else
-    2048;
+constexpr int hw_threads_per_sm() {
+#if defined(__CUDA_ARCH__)
+  // Turing has half the warps per SM compared to neighbouring arches.
+  if constexpr (__CUDA_ARCH__ == 750) return 1024;
+  // GA10x, Orin, Ada GeForce, Blackwell GeForce: 1536 threads/SM.
+  if constexpr (__CUDA_ARCH__ == 860 || __CUDA_ARCH__ == 870 ||
+                __CUDA_ARCH__ == 890 || __CUDA_ARCH__ == 1200) {
+    return 1536;
+  }
 #endif
+  // Maxwell, Pascal, Volta, A100, Hopper, Blackwell datacenter, and host.
+  return 2048;
+}
 
-// Compute a launch_bounds-friendly blocks_per_sm value from:
-//   target_threads_per_sm: the variant author's intended thread density
-//                          (typically blocks_per_sm * default_blocksz from
-//                          the variant tuple). Stays constant across the
-//                          autotuner's blocksz sweep so the per-thread
-//                          register budget stays uniform.
-//   blocksz:               the instantiated BLOCKSZ for this kernel.
-//   hw_threads_per_sm:     hardware cap (use kHwThreadsPerSm).
+// Compute a launch_bounds-friendly blocks_per_sm value from the variant's
+// target thread density (typically `blocks_per_sm * default_blocksz` from
+// the variant tuple) and the actual BLOCKSZ this template was instantiated
+// for. The target stays constant across the autotuner's blocksz sweep so
+// the per-thread register budget stays uniform; the hw cap (defaulting to
+// the per-arch hw_threads_per_sm()) prevents ptxas from silently clamping
+// when BLOCKSZ * variant_bps exceeds the per-SM thread ceiling.
 //
-// Returns max(1, min(target/blocksz, hw/blocksz)). The hw cap prevents
-// ptxas from silently clamping when BLOCKSZ * variant_bps exceeds the
-// per-SM thread ceiling; the target preserves variant intent so register
-// pressure is governed by the author's choice rather than by which
-// blocksz the autotuner happens to pick.
+// Returns max(1, min(target/blocksz, hw/blocksz)).
 constexpr int safe_bps(int target_threads_per_sm, int blocksz,
-                       int hw_threads_per_sm) {
+                       int hw_threads = hw_threads_per_sm()) {
   if (blocksz <= 0) return 1;
   const int desired = target_threads_per_sm / blocksz;
-  const int hw_cap = hw_threads_per_sm / blocksz;
+  const int hw_cap = hw_threads / blocksz;
   const int result = desired < hw_cap ? desired : hw_cap;
   return result > 0 ? result : 1;
 }

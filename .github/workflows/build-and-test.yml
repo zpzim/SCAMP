@@ -336,13 +336,13 @@ jobs:
         # type. The extended-tests step above already runs the full
         # parameter sweep (windows x tile sizes x input sizes) against the
         # autotune-chosen variant; this step trades sweep breadth for
-        # variant breadth -- one window, one tile size, two input sizes per
-        # variant per profile. SCAMP_FORCE_VARIANT bypasses the autotune
-        # cache + cold-start default, so each variant gets exercised
-        # against its DefaultBlockszForPrecision pick (the precision-
-        # specific cold-start blocksz). The full {64,128,256,512} blocksz
-        # axis is NOT swept here -- that belongs in `SCAMP --autotune`,
-        # not the correctness CI.
+        # variant breadth -- one window, two tile sizes, two input sizes
+        # per variant per profile. SCAMP_FORCE_VARIANT bypasses the
+        # autotune cache + cold-start default, so each variant gets
+        # exercised against its DefaultBlockszForPrecision pick (the
+        # precision-specific cold-start blocksz). The full
+        # {64,128,256,512} blocksz axis is NOT swept here -- that belongs
+        # in `SCAMP --autotune`, not the correctness CI.
         shell: bash
         run: |
           set -e

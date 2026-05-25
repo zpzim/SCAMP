@@ -110,11 +110,12 @@ namespace {
 // Single timed run of the synthetic workload with the cfg override set.
 // Throws SCAMPException if the kernel launch failed (CUDA reports an
 // error post-synchronize), so the variant is reported as inf time rather
-// than silently winning. This caught a real bug: v5 (OUR=16) exceeds the
-// default 48KB per-block smem limit for SP self-join modes and silently
-// returns SCAMP_CUDA_ERROR, which do_SCAMP swallows. Without the
-// post-synchronize check the benchmark recorded the fast "failed" path
-// as the winning time and the autotune wrote a broken cfg to the cache.
+// than silently winning. The post-synchronize check is load-bearing:
+// some variant geometries can exceed the per-block smem limit (especially
+// for SP self-join modes that need a bigger profile output region) and
+// silently return SCAMP_CUDA_ERROR, which do_SCAMP swallows. Without
+// the check, the benchmark would record the fast "failed" path as a win
+// and the autotune would write a broken cfg to the cache.
 double TimeOneRun(int device_id, SCAMPProfileType profile,
                   SCAMPPrecisionType precision, const KernelConfig &cfg) {
   SCAMPArgs args;
@@ -153,16 +154,14 @@ double TimeOneRun(int device_id, SCAMPProfileType profile,
 // given (profile, precision), times kBenchmarkTimedRuns runs of it with
 // the cfg override set, and returns the MIN seconds across runs.
 //
-// kBenchmarkWarmupRuns runs are discarded first to amortize one-time
-// costs (CUDA module load, JIT, cache fill).
-//
 // Throws SCAMPException on failure -- the caller (the
 // RunAutotuneWithBenchmark loop) catches and treats failures as
 // "infinitely slow."
-// Per-trial warmup count. Default 0: in practice the first kernel launch
-// for a given (variant, blocksz) instantiation is only a few percent slower
-// than steady-state on Ampere (most JIT/module-load cost is amortized by the
-// process-level first launch, not per-trial), and the cross-target geomean
+
+// Per-trial warmup count. Default 0: the first kernel launch for a given
+// (variant, blocksz) instantiation is typically only a few percent slower
+// than steady-state because most JIT / module-load cost is amortized by
+// the process-level first launch, not per-trial; the cross-target geomean
 // ranking downstream tolerates a few % of noise.
 //
 // SCAMP_AUTOTUNE_WARMUP_RUNS (env) overrides this. Set to 1 (or more) when

@@ -36,8 +36,8 @@ template <typename DATA_TYPE, typename ACCUM_TYPE, typename PROFILE_OUTPUT_TYPE,
           bool COMPUTE_COLS, SCAMPProfileType PROFILE_TYPE,
           int target_threads_per_sm, int DiagsPerThread, int UnrolledRows,
           int OuterUnrolledRows, int KernelTileIters, int BLOCKSZ>
-__global__ void __launch_bounds__(BLOCKSZ, safe_bps(target_threads_per_sm,
-                                                    BLOCKSZ, kHwThreadsPerSm))
+__global__ void __launch_bounds__(BLOCKSZ,
+                                  safe_bps(target_threads_per_sm, BLOCKSZ))
     do_tile(SCAMPKernelInputArgs<double> args, PROFILE_OUTPUT_TYPE *profile_A,
             PROFILE_OUTPUT_TYPE *profile_B) {
   constexpr int tile_height = KernelTileIters * OuterUnrolledRows;
@@ -191,11 +191,16 @@ SCAMPError_t LaunchDoTileWithGeometry(SCAMPKernelInputArgs<double> args,
   // The macro keeps the dispatch table compact; each LAUNCH_PRECISION call
   // emits one nvcc <<<>>> kernel-launch line plus a cudaFuncSetAttribute
   // call to opt into >48KB dynamic smem if the variant demands it. The
-  // default per-block dynamic smem cap is 48KB on sm_8.x; high-OUR
-  // variants (e.g. variant 5 at OUR=16, KTI=16, tile_height=256) need ~50KB
-  // for SP self-join and would otherwise fail with cudaErrorInvalidValue.
-  // The opt-in is sticky per kernel function pointer, so repeated launches
-  // pay only the first call.
+  // default per-block dynamic smem cap is 48KB; high-tile sliding-window
+  // variants (tile_height=256, DPT=4, etc.) cross that threshold for SP
+  // self-join and would otherwise fail with cudaErrorInvalidValue. The
+  // opt-in is sticky per kernel function pointer, so repeated launches
+  // pay only the first call. The opt-in itself is only honored on sm_70+;
+  // sm_60 (Pascal) max dynamic smem per block is 48KB and the
+  // cudaFuncSetAttribute call returns an error there, which the launcher
+  // ignores -- the launch then either fits or fails. Variant geometries
+  // currently in SCAMP_VARIANT_TUPLES stay <= 48KB on sm_60 with the
+  // current DefaultBlockszForPrecision-picked blocksz.
 #define LAUNCH_PRECISION_AT_BLOCKSZ(DATA_T, ACCUM_T, TARGET_THREADS,     \
                                     BLOCKSZ_V, COMP_ROWS, COMP_COLS)     \
   do {                                                                   \
@@ -215,8 +220,8 @@ SCAMPError_t LaunchDoTileWithGeometry(SCAMPKernelInputArgs<double> args,
 // Dispatch the sliding-window kernel on the runtime blocksz, mirroring the
 // shfl variant. Each blocksz value yields a distinct do_tile<...> template
 // instantiation; the 4-way switch lets the autotuner sweep blocksz without
-// recompiling. Same as v6, BLOCKSZ values are restricted to the
-// IsSupportedKernelConfig whitelist (64/128/256/512).
+// recompiling. BLOCKSZ values are restricted to the IsSupportedKernelConfig
+// whitelist (64/128/256/512).
 #define LAUNCH_PRECISION(DATA_T, ACCUM_T, DEFAULT_BSZ, COMP_ROWS, COMP_COLS) \
   do {                                                                       \
     constexpr int target_threads = blocks_per_sm_v * (DEFAULT_BSZ);          \

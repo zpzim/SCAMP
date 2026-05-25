@@ -24,7 +24,11 @@ namespace SCAMP {
 // rotates every 32*DPT rows via update_info_shfl.
 //
 // Template params:
-//   blocks_per_sm  — __launch_bounds__ occupancy hint
+//   target_threads_per_sm — variant author's intended thread density. The
+//                       second arg of __launch_bounds__ is derived from
+//                       this via safe_bps() so the per-thread register
+//                       budget stays uniform across the autotuner's
+//                       blocksz sweep.
 //   DiagsPerThread — diagonals per thread (column slice width)
 //   OuterUnrolledRows — rows per inner-loop iteration (for compile time
 //                       amortization; the shfl kernel processes 1 row at
@@ -44,8 +48,8 @@ template <typename DATA_TYPE, typename ACCUM_TYPE, typename PROFILE_OUTPUT_TYPE,
           bool COMPUTE_COLS, SCAMPProfileType PROFILE_TYPE,
           int target_threads_per_sm, int DiagsPerThread, int OuterUnrolledRows,
           int KernelTileIters, int BLOCKSZ>
-__global__ void __launch_bounds__(BLOCKSZ, safe_bps(target_threads_per_sm,
-                                                    BLOCKSZ, kHwThreadsPerSm))
+__global__ void __launch_bounds__(BLOCKSZ,
+                                  safe_bps(target_threads_per_sm, BLOCKSZ))
     do_tile_shfl(SCAMPKernelInputArgs<double> args,
                  PROFILE_OUTPUT_TYPE *profile_A,
                  PROFILE_OUTPUT_TYPE *profile_B) {
@@ -182,11 +186,10 @@ __global__ void __launch_bounds__(BLOCKSZ, safe_bps(target_threads_per_sm,
     // skipping the atomic CAS entirely when this tile's distc didn't
     // beat the prior global. Correctness requires also refreshing the
     // check inside update_info_shfl when a slot rotates mid-tile, and
-    // the extra DPT registers may regress occupancy on v4 (DPT=8 SP is
-    // already register-pressured). Measured perf-neutral vs the prior
-    // pre-load form at 1M-scale on RTX 3080, so don't adopt without a
-    // micro-benchmark on smaller GPUs or workloads where the matrix
-    // profile has converged and most atomics would no-op.
+    // the extra DPT registers may regress occupancy on the higher-DPT
+    // shfl variants (DPT=8 SP is already register-pressured). Wins
+    // would be largest on workloads where the matrix profile has
+    // converged and most atomics would no-op.
     state.distc.setConstant(init_dist<DISTANCE_TYPE, PROFILE_TYPE>());
     state.idxc.setZero();
 
@@ -283,59 +286,39 @@ SCAMPError_t LaunchDoTileShflWithGeometry(
   dim3 block(blocksz, 1, 1);
   dim3 grid(num_blocks, 1, 1);
 
-#define LAUNCH_PRECISION_SHFL(DATA_T, ACCUM_T, DEFAULT_BSZ, COMP_ROWS,         \
-                              COMP_COLS)                                       \
-  do {                                                                         \
-    constexpr int target_threads = blocks_per_sm_v * (DEFAULT_BSZ);            \
-    if (blocksz == 64) {                                                       \
-      auto kfn =                                                               \
-          do_tile_shfl<DATA_T, ACCUM_T, PROFILE_OUTPUT_TYPE,                   \
-                       PROFILE_DATA_TYPE, DISTANCE_TYPE, COMP_ROWS, COMP_COLS, \
-                       PROFILE_TYPE, target_threads, DiagsPerThread,           \
-                       OuterUnrolledRows, KernelTileIters, 64>;                \
-      if (smem > 48u * 1024u) {                                                \
-        cudaFuncSetAttribute(reinterpret_cast<const void *>(kfn),              \
-                             cudaFuncAttributeMaxDynamicSharedMemorySize,      \
-                             static_cast<int>(smem));                          \
-      }                                                                        \
-      kfn<<<grid, block, smem, s>>>(args, profile_A, profile_B);               \
-    } else if (blocksz == 128) {                                               \
-      auto kfn =                                                               \
-          do_tile_shfl<DATA_T, ACCUM_T, PROFILE_OUTPUT_TYPE,                   \
-                       PROFILE_DATA_TYPE, DISTANCE_TYPE, COMP_ROWS, COMP_COLS, \
-                       PROFILE_TYPE, target_threads, DiagsPerThread,           \
-                       OuterUnrolledRows, KernelTileIters, 128>;               \
-      if (smem > 48u * 1024u) {                                                \
-        cudaFuncSetAttribute(reinterpret_cast<const void *>(kfn),              \
-                             cudaFuncAttributeMaxDynamicSharedMemorySize,      \
-                             static_cast<int>(smem));                          \
-      }                                                                        \
-      kfn<<<grid, block, smem, s>>>(args, profile_A, profile_B);               \
-    } else if (blocksz == 256) {                                               \
-      auto kfn =                                                               \
-          do_tile_shfl<DATA_T, ACCUM_T, PROFILE_OUTPUT_TYPE,                   \
-                       PROFILE_DATA_TYPE, DISTANCE_TYPE, COMP_ROWS, COMP_COLS, \
-                       PROFILE_TYPE, target_threads, DiagsPerThread,           \
-                       OuterUnrolledRows, KernelTileIters, 256>;               \
-      if (smem > 48u * 1024u) {                                                \
-        cudaFuncSetAttribute(reinterpret_cast<const void *>(kfn),              \
-                             cudaFuncAttributeMaxDynamicSharedMemorySize,      \
-                             static_cast<int>(smem));                          \
-      }                                                                        \
-      kfn<<<grid, block, smem, s>>>(args, profile_A, profile_B);               \
-    } else {                                                                   \
-      auto kfn =                                                               \
-          do_tile_shfl<DATA_T, ACCUM_T, PROFILE_OUTPUT_TYPE,                   \
-                       PROFILE_DATA_TYPE, DISTANCE_TYPE, COMP_ROWS, COMP_COLS, \
-                       PROFILE_TYPE, target_threads, DiagsPerThread,           \
-                       OuterUnrolledRows, KernelTileIters, 512>;               \
-      if (smem > 48u * 1024u) {                                                \
-        cudaFuncSetAttribute(reinterpret_cast<const void *>(kfn),              \
-                             cudaFuncAttributeMaxDynamicSharedMemorySize,      \
-                             static_cast<int>(smem));                          \
-      }                                                                        \
-      kfn<<<grid, block, smem, s>>>(args, profile_A, profile_B);               \
-    }                                                                          \
+#define LAUNCH_PRECISION_SHFL_AT_BLOCKSZ(DATA_T, ACCUM_T, TARGET_THREADS,  \
+                                         BLOCKSZ_V, COMP_ROWS, COMP_COLS)  \
+  do {                                                                     \
+    auto kfn = do_tile_shfl<DATA_T, ACCUM_T, PROFILE_OUTPUT_TYPE,          \
+                            PROFILE_DATA_TYPE, DISTANCE_TYPE, COMP_ROWS,   \
+                            COMP_COLS, PROFILE_TYPE, TARGET_THREADS,       \
+                            DiagsPerThread, OuterUnrolledRows,             \
+                            KernelTileIters, BLOCKSZ_V>;                   \
+    if (smem > 48u * 1024u) {                                              \
+      cudaFuncSetAttribute(reinterpret_cast<const void *>(kfn),            \
+                           cudaFuncAttributeMaxDynamicSharedMemorySize,    \
+                           static_cast<int>(smem));                        \
+    }                                                                      \
+    kfn<<<grid, block, smem, s>>>(args, profile_A, profile_B);             \
+  } while (0)
+
+#define LAUNCH_PRECISION_SHFL(DATA_T, ACCUM_T, DEFAULT_BSZ, COMP_ROWS,        \
+                              COMP_COLS)                                      \
+  do {                                                                        \
+    constexpr int target_threads = blocks_per_sm_v * (DEFAULT_BSZ);           \
+    if (blocksz == 64) {                                                      \
+      LAUNCH_PRECISION_SHFL_AT_BLOCKSZ(DATA_T, ACCUM_T, target_threads, 64,   \
+                                       COMP_ROWS, COMP_COLS);                 \
+    } else if (blocksz == 128) {                                              \
+      LAUNCH_PRECISION_SHFL_AT_BLOCKSZ(DATA_T, ACCUM_T, target_threads, 128,  \
+                                       COMP_ROWS, COMP_COLS);                 \
+    } else if (blocksz == 256) {                                              \
+      LAUNCH_PRECISION_SHFL_AT_BLOCKSZ(DATA_T, ACCUM_T, target_threads, 256,  \
+                                       COMP_ROWS, COMP_COLS);                 \
+    } else {                                                                  \
+      LAUNCH_PRECISION_SHFL_AT_BLOCKSZ(DATA_T, ACCUM_T, target_threads, 512,  \
+                                       COMP_ROWS, COMP_COLS);                 \
+    }                                                                         \
   } while (0)
 
 #define LAUNCH_FOR_ROWCOL_MODE_SHFL(COMP_ROWS, COMP_COLS)                  \
@@ -362,6 +345,7 @@ SCAMPError_t LaunchDoTileShflWithGeometry(
   }
 #undef LAUNCH_FOR_ROWCOL_MODE_SHFL
 #undef LAUNCH_PRECISION_SHFL
+#undef LAUNCH_PRECISION_SHFL_AT_BLOCKSZ
   gpuErrchk(cudaPeekAtLastError());
   return SCAMP_NO_ERROR;
 }

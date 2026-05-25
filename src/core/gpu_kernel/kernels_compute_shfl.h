@@ -16,8 +16,11 @@
 //   - Lane 31 of warp k publishes its post-update cov[DPT-1] into a tiny
 //     smem hand-off region.
 //   - Lane 0 of warp k > 0 reads warp k-1's published value.
-//   - One __syncthreads() per row, with double-buffering of the hand-off
-//     slot so the publish and read in consecutive rows don't race.
+//   - One per-row block-scope barrier, with double-buffering of the
+//     hand-off slot so publish and read in consecutive rows don't race.
+//     The barrier is a cuda::barrier arrive/wait pair on sm_70+ and a
+//     plain __syncthreads() on sm_60 (libcudacxx's cuda/barrier header
+//     hard-errors on sm_60).
 //   - Lane 0 of warp 0 has no predecessor; its cov[0] is junk after row 0
 //     and is masked from distc/distr updates via the slot_valid check.
 //
@@ -602,18 +605,20 @@ __device__ inline void do_row_shfl(
 // local_mp_row / profile_a_length / profile_b_length) matches SCAMPSmem,
 // so write_back_value / write_back are reused unchanged.
 //
-// Smem footprint for DP variant 6 (BLOCKSZ=256, DPT=2, tile_height=64,
-// warps_per_block=8):
-//   df_row + dg_row + inorm_row     = 3 * 64 * 8  = 1536 B
-//   local_mp_col                    = 512 * 8     = 4096 B
-//   local_mp_row                    = 64  * 8     =  512 B
-//   cov_handoff                     = 2 * 8 * 8   =  128 B
-//   profile_lengths (AAN only)      = 2 * 8       =   16 B
+// Example smem footprint for a typical shfl variant (DP, DPT=8, BLOCKSZ=128,
+// tile_height=256, warps_per_block=4, max-style profile e.g. 1NN_INDEX):
+//   df_row + dg_row + inorm_row     = 3 * 256 * 8 = 6144 B
+//   local_mp_col                    = 1280 * 8    = 10240 B
+//   local_mp_row                    = 256  * 8    =  2048 B
+//   cov_handoff                     = 2 * 4 * 8   =    64 B
+//   profile_lengths (AAN only)      = 2 * 8       =    16 B
 //   ---------------------------------------------------
-//   total                                       ≈ 6.3 KB
+//   total                                        ≈ 18.5 KB
 //
-// vs. the sliding-window v4 footprint at tile_height=256 of ~33 KB. Big
-// occupancy headroom on smem-bound configurations.
+// vs. the sliding-window big-tile variant's ~33 KB at the same tile_height
+// (it carries df_col/dg_col/inorm_col in smem too). The shfl variant's
+// smaller smem footprint leaves more occupancy headroom on smem-bound
+// configurations.
 
 template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, SCAMPProfileType type,
           int tile_width, int tile_height, int warps_per_block>

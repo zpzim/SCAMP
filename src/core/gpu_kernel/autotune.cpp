@@ -612,8 +612,10 @@ KernelConfig GetKernelConfigForDevice(int device_id,
                                       SCAMPProfileType profile_type,
                                       SCAMPPrecisionType precision,
                                       const std::string &cache_path) {
-  // 0) Per-thread override. Set by the autotune benchmark loop to force a
-  //    specific variant on a per-timed-run basis; bypasses the cache.
+  // 0) Process-wide override. Set by the autotune benchmark loop to force
+  //    a specific variant for one timed run across all worker threads;
+  //    bypasses the cache. See SetKernelConfigOverride() above for why
+  //    this must be process-wide rather than thread-local.
   if (auto override = GetKernelConfigOverride(); override.has_value()) {
     return *override;
   }

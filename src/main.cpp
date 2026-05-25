@@ -1,10 +1,8 @@
 #ifdef _HAS_CUDA_
 #include <cuda_runtime.h>
 #include "core/gpu_kernel/autotune.h"
-#include "core/gpu_kernel/kernel_config.h"
-#ifdef _HAS_CUDA_
 #include "core/gpu_kernel/autotune_bench.h"
-#endif
+#include "core/gpu_kernel/kernel_config.h"
 #endif
 
 #include <gflags/gflags.h>
