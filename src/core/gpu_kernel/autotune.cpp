@@ -48,6 +48,47 @@ constexpr std::array<ProfilePrecisionPair, 10> kAutotuneTargets{{
     {PROFILE_TYPE_APPROX_ALL_NEIGHBORS, PRECISION_SINGLE},
 }};
 
+// Lowercase a string in-place using only ASCII chars (env var values).
+std::string AsciiLower(const char *s) {
+  std::string out;
+  if (s == nullptr) return out;
+  for (const char *c = s; *c; ++c) {
+    out.push_back(static_cast<char>(
+        std::tolower(static_cast<unsigned char>(*c))));
+  }
+  return out;
+}
+
+// SCAMP_AUTOTUNE_PRECISION_FILTER=SINGLE|DOUBLE restricts the autotune
+// sweep to one precision. Unset (or "" or "all") runs both. DOUBLE also
+// matches ULTRA targets (no ULTRA-specific targets exist today but the
+// behavior is documented in case one is added).
+bool AutotuneTargetEnabled(SCAMPPrecisionType precision) {
+  const std::string filt = AsciiLower(std::getenv("SCAMP_AUTOTUNE_PRECISION_FILTER"));
+  if (filt.empty() || filt == "all") return true;
+  if (filt == "single") return precision == PRECISION_SINGLE;
+  if (filt == "double") return precision == PRECISION_DOUBLE ||
+                               precision == PRECISION_ULTRA;
+  // Unknown value -- don't silently skip targets, treat as no-op.
+  return true;
+}
+
+// SCAMP_AUTOTUNE_VARIANT_FILTER=shfl|sliding-window|all restricts the
+// sweep to one variant family. shfl is identified by unrolled_rows == 0
+// (the sentinel used in SCAMP_VARIANT_TUPLES + the foreach in
+// src/core/gpu_kernel/CMakeLists.txt to route variants through
+// kernel_variant_shfl.cu.in instead of the sliding-window template).
+bool AutotuneVariantEnabled(std::size_t variant_idx) {
+  const std::string filt = AsciiLower(std::getenv("SCAMP_AUTOTUNE_VARIANT_FILTER"));
+  if (filt.empty() || filt == "all") return true;
+  const auto &geom = GetKernelVariantGeometry(variant_idx);
+  if (filt == "shfl") return geom.unrolled_rows == 0;
+  if (filt == "sliding-window" || filt == "smem" || filt == "sw") {
+    return geom.unrolled_rows != 0;
+  }
+  return true;
+}
+
 // Process-wide lazy caches: loaded once on first lookup, cleared if a
 // different cache_path is requested.
 //   user_cache    -- file at AutotuneCache::DefaultPath() (resolves to
@@ -207,10 +248,6 @@ AutotuneResult RunAutotuneWithBenchmarkForDeviceKey(
       kAutotuneTargets.size(),
       std::vector<double>(kNumKernelVariants * kNumSweepBlocksizes,
                           std::numeric_limits<double>::infinity()));
-  // Capture kNumSweepBlocksizes explicitly: MSVC requires non-empty
-  // captures even for constexpr variables referenced in the body
-  // ([] alone trips C3493 there). Clang/GCC are looser and accept it
-  // without capture.
   auto trial_slot = [kNumSweepBlocksizes](std::size_t v, int bsz_idx) {
     return v * kNumSweepBlocksizes + bsz_idx;
   };
@@ -221,7 +258,9 @@ AutotuneResult RunAutotuneWithBenchmarkForDeviceKey(
   // figure honest if that gets tightened in the future.
   int total_trials = 0;
   for (const auto &t : kAutotuneTargets) {
+    if (!AutotuneTargetEnabled(t.precision)) continue;
     for (std::size_t i = 0; i < kNumKernelVariants; ++i) {
+      if (!AutotuneVariantEnabled(i)) continue;
       for (int bsz : kSweepBlocksizes) {
         KernelConfig probe = GetKernelConfigForVariant(i, t.precision);
         probe.blocksz = bsz;
@@ -237,6 +276,15 @@ AutotuneResult RunAutotuneWithBenchmarkForDeviceKey(
   KernelConfig last_chosen{};
   for (std::size_t tidx = 0; tidx < kAutotuneTargets.size(); ++tidx) {
     const auto &t = kAutotuneTargets[tidx];
+    if (!AutotuneTargetEnabled(t.precision)) {
+      if (verbose) {
+        std::cout << "  [target " << (tidx + 1) << "/" << kAutotuneTargets.size()
+                  << "] " << ProfileTypeName(t.profile) << " "
+                  << PrecisionTypeName(t.precision)
+                  << ":  SKIPPED (SCAMP_AUTOTUNE_PRECISION_FILTER)\n";
+      }
+      continue;
+    }
     if (verbose) {
       std::cout << "  [target " << (tidx + 1) << "/" << kAutotuneTargets.size()
                 << "] " << ProfileTypeName(t.profile) << " "
@@ -252,6 +300,7 @@ AutotuneResult RunAutotuneWithBenchmarkForDeviceKey(
     // precision-tied default (e.g. 256 DP / 512 SP) would hide wins
     // that only show up at 128.
     for (std::size_t i = 0; i < kNumKernelVariants; ++i) {
+      if (!AutotuneVariantEnabled(i)) continue;
       for (int bsz_idx = 0; bsz_idx < kNumSweepBlocksizes; ++bsz_idx) {
         int bsz = kSweepBlocksizes[bsz_idx];
         KernelConfig cfg = GetKernelConfigForVariant(i, t.precision);
@@ -281,10 +330,14 @@ AutotuneResult RunAutotuneWithBenchmarkForDeviceKey(
           double pct = 100.0 * trials_done / std::max(total_trials, 1);
           double eta_s = elapsed_s * (total_trials - trials_done) /
                          std::max(trials_done, 1);
+          // std::defaultfloat does NOT reset precision -- setprecision(1) from
+          // the pct print above carries through and would print "seconds" as
+          // a single significant digit (1.872 -> "2"). Switch to fixed +
+          // setprecision(4) for the trial time so we get "1.8721 s".
           std::cout << "    [" << trials_done << "/" << total_trials << " "
                     << std::fixed << std::setprecision(1) << pct
                     << "% eta=" << static_cast<int>(eta_s) << "s] "
-                    << std::defaultfloat << "v" << i
+                    << "v" << i
                     << " blocksz=" << cfg.blocksz
                     << ": bps=" << cfg.blocks_per_sm
                     << " dpt=" << cfg.diags_per_thread
@@ -292,7 +345,7 @@ AutotuneResult RunAutotuneWithBenchmarkForDeviceKey(
                     << " our=" << cfg.outer_unrolled_rows
                     << " kti=" << cfg.kernel_tile_iters
                     << " (tile_height=" << cfg.tile_height() << ") -> "
-                    << seconds << " s\n";
+                    << std::fixed << std::setprecision(4) << seconds << " s\n";
           // Force-flush so log tail -f / pipe consumers see lines live
           // rather than waiting for the per-page stdio buffer to flush.
           std::cout.flush();
@@ -331,7 +384,8 @@ AutotuneResult RunAutotuneWithBenchmarkForDeviceKey(
                 << " ur=" << best_cfg.unrolled_rows
                 << " our=" << best_cfg.outer_unrolled_rows
                 << " kti=" << best_cfg.kernel_tile_iters << ") -> "
-                << best_seconds << " s\n\n";
+                << std::fixed << std::setprecision(4) << best_seconds
+                << " s\n\n";
     }
   }
 
@@ -431,8 +485,12 @@ AutotuneResult RunAutotuneWithBenchmarkForDeviceKey(
                 << std::defaultfloat;
     }
     std::cout << "\n";
-    std::cout << "  wrote " << kAutotuneTargets.size() << " entries to "
-              << resolved << std::endl;
+    std::size_t written = 0;
+    for (const auto &t : kAutotuneTargets) {
+      if (AutotuneTargetEnabled(t.precision)) ++written;
+    }
+    std::cout << "  wrote " << written << " entries to " << resolved
+              << std::endl;
   }
   return AutotuneResult{device_key, resolved, last_chosen, true};
 }

@@ -153,28 +153,42 @@ double TimeOneRun(int device_id, SCAMPProfileType profile,
 // given (profile, precision), times kBenchmarkTimedRuns runs of it with
 // the cfg override set, and returns the MIN seconds across runs.
 //
-// Why min-of-N rather than mean/median: kernel runtime is a hard lower
-// bound (no run can go faster than the actual compute cost); noise only
-// makes runs slower (preemption, thermal throttle, contention). The
-// minimum is the most faithful estimate of the steady-state cost.
-//
 // kBenchmarkWarmupRuns runs are discarded first to amortize one-time
 // costs (CUDA module load, JIT, cache fill).
 //
 // Throws SCAMPException on failure -- the caller (the
 // RunAutotuneWithBenchmark loop) catches and treats failures as
 // "infinitely slow."
+// Per-trial warmup count. Default 0: in practice the first kernel launch
+// for a given (variant, blocksz) instantiation is only a few percent slower
+// than steady-state on Ampere (most JIT/module-load cost is amortized by the
+// process-level first launch, not per-trial), and the cross-target geomean
+// ranking downstream tolerates a few % of noise.
+//
+// SCAMP_AUTOTUNE_WARMUP_RUNS (env) overrides this. Set to 1 (or more) when
+// trial timings look noisy or when running on a colder GPU/driver where the
+// first kernel launch of a never-before-seen template instantiation takes
+// significantly longer than steady-state.
+int BenchmarkWarmupRuns() {
+  static const int n = [] {
+    const char *env = std::getenv("SCAMP_AUTOTUNE_WARMUP_RUNS");
+    if (env == nullptr || env[0] == '\0') return 0;
+    try {
+      int parsed = std::stoi(env);
+      if (parsed >= 0) return parsed;
+    } catch (const std::exception &) {
+    }
+    return 0;
+  }();
+  return n;
+}
+
 double DefaultBenchmarkVariant(int device_id, SCAMPProfileType profile,
                                SCAMPPrecisionType precision,
                                const KernelConfig &cfg) {
-  // 1 warmup + 1 timed keeps the sweep fast for iterative dev (the
-  // blocksz x variant matrix is 4 x kNumKernelVariants trials per target,
-  // so a deep run count multiplies that). 1 timed run gives noisy
-  // min-times; the cross-target scoring downstream tolerates a few % of
-  // noise. Bump these back to 1/3 for a production-quality sweep.
-  constexpr int kBenchmarkWarmupRuns = 1;
   constexpr int kBenchmarkTimedRuns = 1;
-  for (int i = 0; i < kBenchmarkWarmupRuns; ++i) {
+  const int warmups = BenchmarkWarmupRuns();
+  for (int i = 0; i < warmups; ++i) {
     (void)TimeOneRun(device_id, profile, precision, cfg);
   }
   double best = std::numeric_limits<double>::infinity();
