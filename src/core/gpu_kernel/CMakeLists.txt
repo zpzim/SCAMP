@@ -93,24 +93,42 @@ set(SCAMP_KERNEL_PROFILES
 # its .cu, its forward decl, its dispatch case, and its kVariants entry
 # in one step.
 set(SCAMP_VARIANT_TUPLES
-    # bps|dpt|ur|our|kti|default_blocksz_dp|default_blocksz_sp
+    # bps|dpt|ur|our|kti|default_blocksz_sp
     #
-    # default_blocksz_{dp,sp} is the per-precision cold-start blocksz the
-    # runtime uses when the autotune cache misses for this variant. The
-    # kernel still gets instantiated for every blocksz in {64,128,256,512}
+    # default_blocksz_sp is the SP cold-start blocksz the runtime uses when
+    # the autotune cache misses for this variant. DP cold-start uses
+    # default_blocksz_sp / 2 implicitly: DP uses 2x the registers per
+    # thread, and halving threads/SM keeps the per-thread register budget
+    # stable across precisions. The /2 happens in the launcher macros
+    # (LaunchDoTileShflWithGeometry / LaunchDoTileWithGeometry) -- variant
+    # authors do not declare it.
+    #
+    # The kernel still gets instantiated for every blocksz in {64,128,256,512}
     # (the autotuner sweeps that axis independently and the on-disk cache
-    # can store any of them), so these defaults only matter on the very
-    # first untuned run on a device. They live with the variant geometry
-    # so the variant author controls them explicitly per-precision rather
-    # than having a separate precision-tied constant make the decision.
-    "2|2|2|16|16|256|512"       # sliding-window, DPT=2 baseline (tile=256)
-    "2|4|4|4|50|256|512"        # sliding-window, DPT=4 + 4x4 hand-unroll (tile=200)
-    "1|4|4|16|16|256|512"       # sliding-window, big tile / low occupancy (tile=256)
+    # can store any of them), so this default only matters on the very
+    # first untuned run on a device.
+    # Two sliding-window variants -- same big-tile geometry (DPT=4, UR=4,
+    # OUR=16, KTI=16 -> tile=256) at two thread-density targets. bps=1
+    # (target=512 thr/SM) wins DP for atomic-light profiles (1NN, AAN) where
+    # the DP register footprint needs slack; bps=2 (target=1024 thr/SM) wins
+    # SP variants of the same profiles where the SP footprint fits 2x more
+    # blocks/SM. Higher bps (4) was tested and triggered a spill cliff on
+    # sm_86; lower-occupancy and smaller-tile SW variants (DPT=2 baseline,
+    # DPT=4 + 4x4 hand-unroll) were dropped after the consolidation autotune
+    # showed they never won a target.
+    "1|4|4|16|16|512"           # sliding-window, big tile, bps=1 (DP-friendly)
+    "2|4|4|16|16|512"           # sliding-window, big tile, bps=2 (SP-friendly)
     # ur==0 marks the "shfl" (cov-shuffle) variant. The foreach below
     # routes ur==0 tuples through kernel_variant_shfl.cu.in instead of
     # the sliding-window template.
-    "8|4|0|8|8|128|128"         # shfl, DPT=4, tile=64
-    "4|8|0|8|32|128|128"        # shfl, DPT=8, tile=256
+    #
+    # Two shfl variants cover the precision split: a dpt=8 tile=256 variant
+    # for SP (and DP 1NN, since SP can afford the larger per-thread state)
+    # and a dpt=4 tile=128 variant for DP targets where halving the per-
+    # thread state lets DP fit higher occupancy. Both default to bsz=128;
+    # the autotuner sweeps the other blocksizes independently.
+    "5|8|0|8|32|128"            # shfl, DPT=8, tile=256 (SP default + best overall geomean: 1.016x of per-target best)
+    "8|4|0|8|16|128"            # shfl, DPT=4, tile=128 (DP champion: wins 1NN_INDEX DP + AAN DP via lower per-thread register footprint)
 )
 
 # Build the three @-substitution strings (kVariants init body, forward
@@ -130,14 +148,15 @@ foreach(variant_tuple ${SCAMP_VARIANT_TUPLES})
   list(GET variant_fields 2 VARIANT_UR)
   list(GET variant_fields 3 VARIANT_OUR)
   list(GET variant_fields 4 VARIANT_KTI)
-  list(GET variant_fields 5 VARIANT_DEFAULT_BLOCKSZ_DP)
-  list(GET variant_fields 6 VARIANT_DEFAULT_BLOCKSZ_SP)
+  list(GET variant_fields 5 VARIANT_DEFAULT_BLOCKSZ_SP)
   set(VARIANT_INDEX ${_variant_idx})
 
   # 1) Per-variant kVariants[] initializer row. Newline-terminated so
-  #    `configure_file` produces a multi-line array body.
+  #    `configure_file` produces a multi-line array body. default_blocksz_dp
+  #    is implicit (= default_blocksz_sp / 2), so the struct stores only
+  #    default_blocksz_sp.
   string(APPEND _kvariants_init
-    "    {${VARIANT_BPS}, ${VARIANT_DPT}, ${VARIANT_UR}, ${VARIANT_OUR}, ${VARIANT_KTI}, ${VARIANT_DEFAULT_BLOCKSZ_DP}, ${VARIANT_DEFAULT_BLOCKSZ_SP}},  // v${VARIANT_INDEX}\n")
+    "    {${VARIANT_BPS}, ${VARIANT_DPT}, ${VARIANT_UR}, ${VARIANT_OUR}, ${VARIANT_KTI}, ${VARIANT_DEFAULT_BLOCKSZ_SP}},  // v${VARIANT_INDEX}\n")
 
   # 2) Per-variant forward decl, contributing to the body of the
   #    SCAMP_DECL_VARIANTS_FOR_PROFILE macro. Every line ends with \

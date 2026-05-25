@@ -34,27 +34,33 @@ const KernelVariantGeometry &GetKernelVariantGeometry(std::size_t i) {
   return kVariants[i];
 }
 
+int DefaultBlockszForPrecision(const KernelVariantGeometry &v,
+                               SCAMPPrecisionType precision) {
+  // DP / ULTRA target threads/SM is half of SP (DP = 2x registers per
+  // thread). The variant tuple stores only default_blocksz_sp; the DP
+  // default is derived here so the 2:1 ratio is enforced by construction
+  // (impossible to violate via a malformed tuple).
+  switch (precision) {
+    case PRECISION_ULTRA:
+    case PRECISION_DOUBLE:
+      return v.default_blocksz_sp / 2;
+    case PRECISION_SINGLE:
+      return v.default_blocksz_sp;
+    default:
+      return v.default_blocksz_sp / 2;
+  }
+}
+
 KernelConfig GetKernelConfigForVariant(std::size_t i,
                                        SCAMPPrecisionType precision) {
   assert(i < kVariants.size());
   KernelConfig cfg{};
-  // Cold-start blocksz comes from the variant's per-precision default.
+  // Cold-start blocksz comes from the variant's SP default, halved for DP.
   // The autotune sweep also tries the other three values in
   // {64,128,256,512} via the independent blocksz axis, and the on-disk
   // cache can store any of them; these defaults only feed the path
   // where no cache entry exists for this device + (profile, precision).
-  switch (precision) {
-    case PRECISION_ULTRA:
-    case PRECISION_DOUBLE:
-      cfg.blocksz = kVariants[i].default_blocksz_dp;
-      break;
-    case PRECISION_SINGLE:
-      cfg.blocksz = kVariants[i].default_blocksz_sp;
-      break;
-    default:
-      cfg.blocksz = kVariants[i].default_blocksz_dp;
-      break;
-  }
+  cfg.blocksz = DefaultBlockszForPrecision(kVariants[i], precision);
   cfg.blocks_per_sm = kVariants[i].blocks_per_sm;
   cfg.diags_per_thread = kVariants[i].diags_per_thread;
   cfg.unrolled_rows = kVariants[i].unrolled_rows;

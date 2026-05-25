@@ -41,10 +41,11 @@ namespace SCAMP {
 // would violate it.
 template <typename DATA_TYPE, typename ACCUM_TYPE, typename PROFILE_OUTPUT_TYPE,
           typename PROFILE_DATA_TYPE, typename DISTANCE_TYPE, bool COMPUTE_ROWS,
-          bool COMPUTE_COLS, SCAMPProfileType PROFILE_TYPE, int blocks_per_sm,
-          int DiagsPerThread, int OuterUnrolledRows, int KernelTileIters,
-          int BLOCKSZ>
-__global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
+          bool COMPUTE_COLS, SCAMPProfileType PROFILE_TYPE,
+          int target_threads_per_sm, int DiagsPerThread, int OuterUnrolledRows,
+          int KernelTileIters, int BLOCKSZ>
+__global__ void __launch_bounds__(
+    BLOCKSZ, safe_bps(target_threads_per_sm, BLOCKSZ, kHwThreadsPerSm))
     do_tile_shfl(SCAMPKernelInputArgs<double> args,
                  PROFILE_OUTPUT_TYPE *profile_A,
                  PROFILE_OUTPUT_TYPE *profile_B) {
@@ -64,6 +65,25 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
   SCAMPShflSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE, tile_width,
                 tile_height, warps_per_block>
       smem(smem_raw, COMPUTE_ROWS, COMPUTE_COLS, args.opt.num_extra_operands);
+
+  // Per-row cross-warp cov hand-off barrier. Lives in static smem (single
+  // 8-byte mbarrier word, separate from the dynamic SCAMPShflSmem layout
+  // so existing smem-budget computations in get_smem_shfl don't need to
+  // track it). Expected arrival count = BLOCKSZ (one arrive per thread).
+  //
+  // do_row_shfl issues an ARRIVE right after the lane-31 publish (mid-row)
+  // and a WAIT at end of row; on Ampere (sm_80+) this lowers to mbarrier
+  // PTX, which is genuinely non-blocking on arrive. The publish-to-arrive
+  // distance is tight (one smem store), but the arrive-to-wait window
+  // covers the dist masking, merge_to_col, merge_to_row, intra-warp shfl
+  // cov rotation, register shift, and (every DPT rows) update_info_shfl.
+  // Warps that finish that second-half work faster don't block warps
+  // still draining it -- the wait blocks only on the slowest arrival.
+  __shared__ cuda::barrier<cuda::thread_scope_block> row_bar;
+  if (threadIdx.x == 0) {
+    init(&row_bar, BLOCKSZ);
+  }
+  __syncthreads();
 
   // Block geometry: matches the sliding-window kernel's 1D meta-diagonal
   // grid. Each block walks one meta-diagonal through tile-height steps.
@@ -184,15 +204,15 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
       for (int r = 0; r < tile_height; ++r) {
         do_row_shfl<PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, DISTANCE_TYPE,
                     DiagsPerThread, BLOCKSZ, true>(
-            r, tile_start_row, args, state, smem, smem.cov_handoff);
+            r, tile_start_row, args, state, smem, smem.cov_handoff, row_bar);
       }
     } else {
       // Must be executed by ALL threads in the block to prevent deadlock at
-      // __syncthreads().
+      // the per-row cuda::barrier wait.
       for (int r = 0; r < tile_height; ++r) {
         do_row_shfl<PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, DISTANCE_TYPE,
                     DiagsPerThread, BLOCKSZ, false>(
-            r, tile_start_row, args, state, smem, smem.cov_handoff);
+            r, tile_start_row, args, state, smem, smem.cov_handoff, row_bar);
       }
     }
 
@@ -227,25 +247,44 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
 // Per-(geometry x precision) launch helper for the shfl kernel. Mirrors
 // LaunchDoTileWithGeometry. The shfl variant has no UR template param, so
 // the signature differs there.
+//
+// default_blocksz_sp comes from the variant tuple and pins the variant
+// author's intended SP thread density: target threads/SM (SP) =
+// blocks_per_sm_v * default_blocksz_sp. The DP target is half of that:
+// DP uses 2x the registers per thread on Ampere/Ada, so halving the
+// target threads/SM keeps the per-thread register budget stable across
+// precisions. The /2 is hardcoded here (not a per-variant knob) so the
+// ratio cannot drift between variants.
+//
+// The kernel's __launch_bounds__ then derives a per-(BLOCKSZ-instantiation)
+// bps from the precision-specific target via safe_bps(), so register
+// pressure stays constant across the autotuner's blocksz sweep instead of
+// imploding when blocksz > the variant's default.
 template <typename PROFILE_OUTPUT_TYPE, typename PROFILE_DATA_TYPE,
           typename DISTANCE_TYPE, SCAMPProfileType PROFILE_TYPE,
           int blocks_per_sm_v, int DiagsPerThread, int OuterUnrolledRows,
-          int KernelTileIters>
+          int KernelTileIters, int default_blocksz_sp>
 SCAMPError_t LaunchDoTileShflWithGeometry(
     SCAMPKernelInputArgs<double> args, PROFILE_OUTPUT_TYPE *profile_A,
     PROFILE_OUTPUT_TYPE *profile_B, SCAMPPrecisionType fp_type,
     bool computing_rows, bool computing_cols, uint64_t blocksz,
     uint64_t num_blocks, uint64_t smem, cudaStream_t s) {
+  static_assert(default_blocksz_sp >= 2,
+                "default_blocksz_sp must be >= 2 so the implicit DP value "
+                "(default_blocksz_sp / 2) is >= 1.");
+  constexpr int default_blocksz_dp = default_blocksz_sp / 2;
   dim3 block(blocksz, 1, 1);
   dim3 grid(num_blocks, 1, 1);
 
-#define LAUNCH_PRECISION_SHFL(DATA_T, ACCUM_T, COMP_ROWS, COMP_COLS)           \
+#define LAUNCH_PRECISION_SHFL(DATA_T, ACCUM_T, DEFAULT_BSZ, COMP_ROWS,         \
+                              COMP_COLS)                                       \
   do {                                                                         \
+    constexpr int target_threads = blocks_per_sm_v * (DEFAULT_BSZ);            \
     if (blocksz == 64) {                                                       \
       auto kfn =                                                               \
           do_tile_shfl<DATA_T, ACCUM_T, PROFILE_OUTPUT_TYPE,                   \
                        PROFILE_DATA_TYPE, DISTANCE_TYPE, COMP_ROWS, COMP_COLS, \
-                       PROFILE_TYPE, blocks_per_sm_v, DiagsPerThread,          \
+                       PROFILE_TYPE, target_threads, DiagsPerThread,           \
                        OuterUnrolledRows, KernelTileIters, 64>;                \
       if (smem > 48u * 1024u) {                                                \
         cudaFuncSetAttribute(reinterpret_cast<const void *>(kfn),              \
@@ -257,7 +296,7 @@ SCAMPError_t LaunchDoTileShflWithGeometry(
       auto kfn =                                                               \
           do_tile_shfl<DATA_T, ACCUM_T, PROFILE_OUTPUT_TYPE,                   \
                        PROFILE_DATA_TYPE, DISTANCE_TYPE, COMP_ROWS, COMP_COLS, \
-                       PROFILE_TYPE, blocks_per_sm_v, DiagsPerThread,          \
+                       PROFILE_TYPE, target_threads, DiagsPerThread,           \
                        OuterUnrolledRows, KernelTileIters, 128>;               \
       if (smem > 48u * 1024u) {                                                \
         cudaFuncSetAttribute(reinterpret_cast<const void *>(kfn),              \
@@ -269,7 +308,7 @@ SCAMPError_t LaunchDoTileShflWithGeometry(
       auto kfn =                                                               \
           do_tile_shfl<DATA_T, ACCUM_T, PROFILE_OUTPUT_TYPE,                   \
                        PROFILE_DATA_TYPE, DISTANCE_TYPE, COMP_ROWS, COMP_COLS, \
-                       PROFILE_TYPE, blocks_per_sm_v, DiagsPerThread,          \
+                       PROFILE_TYPE, target_threads, DiagsPerThread,           \
                        OuterUnrolledRows, KernelTileIters, 256>;               \
       if (smem > 48u * 1024u) {                                                \
         cudaFuncSetAttribute(reinterpret_cast<const void *>(kfn),              \
@@ -281,7 +320,7 @@ SCAMPError_t LaunchDoTileShflWithGeometry(
       auto kfn =                                                               \
           do_tile_shfl<DATA_T, ACCUM_T, PROFILE_OUTPUT_TYPE,                   \
                        PROFILE_DATA_TYPE, DISTANCE_TYPE, COMP_ROWS, COMP_COLS, \
-                       PROFILE_TYPE, blocks_per_sm_v, DiagsPerThread,          \
+                       PROFILE_TYPE, target_threads, DiagsPerThread,           \
                        OuterUnrolledRows, KernelTileIters, 512>;               \
       if (smem > 48u * 1024u) {                                                \
         cudaFuncSetAttribute(reinterpret_cast<const void *>(kfn),              \
@@ -292,17 +331,19 @@ SCAMPError_t LaunchDoTileShflWithGeometry(
     }                                                                          \
   } while (0)
 
-#define LAUNCH_FOR_ROWCOL_MODE_SHFL(COMP_ROWS, COMP_COLS)          \
-  switch (fp_type) {                                               \
-    case PRECISION_ULTRA:                                          \
-    case PRECISION_DOUBLE:                                         \
-      LAUNCH_PRECISION_SHFL(double, double, COMP_ROWS, COMP_COLS); \
-      break;                                                       \
-    case PRECISION_SINGLE:                                         \
-      LAUNCH_PRECISION_SHFL(float, float, COMP_ROWS, COMP_COLS);   \
-      break;                                                       \
-    default:                                                       \
-      return SCAMP_CUDA_ERROR;                                     \
+#define LAUNCH_FOR_ROWCOL_MODE_SHFL(COMP_ROWS, COMP_COLS)                   \
+  switch (fp_type) {                                                        \
+    case PRECISION_ULTRA:                                                   \
+    case PRECISION_DOUBLE:                                                  \
+      LAUNCH_PRECISION_SHFL(double, double, default_blocksz_dp, COMP_ROWS, \
+                            COMP_COLS);                                     \
+      break;                                                                \
+    case PRECISION_SINGLE:                                                  \
+      LAUNCH_PRECISION_SHFL(float, float, default_blocksz_sp, COMP_ROWS,    \
+                            COMP_COLS);                                     \
+      break;                                                                \
+    default:                                                                \
+      return SCAMP_CUDA_ERROR;                                              \
   }
 
   if (computing_rows && computing_cols) {

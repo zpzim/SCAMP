@@ -72,7 +72,11 @@ struct KernelVariantGeometry {
   int unrolled_rows;
   int outer_unrolled_rows;
   int kernel_tile_iters;
-  int default_blocksz_dp;
+  // Variant author declares only the SP cold-start blocksz. The DP value
+  // is implicit (= default_blocksz_sp / 2): DP uses 2x the registers per
+  // thread, and halving threads/SM keeps the per-thread register budget
+  // stable across precisions. Use DefaultBlockszForPrecision() to derive
+  // the precision-specific value.
   int default_blocksz_sp;
 };
 

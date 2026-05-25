@@ -33,10 +33,11 @@ namespace SCAMP {
 //   BLOCKSZ             threads per block (precision-tied today)
 template <typename DATA_TYPE, typename ACCUM_TYPE, typename PROFILE_OUTPUT_TYPE,
           typename PROFILE_DATA_TYPE, typename DISTANCE_TYPE, bool COMPUTE_ROWS,
-          bool COMPUTE_COLS, SCAMPProfileType PROFILE_TYPE, int blocks_per_sm,
-          int DiagsPerThread, int UnrolledRows, int OuterUnrolledRows,
-          int KernelTileIters, int BLOCKSZ>
-__global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
+          bool COMPUTE_COLS, SCAMPProfileType PROFILE_TYPE,
+          int target_threads_per_sm, int DiagsPerThread, int UnrolledRows,
+          int OuterUnrolledRows, int KernelTileIters, int BLOCKSZ>
+__global__ void __launch_bounds__(
+    BLOCKSZ, safe_bps(target_threads_per_sm, BLOCKSZ, kHwThreadsPerSm))
     do_tile(SCAMPKernelInputArgs<double> args, PROFILE_OUTPUT_TYPE *profile_A,
             PROFILE_OUTPUT_TYPE *profile_B) {
   constexpr int tile_height = KernelTileIters * OuterUnrolledRows;
@@ -165,10 +166,14 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
 // DOUBLE/ULTRA (DATA=ACCUM=double). MIXED was dropped because it was
 // uniformly slower than DOUBLE in practice -- it kept DP's accumulator
 // cost without DP's smem footprint reduction.
+// default_blocksz_sp comes from the variant tuple; the DP value is implicit
+// (= default_blocksz_sp / 2). See LaunchDoTileShflWithGeometry for the
+// rationale (DP uses 2x registers/thread; halving threads/SM keeps the
+// per-thread register budget stable).
 template <typename PROFILE_OUTPUT_TYPE, typename PROFILE_DATA_TYPE,
           typename DISTANCE_TYPE, SCAMPProfileType PROFILE_TYPE,
           int blocks_per_sm_v, int DiagsPerThread, int UnrolledRows,
-          int OuterUnrolledRows, int KernelTileIters>
+          int OuterUnrolledRows, int KernelTileIters, int default_blocksz_sp>
 SCAMPError_t LaunchDoTileWithGeometry(SCAMPKernelInputArgs<double> args,
                                       PROFILE_OUTPUT_TYPE *profile_A,
                                       PROFILE_OUTPUT_TYPE *profile_B,
@@ -176,6 +181,10 @@ SCAMPError_t LaunchDoTileWithGeometry(SCAMPKernelInputArgs<double> args,
                                       bool computing_rows, bool computing_cols,
                                       uint64_t blocksz, uint64_t num_blocks,
                                       uint64_t smem, cudaStream_t s) {
+  static_assert(default_blocksz_sp >= 2,
+                "default_blocksz_sp must be >= 2 so the implicit DP value "
+                "(default_blocksz_sp / 2) is >= 1.");
+  constexpr int default_blocksz_dp = default_blocksz_sp / 2;
   dim3 block(blocksz, 1, 1);
   dim3 grid(num_blocks, 1, 1);
   // Expand the 3 row/col modes x 2 precisions = 6 do_tile<...> instantiations.
@@ -187,13 +196,13 @@ SCAMPError_t LaunchDoTileWithGeometry(SCAMPKernelInputArgs<double> args,
   // for SP self-join and would otherwise fail with cudaErrorInvalidValue.
   // The opt-in is sticky per kernel function pointer, so repeated launches
   // pay only the first call.
-#define LAUNCH_PRECISION_AT_BLOCKSZ(DATA_T, ACCUM_T, BLOCKSZ_V, COMP_ROWS, \
-                                    COMP_COLS)                             \
+#define LAUNCH_PRECISION_AT_BLOCKSZ(DATA_T, ACCUM_T, TARGET_THREADS,       \
+                                    BLOCKSZ_V, COMP_ROWS, COMP_COLS)       \
   do {                                                                     \
     auto kfn =                                                             \
         do_tile<DATA_T, ACCUM_T, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE,   \
                 DISTANCE_TYPE, COMP_ROWS, COMP_COLS, PROFILE_TYPE,         \
-                blocks_per_sm_v, DiagsPerThread, UnrolledRows,             \
+                TARGET_THREADS, DiagsPerThread, UnrolledRows,              \
                 OuterUnrolledRows, KernelTileIters, BLOCKSZ_V>;            \
     if (smem > 48u * 1024u) {                                              \
       cudaFuncSetAttribute(reinterpret_cast<const void *>(kfn),            \
@@ -208,30 +217,37 @@ SCAMPError_t LaunchDoTileWithGeometry(SCAMPKernelInputArgs<double> args,
 // instantiation; the 4-way switch lets the autotuner sweep blocksz without
 // recompiling. Same as v6, BLOCKSZ values are restricted to the
 // IsSupportedKernelConfig whitelist (64/128/256/512).
-#define LAUNCH_PRECISION(DATA_T, ACCUM_T, COMP_ROWS, COMP_COLS)                \
-  do {                                                                         \
-    if (blocksz == 64) {                                                       \
-      LAUNCH_PRECISION_AT_BLOCKSZ(DATA_T, ACCUM_T, 64, COMP_ROWS, COMP_COLS);  \
-    } else if (blocksz == 128) {                                               \
-      LAUNCH_PRECISION_AT_BLOCKSZ(DATA_T, ACCUM_T, 128, COMP_ROWS, COMP_COLS); \
-    } else if (blocksz == 256) {                                               \
-      LAUNCH_PRECISION_AT_BLOCKSZ(DATA_T, ACCUM_T, 256, COMP_ROWS, COMP_COLS); \
-    } else {                                                                   \
-      LAUNCH_PRECISION_AT_BLOCKSZ(DATA_T, ACCUM_T, 512, COMP_ROWS, COMP_COLS); \
-    }                                                                          \
+#define LAUNCH_PRECISION(DATA_T, ACCUM_T, DEFAULT_BSZ, COMP_ROWS, COMP_COLS) \
+  do {                                                                       \
+    constexpr int target_threads = blocks_per_sm_v * (DEFAULT_BSZ);          \
+    if (blocksz == 64) {                                                     \
+      LAUNCH_PRECISION_AT_BLOCKSZ(DATA_T, ACCUM_T, target_threads, 64,       \
+                                  COMP_ROWS, COMP_COLS);                     \
+    } else if (blocksz == 128) {                                             \
+      LAUNCH_PRECISION_AT_BLOCKSZ(DATA_T, ACCUM_T, target_threads, 128,      \
+                                  COMP_ROWS, COMP_COLS);                     \
+    } else if (blocksz == 256) {                                             \
+      LAUNCH_PRECISION_AT_BLOCKSZ(DATA_T, ACCUM_T, target_threads, 256,      \
+                                  COMP_ROWS, COMP_COLS);                     \
+    } else {                                                                 \
+      LAUNCH_PRECISION_AT_BLOCKSZ(DATA_T, ACCUM_T, target_threads, 512,      \
+                                  COMP_ROWS, COMP_COLS);                     \
+    }                                                                        \
   } while (0)
 
-#define LAUNCH_FOR_ROWCOL_MODE(COMP_ROWS, COMP_COLS)          \
-  switch (fp_type) {                                          \
-    case PRECISION_ULTRA:                                     \
-    case PRECISION_DOUBLE:                                    \
-      LAUNCH_PRECISION(double, double, COMP_ROWS, COMP_COLS); \
-      break;                                                  \
-    case PRECISION_SINGLE:                                    \
-      LAUNCH_PRECISION(float, float, COMP_ROWS, COMP_COLS);   \
-      break;                                                  \
-    default:                                                  \
-      return SCAMP_CUDA_ERROR;                                \
+#define LAUNCH_FOR_ROWCOL_MODE(COMP_ROWS, COMP_COLS)                          \
+  switch (fp_type) {                                                          \
+    case PRECISION_ULTRA:                                                     \
+    case PRECISION_DOUBLE:                                                    \
+      LAUNCH_PRECISION(double, double, default_blocksz_dp, COMP_ROWS,         \
+                       COMP_COLS);                                            \
+      break;                                                                  \
+    case PRECISION_SINGLE:                                                    \
+      LAUNCH_PRECISION(float, float, default_blocksz_sp, COMP_ROWS,           \
+                       COMP_COLS);                                            \
+      break;                                                                  \
+    default:                                                                  \
+      return SCAMP_CUDA_ERROR;                                                \
   }
 
   if (computing_rows && computing_cols) {

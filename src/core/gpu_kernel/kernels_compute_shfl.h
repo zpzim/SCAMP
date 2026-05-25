@@ -42,6 +42,7 @@
 #pragma once
 
 #include <cuda.h>
+#include <cuda/barrier>
 
 #include "core/defines.h"
 #include "core/kernel_common.h"
@@ -406,7 +407,8 @@ __device__ inline void do_row_shfl(
     int row_in_tile, uint32_t tile_start_row,
     const SCAMPKernelInputArgs<double> &args,
     SCAMPShflState<DerivedDataType, DISTANCE_TYPE, DiagsPerThread> &state,
-    DerivedSmem &smem, DerivedDataType *cov_handoff_smem) {
+    DerivedSmem &smem, DerivedDataType *cov_handoff_smem,
+    cuda::barrier<cuda::thread_scope_block> &row_bar) {
   constexpr int DPT = DiagsPerThread;
   constexpr int warps_per_block = BLOCKSZ / 32;
 
@@ -444,6 +446,24 @@ __device__ inline void do_row_shfl(
   // storage by the assignment.
   state.cov = state.cov + state.dfc * dgr + state.dgc * dfr;
 
+  // Hoist lane-31 publish + barrier ARRIVE here, right after the cov
+  // update. cov[DPT-1] is now final for this row, and nothing in the
+  // merges / cov-shift / update_info_shfl that follow depends on cross-
+  // warp data. The arrive is non-blocking, so warps that finish the
+  // second-half work (~50-150 cycles of merges + shfl + shift) can run
+  // it concurrently with other warps still draining; the WAIT at end of
+  // row blocks only on the slowest arrival. Compare with the older
+  // __syncthreads-at-end form where every warp re-entered the scheduler
+  // wait simultaneously regardless of work skew.
+  {
+    const int write_slot = (row_in_tile & 1) ^ 1;
+    if (state.warpln == 31) {
+      cov_handoff_smem[write_slot * warps_per_block + state.warpid] =
+          state.cov[DPT - 1];
+    }
+  }
+  auto bar_token = row_bar.arrive();
+
   // Slot validity. diag is computed as a signed int array so negative
   // values from the (local_col - row_in_tile) subtraction survive
   // the comparison. The row-out-of-range case in the SLOW PATH short-
@@ -479,7 +499,7 @@ __device__ inline void do_row_shfl(
   }
 
   // -----------------------------------------------------------------
-  // Cross-warp cov hand-off (double-buffered, one __syncthreads per row).
+  // Cross-warp cov hand-off (double-buffered, one barrier per row).
   //
   // Buffer layout: cov_handoff_smem is 2 * warps_per_block entries.
   //   slot[(row_in_tile & 1)][warpid]      — read here this row
@@ -487,25 +507,19 @@ __device__ inline void do_row_shfl(
   //
   // Ordering within a row:
   //   1. Lane 0 of warp k > 0 READS slot[r & 1] (value written by warp k-1
-  //      at row r-1).
+  //      at row r-1; visibility ensured by row r-1's barrier wait).
   //   2. Lane 31 of each warp WRITES slot[(r & 1) ^ 1] (for warp k+1 to
   //      consume at row r+1). Read & write are to DIFFERENT slots, so no
-  //      within-row race.
+  //      within-row race. Write happens above, right after the cov update.
   //   3. cov shuffle (uses the read value).
   //   4. update_info_shfl + countdown.
-  //   5. __syncthreads at END of row.
+  //   5. cuda::barrier WAIT at END of row (paired with the ARRIVE issued
+  //      right after the lane-31 publish above).
   //
-  // The single sync at end of row r ensures: write-of-row-r happens-before
-  // read-of-row-(r+1) (publish), AND read-of-row-r happens-before
-  // write-of-row-(r+1) into the same slot (no overwrite).
+  // The single arrive/wait pair per row ensures: write-of-row-r
+  // happens-before read-of-row-(r+1) (publish), AND read-of-row-r
+  // happens-before write-of-row-(r+1) into the same slot (no overwrite).
   // -----------------------------------------------------------------
-  const int write_slot = read_slot ^ 1;
-
-  if (state.warpln == 31) {
-    cov_handoff_smem[write_slot * warps_per_block + state.warpid] =
-        state.cov[DPT - 1];
-  }
-
   const DerivedDataType wrap_in = __shfl_sync(0xffffffffu, state.cov[DPT - 1],
                                               static_cast<int>(state.srcln));
 
@@ -529,10 +543,11 @@ __device__ inline void do_row_shfl(
   }
   --state.updates_remaining;
 
-  // End-of-row sync. Orders this row's lane-31 WRITE before next row's
+  // End-of-row wait. Pairs with the ARRIVE issued right after the lane-31
+  // publish above. Orders this row's lane-31 WRITE before next row's
   // lane-0 READ of the same slot (publish), AND this row's lane-0 READ
   // before next row's lane-31 WRITE to the same slot (no overwrite).
-  __syncthreads();
+  row_bar.wait(std::move(bar_token));
 }
 
 // -------------------------------------------------------------------------

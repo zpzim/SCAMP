@@ -27,6 +27,49 @@ namespace SCAMP {
 // Describes the SCOPE of an atomic operation in a GPU kernel
 enum SCAMPAtomicType { ATOMIC_BLOCK, ATOMIC_GLOBAL, ATOMIC_SYSTEM };
 
+// Hardware max threads/SM for the CUDA arch we're currently compiling for.
+// Used as the upper cap on `__launch_bounds__(BLOCKSZ, bps)` so that the
+// implied BLOCKSZ*bps never exceeds the per-SM thread ceiling (which would
+// otherwise be silently clamped by ptxas, leaving the actual occupancy
+// nondeterministic).
+//
+// Values from the CUDA C++ Programming Guide "Compute Capability" tables:
+//   sm_86 (GA10x) and sm_89 (AD10x): 1536 threads/SM
+//   sm_50/60/70/80/90 and AD102+ datacenter: 2048 threads/SM
+// During host compilation (__CUDA_ARCH__ undefined) we return the more
+// permissive 2048 so any host-side use of this constant doesn't accidentally
+// under-cap; the launch_bounds itself is only consumed by ptxas during
+// device compilation where the right __CUDA_ARCH__ guard applies.
+constexpr int kHwThreadsPerSm =
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ == 860 || __CUDA_ARCH__ == 890)
+    1536;
+#else
+    2048;
+#endif
+
+// Compute a launch_bounds-friendly blocks_per_sm value from:
+//   target_threads_per_sm: the variant author's intended thread density
+//                          (typically blocks_per_sm * default_blocksz from
+//                          the variant tuple). Stays constant across the
+//                          autotuner's blocksz sweep so the per-thread
+//                          register budget stays uniform.
+//   blocksz:               the instantiated BLOCKSZ for this kernel.
+//   hw_threads_per_sm:     hardware cap (use kHwThreadsPerSm).
+//
+// Returns max(1, min(target/blocksz, hw/blocksz)). The hw cap prevents
+// ptxas from silently clamping when BLOCKSZ * variant_bps exceeds the
+// per-SM thread ceiling; the target preserves variant intent so register
+// pressure is governed by the author's choice rather than by which
+// blocksz the autotuner happens to pick.
+constexpr int safe_bps(int target_threads_per_sm, int blocksz,
+                       int hw_threads_per_sm) {
+  if (blocksz <= 0) return 1;
+  const int desired = target_threads_per_sm / blocksz;
+  const int hw_cap = hw_threads_per_sm / blocksz;
+  const int result = desired < hw_cap ? desired : hw_cap;
+  return result > 0 ? result : 1;
+}
+
 HOST_DEVICE_FUNCTION constexpr bool NeedsCheckIfDone(
     SCAMPProfileType profile_type) {
   return profile_type == PROFILE_TYPE_APPROX_ALL_NEIGHBORS;

@@ -22,7 +22,8 @@ SCAMPError_t LaunchVariant_@VARIANT_PROFILE@_v@VARIANT_INDEX@(
   return LaunchDoTileShflWithGeometry<
       @VARIANT_PROFILE_OUTPUT_TYPE@, @VARIANT_PROFILE_DATA_TYPE@,
       @VARIANT_DISTANCE_TYPE@, PROFILE_TYPE_@VARIANT_PROFILE@, @VARIANT_BPS@,
-      @VARIANT_DPT@, @VARIANT_OUR@, @VARIANT_KTI@>(
+      @VARIANT_DPT@, @VARIANT_OUR@, @VARIANT_KTI@,
+      @VARIANT_DEFAULT_BLOCKSZ_SP@>(
       args, profile_A, profile_B, fp_type, computing_rows, computing_cols,
       blocksz, num_blocks, smem, s);
 }
