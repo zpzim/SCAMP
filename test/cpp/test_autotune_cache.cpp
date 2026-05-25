@@ -353,7 +353,8 @@ void Test_PartiallyStaleCachePreservesGoodEntries() {
   SCAMP::ResetAutotuneWarnings();
   auto user = MakeCacheFromString(
       "SCAMP_AUTOTUNE_V1\n"
-      "MixedDevice|1NN_INDEX|SINGLE|128|8|4|0|8|16\n"  // matches SupportedConfig
+      "MixedDevice|1NN_INDEX|SINGLE|128|8|4|0|8|16\n"      // matches
+                                                           // SupportedConfig
       "MixedDevice|1NN_INDEX|DOUBLE|128|99|99|99|99|99\n"  // stale: bogus tuple
       "MixedDevice|SUM_THRESH|DOUBLE|99|99|99|99|99|99\n"  // stale: bogus tuple
   );
