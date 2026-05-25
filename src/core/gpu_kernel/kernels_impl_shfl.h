@@ -66,9 +66,10 @@ __global__ void __launch_bounds__(BLOCKSZ, safe_bps(target_threads_per_sm,
                 tile_height, warps_per_block>
       smem(smem_raw, COMPUTE_ROWS, COMPUTE_COLS, args.opt.num_extra_operands);
 
-  // Per-row cross-warp cov hand-off barrier. Lives in static smem (single
-  // 8-byte mbarrier word, separate from the dynamic SCAMPShflSmem layout
-  // so existing smem-budget computations in get_smem_shfl don't need to
+  // Per-row cross-warp cov hand-off barrier. On sm_70+ this is a real
+  // cuda::barrier<thread_scope_block> in static smem (single 8-byte
+  // mbarrier word, separate from the dynamic SCAMPShflSmem layout so
+  // existing smem-budget computations in get_smem_shfl don't need to
   // track it). Expected arrival count = BLOCKSZ (one arrive per thread).
   //
   // do_row_shfl issues an ARRIVE right after the lane-31 publish (mid-row)
@@ -79,11 +80,17 @@ __global__ void __launch_bounds__(BLOCKSZ, safe_bps(target_threads_per_sm,
   // cov rotation, register shift, and (every DPT rows) update_info_shfl.
   // Warps that finish that second-half work faster don't block warps
   // still draining it -- the wait blocks only on the slowest arrival.
-  __shared__ cuda::barrier<cuda::thread_scope_block> row_bar;
+  //
+  // On sm_60 cuda::barrier is unavailable (libcudacxx errors). ShflRowBarrier
+  // degrades to an empty struct and do_row_shfl falls back to
+  // __syncthreads() at end of row.
+  __shared__ ShflRowBarrier row_bar;
+#ifdef SCAMP_SHFL_HAS_CUDA_BARRIER
   if (threadIdx.x == 0) {
     init(&row_bar, BLOCKSZ);
   }
   __syncthreads();
+#endif
 
   // Block geometry: matches the sliding-window kernel's 1D meta-diagonal
   // grid. Each block walks one meta-diagonal through tile-height steps.

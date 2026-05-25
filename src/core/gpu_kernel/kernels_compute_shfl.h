@@ -42,13 +42,36 @@
 #pragma once
 
 #include <cuda.h>
+
+// cuda/barrier requires sm_70+ (libcudacxx hard-errors on older arches).
+// We gate the cuda::barrier arrive/wait split path on __CUDA_ARCH__ >= 700;
+// sm_60 (Pascal) and older fall back to a plain __syncthreads() per row.
+// The host-compilation pass has __CUDA_ARCH__ undefined and must also see
+// the include so launch-helper code can name the type in template params,
+// so we include it whenever the arch is undefined (host) or >= 700.
+#if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 700
 #include <cuda/barrier>
+#define SCAMP_SHFL_HAS_CUDA_BARRIER 1
+#endif
 
 #include "core/defines.h"
 #include "core/kernel_common.h"
 #include "kernel_gpu_utils.h"
 
 namespace SCAMP {
+
+// Wrapper type used in do_row_shfl's signature and the per-block __shared__
+// declaration. On sm_70+ it is cuda::barrier<thread_scope_block> (the real
+// mbarrier-backed primitive). On sm_60 the cuda/barrier header is
+// unavailable, so we substitute an empty struct -- the kernel falls back
+// to __syncthreads() and never reads the wrapper's value, but the type
+// still needs to exist so the function signatures and the __shared__
+// declaration parse.
+#ifdef SCAMP_SHFL_HAS_CUDA_BARRIER
+using ShflRowBarrier = cuda::barrier<cuda::thread_scope_block>;
+#else
+struct ShflRowBarrier {};
+#endif
 
 // Per-thread register state for the shfl kernel. The sliding-window kernel
 // uses SCAMPThreadInfo; this is the shfl-specific extension.
@@ -408,7 +431,7 @@ __device__ inline void do_row_shfl(
     const SCAMPKernelInputArgs<double> &args,
     SCAMPShflState<DerivedDataType, DISTANCE_TYPE, DiagsPerThread> &state,
     DerivedSmem &smem, DerivedDataType *cov_handoff_smem,
-    cuda::barrier<cuda::thread_scope_block> &row_bar) {
+    ShflRowBarrier &row_bar) {
   constexpr int DPT = DiagsPerThread;
   constexpr int warps_per_block = BLOCKSZ / 32;
 
@@ -446,15 +469,12 @@ __device__ inline void do_row_shfl(
   // storage by the assignment.
   state.cov = state.cov + state.dfc * dgr + state.dgc * dfr;
 
-  // Hoist lane-31 publish + barrier ARRIVE here, right after the cov
-  // update. cov[DPT-1] is now final for this row, and nothing in the
-  // merges / cov-shift / update_info_shfl that follow depends on cross-
-  // warp data. The arrive is non-blocking, so warps that finish the
-  // second-half work (~50-150 cycles of merges + shfl + shift) can run
-  // it concurrently with other warps still draining; the WAIT at end of
-  // row blocks only on the slowest arrival. Compare with the older
-  // __syncthreads-at-end form where every warp re-entered the scheduler
-  // wait simultaneously regardless of work skew.
+  // Lane-31 publishes cov[DPT-1] to the next row's read slot. cov[DPT-1]
+  // is final after the cov update (above), and nothing in the merges /
+  // cov-shift / update_info_shfl that follow depends on cross-warp data.
+  // The publish itself is the same write on every arch; only the per-
+  // row sync primitive differs (cuda::barrier arrive/wait on sm_70+,
+  // __syncthreads on sm_60), so we always publish here.
   {
     const int write_slot = (row_in_tile & 1) ^ 1;
     if (state.warpln == 31) {
@@ -462,7 +482,17 @@ __device__ inline void do_row_shfl(
           state.cov[DPT - 1];
     }
   }
+  // ARRIVE is non-blocking: on sm_70+ it lets warps that finish the
+  // second-half work (~50-150 cycles of merges + shfl + shift) run it
+  // concurrently with warps still draining; the WAIT at end of row
+  // blocks only on the slowest arrival. On sm_60 cuda::barrier is
+  // unavailable and we fall through to a plain __syncthreads() at end
+  // of row -- correct, just no latency-hide.
+#ifdef SCAMP_SHFL_HAS_CUDA_BARRIER
   auto bar_token = row_bar.arrive();
+#else
+  (void)row_bar;  // empty stub on sm_60; suppresses unused-arg warning
+#endif
 
   // Slot validity. diag is computed as a signed int array so negative
   // values from the (local_col - row_in_tile) subtraction survive
@@ -543,11 +573,17 @@ __device__ inline void do_row_shfl(
   }
   --state.updates_remaining;
 
-  // End-of-row wait. Pairs with the ARRIVE issued right after the lane-31
-  // publish above. Orders this row's lane-31 WRITE before next row's
+  // End-of-row sync. Orders this row's lane-31 WRITE before next row's
   // lane-0 READ of the same slot (publish), AND this row's lane-0 READ
-  // before next row's lane-31 WRITE to the same slot (no overwrite).
+  // before next row's lane-31 WRITE to the same slot (no overwrite). On
+  // sm_70+ this pairs with the cuda::barrier ARRIVE issued earlier in
+  // the row; on sm_60 it's a plain __syncthreads() since cuda::barrier
+  // isn't available.
+#ifdef SCAMP_SHFL_HAS_CUDA_BARRIER
   row_bar.wait(std::move(bar_token));
+#else
+  __syncthreads();
+#endif
 }
 
 // -------------------------------------------------------------------------
