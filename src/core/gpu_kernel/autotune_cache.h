@@ -92,8 +92,8 @@ class AutotuneCache {
   // no-op (an empty cache is a valid state). Throws on malformed input.
   void Load();
 
-  // Parse cache entries from an in-memory string instead of disk. Used to
-  // load the binary's built-in autotune cache (see builtin_autotune_cache.h).
+  // Parse cache entries from an in-memory string instead of disk. Useful
+  // for tests that want to assemble a cache without writing to disk first.
   // Does not touch path(); a subsequent Save() will still write to path().
   void LoadFromString(const std::string &contents);
 

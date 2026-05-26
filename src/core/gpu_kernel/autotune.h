@@ -11,20 +11,16 @@
 //      then $HOME/.cache/scamp/autotune.txt on Linux/macOS or
 //      %LOCALAPPDATA%\scamp\autotune.txt on Windows).
 //      RunAutotuneWithBenchmark writes here.
-//   2. Built-in cache embedded in the binary at build time from
-//      data/autotune_cache.txt (see builtin_autotune_cache.h). Ships
-//      with the binary so conda-forge / pip-wheel users get tuned
-//      configs without needing to recompile.
-//   3. GetDefaultKernelConfig() -- the compile-time default
-//      (kKernelVariants[0]).
+//   2. GetDefaultKernelConfig(profile_type, precision) -- compile-time
+//      default. Per-profile shfl vs sliding-window family preference;
+//      the chosen variant's DefaultBlockszForPrecision picks the
+//      precision-specific blocksz.
 //
-// Workflow for shipping a new device's tuned config:
-//   1. Build SCAMP / pyscamp from source on that device.
-//   2. Run `SCAMP --autotune` (or pyscamp.autotune()) which calls
-//      RunAutotuneWithBenchmark. The override file is populated with
-//      the per-(profile, precision) variant that benchmarked fastest.
-//   3. Merge the new device's lines into data/autotune_cache.txt and
-//      open a PR. Future releases will ship those entries to end users.
+// Workflow for getting a tuned config:
+//   1. Build SCAMP / pyscamp from source on the target device.
+//   2. Run `SCAMP --autotune` (or pyscamp.autotune()) once -- it
+//      writes per-(profile, precision) winners to the user-cache
+//      path above, and subsequent runs read from there automatically.
 #pragma once
 
 #include <functional>
@@ -100,19 +96,17 @@ KernelConfig GetKernelConfigForDevice(int device_id,
                                       const std::string &cache_path = "");
 
 // Pure-logic lookup used by GetKernelConfigForDevice. Exposed so unit
-// tests can exercise the user-cache -> built-in -> fallback chain + the
-// cache-miss warning without needing a real CUDA device. Production
-// callers should use GetKernelConfigForDevice instead.
+// tests can exercise the user-cache -> fallback chain + the cache-miss
+// warning without needing a real CUDA device. Production callers should
+// use GetKernelConfigForDevice instead.
 //
 // `device_key`     -- the sanitized device key (as it appears in the
 //                     cache file).
 // `user_cache`     -- the user override cache (may be nullptr to skip).
-// `builtin_cache`  -- the built-in cache embedded at build time (may
-//                     be nullptr to skip).
 // `fallback`       -- compile-time default returned on miss.
 //
-// On miss (neither cache has a usable entry), emits a one-shot warning
-// to stderr identifying the missing (device, profile, precision) tuple
+// On miss (cache has no usable entry), emits a one-shot warning to
+// stderr identifying the missing (device, profile, precision) tuple
 // and what config got used as a fallback. Subsequent misses for the
 // same tuple are silent. ResetAutotuneWarnings() clears the dedup set
 // (used by tests).
@@ -121,7 +115,6 @@ KernelConfig LookupKernelConfigForDeviceKey(const std::string &device_key,
                                             SCAMPProfileType profile_type,
                                             SCAMPPrecisionType precision,
                                             const AutotuneCache *user_cache,
-                                            const AutotuneCache *builtin_cache,
                                             const KernelConfig &fallback);
 
 // Clear the cache-miss warning dedup set. Tests use this; production

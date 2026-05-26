@@ -160,43 +160,10 @@ void Test_UserCacheHit() {
   std::string out = CaptureStderr([&]() {
     auto cfg = SCAMP::LookupKernelConfigForDeviceKey(
         "FakeDeviceA", SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_SINGLE,
-        user.get(), nullptr, FallbackConfig());
+        user.get(), FallbackConfig());
     EXPECT_TRUE(ConfigsEqual(cfg, SupportedConfig()));
   });
   EXPECT_TRUE(out.empty());  // no warning expected on hit
-}
-
-// (Contract #1) Cache hit on the built-in cache returns the cached config.
-void Test_BuiltinCacheHit() {
-  SCAMP::ResetAutotuneWarnings();
-  auto builtin = MakeCacheFromString(
-      "SCAMP_AUTOTUNE_V1\n"
-      "FakeDeviceA|1NN_INDEX|SINGLE|128|8|4|0|8|16\n");
-  std::string out = CaptureStderr([&]() {
-    auto cfg = SCAMP::LookupKernelConfigForDeviceKey(
-        "FakeDeviceA", SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_SINGLE,
-        nullptr, builtin.get(), FallbackConfig());
-    EXPECT_TRUE(ConfigsEqual(cfg, SupportedConfig()));
-  });
-  EXPECT_TRUE(out.empty());
-}
-
-// (Contract #1) User override wins over built-in.
-void Test_UserCacheBeatsBuiltin() {
-  SCAMP::ResetAutotuneWarnings();
-  // User cache picks variant 6 (matches SupportedConfig); built-in
-  // picks variant 0 (compile-time default in our fixture). The user
-  // entry should win.
-  auto user = MakeCacheFromString(
-      "SCAMP_AUTOTUNE_V1\n"
-      "FakeDeviceA|1NN_INDEX|SINGLE|128|8|4|0|8|16\n");
-  auto builtin = MakeCacheFromString(
-      "SCAMP_AUTOTUNE_V1\n"
-      "FakeDeviceA|1NN_INDEX|SINGLE|256|2|2|2|16|16\n");
-  auto cfg = SCAMP::LookupKernelConfigForDeviceKey(
-      "FakeDeviceA", SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_SINGLE,
-      user.get(), builtin.get(), FallbackConfig());
-  EXPECT_TRUE(ConfigsEqual(cfg, SupportedConfig()));  // = the user entry
 }
 
 // (Contract #2) Cache miss returns fallback and emits a one-shot warning.
@@ -206,7 +173,7 @@ void Test_CacheMissEmitsWarningAndReturnsFallback() {
   std::string out = CaptureStderr([&]() {
     auto cfg = SCAMP::LookupKernelConfigForDeviceKey(
         "UnknownDevice", SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_SINGLE,
-        user.get(), nullptr, FallbackConfig());
+        user.get(), FallbackConfig());
     EXPECT_TRUE(ConfigsEqual(cfg, FallbackConfig()));
   });
   EXPECT_TRUE(out.find("UnknownDevice") != std::string::npos);
@@ -222,12 +189,12 @@ void Test_CacheMissWarningIsOneShot() {
   std::string first = CaptureStderr([&]() {
     SCAMP::LookupKernelConfigForDeviceKey(
         "UnknownDevice", SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_SINGLE,
-        user.get(), nullptr, FallbackConfig());
+        user.get(), FallbackConfig());
   });
   std::string second = CaptureStderr([&]() {
     SCAMP::LookupKernelConfigForDeviceKey(
         "UnknownDevice", SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_SINGLE,
-        user.get(), nullptr, FallbackConfig());
+        user.get(), FallbackConfig());
   });
   EXPECT_TRUE(!first.empty());
   EXPECT_TRUE(second.empty());  // warning should be deduped
@@ -243,7 +210,7 @@ void Test_QuietEnvSuppressesWarning() {
   std::string out = CaptureStderr([&]() {
     auto cfg = SCAMP::LookupKernelConfigForDeviceKey(
         "UnknownDeviceQuiet", SCAMP::PROFILE_TYPE_1NN_INDEX,
-        SCAMP::PRECISION_SINGLE, user.get(), nullptr, FallbackConfig());
+        SCAMP::PRECISION_SINGLE, user.get(), FallbackConfig());
     EXPECT_TRUE(ConfigsEqual(cfg, FallbackConfig()));
   });
   EXPECT_TRUE(out.empty());
@@ -260,7 +227,7 @@ void Test_QuietEnv_FalseyValuesStillWarn() {
     std::string out = CaptureStderr([&]() {
       SCAMP::LookupKernelConfigForDeviceKey(
           "FalseyEnvCheck", SCAMP::PROFILE_TYPE_1NN_INDEX,
-          SCAMP::PRECISION_SINGLE, user.get(), nullptr, FallbackConfig());
+          SCAMP::PRECISION_SINGLE, user.get(), FallbackConfig());
     });
     EXPECT_TRUE(!out.empty());
     PortableUnsetenv("SCAMP_AUTOTUNE_QUIET");
@@ -275,12 +242,12 @@ void Test_CacheMissWarningIsPerTuple() {
   std::string a = CaptureStderr([&]() {
     SCAMP::LookupKernelConfigForDeviceKey(
         "UnknownDevice", SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_SINGLE,
-        user.get(), nullptr, FallbackConfig());
+        user.get(), FallbackConfig());
   });
   std::string b = CaptureStderr([&]() {
     SCAMP::LookupKernelConfigForDeviceKey(
         "UnknownDevice", SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_DOUBLE,
-        user.get(), nullptr, FallbackConfig());
+        user.get(), FallbackConfig());
   });
   EXPECT_TRUE(!a.empty());
   EXPECT_TRUE(!b.empty());  // different precision should emit a new warning
@@ -298,7 +265,7 @@ void Test_UnsupportedVariantInCacheFallsThrough() {
       "FakeDeviceA|1NN_INDEX|SINGLE|128|99|99|99|99|99\n");
   auto cfg = SCAMP::LookupKernelConfigForDeviceKey(
       "FakeDeviceA", SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_SINGLE,
-      user.get(), nullptr, FallbackConfig());
+      user.get(), FallbackConfig());
   EXPECT_TRUE(ConfigsEqual(cfg, FallbackConfig()));
 }
 
@@ -321,7 +288,7 @@ void Test_FutureVersionHeaderSilentlyEmpties() {
   std::string warn = CaptureStderr([&]() {
     auto cfg = SCAMP::LookupKernelConfigForDeviceKey(
         "FakeDeviceA", SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_SINGLE,
-        cache.get(), nullptr, FallbackConfig());
+        cache.get(), FallbackConfig());
     EXPECT_TRUE(ConfigsEqual(cfg, FallbackConfig()));
   });
   EXPECT_TRUE(warn.find("no autotune entry") != std::string::npos);
@@ -364,7 +331,7 @@ void Test_PartiallyStaleCachePreservesGoodEntries() {
   std::string ok_out = CaptureStderr([&]() {
     auto cfg = SCAMP::LookupKernelConfigForDeviceKey(
         "MixedDevice", SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_SINGLE,
-        user.get(), nullptr, FallbackConfig());
+        user.get(), FallbackConfig());
     EXPECT_TRUE(ConfigsEqual(cfg, SupportedConfig()));
   });
   EXPECT_TRUE(ok_out.empty());  // good entry => no warning
@@ -373,7 +340,7 @@ void Test_PartiallyStaleCachePreservesGoodEntries() {
   std::string stale1_out = CaptureStderr([&]() {
     auto cfg = SCAMP::LookupKernelConfigForDeviceKey(
         "MixedDevice", SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_DOUBLE,
-        user.get(), nullptr, FallbackConfig());
+        user.get(), FallbackConfig());
     EXPECT_TRUE(ConfigsEqual(cfg, FallbackConfig()));
   });
   EXPECT_TRUE(stale1_out.find("no autotune entry") != std::string::npos);
@@ -381,31 +348,28 @@ void Test_PartiallyStaleCachePreservesGoodEntries() {
   std::string stale2_out = CaptureStderr([&]() {
     auto cfg = SCAMP::LookupKernelConfigForDeviceKey(
         "MixedDevice", SCAMP::PROFILE_TYPE_SUM_THRESH, SCAMP::PRECISION_DOUBLE,
-        user.get(), nullptr, FallbackConfig());
+        user.get(), FallbackConfig());
     EXPECT_TRUE(ConfigsEqual(cfg, FallbackConfig()));
   });
   EXPECT_TRUE(stale2_out.find("no autotune entry") != std::string::npos);
 }
 
-// Upgrade-with-builtin scenario: user cache is fully stale (e.g. user
-// upgraded pyscamp across a header-version bump), but the new release
-// ships a built-in cache that has the device. The built-in entry
-// must win -- otherwise the upgrade would silently regress the user.
-void Test_StaleUserCacheFallsThroughToBuiltin() {
+// Stale user cache with a future-version header is silently treated as
+// empty (a defensive upgrade-compat behavior in AutotuneCache::Load); the
+// lookup must then fall through to the fallback and emit the cache-miss
+// warning, NOT return the malformed/future entry as if it were valid.
+void Test_StaleUserCacheFallsThroughToFallback() {
   SCAMP::ResetAutotuneWarnings();
   auto user = MakeCacheFromString(
       "SCAMP_AUTOTUNE_V99\n"  // future version => silently empty
       "MyGPU|1NN_INDEX|SINGLE|128|8|4|0|8|16\n");
-  auto builtin = MakeCacheFromString(
-      "SCAMP_AUTOTUNE_V1\n"
-      "MyGPU|1NN_INDEX|SINGLE|128|8|4|0|8|16\n");
   std::string out = CaptureStderr([&]() {
     auto cfg = SCAMP::LookupKernelConfigForDeviceKey(
         "MyGPU", SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_SINGLE,
-        user.get(), builtin.get(), FallbackConfig());
-    EXPECT_TRUE(ConfigsEqual(cfg, SupportedConfig()));
+        user.get(), FallbackConfig());
+    EXPECT_TRUE(ConfigsEqual(cfg, FallbackConfig()));
   });
-  EXPECT_TRUE(out.empty());  // built-in hit => no warning
+  EXPECT_TRUE(out.find("MyGPU") != std::string::npos);
 }
 
 // Multi-device cache: looking up device A returns A's entry, device B
@@ -419,10 +383,10 @@ void Test_MultiDeviceCacheLookup() {
       "DeviceB|1NN_INDEX|SINGLE|256|2|2|2|16|16\n");
   auto a = SCAMP::LookupKernelConfigForDeviceKey(
       "DeviceA", SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_SINGLE,
-      cache.get(), nullptr, FallbackConfig());
+      cache.get(), FallbackConfig());
   auto b = SCAMP::LookupKernelConfigForDeviceKey(
       "DeviceB", SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_SINGLE,
-      cache.get(), nullptr, FallbackConfig());
+      cache.get(), FallbackConfig());
   EXPECT_EQ(a.blocksz, 128);
   EXPECT_EQ(b.blocksz, 256);
 }
@@ -674,7 +638,7 @@ void Test_AutotuneFullPipeline_FakeBench() {
   // a known target, with the user cache holding the just-written file.
   auto cfg = SCAMP::LookupKernelConfigForDeviceKey(
       device_key, SCAMP::PROFILE_TYPE_1NN_INDEX, SCAMP::PRECISION_DOUBLE,
-      &reader, nullptr, FallbackConfig());
+      &reader, FallbackConfig());
   const auto &g_winner = SCAMP::GetKernelVariantGeometry(3);
   EXPECT_EQ(cfg.blocksz, 64);
   EXPECT_EQ(cfg.blocks_per_sm, g_winner.blocks_per_sm);
@@ -708,8 +672,6 @@ int main() {
   };
   TestCase cases[] = {
       {"Test_UserCacheHit", Test_UserCacheHit},
-      {"Test_BuiltinCacheHit", Test_BuiltinCacheHit},
-      {"Test_UserCacheBeatsBuiltin", Test_UserCacheBeatsBuiltin},
       {"Test_CacheMissEmitsWarningAndReturnsFallback",
        Test_CacheMissEmitsWarningAndReturnsFallback},
       {"Test_CacheMissWarningIsOneShot", Test_CacheMissWarningIsOneShot},
@@ -724,8 +686,8 @@ int main() {
       {"Test_MissingHeaderSilentlyEmpties", Test_MissingHeaderSilentlyEmpties},
       {"Test_PartiallyStaleCachePreservesGoodEntries",
        Test_PartiallyStaleCachePreservesGoodEntries},
-      {"Test_StaleUserCacheFallsThroughToBuiltin",
-       Test_StaleUserCacheFallsThroughToBuiltin},
+      {"Test_StaleUserCacheFallsThroughToFallback",
+       Test_StaleUserCacheFallsThroughToFallback},
       {"Test_MultiDeviceCacheLookup", Test_MultiDeviceCacheLookup},
       {"Test_DefaultPath_EnvVarOverride", Test_DefaultPath_EnvVarOverride},
       {"Test_DefaultPath_XdgCacheHome", Test_DefaultPath_XdgCacheHome},

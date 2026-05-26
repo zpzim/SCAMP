@@ -18,7 +18,6 @@
 #include <vector>
 
 #include "autotune_cache.h"
-#include "builtin_autotune_cache.h"
 #include "common/scamp_exception.h"
 #include "device_props.h"
 #include "kernel_config.h"
@@ -91,23 +90,17 @@ bool AutotuneVariantEnabled(std::size_t variant_idx) {
   return true;
 }
 
-// Process-wide lazy caches: loaded once on first lookup, cleared if a
-// different cache_path is requested.
-//   user_cache    -- file at AutotuneCache::DefaultPath() (resolves to
-//                    $SCAMP_AUTOTUNE_CACHE / $XDG_CACHE_HOME / $HOME on
-//                    POSIX or %LOCALAPPDATA% on Windows). Written by
-//                    `SCAMP --autotune` / `pyscamp.autotune()`.
-//   builtin_cache -- parsed from kBuiltinAutotuneCache (embedded at build
-//                    time from data/autotune_cache.txt). Ships with the
-//                    binary; conda-forge / pip-wheel users rely on this.
+// Process-wide lazy cache for the user override file at
+// AutotuneCache::DefaultPath() (resolves to $SCAMP_AUTOTUNE_CACHE /
+// $XDG_CACHE_HOME / $HOME on POSIX or %LOCALAPPDATA% on Windows).
+// Written by `SCAMP --autotune` / `pyscamp.autotune()`. Loaded once on
+// first lookup; cleared if a different cache_path is requested.
 //
-// We do not invalidate either cache when the underlying source changes;
 // RunAutotuneWithBenchmark explicitly resets state.user_cache after a
 // sweep so subsequent lookups in the same process see fresh entries.
 struct CacheState {
   std::unique_ptr<AutotuneCache> user_cache;
   std::string loaded_user_path;
-  std::unique_ptr<AutotuneCache> builtin_cache;
 };
 
 CacheState &SharedCacheState() {
@@ -132,15 +125,6 @@ const AutotuneCache *GetOrLoadUserCache(const std::string &cache_path) {
   state.loaded_user_path = resolved;
   state.user_cache->Load();
   return state.user_cache.get();
-}
-
-const AutotuneCache *GetOrLoadBuiltinCache() {
-  // Caller must hold SharedCacheMutex().
-  CacheState &state = SharedCacheState();
-  if (state.builtin_cache) return state.builtin_cache.get();
-  state.builtin_cache = std::make_unique<AutotuneCache>("<builtin>");
-  state.builtin_cache->LoadFromString(kBuiltinAutotuneCache);
-  return state.builtin_cache.get();
 }
 
 // Process-wide override used by the autotune benchmark loop to force a
@@ -197,15 +181,15 @@ AutotuneResult RunAutotuneWithBenchmark(int device_id, BenchmarkFn bench,
               << "  device      : " << props.name << " (sm_"
               << props.compute_major << props.compute_minor << ", "
               << props.sm_count << " SMs)\n"
-              << "  override    : " << resolved << "\n"
+              << "  cache path  : " << resolved << "\n"
               << "  device key  : " << props.CacheKey() << "\n"
               << "  variants    : " << kNumKernelVariants << "\n"
               << "  trials/tuple: " << kNumKernelVariants
               << " (one per variant)\n"
               << "\n"
-              << "  NOTE: Per-(profile, precision) winners are written to the\n"
-              << "  user override path. To ship them, merge the relevant\n"
-              << "  lines into data/autotune_cache.txt and open a PR.\n\n";
+              << "  Per-(profile, precision) winners are written to the\n"
+              << "  cache path above; subsequent SCAMP launches pick them\n"
+              << "  up automatically from that path.\n\n";
   }
   // Inner call runs the sweep + cache write. Suppress the inner banner
   // since we just printed the (richer) device-specific one.
@@ -563,7 +547,6 @@ KernelConfig LookupKernelConfigForDeviceKey(const std::string &device_key,
                                             SCAMPProfileType profile_type,
                                             SCAMPPrecisionType precision,
                                             const AutotuneCache *user_cache,
-                                            const AutotuneCache *builtin_cache,
                                             const KernelConfig &fallback) {
   // 1) User override (env var or user-dir cache; see
   //    AutotuneCache::DefaultPath for the per-platform path).
@@ -574,18 +557,8 @@ KernelConfig LookupKernelConfigForDeviceKey(const std::string &device_key,
     }
   }
 
-  // 2) Built-in cache embedded at build time from data/autotune_cache.txt.
-  if (builtin_cache != nullptr) {
-    auto builtin_hit =
-        builtin_cache->Lookup(device_key, profile_type, precision);
-    if (builtin_hit.has_value() &&
-        IsSupportedKernelConfig(*builtin_hit, precision)) {
-      return *builtin_hit;
-    }
-  }
-
-  // 3) Compile-time default + one-shot warning so the user knows their
-  //    device isn't in either cache and they should consider running
+  // 2) Compile-time default + one-shot warning so the user knows their
+  //    device isn't in the cache and they should consider running
   //    --autotune. Fires once per (device, profile, precision) per process.
   if (ShouldEmitWarning(device_key, profile_type, precision)) {
     std::cerr
@@ -655,9 +628,8 @@ KernelConfig GetKernelConfigForDevice(int device_id,
     std::string key = props.CacheKey();
     std::lock_guard<std::mutex> lock(SharedCacheMutex());
     const AutotuneCache *user = GetOrLoadUserCache(cache_path);
-    const AutotuneCache *builtin = GetOrLoadBuiltinCache();
     return LookupKernelConfigForDeviceKey(key, profile_type, precision, user,
-                                          builtin, fallback);
+                                          fallback);
   } catch (const SCAMPException &) {
     return fallback;
   } catch (const std::exception &) {

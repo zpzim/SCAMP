@@ -12,11 +12,14 @@ lives, and how to use it.
 TL;DR
 -----
 
-* SCAMP ships with tuned configs for some GPUs, but it is not comprehensive.
+* SCAMP runs on any supported GPU out of the box with a safe per-
+  profile compile-time default. Running the autotuner once gets you the
+  best variant for your specific GPU; the result is cached per-user and
+  reused automatically by every subsequent SCAMP / pyscamp call.
 
   If you see a one-line warning at the top of a SCAMP run that starts
-  with ``SCAMP: no autotune entry for device '<name>' ...``, your GPU
-  isn't in the built-in cache. Run one of these once, then forget about
+  with ``SCAMP: no autotune entry for device '<name>' ...``, you
+  haven't tuned this GPU yet. Run one of these once, then forget about
   it:
 
   .. code-block:: console
@@ -47,9 +50,9 @@ When SCAMP launches a GPU kernel, it asks the autotuner for the best
 config for the current ``(device, profile_type, precision)`` tuple.
 The lookup tries these sources in order; the first hit wins:
 
-1. **Per-thread override.** Used internally by the autotune benchmark
-   loop to force a specific variant per timed trial. Not a user-facing
-   knob.
+1. **Process-wide override.** Used internally by the autotune benchmark
+   loop to force a specific variant per timed trial, and by CI via the
+   ``SCAMP_FORCE_VARIANT`` env var to exercise individual variants.
 
 2. **User cache** — ``~/.cache/scamp/autotune.txt`` on Linux/macOS or
    ``%LOCALAPPDATA%\scamp\autotune.txt`` on Windows by default (see
@@ -57,14 +60,9 @@ The lookup tries these sources in order; the first hit wins:
    Written by ``SCAMP --autotune`` / ``pyscamp.autotune()``. If you've
    tuned for your GPU, this is what gets used.
 
-3. **Built-in cache.** ``data/autotune_cache.txt`` from the source
-   tree, embedded into the binary at build time. This is how conda-forge
-   and pip-wheel users get device-specific tuning without having to
-   recompile — we ship entries for the GPUs we've benchmarked.
-
-4. **Compile-time default.** A safe fallback variant. Works on every
-   supported device but rarely the fastest. When SCAMP falls back to
-   this you'll see a one-shot warning on stderr (see
+3. **Compile-time default.** A safe per-profile-type variant. Works on
+   every supported device but rarely the fastest. When SCAMP falls
+   back to this you'll see a one-shot warning on stderr (see
    :ref:`autotune-miss-warning`).
 
 .. _autotune-default-path:
@@ -139,8 +137,8 @@ cache rows.
 
 Run with a smaller value if 256K is impractically slow on your GPU
 (older Pascal or T-class cards can take well over an hour at 256K),
-or with a larger value when you're producing entries to ship in
-``data/autotune_cache.txt``:
+or with a larger value when you want tighter rankings for a workload
+you know runs at large input sizes:
 
 .. code-block:: console
 
@@ -183,16 +181,9 @@ one-shot warning to stderr that looks like:
      (Suppressing further warnings for this tuple.)
 
 This is informational, not an error — SCAMP will run correctly with the
-default config, just not as fast as it could be. Two follow-ups:
-
-* Run ``--autotune`` once to populate your local cache. This silences
-  the warning for that tuple on subsequent runs and gives you a
-  measurable speed-up.
-
-* Optionally open a PR adding your device's lines from the user cache
-  (see :ref:`autotune-default-path` for its location on your platform)
-  into ``data/autotune_cache.txt`` so the next release ships those
-  entries to other users of your GPU.
+default config, just not as fast as it could be. Run ``--autotune``
+once to populate your local cache; the warning then silences for that
+tuple on subsequent runs and you get a measurable speed-up.
 
 Silencing the warning
 """""""""""""""""""""
@@ -269,24 +260,21 @@ The user cache is a plain-text file at the location described in
    # Windows (PowerShell):
    > Remove-Item "$env:LOCALAPPDATA\scamp\autotune.txt"
 
-The next SCAMP run will fall through to the built-in cache (and emit a
-miss warning if your device isn't shipped). Running ``--autotune``
-again regenerates the file.
+The next SCAMP run will fall through to the compile-time default and
+emit a miss warning. Run ``--autotune`` again to regenerate the file.
 
 If you suspect the user cache has a bad entry but don't want to delete
 the file (e.g. it has good entries for *some* devices), you can edit it
 by hand — each line is one record, ``#`` starts a comment, and the
 format is documented in the file's own header.
 
-To bypass the user cache entirely without deleting it, point
+To bypass the cache entirely without deleting it, point
 ``SCAMP_AUTOTUNE_CACHE`` at an empty file:
 
 .. code-block:: console
 
    $ touch /tmp/empty_cache.txt
    $ SCAMP_AUTOTUNE_CACHE=/tmp/empty_cache.txt SCAMP ...
-
-The built-in cache still applies; only the user override is bypassed.
 
 What happens to my cache when I upgrade SCAMP?
 ----------------------------------------------
@@ -304,12 +292,11 @@ The three things that can happen to an existing entry after an upgrade:
   when a release just adds new variants.
 * **The new build retired your entry's variant.** The runtime rejects
   the entry (it doesn't match any current variant), falls through to
-  the built-in cache, and — if that also misses — to the compile-time
-  default plus a one-shot "no autotune entry" warning. Other entries
-  in the same cache file are unaffected; only the one(s) naming the
-  retired variant fall through. You can ignore the warning, or run
-  ``--autotune`` again to refresh the affected ``(device, profile,
-  precision)`` tuples.
+  the compile-time default, and emits a one-shot "no autotune entry"
+  warning. Other entries in the same cache file are unaffected; only
+  the one(s) naming the retired variant fall through. You can ignore
+  the warning, or run ``--autotune`` again to refresh the affected
+  ``(device, profile, precision)`` tuples.
 * **The release bumped the cache file's version header.** This is
   reserved for hard-incompatibility changes (the file schema changed,
   or kernel semantics shifted enough that *every* tuned config is
@@ -326,14 +313,6 @@ applicable.
 
 Troubleshooting
 ---------------
-
-**"I updated** ``data/autotune_cache.txt`` **but the binary still uses the
-old values."**
-   CMake re-runs ``configure_file`` when the cache file changes (via
-   ``CMAKE_CONFIGURE_DEPENDS``), so a plain ``cmake --build .`` is enough
-   to pick up the new contents. If you suspect a stale embed, verify
-   with ``strings build/SCAMP | grep <your_device_key>``; the embedded
-   string should match the on-disk file.
 
 **"My configs aren't being respected on a multi-GPU box."**
    The cache is keyed by sanitized device name + compute capability
