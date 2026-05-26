@@ -286,39 +286,39 @@ SCAMPError_t LaunchDoTileShflWithGeometry(
   dim3 block(blocksz, 1, 1);
   dim3 grid(num_blocks, 1, 1);
 
-#define LAUNCH_PRECISION_SHFL_AT_BLOCKSZ(DATA_T, ACCUM_T, TARGET_THREADS,  \
-                                         BLOCKSZ_V, COMP_ROWS, COMP_COLS)  \
-  do {                                                                     \
-    auto kfn = do_tile_shfl<DATA_T, ACCUM_T, PROFILE_OUTPUT_TYPE,          \
-                            PROFILE_DATA_TYPE, DISTANCE_TYPE, COMP_ROWS,   \
-                            COMP_COLS, PROFILE_TYPE, TARGET_THREADS,       \
-                            DiagsPerThread, OuterUnrolledRows,             \
-                            KernelTileIters, BLOCKSZ_V>;                   \
-    if (smem > 48u * 1024u) {                                              \
-      cudaFuncSetAttribute(reinterpret_cast<const void *>(kfn),            \
-                           cudaFuncAttributeMaxDynamicSharedMemorySize,    \
-                           static_cast<int>(smem));                        \
-    }                                                                      \
-    kfn<<<grid, block, smem, s>>>(args, profile_A, profile_B);             \
+#define LAUNCH_PRECISION_SHFL_AT_BLOCKSZ(DATA_T, ACCUM_T, TARGET_THREADS,     \
+                                         BLOCKSZ_V, COMP_ROWS, COMP_COLS)     \
+  do {                                                                        \
+    auto kfn =                                                                \
+        do_tile_shfl<DATA_T, ACCUM_T, PROFILE_OUTPUT_TYPE, PROFILE_DATA_TYPE, \
+                     DISTANCE_TYPE, COMP_ROWS, COMP_COLS, PROFILE_TYPE,       \
+                     TARGET_THREADS, DiagsPerThread, OuterUnrolledRows,       \
+                     KernelTileIters, BLOCKSZ_V>;                             \
+    if (smem > 48u * 1024u) {                                                 \
+      cudaFuncSetAttribute(reinterpret_cast<const void *>(kfn),               \
+                           cudaFuncAttributeMaxDynamicSharedMemorySize,       \
+                           static_cast<int>(smem));                           \
+    }                                                                         \
+    kfn<<<grid, block, smem, s>>>(args, profile_A, profile_B);                \
   } while (0)
 
-#define LAUNCH_PRECISION_SHFL(DATA_T, ACCUM_T, DEFAULT_BSZ, COMP_ROWS,        \
-                              COMP_COLS)                                      \
-  do {                                                                        \
-    constexpr int target_threads = blocks_per_sm_v * (DEFAULT_BSZ);           \
-    if (blocksz == 64) {                                                      \
-      LAUNCH_PRECISION_SHFL_AT_BLOCKSZ(DATA_T, ACCUM_T, target_threads, 64,   \
-                                       COMP_ROWS, COMP_COLS);                 \
-    } else if (blocksz == 128) {                                              \
-      LAUNCH_PRECISION_SHFL_AT_BLOCKSZ(DATA_T, ACCUM_T, target_threads, 128,  \
-                                       COMP_ROWS, COMP_COLS);                 \
-    } else if (blocksz == 256) {                                              \
-      LAUNCH_PRECISION_SHFL_AT_BLOCKSZ(DATA_T, ACCUM_T, target_threads, 256,  \
-                                       COMP_ROWS, COMP_COLS);                 \
-    } else {                                                                  \
-      LAUNCH_PRECISION_SHFL_AT_BLOCKSZ(DATA_T, ACCUM_T, target_threads, 512,  \
-                                       COMP_ROWS, COMP_COLS);                 \
-    }                                                                         \
+#define LAUNCH_PRECISION_SHFL(DATA_T, ACCUM_T, DEFAULT_BSZ, COMP_ROWS,       \
+                              COMP_COLS)                                     \
+  do {                                                                       \
+    constexpr int target_threads = blocks_per_sm_v * (DEFAULT_BSZ);          \
+    if (blocksz == 64) {                                                     \
+      LAUNCH_PRECISION_SHFL_AT_BLOCKSZ(DATA_T, ACCUM_T, target_threads, 64,  \
+                                       COMP_ROWS, COMP_COLS);                \
+    } else if (blocksz == 128) {                                             \
+      LAUNCH_PRECISION_SHFL_AT_BLOCKSZ(DATA_T, ACCUM_T, target_threads, 128, \
+                                       COMP_ROWS, COMP_COLS);                \
+    } else if (blocksz == 256) {                                             \
+      LAUNCH_PRECISION_SHFL_AT_BLOCKSZ(DATA_T, ACCUM_T, target_threads, 256, \
+                                       COMP_ROWS, COMP_COLS);                \
+    } else {                                                                 \
+      LAUNCH_PRECISION_SHFL_AT_BLOCKSZ(DATA_T, ACCUM_T, target_threads, 512, \
+                                       COMP_ROWS, COMP_COLS);                \
+    }                                                                        \
   } while (0)
 
 #define LAUNCH_FOR_ROWCOL_MODE_SHFL(COMP_ROWS, COMP_COLS)                  \
