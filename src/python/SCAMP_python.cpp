@@ -469,7 +469,8 @@ int run_autotune(const std::vector<int>& devices,
     targets.push_back(0);
   }
   // Shares its bench impl + verbose progress format with the CLI's
-  // --autotune path (main.cpp dispatches here too).
+  // --autotune path (which calls RunAutotuneWithBenchmark directly
+  // from main.cpp).
   for (int dev : targets) {
     SCAMP::RunAutotuneWithBenchmark(dev, &SCAMP::DefaultBenchmarkVariant,
                                     cache_path, /*verbose=*/true);

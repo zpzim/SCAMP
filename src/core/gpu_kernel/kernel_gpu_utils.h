@@ -42,9 +42,10 @@ constexpr int hw_threads_per_sm() {
 #if defined(__CUDA_ARCH__)
   // Turing has half the warps per SM compared to neighbouring arches.
   if constexpr (__CUDA_ARCH__ == 750) return 1024;
-  // GA10x, Orin, Ada GeForce, Blackwell GeForce: 1536 threads/SM.
+  // GA10x, Orin, Ada GeForce, Jetson Thor, Blackwell GeForce: 1536 threads/SM.
   if constexpr (__CUDA_ARCH__ == 860 || __CUDA_ARCH__ == 870 ||
-                __CUDA_ARCH__ == 890 || __CUDA_ARCH__ == 1200) {
+                __CUDA_ARCH__ == 890 || __CUDA_ARCH__ == 1100 ||
+                __CUDA_ARCH__ == 1200) {
     return 1536;
   }
 #endif

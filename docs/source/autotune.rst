@@ -176,7 +176,7 @@ one-shot warning to stderr that looks like:
 
 .. code-block:: text
 
-   SCAMP: no autotune entry for device 'NVIDIA_T1000__sm_75' / 1NN_INDEX / SINGLE; using compile-time default (blocksz=128 bps=8 dpt=4 ur=0 our=8 kti=8).
+   SCAMP: no autotune entry for device 'NVIDIA_T1000__sm_75' / 1NN_INDEX / SINGLE; using compile-time default (blocksz=128 bps=5 dpt=8 ur=0 our=8 kti=32).
      Run `SCAMP --autotune` or `pyscamp.autotune()` to benchmark a better config for this device.
      (Suppressing further warnings for this tuple.)
 

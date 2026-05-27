@@ -63,7 +63,10 @@ __global__ void __launch_bounds__(BLOCKSZ,
   constexpr int warps_per_block = BLOCKSZ / 32;
   static_assert(BLOCKSZ % 32 == 0, "BLOCKSZ must be a multiple of 32");
   static_assert(tile_height <= 32 * DiagsPerThread,
-                "tile_height must be <= 32 * DPT for the first draft");
+                "tile_height must be <= 32 * DPT: do_tile_shfl assumes "
+                "update_info_shfl fires at most once per warp per tile, "
+                "which holds only when tile_height does not exceed the "
+                "warp's column-block span of 32 * DPT rows.");
 
   extern __shared__ char smem_raw[];
   SCAMPShflSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE, tile_width,

@@ -102,13 +102,22 @@ distributed gRPC client):
 * ``SCAMP_AUTOTUNE_QUIET`` — set to ``1`` (or any truthy non-empty
   value other than ``0`` / ``false`` / ``FALSE``) to suppress the
   one-shot "no autotune entry for device …" warning on cache miss.
-  Set by pyscamp at module init for notebook users; the CLI leaves it
-  off by default. See :ref:`autotune-miss-warning`.
+  See :ref:`autotune-miss-warning`.
 * ``SCAMP_AUTOTUNE_INPUT_LENGTH`` — synthetic input length the
-  ``--autotune`` benchmark uses per trial (default 131072 = 128K
+  ``--autotune`` benchmark uses per trial (default 262144 = 256K
   elements). Larger values are slower but produce per-variant rankings
   that match production-scale workloads better; see :doc:`autotune` for
   guidance on choosing a value.
+* ``SCAMP_AUTOTUNE_PRECISION_FILTER`` — restrict the autotune sweep to
+  one precision (``SINGLE`` or ``DOUBLE``). See :doc:`autotune`.
+* ``SCAMP_AUTOTUNE_VARIANT_FILTER`` — restrict the autotune sweep to
+  one variant family (``shfl`` or ``sliding-window``). See :doc:`autotune`.
+* ``SCAMP_AUTOTUNE_WARMUP_RUNS`` — number of warmup runs per autotune
+  trial (default 0). See :doc:`autotune`.
+* ``SCAMP_FORCE_VARIANT`` — force a specific GPU kernel variant index
+  for every launch, bypassing the cache. Indices come from
+  ``SCAMP --list_variants``; used by CI for per-variant correctness
+  testing.
 * ``SCAMP_SERVER_SERVICE_HOST`` and ``SCAMP_SERVER_SERVICE_PORT`` —
   host and port the gRPC ``SCAMPclient`` connects to. Only relevant
   for the distributed worker / driver build (see :doc:`distributed`).
