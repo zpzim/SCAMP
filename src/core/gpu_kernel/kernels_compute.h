@@ -326,13 +326,28 @@ __device__ inline FORCE_INLINE void do_row(
     info.cov[i] =
         info.cov[i] + dfc[row_iter + i] * dgr + dgc[row_iter + i] * dfr;
   }
-  if constexpr (COMPUTE_COLS) {
-    merge_to_column<PROFILE_TYPE, DiagsPerThread>(outer_row_iter, args, info,
-                                                  smem, distc, dist, idxc);
-  }
-  if constexpr (COMPUTE_ROWS) {
-    merge_to_row<PROFILE_TYPE, DISTANCE_TYPE, DerivedInputType, DiagsPerThread>(
-        outer_row_iter, args, info, smem, dist, distr, idxr);
+  if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
+    // Per-cell reduction (mirrors CPU update_mp): every (row, col) distance is
+    // bucketed and max-accumulated into the block's smem cell grid. No
+    // per-column/row profile is kept for matrix summary.
+    const int gr = info.global_row + outer_row_iter;
+#pragma unroll unrolled_diags
+    for (int i = 0; i < unrolled_diags; ++i) {
+      ms_accumulate_cell(
+          smem, static_cast<double>(gr),
+          static_cast<double>(info.global_col + outer_row_iter + i),
+          static_cast<float>(dist[i]), args);
+    }
+  } else {
+    if constexpr (COMPUTE_COLS) {
+      merge_to_column<PROFILE_TYPE, DiagsPerThread>(outer_row_iter, args, info,
+                                                    smem, distc, dist, idxc);
+    }
+    if constexpr (COMPUTE_ROWS) {
+      merge_to_row<PROFILE_TYPE, DISTANCE_TYPE, DerivedInputType,
+                   DiagsPerThread>(outer_row_iter, args, info, smem, dist, distr,
+                                   idxr);
+    }
   }
 }
 
@@ -462,11 +477,13 @@ __device__ void do_iteration_fast(
           smem, distc, distr[j * UnrolledRows + k], inormc, dfc, dgc, inormr[k],
           dfr[k], dgr[k], idxc, idxr[j * UnrolledRows + k]);
     }
-    if constexpr (COMPUTE_COLS) {
+    // MATRIX_SUMMARY accumulates directly into the smem cell grid inside
+    // do_row, so it keeps no per-column/row profile to flush here.
+    if constexpr (COMPUTE_COLS && PROFILE_TYPE != PROFILE_TYPE_MATRIX_SUMMARY) {
       update_cols<UnrolledRows, PROFILE_TYPE, DerivedDataType, DiagsPerThread>(
           /*start_index=*/j * UnrolledRows, args, info, smem, distc, idxc);
     }
-    if constexpr (COMPUTE_ROWS) {
+    if constexpr (COMPUTE_ROWS && PROFILE_TYPE != PROFILE_TYPE_MATRIX_SUMMARY) {
       update_rows<UnrolledRows, PROFILE_TYPE, DISTANCE_TYPE, DerivedDataType,
                   DiagsPerThread>(/*row_iter=*/j * UnrolledRows, args, info,
                                   smem, distr, idxr);
@@ -475,8 +492,8 @@ __device__ void do_iteration_fast(
 
   // Flush the trailing tail of distc (positions OuterUnrolledRows
   // through unrolled_cols-1 hold bests merged but never atomic-flushed
-  // by the per-batch update above).
-  if constexpr (COMPUTE_COLS) {
+  // by the per-batch update above). MATRIX_SUMMARY keeps no distc tail.
+  if constexpr (COMPUTE_COLS && PROFILE_TYPE != PROFILE_TYPE_MATRIX_SUMMARY) {
     update_cols<unrolled_cols - OuterUnrolledRows, PROFILE_TYPE,
                 DerivedDataType, DiagsPerThread>(
         /*start_index=*/OuterUnrolledRows, args, info, smem, distc, idxc);
@@ -599,15 +616,29 @@ __device__ inline void do_row_edge(
                   smem.dg_col[info.local_col + i] * dfr;
   }
 
+  if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
+    // Per-cell reduction with the same bounds check reduce_edge applies.
+#pragma unroll DiagsPerThread
+    for (int i = 0; i < DiagsPerThread; ++i) {
+      if (info.global_col + i < static_cast<uint32_t>(args.n_x) &&
+          diag + i < num_diags) {
+        ms_accumulate_cell(smem, static_cast<double>(info.global_row),
+                           static_cast<double>(info.global_col + i),
+                           static_cast<float>(dist[i]), args);
+      }
+    }
+  } else {
 #pragma unroll
-  for (int i = 0; i < DiagsPerThread; ++i) {
-    reduce_edge<PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, DerivedSmemType,
-                DerivedDataType, DiagsPerThread>(
-        /*iter=*/i, args, info, smem, dist, dist_row, idx_row, diag, num_diags);
-  }
+    for (int i = 0; i < DiagsPerThread; ++i) {
+      reduce_edge<PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, DerivedSmemType,
+                  DerivedDataType, DiagsPerThread>(/*iter=*/i, args, info, smem,
+                                                   dist, dist_row, idx_row, diag,
+                                                   num_diags);
+    }
 
-  if constexpr (COMPUTE_ROWS) {
-    reduce_row<PROFILE_TYPE, DerivedDataType, DiagsPerThread>(
-        args, info, smem, dist_row, idx_row);
+    if constexpr (COMPUTE_ROWS) {
+      reduce_row<PROFILE_TYPE, DerivedDataType, DiagsPerThread>(
+          args, info, smem, dist_row, idx_row);
+    }
   }
 }

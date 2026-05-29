@@ -518,17 +518,30 @@ __device__ inline void do_row_shfl(
   const Eigen::Array<DISTANCE_TYPE, DPT, 1> dist =
       slot_valid.select(d_raw, init_dist<DISTANCE_TYPE, PROFILE_TYPE>());
 
-  if constexpr (COMPUTE_COLS) {
-    merge_to_column_shfl<PROFILE_TYPE>(args, global_row, state, dist);
-  }
+  if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
+    // Per-cell reduction (mirrors CPU update_mp): each lane holds DPT
+    // (global_col, dist) pairs at this global_row. Invalid/out-of-bounds slots
+    // already carry init_dist (< threshold) so they are skipped by the
+    // threshold gate inside ms_accumulate_cell.
+#pragma unroll DPT
+    for (int i = 0; i < DPT; ++i) {
+      ms_accumulate_cell(smem, static_cast<double>(global_row),
+                         static_cast<double>(state.global_col[i]),
+                         static_cast<float>(dist[i]), args);
+    }
+  } else {
+    if constexpr (COMPUTE_COLS) {
+      merge_to_column_shfl<PROFILE_TYPE>(args, global_row, state, dist);
+    }
 
-  if constexpr (COMPUTE_ROWS) {
-    DISTANCE_TYPE distr = init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
-    unsigned int idxr = 0;
-    merge_to_row_shfl_lane<PROFILE_TYPE, DISTANCE_TYPE, DPT>(
-        args, state.global_col, dist, distr, idxr);
-    warp_reduce_and_flush_row<PROFILE_TYPE>(row_in_tile, distr, idxr,
-                                            state.warpln, smem);
+    if constexpr (COMPUTE_ROWS) {
+      DISTANCE_TYPE distr = init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
+      unsigned int idxr = 0;
+      merge_to_row_shfl_lane<PROFILE_TYPE, DISTANCE_TYPE, DPT>(
+          args, state.global_col, dist, distr, idxr);
+      warp_reduce_and_flush_row<PROFILE_TYPE>(row_in_tile, distr, idxr,
+                                              state.warpln, smem);
+    }
   }
 
   // -----------------------------------------------------------------
@@ -640,6 +653,14 @@ struct SCAMPShflSmem {
 
   uint64_t *profile_a_length;
   uint64_t *profile_b_length;
+
+  // MATRIX_SUMMARY per-cell coalescing grid (see SCAMPSmem in
+  // kernel_gpu_utils.h). Aliases the local_mp_col region.
+  float *ms_grid;
+  float *ms_matrix;
+  int ms_col_min, ms_row_min, ms_grid_w, ms_grid_h, ms_num_cells;
+  bool ms_use_grid;
+  bool ms_rowwise;
 };
 
 template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, SCAMPProfileType type,
@@ -687,6 +708,15 @@ SCAMPShflSmem<DATA_TYPE, PROFILE_DATA_TYPE, type, tile_width, tile_height,
     profile_a_length = nullptr;
     profile_b_length = nullptr;
   }
+  ms_grid = compute_columns
+                ? reinterpret_cast<float *>(local_mp_col.data())
+                : (compute_rows ? reinterpret_cast<float *>(local_mp_row.data())
+                                : nullptr);
+  ms_matrix = nullptr;
+  ms_col_min = ms_row_min = 0;
+  ms_grid_w = ms_grid_h = ms_num_cells = 0;
+  ms_use_grid = false;
+  ms_rowwise = false;
 }
 
 // init_smem_shfl: parallels the four init_smem variants in kernels_smem.h
@@ -805,13 +835,43 @@ __device__ void init_smem_shfl(SCAMPKernelInputArgs<double> &args,
                                            tile_width, tile_height, BLOCKSZ>(
         args, smem, col_start, row_start, 0.0);
   } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
-    mp_entry e;
-    e.floats[0] = args.opt.threshold;
-    e.ints[1] = 0;
+    // Load the df/dg/inorm row data into smem but skip the per-column/row
+    // profile init: matrix summary uses the cell grid below instead.
     init_smem_shfl_with_static_initializer<SMEM_TYPE, PROFILE_DATA_TYPE,
-                                           COMPUTE_ROWS, COMPUTE_COLS,
-                                           tile_width, tile_height, BLOCKSZ>(
-        args, smem, col_start, row_start, e.ulong);
+                                           /*COMPUTE_ROWS=*/false,
+                                           /*COMPUTE_COLS=*/false, tile_width,
+                                           tile_height, BLOCKSZ>(
+        args, smem, col_start, row_start, static_cast<PROFILE_DATA_TYPE>(0));
+    // Orientation + cell-grid setup (see the sliding-window init_smem for the
+    // rationale). COMPUTE_ROWS marks the transposed run, which writes profile_b
+    // (the real matrix in that run) with row/col swapped.
+    constexpr bool kRowwise = COMPUTE_ROWS;
+    smem.ms_rowwise = kRowwise;
+    smem.ms_matrix =
+        reinterpret_cast<float *>(kRowwise ? profile_b : profile_a);
+    int rb0, cb0, rb1, cb1;
+    ms_cell_of(static_cast<double>(row_start), static_cast<double>(col_start),
+               kRowwise, args, &rb0, &cb0);
+    ms_cell_of(static_cast<double>(row_start + tile_height - 1),
+               static_cast<double>(col_start + tile_width + tile_height - 1),
+               kRowwise, args, &rb1, &cb1);
+    smem.ms_row_min = rb0 < rb1 ? rb0 : rb1;
+    smem.ms_col_min = cb0 < cb1 ? cb0 : cb1;
+    smem.ms_grid_h = (rb0 > rb1 ? rb0 : rb1) - smem.ms_row_min + 1;
+    smem.ms_grid_w = (cb0 > cb1 ? cb0 : cb1) - smem.ms_col_min + 1;
+    smem.ms_num_cells = smem.ms_grid_w * smem.ms_grid_h;
+    // Cap = capacity of the aliased region (local_mp_col on the normal run,
+    // local_mp_row on the transposed run).
+    constexpr int kMsGridCap =
+        static_cast<int>(sizeof(PROFILE_DATA_TYPE) / sizeof(float)) *
+        (kRowwise ? tile_height : tile_width);
+    smem.ms_use_grid =
+        smem.ms_num_cells > 0 && smem.ms_num_cells <= kMsGridCap;
+    if (smem.ms_use_grid) {
+      for (int idx = threadIdx.x; idx < smem.ms_num_cells; idx += BLOCKSZ) {
+        smem.ms_grid[idx] = -2.0f;
+      }
+    }
   } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
     init_smem_shfl_for_all_neighbors<SMEM_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
                                      tile_width, tile_height, BLOCKSZ>(

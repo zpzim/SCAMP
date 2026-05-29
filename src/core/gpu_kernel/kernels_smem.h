@@ -143,13 +143,55 @@ __device__ void init_smem(SCAMPKernelInputArgs<double> &args, SMEM_TYPE &smem,
                                       tile_height, BLOCKSZ>(
         args, smem, col_start, row_start, 0.0);
   } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
-    mp_entry e;
-    e.floats[0] = args.opt.threshold;
-    e.ints[1] = 0;
+    // Load the df/dg/inorm column+row data into smem (needed by the compute)
+    // but skip the per-column/row profile init: matrix summary has no such
+    // profile -- it uses the cell grid below. Passing COMPUTE_ROWS=COMPUTE_COLS
+    // =false keeps the unconditional df/dg/inorm loads and drops the profile
+    // writes.
     init_smem_with_static_initializer<SMEM_TYPE, PROFILE_DATA_TYPE,
-                                      COMPUTE_ROWS, COMPUTE_COLS, tile_width,
+                                      /*COMPUTE_ROWS=*/false,
+                                      /*COMPUTE_COLS=*/false, tile_width,
                                       tile_height, BLOCKSZ>(
-        args, smem, col_start, row_start, e.ulong);
+        args, smem, col_start, row_start, static_cast<PROFILE_DATA_TYPE>(0));
+    // Orientation: the normal (upper) run has COMPUTE_COLS and writes profile_a
+    // columnwise; the transposed (lower) run has COMPUTE_ROWS and writes
+    // profile_b (which holds the real matrix in that run) with row/col swapped.
+    // This mirrors the CPU update_columnwise vs update_rowwise split. Exactly
+    // one flag is set per run for matrix summary.
+    constexpr bool kRowwise = COMPUTE_ROWS;
+    smem.ms_rowwise = kRowwise;
+    smem.ms_matrix =
+        reinterpret_cast<float *>(kRowwise ? profile_b : profile_a);
+    // Size and zero the per-block cell grid for the cells this stripe-step
+    // touches. The block walks a parallelogram (rows [row_start, +tile_height),
+    // columns up to col_start + tile_width + tile_height); bucket both corners
+    // with the run's orientation and take the spanning box. Bounds are computed
+    // identically by every thread (no broadcast needed). The grid aliases the
+    // local_mp_col region; if it needs more cells than fit, the grid is
+    // disabled and the inner loop writes straight to global memory.
+    int rb0, cb0, rb1, cb1;
+    ms_cell_of(static_cast<double>(row_start), static_cast<double>(col_start),
+               kRowwise, args, &rb0, &cb0);
+    ms_cell_of(static_cast<double>(row_start + tile_height - 1),
+               static_cast<double>(col_start + tile_width + tile_height - 1),
+               kRowwise, args, &rb1, &cb1);
+    smem.ms_row_min = rb0 < rb1 ? rb0 : rb1;
+    smem.ms_col_min = cb0 < cb1 ? cb0 : cb1;
+    smem.ms_grid_h = (rb0 > rb1 ? rb0 : rb1) - smem.ms_row_min + 1;
+    smem.ms_grid_w = (cb0 > cb1 ? cb0 : cb1) - smem.ms_col_min + 1;
+    smem.ms_num_cells = smem.ms_grid_w * smem.ms_grid_h;
+    // Cap = capacity of the aliased region (local_mp_col on the normal run,
+    // local_mp_row on the transposed run).
+    constexpr int kMsGridCap =
+        static_cast<int>(sizeof(PROFILE_DATA_TYPE) / sizeof(float)) *
+        (kRowwise ? tile_height : tile_width);
+    smem.ms_use_grid =
+        smem.ms_num_cells > 0 && smem.ms_num_cells <= kMsGridCap;
+    if (smem.ms_use_grid) {
+      for (int idx = threadIdx.x; idx < smem.ms_num_cells; idx += BLOCKSZ) {
+        smem.ms_grid[idx] = -2.0f;  // sentinel matches host matrix init
+      }
+    }
   } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
     init_smem_for_all_neighbors<SMEM_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
                                 tile_width, tile_height, BLOCKSZ>(
@@ -222,6 +264,26 @@ __device__ void write_back(SCAMPKernelInputArgs<double> &args,
                            uint32_t tile_start_y, uint32_t n_x, uint32_t n_y,
                            DerivedProfile *profile_A,
                            DerivedProfile *profile_B) {
+  if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
+    // Flush the per-block smem cell grid to the global matrix with one atomic
+    // per touched cell. Cells with no contribution keep the -2.0 sentinel and
+    // are skipped. When the grid was disabled the inner loop already wrote
+    // directly to global, so there is nothing to flush.
+    if (smem.ms_use_grid) {
+      for (int idx = threadIdx.x; idx < smem.ms_num_cells; idx += BLOCKSZ) {
+        float v = smem.ms_grid[idx];
+        if (v > -2.0f) {
+          int lr = idx / smem.ms_grid_w;
+          int lc = idx - lr * smem.ms_grid_w;
+          int64_t gpos =
+              static_cast<int64_t>(smem.ms_row_min + lr) * args.matrix_width +
+              (smem.ms_col_min + lc);
+          fAtomicMax<ATOMIC_GLOBAL>(smem.ms_matrix + gpos, v);
+        }
+      }
+    }
+    return;
+  }
   int global_position, local_position;
   // The match-output atomic counter has to target *global* memory: that
   // counter is what Profile::CopyFromDevice reads back to size the

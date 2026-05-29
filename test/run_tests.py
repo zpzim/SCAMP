@@ -301,16 +301,15 @@ def run_test(test, inputs):
       valid = evaluate_result(dm_reductions,scamp_results,subtest_dict)
       subtests[subtest_args] = valid
 
-      # KNN MPs are only supported when cuda devices are available and SCAMP is built with CUDA.
-      # KNN not supported on both CPU/GPU yet
-      '''
-      if gpu_enabled: 
-        subtest_dict = {'tilesz': tile_sz, 'matchpercol': 5, 'threshold': thresh, 'ptype': 'ALL_NEIGHBORS', 'rrow': None, 'rcol': None, 'keeprows': False, 'aligned': False}
-        subtest_args = tuple(subtest_dict.values())
-        scamp_results = run_scamp(inputs, a, b, window, tile_sz, 5, thresh, "ALL_NEIGHBORS", None, None,False, False);
-        valid = evaluate_result(dm_reductions,scamp_results,subtest_dict)
-        subtests[subtest_args] = valid
-      '''
+      # KNN (ALL_NEIGHBORS) MPs are GPU-only, but the compare_all_neighbors
+      # verification path is not yet reliable, so this stays disabled pending a
+      # separate fix to the test harness.
+      # if gpu_enabled:
+      #   subtest_dict = {'tilesz': tile_sz, 'matchpercol': 5, 'threshold': thresh, 'ptype': 'ALL_NEIGHBORS', 'rrow': None, 'rcol': None, 'keeprows': False, 'aligned': False}
+      #   subtest_args = tuple(subtest_dict.values())
+      #   scamp_results = run_scamp(inputs, a, b, window, tile_sz, 5, thresh, "ALL_NEIGHBORS", None, None, False, False)
+      #   valid = evaluate_result(dm_reductions, scamp_results, subtest_dict)
+      #   subtests[subtest_args] = valid
 
     for rrow in matrix_sizes_to_test:
       if rrow >= len(inputs[b]) - window + 1:
@@ -318,13 +317,13 @@ def run_test(test, inputs):
       for rcol in matrix_sizes_to_test:
         if rcol >= len(inputs[a]) - window + 1:
           continue
-        # GPUs do not currently output the exact matrix summary, it is not currently possible to use the current verification method on GPU output.
-        if not gpu_enabled:
-          subtest_dict = {'tilesz' : tile_sz, 'matchpercol' : None, 'threshold': None, 'ptype': "MATRIX_SUMMARY", 'rrow': rrow, 'rcol': rcol, 'keeprows': False, 'aligned': False}
-          subtest_args = tuple(subtest_dict.values())
-          scamp_results = run_scamp(inputs, a, b, window, tile_sz, None, None, "MATRIX_SUMMARY", rrow, rcol, False, False);
-          valid = evaluate_result(dm_reductions,scamp_results,subtest_dict)
-          subtests[subtest_args] = valid
+        # Both CPU and GPU now compute the exact per-cell matrix summary, so
+        # the same reduce_matrix reference verification applies to both.
+        subtest_dict = {'tilesz' : tile_sz, 'matchpercol' : None, 'threshold': None, 'ptype': "MATRIX_SUMMARY", 'rrow': rrow, 'rcol': rcol, 'keeprows': False, 'aligned': False}
+        subtest_args = tuple(subtest_dict.values())
+        scamp_results = run_scamp(inputs, a, b, window, tile_sz, None, None, "MATRIX_SUMMARY", rrow, rcol, False, False);
+        valid = evaluate_result(dm_reductions,scamp_results,subtest_dict)
+        subtests[subtest_args] = valid
 
     prev_tile_size = tile_sz
 
