@@ -526,14 +526,12 @@ __device__ inline void ms_cell_of(int gr, int gc, bool rowwise,
   // Float division: off the FP64 pipe, but more accurate at cell boundaries
   // than a reciprocal multiply (no separate 1/c rounding step). cols/rows_per
   // _cell are already float in the kernel args.
-  *col_b = static_cast<int>(
-      floorf((static_cast<float>(for_col) +
-              static_cast<float>(args.global_start_col)) /
-             args.cols_per_cell));
-  *row_b = static_cast<int>(
-      floorf((static_cast<float>(for_row) +
-              static_cast<float>(args.global_start_row)) /
-             args.rows_per_cell));
+  *col_b = static_cast<int>(floorf((static_cast<float>(for_col) +
+                                    static_cast<float>(args.global_start_col)) /
+                                   args.cols_per_cell));
+  *row_b = static_cast<int>(floorf((static_cast<float>(for_row) +
+                                    static_cast<float>(args.global_start_row)) /
+                                   args.rows_per_cell));
 }
 
 // Write one (row_b, col_b, corr) into the smem cell grid with a block-scoped

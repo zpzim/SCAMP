@@ -185,8 +185,7 @@ __device__ void init_smem(SCAMPKernelInputArgs<double> &args, SMEM_TYPE &smem,
     constexpr int kMsGridCap =
         static_cast<int>(sizeof(PROFILE_DATA_TYPE) / sizeof(float)) *
         (kRowwise ? tile_height : tile_width);
-    smem.ms_use_grid =
-        smem.ms_num_cells > 0 && smem.ms_num_cells <= kMsGridCap;
+    smem.ms_use_grid = smem.ms_num_cells > 0 && smem.ms_num_cells <= kMsGridCap;
     if (smem.ms_use_grid) {
       for (int idx = threadIdx.x; idx < smem.ms_num_cells; idx += BLOCKSZ) {
         smem.ms_grid[idx] = -2.0f;  // sentinel matches host matrix init
@@ -285,10 +284,9 @@ __device__ void write_back(SCAMPKernelInputArgs<double> &args,
       global_position = tile_start_x + threadIdx.x;
       local_position = threadIdx.x;
       while (local_position < TILE_WIDTH && global_position < n_x) {
-        write_back_value<PROFILE_TYPE>(args, local_position, global_position,
-                                       smem.local_mp_col, profile_A,
-                                       args.profile_a_length,
-                                       args.thresholds_a);
+        write_back_value<PROFILE_TYPE>(
+            args, local_position, global_position, smem.local_mp_col, profile_A,
+            args.profile_a_length, args.thresholds_a);
         global_position += BLOCKSZ;
         local_position += BLOCKSZ;
       }
@@ -297,10 +295,9 @@ __device__ void write_back(SCAMPKernelInputArgs<double> &args,
       global_position = tile_start_y + threadIdx.x;
       local_position = threadIdx.x;
       while (local_position < TILE_HEIGHT && global_position < n_y) {
-        write_back_value<PROFILE_TYPE>(args, local_position, global_position,
-                                       smem.local_mp_row, profile_B,
-                                       args.profile_b_length,
-                                       args.thresholds_b);
+        write_back_value<PROFILE_TYPE>(
+            args, local_position, global_position, smem.local_mp_row, profile_B,
+            args.profile_b_length, args.thresholds_b);
         global_position += BLOCKSZ;
         local_position += BLOCKSZ;
       }

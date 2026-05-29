@@ -333,10 +333,9 @@ __device__ inline FORCE_INLINE void do_row(
     const int gr = info.global_row + outer_row_iter;
 #pragma unroll unrolled_diags
     for (int i = 0; i < unrolled_diags; ++i) {
-      ms_accumulate_cell(
-          info, smem, gr,
-          static_cast<int>(info.global_col + outer_row_iter + i),
-          static_cast<float>(dist[i]), args);
+      ms_accumulate_cell(info, smem, gr,
+                         static_cast<int>(info.global_col + outer_row_iter + i),
+                         static_cast<float>(dist[i]), args);
     }
   } else {
     if constexpr (COMPUTE_COLS) {
@@ -345,8 +344,8 @@ __device__ inline FORCE_INLINE void do_row(
     }
     if constexpr (COMPUTE_ROWS) {
       merge_to_row<PROFILE_TYPE, DISTANCE_TYPE, DerivedInputType,
-                   DiagsPerThread>(outer_row_iter, args, info, smem, dist, distr,
-                                   idxr);
+                   DiagsPerThread>(outer_row_iter, args, info, smem, dist,
+                                   distr, idxr);
     }
   }
 }
@@ -632,8 +631,8 @@ __device__ inline void do_row_edge(
     for (int i = 0; i < DiagsPerThread; ++i) {
       reduce_edge<PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, DerivedSmemType,
                   DerivedDataType, DiagsPerThread>(/*iter=*/i, args, info, smem,
-                                                   dist, dist_row, idx_row, diag,
-                                                   num_diags);
+                                                   dist, dist_row, idx_row,
+                                                   diag, num_diags);
     }
 
     if constexpr (COMPUTE_ROWS) {

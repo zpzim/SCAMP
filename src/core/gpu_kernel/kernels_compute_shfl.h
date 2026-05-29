@@ -873,8 +873,7 @@ __device__ void init_smem_shfl(SCAMPKernelInputArgs<double> &args,
     constexpr int kMsGridCap =
         static_cast<int>(sizeof(PROFILE_DATA_TYPE) / sizeof(float)) *
         (kRowwise ? tile_height : tile_width);
-    smem.ms_use_grid =
-        smem.ms_num_cells > 0 && smem.ms_num_cells <= kMsGridCap;
+    smem.ms_use_grid = smem.ms_num_cells > 0 && smem.ms_num_cells <= kMsGridCap;
     if (smem.ms_use_grid) {
       for (int idx = threadIdx.x; idx < smem.ms_num_cells; idx += BLOCKSZ) {
         smem.ms_grid[idx] = -2.0f;
