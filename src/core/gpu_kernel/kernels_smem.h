@@ -170,10 +170,10 @@ __device__ void init_smem(SCAMPKernelInputArgs<double> &args, SMEM_TYPE &smem,
     // local_mp_col region; if it needs more cells than fit, the grid is
     // disabled and the inner loop writes straight to global memory.
     int rb0, cb0, rb1, cb1;
-    ms_cell_of(static_cast<double>(row_start), static_cast<double>(col_start),
+    ms_cell_of(static_cast<int>(row_start), static_cast<int>(col_start),
                kRowwise, args, &rb0, &cb0);
-    ms_cell_of(static_cast<double>(row_start + tile_height - 1),
-               static_cast<double>(col_start + tile_width + tile_height - 1),
+    ms_cell_of(static_cast<int>(row_start + tile_height - 1),
+               static_cast<int>(col_start + tile_width + tile_height - 1),
                kRowwise, args, &rb1, &cb1);
     smem.ms_row_min = rb0 < rb1 ? rb0 : rb1;
     smem.ms_col_min = cb0 < cb1 ? cb0 : cb1;
@@ -225,18 +225,6 @@ __device__ inline void write_back_value(
   } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
     do_atomicAdd<DerivedProfile, ATOMIC_GLOBAL>(profile + global_position,
                                                 smem_profile[local_position]);
-  } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
-    // Both COMPUTE_COLS and COMPUTE_ROWS paths land here; for matrix summary
-    // the per-cell aggregation uses the "global_position is column" identity
-    // (the row branch only runs in the transposed configuration).
-    mp_entry e;
-    e.ulong = smem_profile[local_position];
-    if (e.floats[0] > args.opt.threshold) {
-      int col = (global_position + args.global_start_col) / args.cols_per_cell;
-      int row = (e.ints[1] + args.global_start_row) / args.rows_per_cell;
-      fAtomicMax<ATOMIC_GLOBAL>(profile + (row * args.matrix_width + col),
-                                e.floats[0]);
-    }
   } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_APPROX_ALL_NEIGHBORS) {
     mp_entry e;
     e.ulong = smem_profile[local_position];
@@ -282,38 +270,40 @@ __device__ void write_back(SCAMPKernelInputArgs<double> &args,
         }
       }
     }
-    return;
-  }
-  int global_position, local_position;
-  // The match-output atomic counter has to target *global* memory: that
-  // counter is what Profile::CopyFromDevice reads back to size the
-  // match_value_unordered vector for the host. smem.profile_a_length is the
-  // smem-cached *copy* of that counter, used inside do_tile by the
-  // NeedsCheckIfDone early-exit logic to test whether
-  // max_matches_per_tile is exhausted -- if write_back atomicAdd-s into
-  // the smem copy, the global counter stays at zero and the host sees an
-  // empty profile. Regression introduced by the Eigen port (687a70b);
-  // the pre-Eigen write_back used args.profile_{a,b}_length directly.
-  if constexpr (COMPUTE_COLS) {
-    global_position = tile_start_x + threadIdx.x;
-    local_position = threadIdx.x;
-    while (local_position < TILE_WIDTH && global_position < n_x) {
-      write_back_value<PROFILE_TYPE>(args, local_position, global_position,
-                                     smem.local_mp_col, profile_A,
-                                     args.profile_a_length, args.thresholds_a);
-      global_position += BLOCKSZ;
-      local_position += BLOCKSZ;
+  } else {
+    int global_position, local_position;
+    // The match-output atomic counter has to target *global* memory: that
+    // counter is what Profile::CopyFromDevice reads back to size the
+    // match_value_unordered vector for the host. smem.profile_a_length is the
+    // smem-cached *copy* of that counter, used inside do_tile by the
+    // NeedsCheckIfDone early-exit logic to test whether
+    // max_matches_per_tile is exhausted -- if write_back atomicAdd-s into
+    // the smem copy, the global counter stays at zero and the host sees an
+    // empty profile. Regression introduced by the Eigen port (687a70b);
+    // the pre-Eigen write_back used args.profile_{a,b}_length directly.
+    if constexpr (COMPUTE_COLS) {
+      global_position = tile_start_x + threadIdx.x;
+      local_position = threadIdx.x;
+      while (local_position < TILE_WIDTH && global_position < n_x) {
+        write_back_value<PROFILE_TYPE>(args, local_position, global_position,
+                                       smem.local_mp_col, profile_A,
+                                       args.profile_a_length,
+                                       args.thresholds_a);
+        global_position += BLOCKSZ;
+        local_position += BLOCKSZ;
+      }
     }
-  }
-  if constexpr (COMPUTE_ROWS) {
-    global_position = tile_start_y + threadIdx.x;
-    local_position = threadIdx.x;
-    while (local_position < TILE_HEIGHT && global_position < n_y) {
-      write_back_value<PROFILE_TYPE>(args, local_position, global_position,
-                                     smem.local_mp_row, profile_B,
-                                     args.profile_b_length, args.thresholds_b);
-      global_position += BLOCKSZ;
-      local_position += BLOCKSZ;
+    if constexpr (COMPUTE_ROWS) {
+      global_position = tile_start_y + threadIdx.x;
+      local_position = threadIdx.x;
+      while (local_position < TILE_HEIGHT && global_position < n_y) {
+        write_back_value<PROFILE_TYPE>(args, local_position, global_position,
+                                       smem.local_mp_row, profile_B,
+                                       args.profile_b_length,
+                                       args.thresholds_b);
+        global_position += BLOCKSZ;
+        local_position += BLOCKSZ;
+      }
     }
   }
 }

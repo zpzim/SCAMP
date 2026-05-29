@@ -91,6 +91,8 @@ __global__ void __launch_bounds__(BLOCKSZ,
                             tile_start_row);
     thread_info.local_col = threadIdx.x * DiagsPerThread;
     thread_info.local_row = 0;
+    // Empty the matrix-summary register accumulator for this stripe-step.
+    thread_info.ms_cell = -1;
 
     // Start of new tile, sync so we don't have data races with shared memory
     // initialization
@@ -121,6 +123,12 @@ __global__ void __launch_bounds__(BLOCKSZ,
         ++thread_info.local_col;
         ++thread_info.local_row;
       }
+    }
+
+    // Flush each thread's trailing matrix-summary accumulator into the smem
+    // grid before the sync, so write_back sees every cell this stripe touched.
+    if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
+      ms_flush_accumulator(thread_info, smem, args);
     }
 
     // After this sync, the caches will be updated with the best so far values

@@ -334,8 +334,8 @@ __device__ inline FORCE_INLINE void do_row(
 #pragma unroll unrolled_diags
     for (int i = 0; i < unrolled_diags; ++i) {
       ms_accumulate_cell(
-          smem, static_cast<double>(gr),
-          static_cast<double>(info.global_col + outer_row_iter + i),
+          info, smem, gr,
+          static_cast<int>(info.global_col + outer_row_iter + i),
           static_cast<float>(dist[i]), args);
     }
   } else {
@@ -622,8 +622,8 @@ __device__ inline void do_row_edge(
     for (int i = 0; i < DiagsPerThread; ++i) {
       if (info.global_col + i < static_cast<uint32_t>(args.n_x) &&
           diag + i < num_diags) {
-        ms_accumulate_cell(smem, static_cast<double>(info.global_row),
-                           static_cast<double>(info.global_col + i),
+        ms_accumulate_cell(info, smem, static_cast<int>(info.global_row),
+                           static_cast<int>(info.global_col + i),
                            static_cast<float>(dist[i]), args);
       }
     }

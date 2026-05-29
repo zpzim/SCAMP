@@ -195,6 +195,8 @@ __global__ void __launch_bounds__(BLOCKSZ,
     // converged and most atomics would no-op.
     state.distc.setConstant(init_dist<DISTANCE_TYPE, PROFILE_TYPE>());
     state.idxc.setZero();
+    // Empty the matrix-summary register accumulator for this stripe-step.
+    state.ms_cell = -1;
 
     // FAST PATH: all of this tile's cells fit in the matrix profile range.
     // SLOW PATH: fallback to handle matrix bounds and exclusion zones.
@@ -229,7 +231,10 @@ __global__ void __launch_bounds__(BLOCKSZ,
       }
     }
 
-    if constexpr (COMPUTE_COLS) {
+    if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
+      // Flush the trailing matrix-summary accumulator into the smem grid.
+      ms_flush_accumulator(state, smem, args);
+    } else if constexpr (COMPUTE_COLS) {
       flush_all_cols_to_smem<PROFILE_TYPE>(state, smem);
     }
 

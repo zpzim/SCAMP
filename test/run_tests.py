@@ -29,7 +29,18 @@ parser.add_argument('--tile_sizes', type=int, nargs='*')
 parser.add_argument('--input_sizes', type=int, nargs='*')
 parser.add_argument('--matrix_sizes', type=int, nargs='*')
 parser.add_argument('--thresholds', type=float, nargs='*')
+parser.add_argument('--profile_types', nargs='*',
+                    help='Subset of profile types to test (e.g. MATRIX_SUMMARY '
+                         '1NN_INDEX). Default: all.')
 args = parser.parse_args()
+
+# Profile types this run will exercise; None/empty means all of them.
+profile_types_to_test = (set(args.profile_types) if args.profile_types
+                         else None)
+
+
+def profile_enabled(ptype):
+  return profile_types_to_test is None or ptype in profile_types_to_test
 
 
 executable = args.executable
@@ -279,14 +290,15 @@ def run_test(test, inputs):
   for tile_sz in tile_sizes_to_test:
     if prev_tile_size is not None and prev_tile_size > len(a_data) and prev_tile_size > len(b_data):
       break
-    subtest_dict = {'tilesz' : tile_sz, 'matchpercol' : None, 'threshold': None, 'ptype': "1NN_INDEX", 'rrow': None, 'rcol': None, 'keeprows': False, 'aligned': False}
-    subtest_args = tuple(subtest_dict.values())
-    scamp_results = run_scamp(inputs, a, b, window, tile_sz, None, None, "1NN_INDEX", None, None,False, False);
-    valid = evaluate_result(dm_reductions,scamp_results,subtest_dict)
-    subtests[subtest_args] = valid
- 
+    if profile_enabled("1NN_INDEX"):
+      subtest_dict = {'tilesz' : tile_sz, 'matchpercol' : None, 'threshold': None, 'ptype': "1NN_INDEX", 'rrow': None, 'rcol': None, 'keeprows': False, 'aligned': False}
+      subtest_args = tuple(subtest_dict.values())
+      scamp_results = run_scamp(inputs, a, b, window, tile_sz, None, None, "1NN_INDEX", None, None,False, False);
+      valid = evaluate_result(dm_reductions,scamp_results,subtest_dict)
+      subtests[subtest_args] = valid
+
     # Pyscamp does not support 1NN profiles
-    if executable != 'pyscamp':
+    if executable != 'pyscamp' and profile_enabled("1NN"):
       subtest_dict = {'tilesz' : tile_sz, 'matchpercol' : None, 'threshold': None, 'ptype': "1NN", 'rrow': None, 'rcol': None, 'keeprows': False, 'aligned': False}
       subtest_args = tuple(subtest_dict.values())
       scamp_results = run_scamp(inputs, a, b, window, tile_sz, None, None, "1NN", None, None,False, False);
@@ -294,7 +306,7 @@ def run_test(test, inputs):
       subtests[subtest_args] = valid
    
 
-    for thresh in thresholds_to_test:
+    for thresh in (thresholds_to_test if profile_enabled("SUM_THRESH") else []):
       subtest_dict = {'tilesz' : tile_sz, 'matchpercol' : None, 'threshold': thresh, 'ptype': "SUM_THRESH", 'rrow': None, 'rcol': None, 'keeprows': False, 'aligned': False}
       subtest_args = tuple(subtest_dict.values())
       scamp_results = run_scamp(inputs, a, b, window, tile_sz, None, thresh, "SUM_THRESH", None, None,False, False);
@@ -311,7 +323,8 @@ def run_test(test, inputs):
       #   valid = evaluate_result(dm_reductions, scamp_results, subtest_dict)
       #   subtests[subtest_args] = valid
 
-    for rrow in matrix_sizes_to_test:
+    for rrow in (matrix_sizes_to_test if profile_enabled("MATRIX_SUMMARY")
+                 else []):
       if rrow >= len(inputs[b]) - window + 1:
         continue
       for rcol in matrix_sizes_to_test:

@@ -122,6 +122,11 @@ struct SCAMPShflState {
   uint32_t srcln;
   Eigen::Array<uint32_t, DPT, 1> global_col;
   Eigen::Array<uint32_t, DPT, 1> local_col;
+  // MATRIX_SUMMARY register accumulator (see SCAMPThreadInfo): running max for
+  // the current output cell; ms_cell is the linearized global cell index, -1
+  // when empty.
+  int ms_cell;
+  float ms_max;
 };
 
 // One rotation step. Called when updates_remaining < DPT. Flushes one
@@ -148,7 +153,10 @@ __device__ inline void update_info_shfl(
   constexpr int col_to_update = (DPT - 1) - updates_remaining;
 
   // Flush this slot's accumulated distc/idxc to the smem column profile.
-  if constexpr (COMPUTE_COLS) {
+  // MATRIX_SUMMARY keeps no per-column profile (it accumulates per cell into
+  // the smem grid via the register accumulator), so skip this flush -- its
+  // local_mp_col region is repurposed as the cell grid.
+  if constexpr (COMPUTE_COLS && PROFILE_TYPE != PROFILE_TYPE_MATRIX_SUMMARY) {
     if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN) {
       fAtomicMax<ATOMIC_BLOCK>(
           smem.local_mp_col.data() + state.local_col[col_to_update],
@@ -525,8 +533,8 @@ __device__ inline void do_row_shfl(
     // threshold gate inside ms_accumulate_cell.
 #pragma unroll DPT
     for (int i = 0; i < DPT; ++i) {
-      ms_accumulate_cell(smem, static_cast<double>(global_row),
-                         static_cast<double>(state.global_col[i]),
+      ms_accumulate_cell(state, smem, static_cast<int>(global_row),
+                         static_cast<int>(state.global_col[i]),
                          static_cast<float>(dist[i]), args);
     }
   } else {
@@ -850,10 +858,10 @@ __device__ void init_smem_shfl(SCAMPKernelInputArgs<double> &args,
     smem.ms_matrix =
         reinterpret_cast<float *>(kRowwise ? profile_b : profile_a);
     int rb0, cb0, rb1, cb1;
-    ms_cell_of(static_cast<double>(row_start), static_cast<double>(col_start),
+    ms_cell_of(static_cast<int>(row_start), static_cast<int>(col_start),
                kRowwise, args, &rb0, &cb0);
-    ms_cell_of(static_cast<double>(row_start + tile_height - 1),
-               static_cast<double>(col_start + tile_width + tile_height - 1),
+    ms_cell_of(static_cast<int>(row_start + tile_height - 1),
+               static_cast<int>(col_start + tile_width + tile_height - 1),
                kRowwise, args, &rb1, &cb1);
     smem.ms_row_min = rb0 < rb1 ? rb0 : rb1;
     smem.ms_col_min = cb0 < cb1 ? cb0 : cb1;

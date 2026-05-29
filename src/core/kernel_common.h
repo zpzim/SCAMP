@@ -29,8 +29,8 @@ struct SCAMPKernelInputArgs {
   int32_t exclusion_upper;
   int32_t matrix_width;
   int32_t matrix_height;
-  double rows_per_cell;
-  double cols_per_cell;
+  float rows_per_cell;
+  float cols_per_cell;
   int64_t global_start_col;
   int64_t global_start_row;
   bool has_nan_input;
