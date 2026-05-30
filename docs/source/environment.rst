@@ -99,10 +99,6 @@ distributed gRPC client):
   — used to derive the platform-default autotune cache path when
   neither ``SCAMP_AUTOTUNE_CACHE`` nor ``XDG_CACHE_HOME`` is set.
   See :ref:`autotune-default-path`.
-* ``SCAMP_AUTOTUNE_QUIET`` — set to ``1`` (or any truthy non-empty
-  value other than ``0`` / ``false`` / ``FALSE``) to suppress the
-  one-shot "no autotune entry for device …" warning on cache miss.
-  See :ref:`autotune-miss-warning`.
 * ``SCAMP_AUTOTUNE_INPUT_LENGTH`` — synthetic input length the
   ``--autotune`` benchmark uses per trial (default 262144 = 256K
   elements). Larger values are slower but produce per-variant rankings

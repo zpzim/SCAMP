@@ -47,9 +47,8 @@ namespace SCAMP {
 //     bump kHeader from SCAMP_AUTOTUNE_V<N> to V<N+1>. ParseStream
 //     silently treats a non-matching header as an empty cache, so an
 //     end-user upgrading their pyscamp pip wheel won't see a
-//     SCAMPException -- they just fall through to the new release's
-//     built-in cache (or the cache-miss warning) and can re-tune at
-//     their leisure.
+//     SCAMPException -- they just fall through to the compile-time
+//     defaults and can re-tune at their leisure.
 //
 //   - Change kernel semantics with the SAME tuple still valid (e.g.
 //     refactor do_iteration_fast so a "DPT=4 OUR=16" kernel emits

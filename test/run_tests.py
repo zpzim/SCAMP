@@ -7,13 +7,6 @@ from tqdm import tqdm
 import argparse
 import subprocess
 
-# Silence the per-process "no autotune entry for device ..." stderr warning
-# from every SCAMP / pyscamp invocation. This harness runs SCAMP hundreds
-# of times per session against synthetic inputs, so the warning would
-# otherwise spam the log without adding information. Setting the env var
-# before any pyscamp import or subprocess.call ensures every child sees it.
-os.environ.setdefault('SCAMP_AUTOTUNE_QUIET', '1')
-
 extra_opts = ''
 outfile = '/dev/null'
 static_test_cases = ['SampleInput/randomwalk1K_nan.txt', 'SampleInput/poorly_conditioned_test.txt']

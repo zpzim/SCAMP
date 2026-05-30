@@ -17,11 +17,6 @@ TL;DR
   best variant for your specific GPU; the result is cached per-user and
   reused automatically by every subsequent SCAMP / pyscamp call.
 
-  If you see a one-line warning at the top of a SCAMP run that starts
-  with ``SCAMP: no autotune entry for device '<name>' ...``, you
-  haven't tuned this GPU yet. Run one of these once, then forget about
-  it:
-
   .. code-block:: console
 
      # CLI:
@@ -30,12 +25,6 @@ TL;DR
      # Python:
      >>> import pyscamp
      >>> pyscamp.autotune()
-
-  The first SCAMP / pyscamp launch on a device without a cache entry
-  prints a one-shot per-process warning recommending you run
-  ``--autotune`` (subsequent launches in the same process are silent;
-  see :ref:`autotune-miss-warning`). Silence it entirely with
-  ``SCAMP_AUTOTUNE_QUIET=1``.
 
   This takes a few minutes to run and persists its choices to disk. The
   default location is ``~/.cache/scamp/autotune.txt`` on Linux/macOS and
@@ -61,9 +50,8 @@ The lookup tries these sources in order; the first hit wins:
    tuned for your GPU, this is what gets used.
 
 3. **Compile-time default.** A safe per-profile-type variant. Works on
-   every supported device but rarely the fastest. When SCAMP falls
-   back to this you'll see a one-shot warning on stderr (see
-   :ref:`autotune-miss-warning`).
+   every supported device with sensible out-of-the-box performance, but
+   running ``--autotune`` once for your GPU is typically faster still.
 
 .. _autotune-default-path:
 
@@ -165,38 +153,6 @@ type:
    $ SCAMP --autotune --gpus=0,1            # CLI
    >>> pyscamp.autotune(devices=[0, 1])     # Python
 
-.. _autotune-miss-warning:
-
-The "no autotune entry" warning
--------------------------------
-
-The first time SCAMP can't find an autotune entry for a given
-``(device, profile, precision)`` tuple in any cache source, it emits a
-one-shot warning to stderr that looks like:
-
-.. code-block:: text
-
-   SCAMP: no autotune entry for device 'NVIDIA_T1000__sm_75' / 1NN_INDEX / SINGLE; using compile-time default (blocksz=128 bps=5 dpt=8 ur=0 our=8 kti=32).
-     Run `SCAMP --autotune` or `pyscamp.autotune()` to benchmark a better config for this device.
-     (Suppressing further warnings for this tuple.)
-
-This is informational, not an error — SCAMP will run correctly with the
-default config, just not as fast as it could be. Run ``--autotune``
-once to populate your local cache; the warning then silences for that
-tuple on subsequent runs and you get a measurable speed-up.
-
-Silencing the warning
-"""""""""""""""""""""
-
-The warning prints to stderr by default for both the CLI and pyscamp.
-Silence it via the ``SCAMP_AUTOTUNE_QUIET`` environment variable:
-
-.. code-block:: console
-
-   # Force-silence the warning (e.g. in a CI run or notebook session):
-   $ SCAMP_AUTOTUNE_QUIET=1 SCAMP ...
-   $ SCAMP_AUTOTUNE_QUIET=1 python -c "import pyscamp; pyscamp.selfjoin(...)"
-
 Other autotune environment variables
 ------------------------------------
 
@@ -291,25 +247,22 @@ The three things that can happen to an existing entry after an upgrade:
   succeeds and you keep your tuned config. This is the common case
   when a release just adds new variants.
 * **The new build retired your entry's variant.** The runtime rejects
-  the entry (it doesn't match any current variant), falls through to
-  the compile-time default, and emits a one-shot "no autotune entry"
-  warning. Other entries in the same cache file are unaffected; only
-  the one(s) naming the retired variant fall through. You can ignore
-  the warning, or run ``--autotune`` again to refresh the affected
-  ``(device, profile, precision)`` tuples.
+  the entry (it doesn't match any current variant) and falls through to
+  the compile-time default. Other entries in the same cache file are
+  unaffected; only the one(s) naming the retired variant fall through.
+  Run ``--autotune`` again to refresh the affected ``(device, profile,
+  precision)`` tuples.
 * **The release bumped the cache file's version header.** This is
   reserved for hard-incompatibility changes (the file schema changed,
   or kernel semantics shifted enough that *every* tuned config is
   stale). The new SCAMP silently treats the file as empty —
   ``--autotune`` is required to get back to a tuned state. SCAMP will
-  not throw or refuse to run; you'll just see the cache-miss warning
-  until you re-tune.
+  not throw or refuse to run; it will just use the compile-time
+  defaults until you re-tune.
 
 You don't need to delete your cache after a SCAMP upgrade. Run
-``--autotune`` again if a release note tells you to (or if you see
-the cache-miss warning after an upgrade and want to make it go away);
-otherwise, your existing entries keep being used wherever they remain
-applicable.
+``--autotune`` again if a release note tells you to; otherwise, your
+existing entries keep being used wherever they remain applicable.
 
 Troubleshooting
 ---------------

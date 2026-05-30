@@ -98,6 +98,28 @@ profile, index = mp.abjoin(a, b, sublen, pearson=True, threads=4)
 
 More information and the API documentation for pyscamp is available on [readthedocs](https://scamp-docs.readthedocs.io/en/latest/)
 
+### GPU autotuning (optional but recommended)
+
+SCAMP picks a safe per-profile kernel default that runs well on any
+supported GPU out of the box. For best performance on your specific
+GPU, run the autotuner once — it benchmarks SCAMP's kernel variants for
+each (profile type, precision) target, picks the winner, and caches it
+per-user so every subsequent SCAMP / pyscamp call uses your tuned
+config automatically:
+
+```python
+import pyscamp
+pyscamp.autotune()                  # ~a few minutes; persists to disk
+```
+
+Or from the CLI: `SCAMP --autotune`. The result is written to
+`~/.cache/scamp/autotune.txt` on Linux/macOS (or
+`%LOCALAPPDATA%\scamp\autotune.txt` on Windows) and reused
+transparently. See the
+[autotune guide](https://scamp-docs.readthedocs.io/en/latest/autotune.html)
+for the full resolution rules, tuning options, and the supporting
+environment variables.
+
 ## Run Using Docker
 You can run SCAMP via [nvidia-docker](https://github.com/NVIDIA/nvidia-docker) using the prebuilt [image](https://hub.docker.com/r/zpzim/scamp) on dockerhub.
 

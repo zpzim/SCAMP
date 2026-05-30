@@ -97,29 +97,19 @@ KernelConfig GetKernelConfigForDevice(int device_id,
 
 // Pure-logic lookup used by GetKernelConfigForDevice. Exposed so unit
 // tests can exercise the user-cache -> fallback chain + the cache-miss
-// warning without needing a real CUDA device. Production callers should
-// use GetKernelConfigForDevice instead.
+// without needing a real CUDA device. Production callers should use
+// GetKernelConfigForDevice instead.
 //
 // `device_key`     -- the sanitized device key (as it appears in the
 //                     cache file).
 // `user_cache`     -- the user override cache (may be nullptr to skip).
 // `fallback`       -- compile-time default returned on miss.
-//
-// On miss (cache has no usable entry), emits a one-shot warning to
-// stderr identifying the missing (device, profile, precision) tuple
-// and what config got used as a fallback. Subsequent misses for the
-// same tuple are silent. ResetAutotuneWarnings() clears the dedup set
-// (used by tests).
 class AutotuneCache;  // fwd
 KernelConfig LookupKernelConfigForDeviceKey(const std::string &device_key,
                                             SCAMPProfileType profile_type,
                                             SCAMPPrecisionType precision,
                                             const AutotuneCache *user_cache,
                                             const KernelConfig &fallback);
-
-// Clear the cache-miss warning dedup set. Tests use this; production
-// code shouldn't need to call it.
-void ResetAutotuneWarnings();
 
 // Set / clear a process-wide KernelConfig override. While set,
 // GetKernelConfigForDevice returns the override and skips the cache
