@@ -43,8 +43,16 @@ namespace {
 // entries to ship in a release can dial it up (524288 = ~1.5 h).
 constexpr int kBenchmarkInputLengthDefault = 262144;
 constexpr int kBenchmarkWindow = 200;
-constexpr double kBenchmarkSumThreshold = 0.5;
+// Threshold matches the CLI default (--threshold=0) across all profile types.
+// SUM_THRESH/MATRIX_SUMMARY/KNN all gate their write-back on this value, so
+// tuning at threshold=0 measures the maximally-loaded write-back path -- the
+// case the autotuner actually needs to optimize. A non-zero value (e.g. 0.5)
+// filters most distances out, making the autotuner blind to the write-back
+// cost and biasing it toward configs that win only on near-empty workloads.
+constexpr double kBenchmarkThreshold = 0.0;
 constexpr int kBenchmarkMatrixDim = 100;
+// Matches the CLI / pyscamp default (--max_matches_per_column=5); the
+// autotuner measures what real users actually hit.
 constexpr int kBenchmarkMaxMatchesPerColumn = 5;
 
 int BenchmarkInputLength() {
@@ -86,7 +94,7 @@ void PopulateBenchmarkArgs(SCAMPArgs *args, SCAMPProfileType profile,
   args->max_tile_size = 512000;
   args->distributed_start_row = -1;
   args->distributed_start_col = -1;
-  args->distance_threshold = kBenchmarkSumThreshold;
+  args->distance_threshold = kBenchmarkThreshold;
   args->precision_type = precision;
   args->profile_type = profile;
   args->profile_a.type = profile;

@@ -30,20 +30,50 @@ SCAMPError_t compute_gpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
   KernelConfig cfg = GetKernelConfigForDevice(
       t->get_cuda_id(), t->info()->profile_type, t->info()->fp_type);
   uint64_t blocksz = cfg.blocksz;
+  // cfg.unrolled_rows == 0 marks the cov-shuffle "shfl" variant (see
+  // kernel_config.cpp). Its smem layout drops the column-data regions and
+  // adds a small cov_handoff region, so size it via get_smem_shfl.
+  auto smem_for_bsz = [&](uint64_t bsz) {
+    return (cfg.unrolled_rows == 0)
+               ? get_smem_shfl(t->info(), bsz, cfg.tile_height(),
+                               cfg.diags_per_thread)
+               : get_smem(t->info(), bsz, cfg.tile_height(),
+                          cfg.diags_per_thread);
+  };
+  // Clamp blocksz to fit the device's per-block opt-in smem cap. Cold-start
+  // variants are picked from a one-size-fits-all default whose smem at
+  // default_blocksz_sp can exceed sm_60 / Pascal's 48 KB hard cap (P100 has no
+  // opt-in beyond 48 KB) -- without shrinking, the launch fails with "invalid
+  // argument" before do_tile runs. Use sharedMemPerBlockOptin (the per-device
+  // opt-in maximum), NOT sharedMemPerBlock (the static 48 KB limit that's the
+  // same on every device and would needlessly clamp on sm_70+ where opt-in
+  // is 100 KB+). blocksz lives in {64,128,256,512} and halving stays in set.
+#ifdef _HAS_CUDA_
+  int max_smem_optin = 0;
+  if (cudaDeviceGetAttribute(&max_smem_optin,
+                             cudaDevAttrMaxSharedMemoryPerBlockOptin,
+                             t->get_cuda_id()) == cudaSuccess) {
+    const uint64_t cap = static_cast<uint64_t>(max_smem_optin);
+    while (blocksz > 64 && smem_for_bsz(blocksz) > cap) {
+      blocksz /= 2;
+    }
+    if (blocksz != cfg.blocksz) {
+      if (!t->info()->silent_mode) {
+        std::cout << "Clamped blocksz " << cfg.blocksz << " -> " << blocksz
+                  << " to fit per-block opt-in shared-memory cap of " << cap
+                  << " bytes." << std::endl;
+      }
+      cfg.blocksz = blocksz;
+    }
+  }
+#endif
   // num_workers / num_blocks must match the per-thread metadiagonal stride
   // baked into the kernel (BLOCKSZ * DiagsPerThread); pull DiagsPerThread
   // from the same cfg the kernel will be launched with.
   uint64_t num_workers = ceil((args.n_x - exclusion_total) /
                               static_cast<double>(cfg.diags_per_thread));
   uint64_t num_blocks = ceil(num_workers / static_cast<double>(blocksz));
-  // cfg.unrolled_rows == 0 marks the cov-shuffle "shfl" variant (see
-  // kernel_config.cpp). Its smem layout drops the column-data regions and
-  // adds a small cov_handoff region, so size it via get_smem_shfl.
-  uint64_t smem = (cfg.unrolled_rows == 0)
-                      ? get_smem_shfl(t->info(), blocksz, cfg.tile_height(),
-                                      cfg.diags_per_thread)
-                      : get_smem(t->info(), blocksz, cfg.tile_height(),
-                                 cfg.diags_per_thread);
+  uint64_t smem = smem_for_bsz(blocksz);
   if (!t->info()->silent_mode) {
     std::cout << "Launching " << num_blocks << " thread blocks of size "
               << blocksz << " (diags_per_thread=" << cfg.diags_per_thread
