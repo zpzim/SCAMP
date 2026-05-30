@@ -5,7 +5,7 @@
 
 #include "qt_helper.h"
 #ifdef _HAS_CUDA_
-#include "qt_kernels.h"
+#include "gpu_kernel/qt_kernels.h"
 #endif
 
 namespace SCAMP {

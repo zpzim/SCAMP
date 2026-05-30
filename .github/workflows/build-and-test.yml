@@ -287,8 +287,18 @@ jobs:
           set -e
           cd $GITHUB_WORKSPACE
           mkdir build && cd build
-          cmake -DFORCE_CUDA=1 ..
+          cmake -DFORCE_CUDA=1 -DBUILD_SCAMP_TESTS=ON ..
           cmake --build . --config Release --parallel 2
+
+      - name: Run C++ unit tests
+        shell: bash
+        # The unit-test suite (autotune cache) needs the CUDA toolchain
+        # to build but does not launch any CUDA kernels at runtime, so it
+        # runs on the build-only runners that have no NVIDIA driver.
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE/build
+          ctest --output-on-failure --build-config Release
 
   build-and-test-cuda:
     runs-on: self-hosted
@@ -304,7 +314,7 @@ jobs:
           set -e
           cd $GITHUB_WORKSPACE
           mkdir build && cd build
-          cmake -DFORCE_CUDA=1 ..
+          cmake -DFORCE_CUDA=1 -DBUILD_SCAMP_TESTS=ON ..
           cmake --build . --config Release --parallel 2
           
       - name: Basic CUDA Tests SCAMP
@@ -320,4 +330,35 @@ jobs:
           set -e
           cd $GITHUB_WORKSPACE/test
           python3 ./run_tests.py --executable "../build/SCAMP" --force_gpu --extra_args " --num_cpu_workers=0"
+
+      - name: Per-variant CUDA Tests SCAMP
+        # Exercise every compiled GPU kernel variant against every profile
+        # type. The extended-tests step above already runs the full
+        # parameter sweep (windows x tile sizes x input sizes) against the
+        # autotune-chosen variant; this step trades sweep breadth for
+        # variant breadth -- one window, two tile sizes, two input sizes
+        # per variant per profile. SCAMP_FORCE_VARIANT bypasses the
+        # autotune cache + cold-start default, so each variant gets
+        # exercised against its DefaultBlockszForPrecision pick (the
+        # precision-specific cold-start blocksz). The full
+        # {64,128,256,512} blocksz axis is NOT swept here -- that belongs
+        # in `SCAMP --autotune`, not the correctness CI.
+        shell: bash
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE/test
+          NUM_VARIANTS=$(../build/SCAMP --list_variants | wc -l)
+          echo "Detected $NUM_VARIANTS GPU kernel variants:"
+          ../build/SCAMP --list_variants
+          for i in $(seq 0 $((NUM_VARIANTS - 1))); do
+            echo
+            echo "=== Variant v${i} ==="
+            SCAMP_FORCE_VARIANT=$i python3 ./run_tests.py \
+              --executable "../build/SCAMP" --force_gpu \
+              --window_sizes 100 \
+              --tile_sizes 1024 4096 \
+              --input_sizes 1500 8000 \
+              --matrix_sizes 10 \
+              --extra_args " --num_cpu_workers=0"
+          done
 

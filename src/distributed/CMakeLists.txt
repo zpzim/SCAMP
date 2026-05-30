@@ -77,6 +77,14 @@ add_definitions("-D_DISTRIBUTED_EXECUTION_")
 
 add_executable(SCAMP_distributed ${CMAKE_CURRENT_SOURCE_DIR}/../main.cpp)
 target_link_libraries(SCAMP_distributed gflags common scamp_utils scamp_distributed_interface)
+if (CMAKE_CUDA_COMPILER)
+  # main.cpp references SCAMP::DefaultBenchmarkVariant (the --autotune
+  # entry point) under _HAS_CUDA_; mirror the top-level SCAMP target's
+  # autotune_bench dep here so SCAMP_distributed links cleanly when
+  # BUILD_CLIENT_SERVER=1 is built against a CUDA toolchain (e.g. the
+  # Docker image).
+  target_link_libraries(SCAMP_distributed autotune_bench)
+endif()
 
 mark_cuda_if_available()
 mark_clang_tidy()

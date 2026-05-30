@@ -1,5 +1,8 @@
 #ifdef _HAS_CUDA_
 #include <cuda_runtime.h>
+#include "core/gpu_kernel/autotune.h"
+#include "core/gpu_kernel/autotune_bench.h"
+#include "core/gpu_kernel/kernel_config.h"
 #endif
 
 #include <gflags/gflags.h>
@@ -53,7 +56,6 @@ DEFINE_bool(ultra_precision, false,
             "Ultra high precision computation with a potential performance hit "
             "(for large subsequence lengths).");
 DEFINE_bool(double_precision, false, "Computation in double precision");
-DEFINE_bool(mixed_precision, false, "Computation in mixed precision");
 DEFINE_bool(single_precision, false, "Computation in single precision");
 DEFINE_bool(
     keep_rows, false,
@@ -98,16 +100,89 @@ DEFINE_string(
 DEFINE_string(gpus, "",
               "IDs of GPUs on the system to use, if this flag is not set SCAMP "
               "tries to use all available GPUs on the system");
+DEFINE_bool(autotune, false,
+            "Run the SCAMP GPU kernel autotuner for the selected device(s), "
+            "persist the chosen kernel configuration to the user cache "
+            "($SCAMP_AUTOTUNE_CACHE if set; otherwise "
+            "$XDG_CACHE_HOME/scamp/autotune.txt, "
+            "$HOME/.cache/scamp/autotune.txt on Linux/macOS, "
+            "or %LOCALAPPDATA%\\scamp\\autotune.txt on Windows), and exit "
+            "without running a matrix profile job.");
+DEFINE_bool(list_variants, false,
+            "Print the index and geometry of each GPU kernel variant compiled "
+            "into this binary (one per line) and exit. Used by CI to enumerate "
+            "variants for SCAMP_FORCE_VARIANT-based per-variant correctness "
+            "testing without hardcoding the variant count.");
 
 int main(int argc, char **argv) {
   bool self_join, computing_rows, computing_cols;
   gflags::ParseCommandLineFlags(&argc, &argv, true);
+
+  // --list_variants prints the variant table and exits. One line per
+  // variant in a stable, machine-parseable format that CI shell scripts
+  // can iterate over without hardcoding the count.
+  if (FLAGS_list_variants) {
+#ifdef _HAS_CUDA_
+    for (std::size_t i = 0; i < SCAMP::kNumKernelVariants; ++i) {
+      const auto &v = SCAMP::GetKernelVariantGeometry(i);
+      std::cout << "v" << i << " bps=" << v.blocks_per_sm
+                << " dpt=" << v.diags_per_thread << " ur=" << v.unrolled_rows
+                << " our=" << v.outer_unrolled_rows
+                << " kti=" << v.kernel_tile_iters << " family="
+                << (v.unrolled_rows == 0 ? "shfl" : "sliding-window") << "\n";
+    }
+    return 0;
+#else
+    std::cerr << "Error: --list_variants requires a CUDA-enabled build."
+              << std::endl;
+    return 1;
+#endif
+  }
+
+  // --autotune short-circuits the normal join path: it queries the GPU(s),
+  // records the best kernel configuration for each (profile_type, precision)
+  // pair, and exits. No input files are required.
+  if (FLAGS_autotune) {
+#ifdef _HAS_CUDA_
+    std::vector<int> tune_devices = ParseIntList(FLAGS_gpus);
+    if (tune_devices.empty()) {
+      int num_dev = 0;
+      cudaGetDeviceCount(&num_dev);
+      if (num_dev <= 0) {
+        std::cerr << "Error: --autotune requires at least one CUDA device, "
+                     "none were found."
+                  << std::endl;
+        return 1;
+      }
+      if (num_dev > 1) {
+        std::cout << "Warning: autotune will only use the first gpu device for "
+                     "tuning.";
+      }
+      tune_devices.push_back(0);
+    }
+    for (const int &dev : tune_devices) {
+      try {
+        SCAMP::RunAutotuneWithBenchmark(dev, &SCAMP::DefaultBenchmarkVariant,
+                                        /*cache_path=*/"",
+                                        /*verbose=*/true);
+      } catch (const std::exception &e) {
+        std::cerr << "Autotune failed: " << e.what() << std::endl;
+        return 1;
+      }
+    }
+    return 0;
+#else
+    std::cerr << "Error: --autotune requires a CUDA-enabled build."
+              << std::endl;
+    return 1;
+#endif
+  }
   if (!FLAGS_ultra_precision && !FLAGS_double_precision &&
-      !FLAGS_mixed_precision && !FLAGS_single_precision) {
+      !FLAGS_single_precision) {
     FLAGS_double_precision = true;
   }
   if ((FLAGS_ultra_precision ? 1 : 0) + (FLAGS_double_precision ? 1 : 0) +
-          (FLAGS_mixed_precision ? 1 : 0) + (FLAGS_single_precision ? 1 : 0) !=
+          (FLAGS_single_precision ? 1 : 0) !=
       1) {
     printf("Error: only one precision flag can be enabled at a time\n");
     return 1;
@@ -118,17 +193,48 @@ int main(int argc, char **argv) {
         "--window=<window_size> to specify your subsequence length.\n");
     return 1;
   }
-  if (FLAGS_max_tile_size < 1024) {
+  std::vector<int> devices = ParseIntList(FLAGS_gpus);
+#ifdef _HAS_CUDA_
+  if (devices.empty() && !FLAGS_no_gpu) {
+    // Use all available devices
+    if (FLAGS_print_debug_info) {
+      printf("using all devices\n");
+    }
+    int num_dev;
+    cudaGetDeviceCount(&num_dev);
+    for (int i = 0; i < num_dev; ++i) {
+      devices.push_back(i);
+    }
+  }
+#else
+  // We cannot use gpus if we don't have CUDA
+  ASSERT(devices.empty(),
+         "This binary was not built with CUDA, --gpus cannot be used with this "
+         "binary.");
+#endif
+
+  bool gpu_used = !devices.empty();
+  int max_tile_size_to_use = FLAGS_max_tile_size;
+  gflags::CommandLineFlagInfo tile_size_info;
+  if (gflags::GetCommandLineFlagInfo("max_tile_size", &tile_size_info) &&
+      tile_size_info.is_default) {
+    if (gpu_used) {
+      max_tile_size_to_use = 512000;
+    } else {
+      max_tile_size_to_use = 128000;
+    }
+  }
+
+  if (max_tile_size_to_use < 1024) {
     printf("Error: max tile size must be at least 1024\n");
     return 1;
   }
-  if (FLAGS_max_tile_size / 2 < FLAGS_window) {
+  if (max_tile_size_to_use / 2 < FLAGS_window) {
     printf(
         "Error: Tile length and width must be at least 2x larger than the "
         "window size. Please set a larger --max_tile_size=<max_tile_size>\n");
     return 1;
   }
-  std::vector<int> devices = ParseIntList(FLAGS_gpus);
   if (FLAGS_input_a_file_name.empty()) {
     printf(
         "Error: primary input filename must be specified using "
@@ -145,9 +251,8 @@ int main(int argc, char **argv) {
     computing_rows = FLAGS_keep_rows;
   }
 
-  SCAMP::SCAMPPrecisionType t =
-      GetPrecisionType(FLAGS_ultra_precision, FLAGS_double_precision,
-                       FLAGS_mixed_precision, FLAGS_single_precision);
+  SCAMP::SCAMPPrecisionType t = GetPrecisionType(
+      FLAGS_ultra_precision, FLAGS_double_precision, FLAGS_single_precision);
   SCAMP::SCAMPProfileType profile_type = ParseProfileType(FLAGS_profile_type);
 
   std::vector<double> Ta_h, Tb_h;
@@ -170,27 +275,9 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-#ifdef _HAS_CUDA_
-  if (devices.empty() && !FLAGS_no_gpu) {
-    // Use all available devices
-    if (FLAGS_print_debug_info) {
-      printf("using all devices\n");
-    }
-    int num_dev;
-    cudaGetDeviceCount(&num_dev);
-    for (int i = 0; i < num_dev; ++i) {
-      devices.push_back(i);
-    }
-  }
-#else
-  // We cannot use gpus if we don't have CUDA
-  ASSERT(devices.empty(),
-         "This binary was not built with CUDA, --gpus cannot be used with this "
-         "binary.");
-#endif
   SCAMP::SCAMPArgs args;
   args.window = FLAGS_window;
-  args.max_tile_size = FLAGS_max_tile_size;
+  args.max_tile_size = max_tile_size_to_use;
   args.has_b = !self_join;
   args.distributed_start_row = FLAGS_global_row;
   args.distributed_start_col = FLAGS_global_col;

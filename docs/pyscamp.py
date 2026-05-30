@@ -15,11 +15,47 @@ pyscamp: Python bindings for SCAMP
    abjoin_knn
    selfjoin_matrix
    abjoin_matrix
+   autotune
+   gpu_supported
 """
 
 
 def gpu_supported():
     """Returns true if both 1) The module was compiled with GPU support and 2) GPUs are available."""
+    ...
+
+
+def autotune(devices=None, cache_path=""):
+    """
+    Run the SCAMP GPU kernel autotuner for the selected device(s) and persist
+    the chosen kernel configurations to disk. Future pyscamp calls on the same
+    machine will read these configurations from the cache and use them when
+    launching GPU kernels.
+
+    A full sweep takes a few minutes on a recent GPU. The output is verbose
+    so you can follow progress; pass ``cache_path`` to redirect the write
+    elsewhere (e.g. for a sandboxed run).
+
+    :param devices: List of CUDA device IDs to tune. If empty (default),
+                    only device 0 is tuned -- a full sweep takes O(minutes)
+                    and most multi-GPU boxes hold identical devices, so
+                    sweeping them all wastes wall time on identical configs.
+                    Pass ``devices=[0, 1, ...]`` explicitly to tune more
+                    than one (e.g. if you have two different GPU models).
+    :type devices: list[int], optional
+    :param cache_path: Filesystem path to read/write the cache from. Empty
+                       (default) resolves in this order: ``$SCAMP_AUTOTUNE_CACHE``
+                       (if set, used verbatim), then ``$XDG_CACHE_HOME/scamp/autotune.txt``
+                       (if set), then a platform-specific user dir
+                       (``$HOME/.cache/scamp/autotune.txt`` on Linux/macOS;
+                       ``%LOCALAPPDATA%\\scamp\\autotune.txt`` on Windows).
+                       Parent directories are created automatically.
+    :type cache_path: str, optional
+    :return: Number of devices that were tuned.
+    :rtype: int
+    :raises RuntimeError: If pyscamp was built without CUDA support.
+    :raises ValueError: If no CUDA devices are available.
+    """
     ...
 
 

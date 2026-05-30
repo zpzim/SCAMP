@@ -1,32 +1,28 @@
 include(SCAMPMacros)
 
-# Build targets for computing Sliding Dot Product.
+# Build target for computing Sliding Dot Product. qt_helper has both CPU and
+# GPU code paths (gated on _HAS_CUDA_); the cuFFT-based GPU kernels it calls
+# into live in src/core/gpu_kernel/.
 add_library(qt_helper ${CMAKE_CURRENT_SOURCE_DIR}/qt_helper.cpp)
 
+# Build shared SCAMP kernel-info target (used by both CPU and GPU paths).
+add_library(kernel_common ${CMAKE_CURRENT_SOURCE_DIR}/kernel_common.cpp)
+
+# Defines 'cpu_kernels' target.
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/cpu_kernel)
+
 if (CMAKE_CUDA_COMPILER)
-  add_library(qt_kernels ${CMAKE_CURRENT_SOURCE_DIR}/qt_kernels.cu)
+  # Defines 'gpu_kernels', 'gpu_utils', and 'qt_kernels' targets.
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/gpu_kernel)
   target_link_libraries(qt_helper CUDA::cufft qt_kernels common)
 else()
   target_link_libraries(qt_helper common)
-endif()
-
-# Build SCAMP GPU/CPU kernel targets.
-add_library(kernel_common ${CMAKE_CURRENT_SOURCE_DIR}/kernel_common.cpp)
-
-if (CMAKE_CUDA_COMPILER)
-  add_library(gpu_utils ${CMAKE_CURRENT_SOURCE_DIR}/kernel_gpu_utils.cu)
-  target_link_libraries(gpu_utils kernel_common)
-  add_library(gpu_kernels ${CMAKE_CURRENT_SOURCE_DIR}/kernels.cu)
-  target_link_libraries(gpu_kernels gpu_utils kernel_common common)
 endif()
 
 add_library(cpu_stats ${CMAKE_CURRENT_SOURCE_DIR}/cpu_stats.cpp)
 target_link_libraries(cpu_stats common)
 
 add_library(tile ${CMAKE_CURRENT_SOURCE_DIR}/tile.cpp)
-
-# Defines 'cpu_kernels' target.
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/cpu_kernel)
 
 if (CMAKE_CUDA_COMPILER)
   target_link_libraries(tile common gpu_kernels cpu_kernels profile qt_helper)

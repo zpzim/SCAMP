@@ -21,7 +21,7 @@ void readFile(const std::string &filename, std::vector<double> &v);
 std::vector<int> ParseIntList(const std::string &s);
 
 SCAMP::SCAMPPrecisionType GetPrecisionType(bool ultrap, bool doublep,
-                                           bool mixedp, bool singlep);
+                                           bool singlep);
 
 SCAMP::SCAMPProfileType ParseProfileType(const std::string &s);
 

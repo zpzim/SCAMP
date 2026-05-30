@@ -8,7 +8,7 @@ set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 fetch_env(SCAMP_USE_EXTERNAL_EIGEN)
 
 if (SCAMP_USE_EXTERNAL_EIGEN)
-  find_package(Eigen3 3.4.0 REQUIRED NO_MODULE)
+  find_package(Eigen3 5.0.0 REQUIRED NO_MODULE)
 else()
   # Create a header-only interface target instead of using Eigen's CMakeLists.txt.
   # Eigen's blas/CMakeLists.txt unconditionally calls check_language(Fortran),

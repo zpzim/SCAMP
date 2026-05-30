@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 EXECUTABLE=$1
 OUTFILE=$2
 extra_opts=$3

@@ -7,6 +7,11 @@
 #include "common/scamp_args.h"
 #include "common/scamp_interface.h"
 #include "common/scamp_utils.h"
+#ifdef _HAS_CUDA_
+#include <cuda_runtime.h>
+#include "core/gpu_kernel/autotune.h"
+#include "core/gpu_kernel/autotune_bench.h"
+#endif
 
 namespace py = pybind11;
 
@@ -121,18 +126,19 @@ SCAMP::SCAMPArgs GetDefaultSCAMPArgs() {
 
 bool KeyIsOkForProfileType(std::string key, SCAMP::SCAMPProfileType type) {
   static const std::set<std::string> nn_index = {
-      "verbose", "precision", "pearson",
-      "gpus",    "threads",   "allow_trivial_match"};
+      "verbose", "precision",           "pearson",      "gpus",
+      "threads", "allow_trivial_match", "max_tile_size"};
   static const std::set<std::string> sum_thresh = {
-      "verbose",   "precision",          "pearson", "gpus", "threads",
-      "threshold", "allow_trivial_match"};
+      "verbose",   "precision",           "pearson",      "gpus", "threads",
+      "threshold", "allow_trivial_match", "max_tile_size"};
   static const std::set<std::string> knn = {
-      "verbose",   "precision",          "pearson", "gpus", "threads",
-      "threshold", "allow_trivial_match"};
+      "verbose",   "precision",           "pearson",      "gpus", "threads",
+      "threshold", "allow_trivial_match", "max_tile_size"};
   static const std::set<std::string> matrix = {
-      "verbose", "precision", "pearson",
-      "gpus",    "threads",   "threshold",
-      "mheight", "mwidth",    "allow_trivial_match"};
+      "verbose",      "precision", "pearson",
+      "gpus",         "threads",   "threshold",
+      "mheight",      "mwidth",    "allow_trivial_match",
+      "max_tile_size"};
 
   switch (type) {
     case SCAMP::PROFILE_TYPE_1NN_INDEX:
@@ -177,12 +183,16 @@ void get_args_based_on_kwargs(SCAMP::SCAMPArgs* args, py::kwargs kwargs,
         throw std::invalid_argument(
             "Invalid matrix width specified: value must be greater than 0");
       }
+    } else if (key == "max_tile_size") {
+      args->max_tile_size = item.second.cast<int>();
+      if (args->max_tile_size <= 0) {
+        throw std::invalid_argument(
+            "Invalid max_tile_size specified: value must be greater than 0");
+      }
     } else if (key == "precision") {
       std::string ptype = item.second.cast<std::string>();
       if (ptype == "single") {
         args->precision_type = SCAMP::PRECISION_SINGLE;
-      } else if (ptype == "mixed") {
-        args->precision_type = SCAMP::PRECISION_MIXED;
       } else if (ptype == "double") {
         args->precision_type = SCAMP::PRECISION_DOUBLE;
       } else if (ptype == "ultra") {
@@ -190,7 +200,7 @@ void get_args_based_on_kwargs(SCAMP::SCAMPArgs* args, py::kwargs kwargs,
       } else {
         throw std::invalid_argument(
             "Invalid precision type specified: valid options are single, "
-            "mixed, double, ultra");
+            "double, ultra");
       }
     } else if (key == "pearson") {
       pearson = item.second.cast<bool>();
@@ -225,6 +235,22 @@ bool setup_and_do_SCAMP(SCAMP::SCAMPArgs* args, py::kwargs kwargs) {
   if (kwargs) {
     get_args_based_on_kwargs(args, kwargs, pearson, gpus, num_cpus);
   }
+  // Determine if a GPU is used for execution.
+  bool gpu_used = false;
+  if (kwargs && kwargs.contains("gpus")) {
+    gpu_used = !gpus.empty();
+  } else if (kwargs && kwargs.contains("threads") && num_cpus > 0) {
+    gpu_used = false;
+  } else {
+    gpu_used = (SCAMP::num_available_gpus() > 0);
+  }
+
+  // If a GPU is used and max_tile_size was not explicitly specified,
+  // set it to 512k (512000) by default.
+  if (gpu_used && (!kwargs || !kwargs.contains("max_tile_size"))) {
+    args->max_tile_size = 512000;
+  }
+
   // If an empty list of GPUs was specified we should use CPU only.
   if (kwargs.contains("gpus") && gpus.empty()) {
     if (num_cpus <= 0) {
@@ -410,6 +436,49 @@ py::array_t<float> scamp_matrix(const std::vector<double>& a,
 
 bool has_gpu_support() { return SCAMP::num_available_gpus() > 0; }
 
+// Runs the SCAMP GPU autotuner over the requested device(s) and writes the
+// chosen kernel configuration to the on-disk cache. Returns the number of
+// devices tuned. Raises ImportError-equivalent (RuntimeError) when pyscamp
+// was built without CUDA, and a ValueError when no GPUs are available.
+int run_autotune(const std::vector<int>& devices,
+                 const std::string& cache_path) {
+#ifndef _HAS_CUDA_
+  (void)devices;
+  (void)cache_path;
+  throw std::runtime_error(
+      "pyscamp was built without CUDA; autotune() is unavailable.");
+#else
+  std::vector<int> targets = devices;
+  if (targets.empty()) {
+    int num_dev = 0;
+    cudaGetDeviceCount(&num_dev);
+    if (num_dev <= 0) {
+      throw std::invalid_argument(
+          "No CUDA devices available; pyscamp.autotune() needs at least one.");
+    }
+    // Default to device 0 only -- a full sweep takes O(minutes) and the
+    // typical multi-GPU box has identical devices, so tuning them all
+    // burns wall time on identical configs. Callers who really do want
+    // to tune multiple distinct GPUs should pass devices=[0, 1, ...]
+    // explicitly. Mirrors the CLI --autotune behavior in main.cpp.
+    if (num_dev > 1) {
+      py::print("pyscamp.autotune():", num_dev,
+                "GPUs visible; tuning device 0 only (pass devices=[...]"
+                " to override).");
+    }
+    targets.push_back(0);
+  }
+  // Shares its bench impl + verbose progress format with the CLI's
+  // --autotune path (which calls RunAutotuneWithBenchmark directly
+  // from main.cpp).
+  for (int dev : targets) {
+    SCAMP::RunAutotuneWithBenchmark(dev, &SCAMP::DefaultBenchmarkVariant,
+                                    cache_path, /*verbose=*/true);
+  }
+  return static_cast<int>(targets.size());
+#endif
+}
+
 bool (*GPU_supported)() = &has_gpu_support;
 std::tuple<py::array_t<float>, py::array_t<int>> (*self_join_1NN_INDEX)(
     const std::vector<double>&, int, const py::kwargs&) = &scamp;
@@ -452,12 +521,44 @@ PYBIND11_MODULE(pyscamp, m) {
            selfjoin_knn
            abjoin_knn
            selfjoin_matrix
-           abjoin_matrix 
+           abjoin_matrix
     )pbdoc";
 
   m.def("gpu_supported", GPU_supported, R"pbdoc(
         Returns true if both 1) The module was compiled with GPU support and 2) GPUs are available.
         )pbdoc");
+
+  m.def("autotune", &run_autotune, py::arg("devices") = std::vector<int>{},
+        py::arg("cache_path") = std::string{}, R"pbdoc(
+    Run the SCAMP GPU kernel autotuner for the selected device(s) and persist
+    the chosen kernel configurations to disk. Future pyscamp calls on the same
+    machine will read these configurations from the cache and use them when
+    launching GPU kernels.
+
+    A full sweep takes a few minutes on a recent GPU. The output is verbose
+    so you can follow progress; pass ``cache_path`` to redirect the write
+    elsewhere (e.g. for a sandboxed run).
+
+    :param devices: List of CUDA device IDs to tune. If empty (default),
+                    only device 0 is tuned -- a full sweep takes O(minutes)
+                    and most multi-GPU boxes hold identical devices, so
+                    sweeping them all wastes wall time on identical configs.
+                    Pass ``devices=[0, 1, ...]`` explicitly to tune more
+                    than one (e.g. if you have two different GPU models).
+    :type devices: list[int], optional
+    :param cache_path: Filesystem path to read/write the cache from. Empty
+                       (default) resolves in this order: ``$SCAMP_AUTOTUNE_CACHE``
+                       (if set, used verbatim), then ``$XDG_CACHE_HOME/scamp/autotune.txt``
+                       (if set), then a platform-specific user dir
+                       (``$HOME/.cache/scamp/autotune.txt`` on Linux/macOS;
+                       ``%LOCALAPPDATA%\scamp\autotune.txt`` on Windows).
+                       Parent directories are created automatically.
+    :type cache_path: str, optional
+    :return: Number of devices that were tuned.
+    :rtype: int
+    :raises RuntimeError: If pyscamp was built without CUDA support.
+    :raises ValueError: If no CUDA devices are available.
+    )pbdoc");
 
   m.def("selfjoin",
         [](py::array_t<double, py::array::c_style | py::array::forcecast> a,

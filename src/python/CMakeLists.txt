@@ -20,6 +20,14 @@ set_target_properties(pyscamp PROPERTIES
 target_link_libraries(pyscamp PRIVATE scamp_args scamp_utils scamp_interface common)
 target_link_libraries(pyscamp PRIVATE pybind11::module)
 
+if (CMAKE_CUDA_COMPILER)
+  # pyscamp.autotune() routes to SCAMP::RunAutotuneWithBenchmark, which
+  # lives in autotune_bench (depends on scamp_op via do_SCAMP for each
+  # timed trial). autotune_bench's own deps -- gpu_utils, scamp_op,
+  # scamp_args, common -- come along transitively, so we only need to
+  # add autotune_bench + CUDA::cudart here.
+  target_link_libraries(pyscamp PRIVATE autotune_bench gpu_utils CUDA::cudart)
+endif()
 
 mark_cuda_if_available()
 mark_clang_tidy()

@@ -14,6 +14,7 @@ Welcome to SCAMP's documentation!
    profiles
    cli
    environment
+   autotune
    performance
    interpreting_output
    docker

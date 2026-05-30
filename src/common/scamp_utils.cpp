@@ -91,15 +91,12 @@ std::vector<int> ParseIntList(const std::string &s) {
 }
 
 SCAMP::SCAMPPrecisionType GetPrecisionType(bool ultrap, bool doublep,
-                                           bool mixedp, bool singlep) {
+                                           bool singlep) {
   if (ultrap) {
     return SCAMP::PRECISION_ULTRA;
   }
   if (doublep) {
     return SCAMP::PRECISION_DOUBLE;
-  }
-  if (mixedp) {
-    return SCAMP::PRECISION_MIXED;
   }
   if (singlep) {
     return SCAMP::PRECISION_SINGLE;

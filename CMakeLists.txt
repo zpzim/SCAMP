@@ -75,9 +75,13 @@ find_package(Threads REQUIRED)
 
 # Placeholder required before enable_language(CUDA); set_cuda_architectures() replaces this.
 # SM 75 (Turing) is valid for all supported CUDA versions (10.0+).
+if (DEFINED CMAKE_CUDA_ARCHITECTURES)
+  set(USER_SPECIFIED_CUDA_ARCHITECTURES ${CMAKE_CUDA_ARCHITECTURES})
+endif()
 if (NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
   set(CMAKE_CUDA_ARCHITECTURES 75)
 endif()
+
 
 if(FORCE_NO_CUDA)
   unset(CMAKE_CUDA_COMPILER)
@@ -188,6 +192,10 @@ if (CMAKE_CUDA_COMPILER)
   include_directories(${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   set(CUDA_SEPARABLE_COMPILATION ON)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -lineinfo")
+  # Eigen's headers use constexpr functions inside templates that get called
+  # from __device__ code. --expt-relaxed-constexpr permits nvcc to call
+  # constexpr host functions from device contexts without warnings.
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr")
   set_cuda_architectures()
 endif()
 
@@ -327,6 +335,23 @@ if (CMAKE_CUDA_COMPILER)
   target_compile_definitions(SCAMP PUBLIC -D_HAS_CUDA_)
 endif()
 target_link_libraries(SCAMP gflags common scamp_interface scamp_utils)
+if (CMAKE_CUDA_COMPILER)
+  # autotune_bench provides the synthetic-workload benchmark that the
+  # --autotune CLI path drives. Only linked in CUDA builds since the CLI's
+  # --autotune flag itself is gated on _HAS_CUDA_.
+  target_link_libraries(SCAMP autotune_bench)
+endif()
+
+# Unit tests. enable_testing() must run at the top-level CMakeLists scope
+# so that `ctest` invoked from the build directory picks up tests added
+# in subdirectories. Tests are opt-in via -DBUILD_SCAMP_TESTS=ON (default
+# OFF) so a casual end-user `cmake --build .` doesn't pay the
+# compile cost. CI / contributors flip the flag.
+option(BUILD_SCAMP_TESTS "Build SCAMP's C++ unit tests" OFF)
+if (BUILD_SCAMP_TESTS)
+  enable_testing()
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/test/cpp)
+endif()
 
 # clang-format target
 function(prepend var prefix)
