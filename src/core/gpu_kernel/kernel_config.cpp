@@ -83,20 +83,27 @@ std::size_t FindFirstVariantOfFamily(bool want_shfl) {
   return kVariants.size();
 }
 
-// Per-profile-type variant family preference, based on which family
-// wins each profile in the cross-(profile,precision) autotune sweep on
-// the RTX 3080 sm_86:
-//   - shfl wins 1NN_INDEX + SUM_THRESH (warp-reduces atomics before
-//     the final atomicMax/atomicAdd, which dominates these profiles).
-//   - sliding-window wins 1NN / MATRIX_SUMMARY / AAN (light per-row
-//     atomics; the SW variant's smem column buffer + heavy inner-loop
-//     unroll dominates).
-// Same for both precisions -- DP/SP just picks a different blocksz via
-// DefaultBlockszForPrecision applied to the chosen variant.
+// Per-profile-type cold-start variant family preference. The shfl
+// variant is the safe default for most profiles because it warp-reduces
+// the per-position write-back -- each lane's qualifying (corr, col)
+// values are combined across the warp in registers via __shfl_sync
+// before any global atomic or smem fan-out -- so it absorbs heavy
+// qualification rates without serializing on the global atomic unit.
+// As input qualification rates rise toward the worst case (every
+// position qualifies, e.g. threshold=0 on SUM_THRESH / MATRIX_SUMMARY /
+// APPROX_ALL_NEIGHBORS, or a near-monotonically-improving 1NN_INDEX),
+// shfl widens its lead over sliding-window; making it the cold default
+// avoids a worst-case cliff on those profiles for untuned devices.
+// 1NN (SP-only single-float max-per-column, no row/index tracked) is
+// the one exception: its per-lane write-back state is small enough that
+// the sliding-window variant's smem column buffer + heavy inner-loop
+// unroll wins across the qualification range.
 bool ProfileTypePrefersShfl(SCAMPProfileType profile) {
   switch (profile) {
     case PROFILE_TYPE_1NN_INDEX:
     case PROFILE_TYPE_SUM_THRESH:
+    case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
+    case PROFILE_TYPE_MATRIX_SUMMARY:
       return true;
     default:
       return false;
