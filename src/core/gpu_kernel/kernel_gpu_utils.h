@@ -576,9 +576,9 @@ __device__ inline void ms_flush_accumulator(
 // compares false and is skipped).
 template <typename INFO_T, typename SMEM_T>
 __device__ inline void ms_accumulate_cell(
-    INFO_T &info, SMEM_T &smem, int gr, int gc, float corr,
+    INFO_T &info, SMEM_T &smem, int gr, int gc, float corr, float thresh,
     const SCAMPKernelInputArgs<double> &args) {
-  if (!(corr >= args.opt.threshold)) {
+  if (!(corr >= thresh)) {
     return;
   }
   int row_b, col_b;

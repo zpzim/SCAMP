@@ -83,6 +83,9 @@ __global__ void __launch_bounds__(BLOCKSZ,
     thread_info.cov[i] = args.cov[thread_info.global_col + i];
   }
 
+  const DISTANCE_TYPE thresh =
+      static_cast<DISTANCE_TYPE>(args.opt.threshold);
+
   while (tile_start_col < args.n_x && tile_start_row < args.n_y) {
     // Initialize the next tile's shared memory
     init_smem<decltype(smem), PROFILE_DATA_TYPE, PROFILE_OUTPUT_TYPE,
@@ -107,7 +110,7 @@ __global__ void __launch_bounds__(BLOCKSZ,
       while (thread_info.local_row < tile_height) {
         do_iteration_fast<PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
                           DISTANCE_TYPE, DiagsPerThread, UnrolledRows,
-                          OuterUnrolledRows>(args, thread_info, smem);
+                          OuterUnrolledRows>(args, thread_info, smem, thresh);
       }
     } else if (start_diag < num_diags) {
       // Slow Path: one row at a time, with bound-checked per-iter cov updates
@@ -117,7 +120,7 @@ __global__ void __launch_bounds__(BLOCKSZ,
              thread_info.local_row < tile_height) {
         do_row_edge<PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, DISTANCE_TYPE,
                     DiagsPerThread>(args, thread_info, smem, start_diag,
-                                    num_diags);
+                                    num_diags, thresh);
         ++thread_info.global_col;
         ++thread_info.global_row;
         ++thread_info.local_col;

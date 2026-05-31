@@ -75,7 +75,7 @@ __device__ inline void merge_to_row(
     int row_iter, const SCAMPKernelInputArgs<double> &args,
     const SCAMPThreadInfo<InputDataType, DiagsPerThread> &info,
     DerivedSmem &smem, const Eigen::ArrayBase<DistRowArray> &dist,
-    DISTANCE_TYPE &distr, unsigned int &idxr) {
+    DISTANCE_TYPE &distr, unsigned int &idxr, DISTANCE_TYPE thresh) {
   if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN) {
     DISTANCE_TYPE d = max_dist(dist);
     distr = fmaxf(distr, d);
@@ -90,7 +90,7 @@ __device__ inline void merge_to_row(
       idxr = idx;
     }
   } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
-    DISTANCE_TYPE sum = (dist > args.opt.threshold).select(dist, 0).sum();
+    DISTANCE_TYPE sum = (dist > thresh).select(dist, 0).sum();
     distr += sum;
   } else {
     static_assert(PROFILE_TYPE != PROFILE_TYPE_INVALID,
@@ -187,7 +187,8 @@ __device__ inline void merge_to_column(
     const SCAMPThreadInfo<DerivedDataType, DiagsPerThread> &info,
     DerivedSmem smem, Eigen::ArrayBase<ColDistArray> &best_so_far,
     const Eigen::ArrayBase<RowDistArray> &dists_to_merge,
-    Eigen::ArrayBase<ColIndexArray> &best_so_far_index) {
+    Eigen::ArrayBase<ColIndexArray> &best_so_far_index,
+    typename RowDistArray::Scalar thresh) {
   constexpr int unrolled_diags = DiagsPerThread;
   static_assert(RowDistArray::RowsAtCompileTime == unrolled_diags,
                 "dists_to_merge must have DiagsPerThread rows.");
@@ -213,7 +214,7 @@ __device__ inline void merge_to_column(
     }
   } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
     best_so_far.template segment<unrolled_diags>(row_iter) +=
-        (dists_to_merge > args.opt.threshold).select(dists_to_merge, 0);
+        (dists_to_merge > thresh).select(dists_to_merge, 0);
   } else {
     static_assert(PROFILE_TYPE != PROFILE_TYPE_INVALID,
                   "merge_to_column not implemented for profile type.");
@@ -316,7 +317,8 @@ __device__ inline FORCE_INLINE void do_row(
     const typename InputColArray::Scalar inormr,
     const typename InputColArray::Scalar dfr,
     const typename InputColArray::Scalar dgr,
-    Eigen::ArrayBase<IndexColArray> &idxc, unsigned int &idxr) {
+    Eigen::ArrayBase<IndexColArray> &idxc, unsigned int &idxr,
+    DISTANCE_TYPE thresh) {
   constexpr int unrolled_diags = DiagsPerThread;
   Eigen::Array<DISTANCE_TYPE, unrolled_diags, 1> dist;
 #pragma unroll unrolled_diags
@@ -335,17 +337,18 @@ __device__ inline FORCE_INLINE void do_row(
     for (int i = 0; i < unrolled_diags; ++i) {
       ms_accumulate_cell(info, smem, gr,
                          static_cast<int>(info.global_col + outer_row_iter + i),
-                         static_cast<float>(dist[i]), args);
+                         static_cast<float>(dist[i]),
+                         static_cast<float>(thresh), args);
     }
   } else {
     if constexpr (COMPUTE_COLS) {
-      merge_to_column<PROFILE_TYPE, DiagsPerThread>(outer_row_iter, args, info,
-                                                    smem, distc, dist, idxc);
+      merge_to_column<PROFILE_TYPE, DiagsPerThread>(
+          outer_row_iter, args, info, smem, distc, dist, idxc, thresh);
     }
     if constexpr (COMPUTE_ROWS) {
       merge_to_row<PROFILE_TYPE, DISTANCE_TYPE, DerivedInputType,
                    DiagsPerThread>(outer_row_iter, args, info, smem, dist,
-                                   distr, idxr);
+                                   distr, idxr, thresh);
     }
   }
 }
@@ -376,7 +379,8 @@ template <SCAMPProfileType PROFILE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
           int OuterUnrolledRows, typename DerivedDataType, typename DerivedSmem>
 __device__ void do_iteration_fast(
     const SCAMPKernelInputArgs<double> &args,
-    SCAMPThreadInfo<DerivedDataType, DiagsPerThread> &info, DerivedSmem &smem) {
+    SCAMPThreadInfo<DerivedDataType, DiagsPerThread> &info, DerivedSmem &smem,
+    DISTANCE_TYPE thresh) {
   // The "natural" inner_unrolled_cols would be DPT + UR - 1: the smallest
   // window that holds DPT cols per row across UR rows. We pad it to DPT + UR
   // so the sliding-window refill lands at byte offset
@@ -474,7 +478,7 @@ __device__ void do_iteration_fast(
              DerivedDataType, DiagsPerThread>(
           /*outer_row_iter=*/j * UnrolledRows + k, /*row_iter=*/k, args, info,
           smem, distc, distr[j * UnrolledRows + k], inormc, dfc, dgc, inormr[k],
-          dfr[k], dgr[k], idxc, idxr[j * UnrolledRows + k]);
+          dfr[k], dgr[k], idxc, idxr[j * UnrolledRows + k], thresh);
     }
     // MATRIX_SUMMARY accumulates directly into the smem cell grid inside
     // do_row, so it keeps no per-column/row profile to flush here.
@@ -546,7 +550,8 @@ __device__ inline void reduce_edge(
     int iter, const SCAMPKernelInputArgs<double> &args,
     const SCAMPThreadInfo<DerivedDataType, DiagsPerThread> &info,
     DerivedSmemType &smem, const Eigen::ArrayBase<DerivedDist4> &dist,
-    DerivedDist &dist_row, uint32_t &idx_row, int diag, int num_diags) {
+    DerivedDist &dist_row, uint32_t &idx_row, int diag, int num_diags,
+    typename DerivedDist4::Scalar thresh) {
   if (info.global_col + iter < args.n_x && diag + iter < num_diags) {
     if constexpr (PROFILE_TYPE == PROFILE_TYPE_1NN) {
       if (!isnan(dist[iter])) {
@@ -574,7 +579,7 @@ __device__ inline void reduce_edge(
             dist[iter], info.global_row);
       }
     } else if constexpr (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
-      if (dist[iter] > args.opt.threshold) {
+      if (dist[iter] > thresh) {
         if constexpr (COMPUTE_ROWS) {
           dist_row += dist[iter];
         }
@@ -596,7 +601,7 @@ template <SCAMPProfileType PROFILE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
 __device__ inline void do_row_edge(
     const SCAMPKernelInputArgs<double> &args,
     SCAMPThreadInfo<DerivedDataType, DiagsPerThread> &info,
-    DerivedSmemType &smem, int diag, int num_diags) {
+    DerivedSmemType &smem, int diag, int num_diags, DISTANCE_TYPE thresh) {
   DISTANCE_TYPE dist_row = init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
   uint32_t idx_row = 0;
   DerivedDataType inormr = smem.inorm_row[info.local_row];
@@ -623,7 +628,8 @@ __device__ inline void do_row_edge(
           diag + i < num_diags) {
         ms_accumulate_cell(info, smem, static_cast<int>(info.global_row),
                            static_cast<int>(info.global_col + i),
-                           static_cast<float>(dist[i]), args);
+                           static_cast<float>(dist[i]),
+                           static_cast<float>(thresh), args);
       }
     }
   } else {
@@ -632,7 +638,7 @@ __device__ inline void do_row_edge(
       reduce_edge<PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, DerivedSmemType,
                   DerivedDataType, DiagsPerThread>(/*iter=*/i, args, info, smem,
                                                    dist, dist_row, idx_row,
-                                                   diag, num_diags);
+                                                   diag, num_diags, thresh);
     }
 
     if constexpr (COMPUTE_ROWS) {

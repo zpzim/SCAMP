@@ -531,11 +531,12 @@ __device__ inline void do_row_shfl(
     // (global_col, dist) pairs at this global_row. Invalid/out-of-bounds slots
     // already carry init_dist (< threshold) so they are skipped by the
     // threshold gate inside ms_accumulate_cell.
+    const float thresh = static_cast<float>(args.opt.threshold);
 #pragma unroll DPT
     for (int i = 0; i < DPT; ++i) {
       ms_accumulate_cell(state, smem, static_cast<int>(global_row),
                          static_cast<int>(state.global_col[i]),
-                         static_cast<float>(dist[i]), args);
+                         static_cast<float>(dist[i]), thresh, args);
     }
   } else {
     if constexpr (COMPUTE_COLS) {
