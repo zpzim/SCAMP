@@ -27,7 +27,7 @@ Approximate K nearest neighbors:
   * pyscamp functions: selfjoin_knn, abjoin_knn
 
 Pooled distance matrix summary:
-  [EXPERIMENTAL, DISTRIBUTED UNSUPPORTED] This returns a max-pooled summary (see example below) of the distance matrix using the specified summary matrix height (``--reduced_height``) and width (``--reduced_width``). When using GPUs there are limits to the resolution of the output. The output matrix height and width must be approximately 1000x smaller than the input size, otherwise you can get patchy results. If you have a small time series (~100K elements or less), it is recommended you use the CPU version for now as that is fast enough). Additionally, the entire output matrix must be small enough to fit in your system/GPU's memory.
+  [DISTRIBUTED UNSUPPORTED] This returns a max-pooled summary (see example below) of the distance matrix using the specified summary matrix height (``--reduced_height``) and width (``--reduced_width``). The GPU output is computed exact per-cell, matching the CPU implementation. The entire output matrix must be small enough to fit in your system / GPU's memory.
 
   The threshold parameter (``--threshold`` / ``threshold=`` kwarg) controls which correlations contribute to each cell. The default is 0, meaning only non-negative correlations update a cell. If a cell's pooling window contains only negative correlations it will be left as ``NaN`` in the output. To guarantee all cells are filled, set ``threshold=-1``.
 

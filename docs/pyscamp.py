@@ -163,7 +163,7 @@ def abjoin_knn(a, b, m, k, **kwargs):
 
 def selfjoin_matrix(a, m, **kwargs):
     """
-    [EXPERIMENTAL] Returns a pooled version of the distance matrix with HxW of [mheight x mwidth], pooling operation is max() for Pearson Correlation and min() for Euclidean Distance.
+    Returns a pooled version of the distance matrix with HxW of [mheight x mwidth], pooling operation is max() for Pearson Correlation and min() for Euclidean Distance.
 
     :param a: Time series to compute matrix profile for.
     :type a: 1D array
@@ -183,7 +183,7 @@ def selfjoin_matrix(a, m, **kwargs):
 
 def abjoin_matrix(a, b, m, **kwargs):
     """
-    [EXPERIMENTAL] Returns a pooled version of the distance matrix with HxW of [mheight x mwidth], pooling operation is max() for Pearson Correlation and min() for Euclidean Distance.
+    Returns a pooled version of the distance matrix with HxW of [mheight x mwidth], pooling operation is max() for Pearson Correlation and min() for Euclidean Distance.
 
     :param a: Time series corresponding to the columns of the distance matrix.
     :type a: 1D array
