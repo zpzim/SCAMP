@@ -207,7 +207,6 @@ __global__ void __launch_bounds__(BLOCKSZ,
         (tile_start_col + BLOCKSZ * DiagsPerThread <= num_diags) &&
         (tile_start_col >= args.exclusion_upper + tile_height);
 
-
     if (fast_path) {
       for (int r = 0; r < tile_height; ++r) {
         do_row_shfl<PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, DISTANCE_TYPE,

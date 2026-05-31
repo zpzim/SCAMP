@@ -574,9 +574,8 @@ __device__ inline void ms_flush_accumulator(
 // already had a high value contributed doesn't bother re-issuing atomicMax for
 // every position below that floor.
 template <typename SMEM_T>
-__device__ inline float ms_read_cell(
-    SMEM_T &smem, int row_b, int col_b,
-    const SCAMPKernelInputArgs<double> &args) {
+__device__ inline float ms_read_cell(SMEM_T &smem, int row_b, int col_b,
+                                     const SCAMPKernelInputArgs<double> &args) {
   if (smem.ms_use_grid) {
     int lr = row_b - smem.ms_row_min;
     int lc = col_b - smem.ms_col_min;
@@ -584,8 +583,8 @@ __device__ inline float ms_read_cell(
       return smem.ms_grid[lr * smem.ms_grid_w + lc];
     }
   }
-  return smem.ms_matrix[static_cast<int64_t>(row_b) * args.matrix_width +
-                        col_b];
+  return smem
+      .ms_matrix[static_cast<int64_t>(row_b) * args.matrix_width + col_b];
 }
 
 // Register-coalesced per-cell accumulate. Holds the running max for the current

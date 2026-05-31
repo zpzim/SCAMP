@@ -83,8 +83,7 @@ __global__ void __launch_bounds__(BLOCKSZ,
     thread_info.cov[i] = args.cov[thread_info.global_col + i];
   }
 
-  const DISTANCE_TYPE thresh =
-      static_cast<DISTANCE_TYPE>(args.opt.threshold);
+  const DISTANCE_TYPE thresh = static_cast<DISTANCE_TYPE>(args.opt.threshold);
 
   while (tile_start_col < args.n_x && tile_start_row < args.n_y) {
     // Initialize the next tile's shared memory
