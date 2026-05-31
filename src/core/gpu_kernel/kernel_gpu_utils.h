@@ -3,6 +3,7 @@
 #include <utility>
 
 #include "common/common.h"
+#include "core/kernel_common.h"
 #include "core/tile.h"
 
 #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 600
@@ -120,6 +121,19 @@ struct SCAMPSmem {
 
   uint64_t *profile_a_length;
   uint64_t *profile_b_length;
+
+  // MATRIX_SUMMARY per-cell coalescing grid. Aliases the local_mp_col smem
+  // region (matrix summary has no per-column profile, so that region is free).
+  // The block accumulates per-cell maxes here with block-scoped atomics and
+  // flushes to the global matrix once per stripe-step; this turns thousands of
+  // scattered global atomicMax into a handful. Bounds (ms_*_min / ms_grid_*)
+  // are recomputed per stripe-step in init_smem; ms_matrix is the global output
+  // matrix used for the flush and the out-of-grid fallback.
+  float *ms_grid;
+  float *ms_matrix;
+  int ms_col_min, ms_row_min, ms_grid_w, ms_grid_h, ms_num_cells;
+  bool ms_use_grid;
+  bool ms_rowwise;
 };
 
 template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, SCAMPProfileType type,
@@ -175,6 +189,20 @@ __device__ SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, type, tile_width,
     profile_a_length = nullptr;
     profile_b_length = nullptr;
   }
+  // The matrix-summary cell grid reuses whichever per-profile region this run
+  // allocated but does not otherwise use: local_mp_col on the normal
+  // (compute_columns) run, local_mp_row on the transposed (compute_rows) run.
+  // init_smem sizes/initializes it per stripe-step. Only consumed when
+  // PROFILE_TYPE == MATRIX_SUMMARY.
+  ms_grid = compute_columns
+                ? reinterpret_cast<float *>(local_mp_col.data())
+                : (compute_rows ? reinterpret_cast<float *>(local_mp_row.data())
+                                : nullptr);
+  ms_matrix = nullptr;
+  ms_col_min = ms_row_min = 0;
+  ms_grid_w = ms_grid_h = ms_num_cells = 0;
+  ms_use_grid = false;
+  ms_rowwise = false;
 }
 
 template <typename ACCUM_TYPE, int DiagsPerThread>
@@ -184,6 +212,11 @@ struct SCAMPThreadInfo {
   uint32_t local_col;
   uint32_t global_row;
   uint32_t global_col;
+  // MATRIX_SUMMARY register accumulator: running max for the current output
+  // cell. ms_cell is the linearized global cell index, -1 when empty. Flushed
+  // to the smem grid on a cell change and once at stripe end before write_back.
+  int ms_cell;
+  float ms_max;
 };
 
 // Compile-time-unrolled for loop driven by std::index_sequence. Each
@@ -459,6 +492,125 @@ __device__ inline float fAtomicMax_check(float *addr, float value,
     return check;
   }
   return fAtomicMax<type>(addr, value);
+}
+
+// ----------------------------------------------------------------------------
+// MATRIX_SUMMARY per-cell reduction (mirrors the CPU update_mp bucketing).
+//
+// MATRIX_SUMMARY downsamples the full distance matrix into a matrix_height x
+// matrix_width grid where cell (R, C) = max correlation over every (row, col)
+// of the distance matrix that maps into that cell. The CPU does this per-cell
+// (cpu_kernels.cpp update_mp); we mirror that exactly here so the GPU result
+// matches the CPU reference. To keep it fast we don't atomicMax into the small
+// global grid per cell (uncoalesced, latency-bound) -- we accumulate into a
+// per-block smem grid covering only the cells this stripe-step touches, then
+// flush once. ms_accumulate_cell routes a single distance into either the smem
+// grid (common case) or, if its cell falls outside the precomputed grid window
+// or the grid was disabled, straight to the global matrix (never dropped).
+// ----------------------------------------------------------------------------
+
+// Output-matrix (row_bucket, col_bucket) for a tile-local distance-matrix cell
+// at integer position (gr, gc). The bucket boundary math (cols_per_cell /
+// rows_per_cell) is done in float, not double: on consumer GPUs FP64 has ~1/64
+// the throughput of FP32, and this per-cell division otherwise dominates the
+// matrix-summary kernel. Positions are < 2^24 for all non-distributed inputs
+// so the float cast is exact; only the rare exact-boundary column can land in a
+// different cell than the double reference (absorbed by the test tolerance).
+// `rowwise` mirrors the CPU's transposed branch (lower/transposed kernel run):
+// the local row drives the column bucket and vice versa.
+__device__ inline void ms_cell_of(int gr, int gc, bool rowwise,
+                                  const SCAMPKernelInputArgs<double> &args,
+                                  int *row_b, int *col_b) {
+  int for_col = rowwise ? gr : gc;
+  int for_row = rowwise ? gc : gr;
+  // Float division: off the FP64 pipe, but more accurate at cell boundaries
+  // than a reciprocal multiply (no separate 1/c rounding step). cols/rows_per
+  // _cell are already float in the kernel args.
+  *col_b = static_cast<int>(floorf((static_cast<float>(for_col) +
+                                    static_cast<float>(args.global_start_col)) /
+                                   args.cols_per_cell));
+  *row_b = static_cast<int>(floorf((static_cast<float>(for_row) +
+                                    static_cast<float>(args.global_start_row)) /
+                                   args.rows_per_cell));
+}
+
+// Write one (row_b, col_b, corr) into the smem cell grid with a block-scoped
+// atomicMax, or -- if the cell falls outside the precomputed grid window or the
+// grid is disabled -- straight to the global matrix. Never drops a value.
+template <typename SMEM_T>
+__device__ inline void ms_store_cell(SMEM_T &smem, int row_b, int col_b,
+                                     float corr,
+                                     const SCAMPKernelInputArgs<double> &args) {
+  if (smem.ms_use_grid) {
+    int lr = row_b - smem.ms_row_min;
+    int lc = col_b - smem.ms_col_min;
+    if (lr >= 0 && lr < smem.ms_grid_h && lc >= 0 && lc < smem.ms_grid_w) {
+      fAtomicMax<ATOMIC_BLOCK>(smem.ms_grid + lr * smem.ms_grid_w + lc, corr);
+      return;
+    }
+  }
+  fAtomicMax<ATOMIC_GLOBAL>(
+      smem.ms_matrix + static_cast<int64_t>(row_b) * args.matrix_width + col_b,
+      corr);
+}
+
+// Flush a thread's pending register accumulator to the grid/matrix and empty
+// it. info.ms_cell is the linearized global cell index, -1 when empty.
+template <typename INFO_T, typename SMEM_T>
+__device__ inline void ms_flush_accumulator(
+    INFO_T &info, SMEM_T &smem, const SCAMPKernelInputArgs<double> &args) {
+  if (info.ms_cell >= 0) {
+    int row_b = info.ms_cell / args.matrix_width;
+    int col_b = info.ms_cell - row_b * args.matrix_width;
+    ms_store_cell(smem, row_b, col_b, info.ms_max, args);
+    info.ms_cell = -1;
+  }
+}
+
+// Read the current value of cell (row_b, col_b) from the smem grid or the
+// global matrix fallback. Mirrors ms_store_cell's routing. Used at cell entry
+// to seed the per-thread running max with whatever other threads / earlier
+// stripe-steps have already deposited -- so a lane joining a cell that's
+// already had a high value contributed doesn't bother re-issuing atomicMax for
+// every position below that floor.
+template <typename SMEM_T>
+__device__ inline float ms_read_cell(SMEM_T &smem, int row_b, int col_b,
+                                     const SCAMPKernelInputArgs<double> &args) {
+  if (smem.ms_use_grid) {
+    int lr = row_b - smem.ms_row_min;
+    int lc = col_b - smem.ms_col_min;
+    if (lr >= 0 && lr < smem.ms_grid_h && lc >= 0 && lc < smem.ms_grid_w) {
+      return smem.ms_grid[lr * smem.ms_grid_w + lc];
+    }
+  }
+  return smem
+      .ms_matrix[static_cast<int64_t>(row_b) * args.matrix_width + col_b];
+}
+
+// Register-coalesced per-cell accumulate. Holds the running max for the current
+// output cell in registers and only emits an atomic when the cell changes;
+// consecutive distances almost always map to the same cell (cells span many
+// rows/cols), so this collapses many atomics into one. The caller must flush
+// the trailing accumulator (ms_flush_accumulator) before write_back reads the
+// grid. Matches CPU update_mp: only contributions >= threshold count (NaN
+// compares false and is skipped).
+template <typename INFO_T, typename SMEM_T>
+__device__ inline void ms_accumulate_cell(
+    INFO_T &info, SMEM_T &smem, int gr, int gc, float corr, float thresh,
+    const SCAMPKernelInputArgs<double> &args) {
+  if (!(corr >= thresh)) {
+    return;
+  }
+  int row_b, col_b;
+  ms_cell_of(gr, gc, smem.ms_rowwise, args, &row_b, &col_b);
+  int idx = row_b * args.matrix_width + col_b;
+  if (idx == info.ms_cell) {
+    info.ms_max = fmaxf(info.ms_max, corr);
+  } else {
+    ms_flush_accumulator(info, smem, args);
+    info.ms_cell = idx;
+    info.ms_max = fmaxf(ms_read_cell(smem, row_b, col_b, args), corr);
+  }
 }
 
 // Outputs an 'initial' distance value based on the type of profile being

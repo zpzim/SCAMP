@@ -195,6 +195,8 @@ __global__ void __launch_bounds__(BLOCKSZ,
     // converged and most atomics would no-op.
     state.distc.setConstant(init_dist<DISTANCE_TYPE, PROFILE_TYPE>());
     state.idxc.setZero();
+    // Empty the matrix-summary register accumulator for this stripe-step.
+    state.ms_cell = -1;
 
     // FAST PATH: all of this tile's cells fit in the matrix profile range.
     // SLOW PATH: fallback to handle matrix bounds and exclusion zones.
@@ -205,14 +207,6 @@ __global__ void __launch_bounds__(BLOCKSZ,
         (tile_start_col + BLOCKSZ * DiagsPerThread <= num_diags) &&
         (tile_start_col >= args.exclusion_upper + tile_height);
 
-    // NB: the row loop below is deliberately NOT #pragma unroll'd.
-    // tile_height is up to 32*DPT = 256 for the DPT=8 variants, and
-    // do_row_shfl ends with __syncthreads() -- unrolling would inline
-    // the per-row body (cross-warp publish + read, distc merge,
-    // intra-warp shfl, update_info_shfl dispatch with 8 inlined slot
-    // bodies for DPT=8) 256 times per kernel-template combo, ballooning
-    // compile time without buying inter-iteration ILP since the barrier
-    // serializes adjacent rows anyway.
     if (fast_path) {
       for (int r = 0; r < tile_height; ++r) {
         do_row_shfl<PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, DISTANCE_TYPE,
@@ -229,7 +223,10 @@ __global__ void __launch_bounds__(BLOCKSZ,
       }
     }
 
-    if constexpr (COMPUTE_COLS) {
+    if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
+      // Flush the trailing matrix-summary accumulator into the smem grid.
+      ms_flush_accumulator(state, smem, args);
+    } else if constexpr (COMPUTE_COLS) {
       flush_all_cols_to_smem<PROFILE_TYPE>(state, smem);
     }
 

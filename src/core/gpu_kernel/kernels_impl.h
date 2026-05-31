@@ -83,6 +83,8 @@ __global__ void __launch_bounds__(BLOCKSZ,
     thread_info.cov[i] = args.cov[thread_info.global_col + i];
   }
 
+  const DISTANCE_TYPE thresh = static_cast<DISTANCE_TYPE>(args.opt.threshold);
+
   while (tile_start_col < args.n_x && tile_start_row < args.n_y) {
     // Initialize the next tile's shared memory
     init_smem<decltype(smem), PROFILE_DATA_TYPE, PROFILE_OUTPUT_TYPE,
@@ -91,6 +93,8 @@ __global__ void __launch_bounds__(BLOCKSZ,
                             tile_start_row);
     thread_info.local_col = threadIdx.x * DiagsPerThread;
     thread_info.local_row = 0;
+    // Empty the matrix-summary register accumulator for this stripe-step.
+    thread_info.ms_cell = -1;
 
     // Start of new tile, sync so we don't have data races with shared memory
     // initialization
@@ -105,7 +109,7 @@ __global__ void __launch_bounds__(BLOCKSZ,
       while (thread_info.local_row < tile_height) {
         do_iteration_fast<PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
                           DISTANCE_TYPE, DiagsPerThread, UnrolledRows,
-                          OuterUnrolledRows>(args, thread_info, smem);
+                          OuterUnrolledRows>(args, thread_info, smem, thresh);
       }
     } else if (start_diag < num_diags) {
       // Slow Path: one row at a time, with bound-checked per-iter cov updates
@@ -115,12 +119,18 @@ __global__ void __launch_bounds__(BLOCKSZ,
              thread_info.local_row < tile_height) {
         do_row_edge<PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, DISTANCE_TYPE,
                     DiagsPerThread>(args, thread_info, smem, start_diag,
-                                    num_diags);
+                                    num_diags, thresh);
         ++thread_info.global_col;
         ++thread_info.global_row;
         ++thread_info.local_col;
         ++thread_info.local_row;
       }
+    }
+
+    // Flush each thread's trailing matrix-summary accumulator into the smem
+    // grid before the sync, so write_back sees every cell this stripe touched.
+    if constexpr (PROFILE_TYPE == PROFILE_TYPE_MATRIX_SUMMARY) {
+      ms_flush_accumulator(thread_info, smem, args);
     }
 
     // After this sync, the caches will be updated with the best so far values

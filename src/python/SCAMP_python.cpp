@@ -696,7 +696,7 @@ PYBIND11_MODULE(pyscamp, m) {
         },
         py::arg("a"), py::arg("m"),
         R"pbdoc(
-    [EXPERIMENTAL] Returns a pooled version of the distance matrix with HxW of [mheight x mwidth], pooling operation is max() for Pearson Correlation and min() for Euclidian Distance
+    Returns a pooled version of the distance matrix with HxW of [mheight x mwidth], pooling operation is max() for Pearson Correlation and min() for Euclidian Distance
 
     :param a: Time series to compute matrix profile for.
     :type a: 1D array
@@ -720,7 +720,7 @@ PYBIND11_MODULE(pyscamp, m) {
                                 ArrayToDoubleVector(b, "b"), m, kwargs);
         },
         py::arg("a"), py::arg("b"), py::arg("m"), R"pbdoc(
-    [EXPERIMENTAL] Returns a pooled version of the distance matrix with HxW of [mheight x mwidth], pooling operation is max() for Pearson Correlation and min() for Euclidian Distance
+    Returns a pooled version of the distance matrix with HxW of [mheight x mwidth], pooling operation is max() for Pearson Correlation and min() for Euclidian Distance
 
     :param a: Time series corresponding to the columns of the distance matrix.
     :type a: 1D array

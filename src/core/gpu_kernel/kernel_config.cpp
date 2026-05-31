@@ -90,20 +90,23 @@ std::size_t FindFirstVariantOfFamily(bool want_shfl) {
 // before any global atomic or smem fan-out -- so it absorbs heavy
 // qualification rates without serializing on the global atomic unit.
 // As input qualification rates rise toward the worst case (every
-// position qualifies, e.g. threshold=0 on SUM_THRESH / MATRIX_SUMMARY /
+// position qualifies, e.g. threshold=0 on SUM_THRESH /
 // APPROX_ALL_NEIGHBORS, or a near-monotonically-improving 1NN_INDEX),
 // shfl widens its lead over sliding-window; making it the cold default
 // avoids a worst-case cliff on those profiles for untuned devices.
-// 1NN (SP-only single-float max-per-column, no row/index tracked) is
-// the one exception: its per-lane write-back state is small enough that
-// the sliding-window variant's smem column buffer + heavy inner-loop
-// unroll wins across the qualification range.
+// The exceptions are 1NN and MATRIX_SUMMARY. 1NN's per-lane write-back
+// state is small enough that the sliding-window variant's smem column
+// buffer + heavy inner-loop unroll wins across the qualification range.
+// MATRIX_SUMMARY does per-cell atomics into a smem cell grid (no shared
+// destination to warp-reduce against -- each lane targets its own cell
+// in steady state), so shfl's warp-reduction signature win doesn't
+// apply, and the SW variant's heavier per-thread unrolled compute beats
+// shfl's cov-handoff shuffle latency.
 bool ProfileTypePrefersShfl(SCAMPProfileType profile) {
   switch (profile) {
     case PROFILE_TYPE_1NN_INDEX:
     case PROFILE_TYPE_SUM_THRESH:
     case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
-    case PROFILE_TYPE_MATRIX_SUMMARY:
       return true;
     default:
       return false;

@@ -31,8 +31,8 @@ SCAMPKernelInputArgs<T>::SCAMPKernelInputArgs(Tile *t, bool transpose,
   max_matches_per_tile = t->info()->max_matches_per_tile;
   matrix_width = t->info()->matrix_width;
   matrix_height = t->info()->matrix_height;
-  rows_per_cell = t->info()->rows_per_cell;
-  cols_per_cell = t->info()->cols_per_cell;
+  rows_per_cell = static_cast<float>(t->info()->rows_per_cell);
+  cols_per_cell = static_cast<float>(t->info()->cols_per_cell);
   global_start_col = t->get_tile_col();
   global_start_row = t->get_tile_row();
   has_nan_input = t->has_nan_input();
