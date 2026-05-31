@@ -567,6 +567,27 @@ __device__ inline void ms_flush_accumulator(
   }
 }
 
+// Read the current value of cell (row_b, col_b) from the smem grid or the
+// global matrix fallback. Mirrors ms_store_cell's routing. Used at cell entry
+// to seed the per-thread running max with whatever other threads / earlier
+// stripe-steps have already deposited -- so a lane joining a cell that's
+// already had a high value contributed doesn't bother re-issuing atomicMax for
+// every position below that floor.
+template <typename SMEM_T>
+__device__ inline float ms_read_cell(
+    SMEM_T &smem, int row_b, int col_b,
+    const SCAMPKernelInputArgs<double> &args) {
+  if (smem.ms_use_grid) {
+    int lr = row_b - smem.ms_row_min;
+    int lc = col_b - smem.ms_col_min;
+    if (lr >= 0 && lr < smem.ms_grid_h && lc >= 0 && lc < smem.ms_grid_w) {
+      return smem.ms_grid[lr * smem.ms_grid_w + lc];
+    }
+  }
+  return smem.ms_matrix[static_cast<int64_t>(row_b) * args.matrix_width +
+                        col_b];
+}
+
 // Register-coalesced per-cell accumulate. Holds the running max for the current
 // output cell in registers and only emits an atomic when the cell changes;
 // consecutive distances almost always map to the same cell (cells span many
@@ -589,7 +610,7 @@ __device__ inline void ms_accumulate_cell(
   } else {
     ms_flush_accumulator(info, smem, args);
     info.ms_cell = idx;
-    info.ms_max = corr;
+    info.ms_max = fmaxf(ms_read_cell(smem, row_b, col_b, args), corr);
   }
 }
 
