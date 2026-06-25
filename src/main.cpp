@@ -1,5 +1,5 @@
 #ifdef _HAS_CUDA_
-#include <cuda_runtime.h>
+#include "common/cuda_to_hip.h"
 #include "core/gpu_kernel/autotune.h"
 #include "core/gpu_kernel/autotune_bench.h"
 #include "core/gpu_kernel/kernel_config.h"

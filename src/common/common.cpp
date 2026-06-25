@@ -6,6 +6,10 @@
 #include <limits>
 #include <sstream>
 
+#ifdef _HAS_CUDA_
+#include "common/cuda_to_hip.h"
+#endif
+
 namespace SCAMP {
 
 static constexpr int64_t GIGABYTE = 1024 * 1024 * 1024;

@@ -1,5 +1,8 @@
 #pragma once
+#include "common/cuda_to_hip.h"
+#if !defined(USE_HIP)
 #include <cuda.h>
+#endif
 #include <float.h>
 #include "common/common.h"
 #include "core/tile.h"

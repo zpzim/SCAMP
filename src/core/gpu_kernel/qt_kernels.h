@@ -1,7 +1,16 @@
 #pragma once
+
+#include "common/cuda_to_hip.h"
+
+#if defined(USE_HIP)
+#include <hip/hip_runtime.h>
+#include <hip/hip_complex.h>
+#include <hipfft/hipfft.h>
+#else
 #include <cuComplex.h>
 #include <cuda_runtime.h>
 #include <cufft.h>
+#endif
 
 void launch_elementwise_multiply_inplace(const cuDoubleComplex *A,
                                          cuDoubleComplex *B, const int size,

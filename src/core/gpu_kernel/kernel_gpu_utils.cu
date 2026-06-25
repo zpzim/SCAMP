@@ -1,4 +1,9 @@
+#include "common/cuda_to_hip.h"
+
+#if !defined(USE_HIP)
 #include <cuda_runtime.h>
+#endif
+
 #include "kernel_gpu_utils.h"
 
 namespace SCAMP {
@@ -65,7 +70,15 @@ int get_smem_shfl(const OpInfo *info, uint64_t blocksz, int tile_height,
   // within one tile; smem.local_mp_col is sized accordingly so
   // state.local_col indexing stays in bounds after rotations.
   int tile_width_profile = blocksz * diags_per_thread + tile_height;
-  int warps_per_block = static_cast<int>(blocksz) / 32;
+  // cov_handoff holds 2 * warps_per_block scalars, and warps_per_block =
+  // blocksz / warp_size on the device. SMALLER warp sizes yield MORE warps,
+  // so to bound the host-allocated dynamic smem at or above what the device
+  // kernel writes for any runtime warp width, size the hand-off region for
+  // the smallest warp width (32, wave32 on RDNA/CUDA). Over-allocating by a
+  // few slots on wave64 (CDNA) is harmless; under-allocating would let the
+  // device write past the dynamic smem region.
+  constexpr int kMinWarpSize = 32;
+  int warps_per_block = static_cast<int>(blocksz) / kMinWarpSize;
 
   // Row-data region: 3 (or more with extra operands) * tile_height *
   // sizeof(T). No column-data region.

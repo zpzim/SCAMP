@@ -23,6 +23,10 @@ include(SCAMPMacros)
 # entry + per-(profile, variant) .cu files automatically.
 
 add_library(qt_kernels ${CMAKE_CURRENT_SOURCE_DIR}/qt_kernels.cu)
+if(USE_HIP)
+  set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/qt_kernels.cu PROPERTIES LANGUAGE HIP)
+  target_compile_definitions(qt_kernels PUBLIC USE_HIP)
+endif()
 
 add_library(gpu_utils
     ${CMAKE_CURRENT_SOURCE_DIR}/kernel_gpu_utils.cu
@@ -33,9 +37,15 @@ add_library(gpu_utils
 )
 target_include_directories(gpu_utils PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
                                               ${CMAKE_CURRENT_BINARY_DIR})
-# Eigen3::Eigen for the Eigen::Map / Eigen::Array fields in
-# kernel_gpu_utils.h's SCAMPSmem / SCAMPThreadInfo.
-target_link_libraries(gpu_utils kernel_common common CUDA::cudart Eigen3::Eigen)
+if(USE_HIP)
+  set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/kernel_gpu_utils.cu PROPERTIES LANGUAGE HIP)
+  target_compile_definitions(gpu_utils PUBLIC USE_HIP)
+  target_link_libraries(gpu_utils kernel_common common hip::host Eigen3::Eigen)
+else()
+  # Eigen3::Eigen for the Eigen::Map / Eigen::Array fields in
+  # kernel_gpu_utils.h's SCAMPSmem / SCAMPThreadInfo.
+  target_link_libraries(gpu_utils kernel_common common CUDA::cudart Eigen3::Eigen)
+endif()
 
 # Per-profile metadata: name + PROFILE_OUTPUT_TYPE + PROFILE_DATA_TYPE +
 # DISTANCE_TYPE. Used by the configure_file foreach below to fill in the
@@ -192,7 +202,7 @@ configure_file(
   "${CMAKE_CURRENT_BINARY_DIR}/kernels_variants.h"
   @ONLY)
 
-add_library(gpu_kernels
+set(GPU_KERNEL_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/kernels.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/kernel_1nn.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/kernel_1nn_index.cu
@@ -201,22 +211,22 @@ add_library(gpu_kernels
     ${CMAKE_CURRENT_SOURCE_DIR}/kernel_approx_all_neighbors.cu
     ${SCAMP_GENERATED_VARIANT_SOURCES}
 )
+
+add_library(gpu_kernels ${GPU_KERNEL_SOURCES})
+
+if(USE_HIP)
+  set_source_files_properties(${GPU_KERNEL_SOURCES} PROPERTIES LANGUAGE HIP)
+  target_compile_definitions(gpu_kernels PUBLIC USE_HIP)
+  # hip::hipcub is linked PRIVATE to avoid propagating HIP compile options to
+  # downstream C++ targets that link against gpu_kernels.
+  target_link_libraries(gpu_kernels PRIVATE hip::hipcub)
+  target_link_libraries(gpu_kernels PUBLIC gpu_utils kernel_common common Eigen3::Eigen)
+else()
+  target_link_libraries(gpu_kernels gpu_utils kernel_common common Eigen3::Eigen)
+endif()
+
 target_include_directories(gpu_kernels PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
                                                 ${CMAKE_CURRENT_BINARY_DIR})
-# Eigen3::Eigen is set up by src/core/cpu_kernel/CMakeLists.txt (which
-# the parent src/core/CMakeLists.txt processes before this directory)
-# as either:
-#   - a header-only INTERFACE target pointing at third_party/eigen
-#     (default), or
-#   - the real imported target from `find_package(Eigen3 5.0.0 ...)` when
-#     SCAMP_USE_EXTERNAL_EIGEN=1 (distro recipes; see environment.rst).
-# Upstream Eigen still publishes itself as the `Eigen3` CMake package
-# and `Eigen3::Eigen` target even at version 5.x, so either path
-# produces the same link spelling here. We use Eigen's fixed-size
-# arrays in the device-side compute templates for cleaner expression
-# syntax than hand-unrolled C arrays; the headers are device-callable
-# when --expt-relaxed-constexpr is on (set at top level).
-target_link_libraries(gpu_kernels gpu_utils kernel_common common Eigen3::Eigen)
 
 # autotune_bench: the autotune benchmark loop. Lives in its own library so
 # the dep on scamp_op (needed to invoke do_SCAMP per-trial) doesn't have to
@@ -230,4 +240,11 @@ target_include_directories(autotune_bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(autotune_bench gpu_utils scamp_op scamp_args common)
 
 mark_cuda_if_available()
+if(USE_HIP)
+  # Mark HIP targets with _HAS_CUDA_ so they use the GPU code paths.
+  get_property(current_targets DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY BUILDSYSTEM_TARGETS)
+  foreach(lib ${current_targets})
+    target_compile_definitions("${lib}" PUBLIC -D_HAS_CUDA_)
+  endforeach(lib)
+endif()
 mark_clang_tidy()

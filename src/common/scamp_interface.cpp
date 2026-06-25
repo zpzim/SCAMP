@@ -7,6 +7,10 @@
 #include <thread>
 #include <vector>
 
+#ifdef _HAS_CUDA_
+#include "common/cuda_to_hip.h"
+#endif
+
 namespace SCAMP {
 
 int num_available_gpus() {

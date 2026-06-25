@@ -180,5 +180,36 @@ The same is true if you want to disable CUDA support using FORCE_NO_CUDA=1, this
 
   cmake -DFORCE_NO_CUDA=1 ..
 
+Building for AMD GPUs (ROCm/HIP)
+************************************
+
+SCAMP can also target AMD GPUs through ROCm/HIP. Pass ``USE_HIP=ON`` to build
+the GPU path with HIP instead of CUDA. This requires a ROCm installation
+(including ``hipFFT`` and ``hipCUB``) and a HIP compiler (``hipcc`` /
+``amdclang++`` on Linux, ``clang-cl`` from the ROCm SDK on Windows)::
+
+  cmake -DUSE_HIP=ON ..
+  cmake --build . --config Release
+
+By default HIP detects the architecture of the GPU installed on the build host.
+To build for a specific architecture (or to produce a binary for several
+architectures), set ``CMAKE_HIP_ARCHITECTURES``::
+
+  # Single target
+  cmake -DUSE_HIP=ON -DCMAKE_HIP_ARCHITECTURES=gfx90a ..
+
+  # Fat binary for several targets
+  cmake -DUSE_HIP=ON -DCMAKE_HIP_ARCHITECTURES="gfx90a;gfx1100;gfx1201" ..
+
+``USE_HIP`` and CUDA are mutually exclusive; the CUDA build path is unchanged
+and remains the default when ``USE_HIP`` is left off.
+
+Both kernel families -- the sliding-window variants and the cov-shuffle
+(shfl) variants -- build and run on both CDNA (wave64, e.g. gfx90a) and RDNA
+(wave32, e.g. gfx1100, gfx1201) GPUs. The shfl variants were originally
+32-lane specific; their warp-width quantities are now generalized through the
+``kWarpSize`` abstraction (64 on CDNA, 32 on RDNA), so the autotuner can
+select either family on HIP just as it does on CUDA.
+
 
 

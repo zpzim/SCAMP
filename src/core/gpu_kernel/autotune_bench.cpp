@@ -21,7 +21,7 @@
 #include "kernel_config.h"
 
 #ifdef _HAS_CUDA_
-#include <cuda_runtime.h>
+#include "common/cuda_to_hip.h"
 #endif
 
 namespace SCAMP {

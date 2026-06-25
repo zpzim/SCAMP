@@ -2,9 +2,12 @@
 // via warp shuffles rather than being held in shared memory.
 //
 // Algorithm (per warp, per row of work):
-//   - Lane T owns a FIXED DPT-wide column slice. Ownership rolls over every
-//     32*DPT rows via update_info_shfl, which reads the next 32*DPT-block
-//     directly from global memory (no smem column buffer).
+//   - Lane T owns a FIXED DPT-wide column slice. A warp of kWarpSize lanes
+//     collectively owns kWarpSize*DPT columns; the covariance diagonal
+//     walks the full warp in kWarpSize rows. Each lane's slice rotates via
+//     update_info_shfl, which reads the next block-span directly from
+//     global memory (no smem column buffer). kWarpSize is 64 on CDNA
+//     (wave64) and 32 on RDNA/CUDA (wave32).
 //   - cov[i] at row r tracks cov(r, lane_T_col + i) on diagonal
 //     lane_T_col + i - r.
 //   - Per row: compute dist + update cov in place (cov(r, c) -> cov(r+1, c+1)).
@@ -13,8 +16,8 @@
 //     diagonal's cov walks one slot per row through the warp.
 //
 // Cross-warp boundary handling:
-//   - Lane 31 of warp k publishes its post-update cov[DPT-1] into a tiny
-//     smem hand-off region.
+//   - Lane (kWarpSize-1) of warp k publishes its post-update cov[DPT-1]
+//     into a tiny smem hand-off region.
 //   - Lane 0 of warp k > 0 reads warp k-1's published value.
 //   - One per-row block-scope barrier, with double-buffering of the
 //     hand-off slot so publish and read in consecutive rows don't race.
@@ -44,6 +47,9 @@
 
 #pragma once
 
+#include "common/cuda_to_hip.h"
+
+#if !defined(USE_HIP)
 #include <cuda.h>
 
 // cuda/barrier requires sm_70+ (libcudacxx hard-errors on older arches).
@@ -56,6 +62,7 @@
 #include <cuda/barrier>
 #define SCAMP_SHFL_HAS_CUDA_BARRIER 1
 #endif
+#endif  // !USE_HIP
 
 #include "core/defines.h"
 #include "core/kernel_common.h"
@@ -90,8 +97,8 @@ struct ShflRowBarrier {};
 //   distc / idxc        — per-lane per-column best-so-far. Flushed to smem
 //                         when the slot rotates.
 //   updates_remaining   — rotation countdown. Initialized staggered per
-//                         lane (warpln * DPT + DPT - 1) so lane 0 of each
-//                         warp rotates first.
+//                         block thread (threadIdx.x * DPT + DPT - 1) so the
+//                         lowest-numbered lanes rotate first.
 //   warpln / warpid /
 //     srcln             — cached lane / warp identifiers.
 //   global_col /
@@ -106,10 +113,17 @@ struct ShflRowBarrier {};
 //   For T = float (SP): 8 * DPT 32-bit registers from arrays.
 //   For T = double (DP): 12 * DPT 32-bit registers from arrays
 //     (doubles are 64-bit, taking 2 32-bit reg slots).
-// Plus ~10 scalar regs. To fit bps=8 with blocksz=128 (the 65536-regs /
-// 8 / 128 = 64 regs/thread ceiling), DPT*8 + 10 must stay <= 64 for SP,
-// implying DPT <= 6. DPT=8 needs bps=4 for SP; for DP, DPT=4 is already
-// near the bps=8 ceiling so DPT=8 DP needs bps=2.
+// Plus ~10 scalar regs. On NVIDIA the per-SM file is 65536 32-bit
+// registers (so bps=8 at blocksz=128 gives a 65536/8/128 = 64 regs/thread
+// ceiling): DPT*8 + 10 must stay <= 64 for SP, implying DPT <= 6; DPT=8
+// needs bps=4 for SP, and DP DPT=8 needs bps=2. On CDNA (gfx90a) the file
+// is 65536 32-bit VGPRs per SIMD (4 SIMDs/CU); occupancy is governed by
+// VGPRs/wavefront rather than the NVIDIA threads/SM math, and the per-GPU
+// autotuner picks the winning blocksz/bps. The geometries instantiated
+// here are sized to build and launch on both wave32 and wave64. Note that
+// on wave64 a given blocksz yields half the warps_per_block of wave32
+// (BLOCKSZ/64 vs BLOCKSZ/32), which halves the cov_handoff slot count and
+// the number of cross-warp hand-offs per row.
 template <typename T, typename DistType, int DPT>
 struct SCAMPShflState {
   Eigen::Array<T, DPT, 1> cov;
@@ -125,16 +139,14 @@ struct SCAMPShflState {
 };
 
 // One rotation step. Called when updates_remaining < DPT. Flushes one
-// column slot's distc/idxc atomically to smem, swaps in the next-block
-// stage, and resets distc.
+// column slot's distc/idxc atomically to smem, loads that slot's next
+// column block directly from global memory, and resets distc.
 //
-// At the START of a rotation cycle (updates_remaining == DPT - 1), bulk-
-// loads the next 32*DPT-block from global into dfc2/dgc2/inormc2. Reads
-// are coalesced-ish: 32 lanes × DPT consecutive doubles per lane = the
-// warp covers a contiguous span with a DPT-stride pattern between lanes.
-// The L1 cache absorbs the stride; total cost is ~ceil((32 * DPT *
-// sizeof(T)) / 128) cache-line fetches per warp per rotation per data
-// array.
+// The next column block is BLOCKSZ*DPT columns ahead (the block-level
+// rotation stride), read directly into dfc/dgc/inormc. Reads across a warp
+// are coalesced-ish: kWarpSize lanes each load DPT consecutive elements, so
+// the warp covers a contiguous span with a DPT-stride pattern between
+// lanes; the L1 cache absorbs the stride.
 template <int updates_remaining, bool COMPUTE_COLS,
           SCAMPProfileType PROFILE_TYPE, bool FAST_PATH, typename T,
           typename DistType, int DPT, typename DerivedSmem>
@@ -384,8 +396,8 @@ __device__ inline void warp_reduce_and_flush_row(int row_in_tile,
   if constexpr (PROFILE_TYPE == PROFILE_TYPE_SUM_THRESH) {
     DistType sum = distr;
 #pragma unroll
-    for (int delta = 16; delta >= 1; delta /= 2) {
-      sum += __shfl_down_sync(0xffffffffu, sum, delta);
+    for (int delta = kWarpSize / 2; delta >= 1; delta /= 2) {
+      sum += __shfl_down_sync(SCAMP_FULL_WARP_MASK, sum, delta);
     }
     if (warpln == 0) {
       do_atomicAdd<double, ATOMIC_BLOCK>(smem.local_mp_row.data() + row_in_tile,
@@ -397,9 +409,9 @@ __device__ inline void warp_reduce_and_flush_row(int row_in_tile,
     DistType d = distr;
     unsigned int x = idxr;
 #pragma unroll
-    for (int delta = 16; delta >= 1; delta /= 2) {
-      DistType d_other = __shfl_down_sync(0xffffffffu, d, delta);
-      unsigned int x_other = __shfl_down_sync(0xffffffffu, x, delta);
+    for (int delta = kWarpSize / 2; delta >= 1; delta /= 2) {
+      DistType d_other = __shfl_down_sync(SCAMP_FULL_WARP_MASK, d, delta);
+      unsigned int x_other = __shfl_down_sync(SCAMP_FULL_WARP_MASK, x, delta);
       if (d_other > d) {
         d = d_other;
         x = x_other;
@@ -436,7 +448,7 @@ __device__ inline void do_row_shfl(
     DerivedSmem &smem, DerivedDataType *cov_handoff_smem,
     ShflRowBarrier &row_bar) {
   constexpr int DPT = DiagsPerThread;
-  constexpr int warps_per_block = BLOCKSZ / 32;
+  constexpr int warps_per_block = BLOCKSZ / kWarpSize;
 
   const uint32_t global_row =
       tile_start_row + static_cast<uint32_t>(row_in_tile);
@@ -480,7 +492,7 @@ __device__ inline void do_row_shfl(
   // __syncthreads on sm_60), so we always publish here.
   {
     const int write_slot = (row_in_tile & 1) ^ 1;
-    if (state.warpln == 31) {
+    if (state.warpln == kWarpSize - 1) {
       cov_handoff_smem[write_slot * warps_per_block + state.warpid] =
           state.cov[DPT - 1];
     }
@@ -541,19 +553,21 @@ __device__ inline void do_row_shfl(
   // Ordering within a row:
   //   1. Lane 0 of warp k > 0 READS slot[r & 1] (value written by warp k-1
   //      at row r-1; visibility ensured by row r-1's barrier wait).
-  //   2. Lane 31 of each warp WRITES slot[(r & 1) ^ 1] (for warp k+1 to
-  //      consume at row r+1). Read & write are to DIFFERENT slots, so no
+  //   2. Lane (kWarpSize-1) of each warp WRITES slot[(r & 1) ^ 1] (for
+  //      warp k+1 to consume at row r+1). Read & write are to DIFFERENT
+  //      slots, so no
   //      within-row race. Write happens above, right after the cov update.
   //   3. cov shuffle (uses the read value).
   //   4. update_info_shfl + countdown.
   //   5. cuda::barrier WAIT at END of row (paired with the ARRIVE issued
-  //      right after the lane-31 publish above).
+  //      right after the lane-(kWarpSize-1) publish above).
   //
   // The single arrive/wait pair per row ensures: write-of-row-r
   // happens-before read-of-row-(r+1) (publish), AND read-of-row-r
   // happens-before write-of-row-(r+1) into the same slot (no overwrite).
   // -----------------------------------------------------------------
-  const DerivedDataType wrap_in = __shfl_sync(0xffffffffu, state.cov[DPT - 1],
+  const DerivedDataType wrap_in = __shfl_sync(SCAMP_FULL_WARP_MASK,
+                                              state.cov[DPT - 1],
                                               static_cast<int>(state.srcln));
 
   // Shift cov[i] = cov[i-1] for i in [1, DPT); insert wrap_in at cov[0].
@@ -576,9 +590,9 @@ __device__ inline void do_row_shfl(
   }
   --state.updates_remaining;
 
-  // End-of-row sync. Orders this row's lane-31 WRITE before next row's
+  // End-of-row sync. Orders this row's lane-(kWarpSize-1) WRITE before next row's
   // lane-0 READ of the same slot (publish), AND this row's lane-0 READ
-  // before next row's lane-31 WRITE to the same slot (no overwrite). On
+  // before next row's lane-(kWarpSize-1) WRITE to the same slot (no overwrite). On
   // sm_70+ this pairs with the cuda::barrier ARRIVE issued earlier in
   // the row; on sm_60 it's a plain __syncthreads() since cuda::barrier
   // isn't available.
@@ -606,12 +620,14 @@ __device__ inline void do_row_shfl(
 // so write_back_value / write_back are reused unchanged.
 //
 // Example smem footprint for a typical shfl variant (DP, DPT=8, BLOCKSZ=128,
-// tile_height=256, warps_per_block=4, max-style profile e.g. 1NN_INDEX):
-//   df_row + dg_row + inorm_row     = 3 * 256 * 8 = 6144 B
-//   local_mp_col                    = 1280 * 8    = 10240 B
-//   local_mp_row                    = 256  * 8    =  2048 B
-//   cov_handoff                     = 2 * 4 * 8   =    64 B
-//   profile_lengths (AAN only)      = 2 * 8       =    16 B
+// tile_height=256, max-style profile e.g. 1NN_INDEX). warps_per_block is
+// BLOCKSZ/kWarpSize: 4 on wave32 (RDNA/CUDA), 2 on wave64 (CDNA):
+//   df_row + dg_row + inorm_row     = 3 * 256 * 8     = 6144 B
+//   local_mp_col                    = 1280 * 8        = 10240 B
+//   local_mp_row                    = 256  * 8        =  2048 B
+//   cov_handoff                     = 2 * wpb * 8     =   64 B (wpb=4)
+//                                                        32 B (wpb=2)
+//   profile_lengths (AAN only)      = 2 * 8           =    16 B
 //   ---------------------------------------------------
 //   total                                        ≈ 18.5 KB
 //
@@ -627,7 +643,7 @@ struct SCAMPShflSmem {
                            int extra_operands);
 
   using DataType = DATA_TYPE;
-  static constexpr int BLOCKSZ = warps_per_block * 32;
+  static constexpr int BLOCKSZ = warps_per_block * kWarpSize;
 
   Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>> df_row;
   Eigen::Map<Eigen::Array<DATA_TYPE, tile_height, 1>> dg_row;

@@ -4,8 +4,11 @@
 
 #include "common/common.h"
 #include "core/tile.h"
+#include "common/cuda_to_hip.h"
 
-#if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 600
+#if defined(USE_HIP)
+// HIP provides double atomicAdd natively.
+#elif !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 600
 // Double atomicAdd is implemented
 #else
 // Double atomicAdd is not implemented before Pascal, providing a
@@ -27,19 +30,24 @@ namespace SCAMP {
 // Describes the SCOPE of an atomic operation in a GPU kernel
 enum SCAMPAtomicType { ATOMIC_BLOCK, ATOMIC_GLOBAL, ATOMIC_SYSTEM };
 
-// Hardware max threads/SM for the CUDA arch we're currently compiling for.
+// Hardware max threads/SM for the CUDA/HIP arch we're currently compiling for.
 // Used as the upper cap on `__launch_bounds__(BLOCKSZ, bps)` so that the
 // implied BLOCKSZ*bps never exceeds the per-SM thread ceiling (which would
 // otherwise be silently clamped by ptxas, leaving the actual occupancy
 // nondeterministic).
 //
-// Values from the CUDA C++ Programming Guide "Compute Capability" tables.
-// During host compilation (__CUDA_ARCH__ undefined) we return the more
-// permissive 2048 so any host-side use of this constant doesn't accidentally
-// under-cap; the launch_bounds itself is only consumed by ptxas during
-// device compilation where the right __CUDA_ARCH__ guard applies.
+// Values from the CUDA C++ Programming Guide "Compute Capability" tables
+// and AMD documentation.
+// During host compilation (__CUDA_ARCH__/__HIP_DEVICE_COMPILE__ undefined) we
+// return the more permissive 2048 so any host-side use of this constant doesn't
+// accidentally under-cap; the launch_bounds itself is only consumed by
+// ptxas/amdclang during device compilation where the right guard applies.
 constexpr int hw_threads_per_sm() {
-#if defined(__CUDA_ARCH__)
+#if defined(USE_HIP) && defined(__HIP_DEVICE_COMPILE__)
+  // AMD gfx9 (MI200 etc): 2048 threads per CU
+  // AMD gfx10/gfx11 (RDNA): 2048 threads per CU
+  return 2048;
+#elif defined(__CUDA_ARCH__)
   // Turing has half the warps per SM compared to neighbouring arches.
   if constexpr (__CUDA_ARCH__ == 750) return 1024;
   // GA10x, Orin, Ada GeForce, Jetson Thor, Blackwell GeForce: 1536 threads/SM.
