@@ -51,6 +51,10 @@ We use GitHub issues to track public bugs. Report a bug by [opening a new issue]
 * 2 spaces for indentation rather than tabs
 * C++/CUDA code will be automatically formatted on push by github-actions.
 
+## Writing GPU kernels for both CUDA and HIP
+
+SCAMP's GPU kernels compile for NVIDIA (CUDA) and AMD (HIP/ROCm) from one source tree. Warp width differs across targets (32 lanes on NVIDIA and RDNA AMD parts, 64 on CDNA AMD parts), so kernel code must not hard-code 32. Before writing or editing a kernel, read [docs/CUDA_HIP_KERNELS.md](docs/CUDA_HIP_KERNELS.md) for the checklist of warp-width hazards and the portable patterns (`kWarpSize`, `SCAMP_FULL_WARP_MASK`, `kMinWarpSize`) the code uses.
+
 ## License
 By contributing, you agree that your contributions will be licensed under its MIT License.
 
