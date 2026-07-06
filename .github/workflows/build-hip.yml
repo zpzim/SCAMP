@@ -1,0 +1,50 @@
+name: Build HIP
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+  workflow_dispatch:
+
+jobs:
+  build-hip:
+    name: hip-build ${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    container: rocm/dev-ubuntu-24.04:7.2.4-complete
+
+    # GitHub-hosted runners have no AMD GPU, so this job build-checks the HIP
+    # code path only (no kernel launch), mirroring how build-cuda-versions
+    # build-checks CUDA without an NVIDIA device. gfx90a covers CDNA (wave64)
+    # and gfx1100 covers RDNA (wave32); both wave widths are compiled so a
+    # change that breaks one but not the other is caught here.
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [gfx90a, gfx1100]
+
+    steps:
+      - name: Install build tools
+        shell: bash
+        run: |
+          set -e
+          apt-get update
+          apt-get install -y --no-install-recommends cmake git ca-certificates
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'true'
+
+      - name: Build SCAMP with HIP
+        shell: bash
+        run: |
+          set -e
+          cd "$GITHUB_WORKSPACE"
+          mkdir build && cd build
+          cmake -DUSE_HIP=ON \
+                -DCMAKE_HIP_ARCHITECTURES=${{ matrix.arch }} \
+                -DCMAKE_PREFIX_PATH=/opt/rocm \
+                -DBUILD_SCAMP_TESTS=ON \
+                -DCMAKE_BUILD_TYPE=Release ..
+          cmake --build . --config Release --parallel 2
