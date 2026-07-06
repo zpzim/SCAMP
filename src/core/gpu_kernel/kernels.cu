@@ -5,7 +5,13 @@
 // once per profile type in kernel_<profile>.cu. This translation unit only
 // includes the slim kernels_dispatch.h, so it compiles quickly and does not
 // duplicate the kernel instantiations.
+#include "common/cuda_to_hip.h"
+
+#if defined(USE_HIP)
+#include <hipcub/device/device_merge_sort.hpp>
+#else
 #include <cub/device/device_merge_sort.cuh>
+#endif
 
 #include "autotune.h"
 #include "core/defines.h"

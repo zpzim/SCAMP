@@ -83,12 +83,23 @@ if (NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
 endif()
 
 
-if(FORCE_NO_CUDA)
+# HIP/ROCm support for AMD GPUs
+option(USE_HIP "Build with HIP for AMD GPUs" OFF)
+
+if(USE_HIP)
+  # enable_language(HIP) honors -DCMAKE_HIP_ARCHITECTURES, otherwise auto-detects
+  # the host GPU(s), and errors on a no-GPU build host.
+  enable_language(HIP)
+  message(STATUS "Building with HIP for architectures: ${CMAKE_HIP_ARCHITECTURES}")
+  # Find hipFFT and hipCUB
+  find_package(hipfft REQUIRED)
+  find_package(hipcub REQUIRED)
+elseif(FORCE_NO_CUDA)
   unset(CMAKE_CUDA_COMPILER)
 elseif(FORCE_CUDA)
   enable_language(CUDA)
   find_package(CUDAToolkit ${CMAKE_CUDA_COMPILER_VERSION} REQUIRED)
-else() 
+else()
   # Use cuda if available
   check_language(CUDA)
   if(CMAKE_CUDA_COMPILER)
@@ -99,7 +110,7 @@ else()
 endif()
 
 # Do not use an unsupported cuda version
-if (CMAKE_CUDA_COMPILER)
+if (CMAKE_CUDA_COMPILER AND NOT USE_HIP)
   if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS ${CUDA_MINIMUM_VERSION})
     if(FORCE_CUDA)
       message(FATAL_ERROR "CUDA version ${CUDA_VERSION} is less than the mininmum required version ${CUDA_MINIMUM_VERSION} defaulting to no-cuda build")
@@ -110,7 +121,9 @@ if (CMAKE_CUDA_COMPILER)
   endif()
 endif()
 
-if(NOT CMAKE_CUDA_COMPILER)
+if(USE_HIP)
+  message(STATUS "HIP compiler found: ${CMAKE_HIP_COMPILER}")
+elseif(NOT CMAKE_CUDA_COMPILER)
   if(FORCE_CUDA)
     message(FATAL_ERROR "No CUDA compiler found, cannot proceed to build CUDA binary")
   else()
@@ -186,8 +199,12 @@ set(
 
 set(CMAKE_CXX_STANDARD 17)
 
-# CUDA_CONFIG
-if (CMAKE_CUDA_COMPILER)
+# GPU_CONFIG (CUDA or HIP)
+if(USE_HIP)
+  set(CMAKE_HIP_STANDARD 17)
+  # Match CUDA FMA formation (expression-only) so float results stay bit-compatible.
+  set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -ffp-contract=on")
+elseif(CMAKE_CUDA_COMPILER)
   set(CMAKE_CUDA_STANDARD 17)
   include_directories(${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   set(CUDA_SEPARABLE_COMPILATION ON)
@@ -335,9 +352,9 @@ if (CMAKE_CUDA_COMPILER)
   target_compile_definitions(SCAMP PUBLIC -D_HAS_CUDA_)
 endif()
 target_link_libraries(SCAMP gflags common scamp_interface scamp_utils)
-if (CMAKE_CUDA_COMPILER)
+if (CMAKE_CUDA_COMPILER OR USE_HIP)
   # autotune_bench provides the synthetic-workload benchmark that the
-  # --autotune CLI path drives. Only linked in CUDA builds since the CLI's
+  # --autotune CLI path drives. Only linked in CUDA/HIP builds since the CLI's
   # --autotune flag itself is gated on _HAS_CUDA_.
   target_link_libraries(SCAMP autotune_bench)
 endif()

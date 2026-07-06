@@ -23,7 +23,12 @@ For GPU support (required for any SCAMP build which will use a GPU):
     * You can find a list of CUDA compatible GPUs `here <https://developer.nvidia.com/cuda-gpus>`_
     * Highly recommend using a Pascal/Volta or newer GPU as they are much better (V100 is ~10x faster than a K80 for SCAMP, V100 is ~2-3x faster than a P100)
 
- 
+  * Alternatively, an AMD GPU with ROCm/HIP support (build with ``USE_HIP=ON``).
+
+    * Requires a ROCm installation including ``hipFFT`` and ``hipCUB``, and a HIP compiler.
+    * Supported on CDNA (e.g. gfx90a) and RDNA (e.g. gfx1100, gfx1201) GPUs. See :ref:`the build configuration options <build-config-options>` for details.
+
+
 For python support:
   * Only Python 3 is supported.
 
@@ -39,6 +44,8 @@ You need to have a cuda development environment set up in order to build SCAMP w
 I have only gotten Windows CUDA builds to work under MSVC and the Visual Studio Generators. There are some issues with cmake/nvcc/msvc that make it very difficult to install outside of this configuration.
 
 You can use the :ref:`configuration option <build-config-options>` FORCE_CUDA=1, to force SCAMP to build with CUDA (or fail). This works when installing pyscamp as well using ``FORCE_CUDA=1 pip install pyscamp``.
+
+To build the GPU path for AMD GPUs instead of NVIDIA, set ``USE_HIP=ON`` (``cmake -DUSE_HIP=ON ..``). This requires a ROCm/HIP toolchain rather than CUDA and is mutually exclusive with the CUDA build; see :ref:`the build configuration options <build-config-options>`.
 
 
 Environment variables
@@ -57,6 +64,13 @@ time):
   CUDA installations during pip installs of pyscamp.
 * ``FORCE_NO_CUDA`` — force a CPU-only build even if CUDA is detected
   on the system.
+* ``USE_HIP`` — build the GPU path for AMD GPUs with ROCm/HIP instead of
+  CUDA. Requires a ROCm/HIP toolchain (including ``hipFFT`` and
+  ``hipCUB``). Off by default; mutually exclusive with the CUDA path.
+* ``CMAKE_HIP_ARCHITECTURES`` — semicolon-separated list of AMD GPU
+  architectures to compile for (e.g. ``gfx90a`` for a single dev GPU, or
+  ``gfx90a;gfx1100;gfx1201`` for a redistributable build). Only used when
+  ``USE_HIP`` is on; if unset, HIP auto-detects the build host's GPU.
 * ``CMAKE_CUDA_ARCHITECTURES`` — comma-separated list of SM architectures
   to compile for (e.g. ``86`` for a single dev GPU, or
   ``75;80;86;89;90`` for a redistributable build). Overrides the

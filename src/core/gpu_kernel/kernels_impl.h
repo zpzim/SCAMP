@@ -7,7 +7,11 @@
 // a single TU.
 #pragma once
 
+#include "common/cuda_to_hip.h"
+
+#if !defined(USE_HIP)
 #include <cuda.h>
+#endif
 
 #include "core/defines.h"
 #include "core/kernel_common.h"

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/defines.h"
+#include "common/cuda_to_hip.h"
 
 //////////////////////////////////////////////////////
 // Helpers: NaN-safe array reductions for the profile-row update.
@@ -152,11 +153,32 @@ __device__ inline void update_rows(
 #pragma unroll num_to_update
     for (int r = 0; r < num_to_update; ++r) {
       DISTANCE_TYPE sum = distr[r + row_iter];
+      // Warp reduction: on wave64 (CDNA) reduce across 64 lanes, on wave32 (RDNA/CUDA) 32 lanes.
+      // HIP requires 64-bit masks. The reduction covers strides from kWarpSize/2 down to 1.
+#if defined(USE_HIP)
+#if defined(__GFX9__)
+      // wave64: strides 32, 16, 8, 4, 2, 1
+#pragma unroll
+      for (int i = 32; i >= 1; i /= 2) {
+        sum += __shfl_down_sync(SCAMP_FULL_WARP_MASK, sum, i);
+      }
+      if ((threadIdx.x & 0x3f) == 0) {
+#else
+      // wave32: strides 16, 8, 4, 2, 1
+#pragma unroll
+      for (int i = 16; i >= 1; i /= 2) {
+        sum += __shfl_down_sync(SCAMP_FULL_WARP_MASK, sum, i);
+      }
+      if ((threadIdx.x & 0x1f) == 0) {
+#endif
+#else
+      // CUDA: always wave32
 #pragma unroll
       for (int i = 16; i >= 1; i /= 2) {
         sum += __shfl_down_sync(0xffffffff, sum, i);
       }
       if ((threadIdx.x & 0x1f) == 0) {
+#endif
         do_atomicAdd<double, ATOMIC_BLOCK>(
             smem.local_mp_row.data() + info.local_row + r + row_iter,
             static_cast<double>(sum));

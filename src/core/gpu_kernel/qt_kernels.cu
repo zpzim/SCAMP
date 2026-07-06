@@ -1,3 +1,4 @@
+#include "common/cuda_to_hip.h"
 #include "qt_kernels.h"
 
 __global__ void elementwise_multiply_inplace(const cuDoubleComplex *A,

@@ -1,6 +1,9 @@
 add_library(common ${CMAKE_CURRENT_SOURCE_DIR}/common.cpp)
 
-if (CMAKE_CUDA_COMPILER) 
+if(USE_HIP)
+  target_compile_definitions(common PUBLIC USE_HIP)
+  target_link_libraries(common hip::host)
+elseif(CMAKE_CUDA_COMPILER)
   target_link_libraries(common CUDA::cudart)
 endif()
 

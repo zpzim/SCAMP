@@ -6,12 +6,12 @@
 # Each test executable is registered with ctest via add_test() so the
 # usual `ctest --output-on-failure` workflow surfaces failures.
 
-if (NOT CMAKE_CUDA_COMPILER)
+if (NOT CMAKE_CUDA_COMPILER AND NOT USE_HIP)
   # The current test suite covers GPU-side machinery (autotune cache).
-  # If there's no CUDA, gpu_utils doesn't exist and there's nothing
+  # If there's no CUDA or HIP, gpu_utils doesn't exist and there's nothing
   # meaningful to link against. Future CPU-only tests would land in a
   # sibling block here.
-  message(STATUS "SCAMP unit tests skipped (CUDA not available).")
+  message(STATUS "SCAMP unit tests skipped (CUDA/HIP not available).")
   return()
 endif()
 

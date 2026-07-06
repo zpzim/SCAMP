@@ -3,6 +3,8 @@
 #include <array>
 #include <cassert>
 
+// USE_HIP is defined via CMake for HIP builds. No HIP headers needed here.
+
 // Generated from SCAMP_VARIANT_TUPLES in CMakeLists.txt. Provides the
 // kVariants[] constexpr array at namespace SCAMP scope.
 #include "kernel_variants_table.h"
@@ -99,6 +101,10 @@ std::size_t FindFirstVariantOfFamily(bool want_shfl) {
 // the sliding-window variant's smem column buffer + heavy inner-loop
 // unroll wins across the qualification range.
 bool ProfileTypePrefersShfl(SCAMPProfileType profile) {
+  // The shfl kernel's warp-width assumptions are abstracted via kWarpSize
+  // (64 on CDNA wave64, 32 on RDNA/CUDA wave32), so the same cold-start
+  // family preference applies on HIP and CUDA. The autotuner may override
+  // this per device.
   switch (profile) {
     case PROFILE_TYPE_1NN_INDEX:
     case PROFILE_TYPE_SUM_THRESH:

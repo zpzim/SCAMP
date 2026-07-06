@@ -1,16 +1,23 @@
 #pragma once
 
 #ifdef _HAS_CUDA_
+#if defined(USE_HIP)
+#include <hipfft/hipfft.h>
+#include <hip/hip_complex.h>
+#else
 #include <cufft.h>
+#endif
 #endif
 
 #include <stdlib.h>
 #include "common/common.h"
 #include "common/scamp_exception.h"
 
-#ifdef _CUFFT_H_
+// Guard for cuFFT/hipFFT API error handling
+#if defined(_CUFFT_H_) || defined(HIPFFT_H_)
 
-// cuFFT API errors
+// cuFFT API errors. On HIP these CUFFT_* enumerators alias the HIPFFT_*
+// values via the compat shim, so a single CUDA-spelled overload serves both.
 inline const char *_cudaGetErrorEnum(cufftResult error) {
   switch (error) {
     case CUFFT_SUCCESS:
@@ -39,14 +46,10 @@ inline const char *_cudaGetErrorEnum(cufftResult error) {
       return "CUFFT_NO_WORKSPACE";
     case CUFFT_NOT_IMPLEMENTED:
       return "CUFFT_NOT_IMPLEMENTED";
-#ifdef CUFFT_PARSE_ERROR
-    case CUFFT_PARSE_ERROR:
-      return "CUFFT_PARSE_ERROR";
-    case CUFFT_LICENSE_ERROR:
-      return "CUFFT_LICENSE_ERROR";
     case CUFFT_INCOMPLETE_PARAMETER_LIST:
       return "CUFFT_INCOMPLETE_PARAMETER_LIST";
-#endif
+    case CUFFT_PARSE_ERROR:
+      return "CUFFT_PARSE_ERROR";
     case CUFFT_NOT_SUPPORTED:
       return "CUFFT_NOT_SUPPORTED";
     default:
@@ -64,7 +67,7 @@ inline const char *_cudaGetErrorEnum(cufftResult error) {
       throw SCAMPException(ostream.str());                              \
     }                                                                   \
   }
-#endif
+#endif  // _CUFFT_H_ || HIPFFT_H_
 
 namespace SCAMP {
 
@@ -74,7 +77,7 @@ class qt_compute_helper {
   const size_t window_size;
   const bool double_precision;
   const SCAMPArchitecture _arch;
-// CUFFT specific variables
+// cuFFT/hipFFT specific variables
 #ifdef _HAS_CUDA_
   double *Q_reverse_pad;
   cuDoubleComplex *Qc, *Tc;

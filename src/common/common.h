@@ -1,7 +1,7 @@
 #pragma once
 
 #ifdef _HAS_CUDA_
-#include <cuda_runtime.h>
+#include "common/cuda_to_hip.h"
 #endif
 
 #include <stdio.h>
@@ -17,7 +17,7 @@
 #include <vector>
 #include "scamp_exception.h"
 
-#ifdef _HAS_CUDA_
+#if defined(_HAS_CUDA_) || defined(__HIP_PLATFORM_AMD__)
 #define HOST_DEVICE_FUNCTION __host__ __device__
 #else
 #define HOST_DEVICE_FUNCTION

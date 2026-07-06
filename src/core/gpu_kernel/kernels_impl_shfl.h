@@ -4,7 +4,11 @@
 
 #pragma once
 
+#include "common/cuda_to_hip.h"
+
+#if !defined(USE_HIP)
 #include <cuda.h>
+#endif
 
 #include "core/defines.h"
 #include "core/kernel_common.h"
@@ -20,8 +24,9 @@ namespace SCAMP {
 
 // Computes the matrix profile via the cov-shuffle algorithm. Each lane
 // owns a FIXED DPT-wide column slice within the block's parallelogram
-// tile. cov walks lane-to-lane via shuffle each row; lane's column block
-// rotates every 32*DPT rows via update_info_shfl.
+// tile. cov walks lane-to-lane via shuffle each row; a warp of kWarpSize
+// lanes traverses its kWarpSize*DPT-column span over kWarpSize rows; lane's
+// column block rotates via update_info_shfl.
 //
 // Template params:
 //   target_threads_per_sm — variant author's intended thread density. The
@@ -37,12 +42,14 @@ namespace SCAMP {
 //   KernelTileIters — outer iterations per tile (tile_height = OUR * KTI)
 //   BLOCKSZ        — threads per block
 //
-// MUST hold: tile_height (= OUR * KTI) <= 32 * DPT. Larger tile_height
-// would require multiple column rotations per tile (update_info_shfl
-// would need to fire more than once per tile_height/32 rows). Today the
-// kernel only fires it once -- the variants in kVariants all satisfy
-// tile_height <= 32*DPT, and the autotuner doesn't sweep configs that
-// would violate it.
+// MUST hold: tile_height (= OUR * KTI) <= kWarpSize * DPT. A warp of
+// kWarpSize lanes owns kWarpSize*DPT columns; the covariance diagonal
+// walks the whole warp in kWarpSize rows. Larger tile_height would require
+// multiple column rotations per tile (update_info_shfl would need to fire
+// more than once per kWarpSize rows). Today the kernel only fires it once
+// -- the variants in kVariants all satisfy tile_height <= 32*DPT (the
+// wave32 bound, which is also <= the wave64 bound of 64*DPT), and the
+// autotuner doesn't sweep configs that would violate it.
 template <typename DATA_TYPE, typename ACCUM_TYPE, typename PROFILE_OUTPUT_TYPE,
           typename PROFILE_DATA_TYPE, typename DISTANCE_TYPE, bool COMPUTE_ROWS,
           bool COMPUTE_COLS, SCAMPProfileType PROFILE_TYPE,
@@ -55,18 +62,20 @@ __global__ void __launch_bounds__(BLOCKSZ,
                  PROFILE_OUTPUT_TYPE *profile_B) {
   constexpr int tile_height = KernelTileIters * OuterUnrolledRows;
   // tile_width is the PARALLELOGRAM width: each lane in the block rotates
-  // its column slice by 32*DPT every 32*DPT rows (staggered per warp-lane),
-  // so over tile_height rows the block touches columns up to
-  // BLOCKSZ*DPT + tile_height - 1. Sized smem accordingly so
-  // state.local_col indexing into smem.local_mp_col stays in bounds.
+  // its column slice by BLOCKSZ*DPT every BLOCKSZ*DPT rows (block-level
+  // stride, staggered per block thread), so over tile_height rows the block
+  // touches columns up to BLOCKSZ*DPT + tile_height - 1. Sized smem
+  // accordingly so state.local_col indexing into smem.local_mp_col stays in
+  // bounds.
   constexpr int tile_width = BLOCKSZ * DiagsPerThread + tile_height;
-  constexpr int warps_per_block = BLOCKSZ / 32;
-  static_assert(BLOCKSZ % 32 == 0, "BLOCKSZ must be a multiple of 32");
-  static_assert(tile_height <= 32 * DiagsPerThread,
-                "tile_height must be <= 32 * DPT: do_tile_shfl assumes "
+  constexpr int warps_per_block = BLOCKSZ / kWarpSize;
+  static_assert(BLOCKSZ % kWarpSize == 0,
+                "BLOCKSZ must be a multiple of kWarpSize (warp width)");
+  static_assert(tile_height <= kWarpSize * DiagsPerThread,
+                "tile_height must be <= kWarpSize * DPT: do_tile_shfl assumes "
                 "update_info_shfl fires at most once per warp per tile, "
                 "which holds only when tile_height does not exceed the "
-                "warp's column-block span of 32 * DPT rows.");
+                "warp's column-block span of kWarpSize * DPT rows.");
 
   extern __shared__ char smem_raw[];
   SCAMPShflSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE, tile_width,
@@ -79,7 +88,7 @@ __global__ void __launch_bounds__(BLOCKSZ,
   // existing smem-budget computations in get_smem_shfl don't need to
   // track it). Expected arrival count = BLOCKSZ (one arrive per thread).
   //
-  // do_row_shfl issues an ARRIVE right after the lane-31 publish (mid-row)
+  // do_row_shfl issues an ARRIVE right after the lane-(kWarpSize-1) publish (mid-row)
   // and a WAIT at end of row; on Ampere (sm_80+) this lowers to mbarrier
   // PTX, which is genuinely non-blocking on arrive. The publish-to-arrive
   // distance is tight (one smem store), but the arrive-to-wait window
@@ -101,9 +110,6 @@ __global__ void __launch_bounds__(BLOCKSZ,
 
   // Block geometry: matches the sliding-window kernel's 1D meta-diagonal
   // grid. Each block walks one meta-diagonal through tile-height steps.
-  const unsigned int start_diag = args.exclusion_lower +
-                                  (threadIdx.x * DiagsPerThread) +
-                                  blockIdx.x * (blockDim.x * DiagsPerThread);
   const unsigned int meta_diagonal_idx = blockIdx.x;
   uint32_t tile_start_col =
       meta_diagonal_idx * (BLOCKSZ * DiagsPerThread) + args.exclusion_lower;
@@ -112,11 +118,12 @@ __global__ void __launch_bounds__(BLOCKSZ,
 
   // Per-thread state. dfc/dgc/inormc/cov are loaded once per BLOCK
   // (lifetime extends across all tiles within the block) and rotate via
-  // update_info_shfl every 32*DPT rows.
+  // update_info_shfl (block-level stride BLOCKSZ*DPT, staggered per thread).
   SCAMPShflState<DATA_TYPE, DISTANCE_TYPE, DiagsPerThread> state;
-  state.warpln = threadIdx.x & 31u;
-  state.warpid = threadIdx.x >> 5;
-  state.srcln = (state.warpln - 1u) & 31u;
+  state.warpln = threadIdx.x % static_cast<uint32_t>(kWarpSize);
+  state.warpid = threadIdx.x / static_cast<uint32_t>(kWarpSize);
+  state.srcln = (state.warpln + static_cast<uint32_t>(kWarpSize) - 1u) %
+                static_cast<uint32_t>(kWarpSize);
   state.updates_remaining = threadIdx.x * DiagsPerThread + (DiagsPerThread - 1);
 
 #pragma unroll
@@ -163,12 +170,12 @@ __global__ void __launch_bounds__(BLOCKSZ,
                    PROFILE_TYPE>(args, smem, profile_A, profile_B,
                                  tile_start_col, tile_start_row);
 
-    // Reset state.local_col to its initial value. Across tiles, state.local_col
-    // grew via update_info_shfl rotations; for the NEXT tile's smem column
-    // profile region (which is per-tile sized, indexed 0..tile_width-1),
-    // the lane is back at its leftmost slot. state.global_col is already
-    // correct (rotation advanced it by 32*DPT each cycle, which matches
-    // tile_start_col advancing by tile_height = 32*DPT between tiles).
+    // Reset state.local_col for this tile. Across tiles, state.global_col
+    // tracks the absolute column each slot owns (advanced by update_info_shfl
+    // rotations during the tile); the per-tile smem column profile region is
+    // indexed 0..tile_width-1 relative to tile_start_col. Recomputing
+    // local_col = global_col - tile_start_col here is self-correcting and
+    // independent of warp width and rotation history.
     state.local_col = state.global_col - tile_start_col;
 
     __syncthreads();

@@ -9,7 +9,11 @@
 // the matching pre-instantiated do_tile variant.
 #pragma once
 
+#include "common/cuda_to_hip.h"
+
+#if !defined(USE_HIP)
 #include <cuda_runtime.h>
+#endif
 #include <cstdint>
 
 #include "common/common.h"

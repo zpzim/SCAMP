@@ -1,10 +1,7 @@
-#ifdef _HAS_CUDA_
-#include <cuda_runtime.h>
-#include <cufft.h>
-#endif
-
 #include "qt_helper.h"
+
 #ifdef _HAS_CUDA_
+#include "common/cuda_to_hip.h"
 #include "gpu_kernel/qt_kernels.h"
 #endif
 
