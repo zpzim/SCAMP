@@ -1,0 +1,51 @@
+# Cirun ephemeral runners for SCAMP's GPU CI + benchmark jobs.
+# https://docs.cirun.io/reference/yaml
+#
+# Cirun spins one of these instances up per job in YOUR connected cloud
+# account, registers an ephemeral self-hosted runner on it, runs the job,
+# and terminates the instance on completion. You pay the cloud bill; Cirun
+# orchestrates. Reference a runner from a workflow with `runs-on: <label>`.
+runners:
+  # Per-PR GPU correctness runner: 1x NVIDIA A10G (sm_86, Ampere -- the arch
+  # SCAMP's shfl/autotune defaults are validated against). Spot-priced, so a
+  # short run_tests.py sweep costs pennies. Abundant capacity, so spot
+  # eviction is rare; an evicted job is re-queued by Cirun.
+  - name: gpu-a10
+    cloud: aws
+    region: us-east-2
+    instance_type: g5.xlarge          # 1x A10G, 4 vCPU, 16GB GPU
+    # AWS "Deep Learning Base GPU AMI (Ubuntu)" -- ships the NVIDIA driver +
+    # CUDA toolkit (nvcc). AMI IDs are REGION-SPECIFIC: look up the current
+    # id for `region` above in EC2 -> AMIs -> Public images, or via
+    #   aws ec2 describe-images --owners amazon \
+    #     --filters "Name=name,Values=Deep Learning Base GPU AMI*Ubuntu*" \
+    #     --query 'sort_by(Images,&CreationDate)[-1].ImageId' --region us-east-2
+    machine_image: ami-0203ed68be6d568d1
+    preemptible: true                 # spot instance
+    labels:
+      - cirun-gpu-a10
+
+  # Lightweight CPU runner for the stable CPU benchmark. Fixed instance type
+  # for consistent regression-tracking hardware; no GPU. Plain Ubuntu AMI, so
+  # the job installs build tools itself.
+  #   aws ec2 describe-images --owners 099720109477 \
+  #     --filters "Name=name,Values=ubuntu/images/hvm-ssd*/ubuntu-*-24.04-amd64-server-*" \
+  #     --query 'sort_by(Images,&CreationDate)[-1].ImageId' --region us-east-2
+  - name: cpu-bench
+    cloud: aws
+    region: us-east-2
+    instance_type: c6i.xlarge         # 4 vCPU compute-optimized
+    machine_image: ami-0ea1cddefe0c4aed5
+    preemptible: true
+    labels:
+      - cirun-cpu-bench
+
+# If you connected Azure instead of AWS, the sm_86 equivalent is an A10 SKU,
+# e.g.:
+#   - name: gpu-a10
+#     cloud: azure
+#     region: eastus
+#     instance_type: Standard_NV36ads_A10_v5   # full A10, sm_86
+#     machine_image: <Azure GPU image / URN with NVIDIA driver + CUDA>
+#     preemptible: true
+#     labels: [cirun-gpu-a10]
