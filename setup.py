@@ -5,7 +5,7 @@ import sys
 import platform
 import subprocess
 
-from setuptools import setup, Extension, find_packages
+from setuptools import setup, Extension
 from setuptools.command.build_ext import build_ext
 
 class CMakeExtension(Extension):
@@ -87,7 +87,12 @@ class CMakeBuild(build_ext):
         print(' '.join(configure_cmd))
         subprocess.check_call(configure_cmd, cwd=self.build_temp, env=env)
 
-        build_cmd = ['cmake', '--build', '.', '--target', ext.name, '--config', build_type, '--parallel', '4']
+        # The CMake target is the extension's leaf name (e.g. ext.name
+        # "pyscamp._core" -> CMake target "_core"); the dotted prefix only
+        # controls where setuptools places the built module (the pyscamp
+        # package dir, via get_ext_fullpath above).
+        cmake_target = ext.name.rsplit('.', 1)[-1]
+        build_cmd = ['cmake', '--build', '.', '--target', cmake_target, '--config', build_type, '--parallel', '4']
         print("Building SCAMP")
         print(' '.join(build_cmd))
         subprocess.check_call(build_cmd, cwd=self.build_temp)
@@ -105,8 +110,9 @@ setup(
     description='SCAlable Matrix Profile',
     long_description=open("README.md").read(),
     long_description_content_type='text/markdown',
-    ext_modules=[CMakeExtension('pyscamp')],
-    packages=find_packages(),
+    ext_modules=[CMakeExtension('pyscamp._core')],
+    packages=['pyscamp'],
+    package_dir={'pyscamp': 'src/python/pyscamp'},
     cmdclass=dict(build_ext=CMakeBuild),
     url="https://github.com/zpzim/SCAMP",
     zip_safe=False
