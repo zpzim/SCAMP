@@ -132,9 +132,15 @@ jobs:
           submodules: 'true'
 
       - name: Setup SDE binaries
-        uses: petarpetrovt/setup-sde@v4.0
+        # v4.0 broke when Intel reorganized their SDE download page (the setup
+        # step failed at download). v6.0 (Aug 2026) tracks the new layout, with
+        # compatible inputs/outputs (sdeVersion + the SDE_PATH env var consumed
+        # below). Bumped the pinned SDE to 9.58.0 as well, in case the old
+        # 9.33.0 build was pruned; the emulation test only exercises standard
+        # arch flags (p4p..spr) that every recent SDE supports.
+        uses: petarpetrovt/setup-sde@v6.0
         with:
-          sdeVersion: 9.33.0
+          sdeVersion: 9.58.0
 
       
       - name: Prep Build
