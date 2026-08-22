@@ -84,11 +84,19 @@ jobs:
       matrix:
         compiler: [g++, clang++]
     name: CPU Benchmarks Stable
-    runs-on: self-hosted
+    # Fixed lightweight Cirun instance -> consistent hardware for the tight
+    # regression threshold below (see .cirun.yml).
+    runs-on: cirun-cpu-bench
     steps:
       - uses: actions/checkout@v2
         with:
           submodules: 'true'
+      - name: Install build tools
+        # Plain Ubuntu AMI has no toolchain preinstalled.
+        run: |
+          set -e
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang cmake git
       - name: Prep Build
         run: echo "CXX=${{ matrix.compiler }}" >> $GITHUB_ENV
       - name: Build SCAMP Benchmarks
@@ -118,8 +126,9 @@ jobs:
           # Where the output from the benchmark tool is stored
           output-file-path: ./build/benchmark_result.json
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          # Separate Dashboard for each combination of OS/Compiler
-          benchmark-data-dir-path: cpu-benchmarks/linux-stable/${{ matrix.compiler }}/bench
+          # Separate Dashboard for each combination of OS/Compiler.
+          # Fresh series for the c6i runner; old path was self-hosted baselines.
+          benchmark-data-dir-path: cpu-benchmarks/linux-c6i/${{ matrix.compiler }}/bench
           auto-push: true
           fail-on-alert: false
           comment-on-alert: true
@@ -128,11 +137,22 @@ jobs:
 
   benchmark-gpu:
     name: GPU Benchmarks
-    runs-on: self-hosted
+    # Ephemeral A10G (sm_86) spun up by Cirun (see .cirun.yml). A fixed
+    # instance type gives run-to-run-consistent hardware, so the regression
+    # tracking below stays meaningful even though the runner is ephemeral.
+    runs-on: cirun-gpu-a10
     steps:
       - uses: actions/checkout@v2
         with:
           submodules: 'true'
+      - name: Verify GPU + CUDA toolchain
+        shell: bash
+        run: |
+          set -e
+          echo "/usr/local/cuda/bin" >> $GITHUB_PATH
+          export PATH="/usr/local/cuda/bin:$PATH"
+          nvidia-smi
+          nvcc --version
       - name: Build SCAMP Benchmarks
         shell: bash
         run: |
@@ -140,7 +160,7 @@ jobs:
           cd $GITHUB_WORKSPACE
           mkdir build && cd build
           cmake -DFORCE_CUDA=1 -DBUILD_BENCHMARKS=1 ..
-          cmake --build . --config Release --parallel 2
+          cmake --build . --config Release --parallel 4
           if [ -f "./src/benchmark/scamp_gpu_benchmarks" ]; then
             cp ./src/benchmark/scamp_gpu_benchmarks .
           fi
@@ -160,7 +180,8 @@ jobs:
           # Where the output from the benchmark tool is stored
           output-file-path: ./build/benchmark_result.json
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          benchmark-data-dir-path: gpu-benchmarks/bench
+          # Fresh series for the A10G runner; old path was P100 baselines.
+          benchmark-data-dir-path: gpu-benchmarks/a10g/bench
           auto-push: true
           fail-on-alert: true
           comment-on-alert: true

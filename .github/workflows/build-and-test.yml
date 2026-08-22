@@ -9,6 +9,38 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Detect whether a change touches anything that affects the built SCAMP
+  # binary or its tests. Used to skip the *paid* ephemeral-GPU job on
+  # docs-only PRs (the CPU jobs stay unconditional -- they run on free
+  # GitHub-hosted runners). This is a positive allowlist: anything not
+  # listed here (docs/**, *.md, LICENSE, .readthedocs.yaml, ...) is treated
+  # as docs-only. If you add a new top-level path that affects the build,
+  # add it here or the GPU job will skip it.
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - 'src/**'
+              - 'test/**'
+              - 'cmake/**'
+              - 'third_party/**'
+              - '**/CMakeLists.txt'
+              - '.gitmodules'
+              - 'setup.py'
+              - 'MANIFEST.in'
+              - 'requirements.txt'
+              - '.github/workflows/build-and-test.yml'
+              - '.cirun.yml'
+
   build-and-test-cpu-cli:
     strategy:
       fail-fast: false
@@ -100,9 +132,15 @@ jobs:
           submodules: 'true'
 
       - name: Setup SDE binaries
-        uses: petarpetrovt/setup-sde@v4.0
+        # v4.0 broke when Intel reorganized their SDE download page (the setup
+        # step failed at download). v6.0 (Aug 2026) tracks the new layout, with
+        # compatible inputs/outputs (sdeVersion + the SDE_PATH env var consumed
+        # below). Bumped the pinned SDE to 9.58.0 as well, in case the old
+        # 9.33.0 build was pruned; the emulation test only exercises standard
+        # arch flags (p4p..spr) that every recent SDE supports.
+        uses: petarpetrovt/setup-sde@v6.0
         with:
-          sdeVersion: 9.33.0
+          sdeVersion: 9.58.0
 
       
       - name: Prep Build
@@ -301,12 +339,37 @@ jobs:
           ctest --output-on-failure --build-config Release
 
   build-and-test-cuda:
-    runs-on: self-hosted
+    # Per-PR GPU correctness on an ephemeral A10G (sm_86) spun up by Cirun.
+    # The label + instance are defined in .cirun.yml at the repo root. The
+    # instance uses the AWS Deep Learning Base GPU AMI, which ships the NVIDIA
+    # driver + CUDA toolkit, so this job builds and runs on the same runner
+    # exactly like the old self-hosted box did -- only the runner is now
+    # ephemeral (clean state per run) and cloud-hosted.
+    #
+    # Gated on the `changes` job so a docs-only PR doesn't spin up a paid GPU
+    # instance. Skips cleanly (the job is marked skipped, not failed) when no
+    # build-relevant path changed.
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: cirun-gpu-a10
 
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: 'true'
+
+      - name: Verify GPU + CUDA toolchain
+        shell: bash
+        # Fail fast (and legibly) if the runner image lacks a visible GPU or
+        # nvcc -- the two most common first-run problems on a fresh cloud
+        # runner. The Deep Learning AMI installs CUDA under /usr/local/cuda;
+        # put it on PATH for the build + test steps below.
+        run: |
+          set -e
+          echo "/usr/local/cuda/bin" >> $GITHUB_PATH
+          export PATH="/usr/local/cuda/bin:$PATH"
+          nvidia-smi
+          nvcc --version
 
       - name: Build SCAMP with CUDA
         shell: bash
@@ -315,8 +378,8 @@ jobs:
           cd $GITHUB_WORKSPACE
           mkdir build && cd build
           cmake -DFORCE_CUDA=1 -DBUILD_SCAMP_TESTS=ON ..
-          cmake --build . --config Release --parallel 2
-          
+          cmake --build . --config Release --parallel 4
+
       - name: Basic CUDA Tests SCAMP
         shell: bash
         run: |
