@@ -7,6 +7,9 @@ pyscamp: Python bindings for SCAMP
 .. autosummary::
    :toctree: _generate
 
+   join
+   JoinResult
+   KNNMatches
    selfjoin
    abjoin
    selfjoin_sum
@@ -199,5 +202,112 @@ def abjoin_matrix(a, b, m, **kwargs):
     :type threshold: float, optional
     :return: A 2D array of height mheight and width mwidth. This is a pooled version of the full distance matrix.
     :rtype: 2D array
+    """
+    ...
+
+
+def join(a, b=None, m=None, *, method="1nn", index=True, left_right=False,
+         k=None, threshold=None, mheight=None, mwidth=None,
+         precision="double", pearson=False, threads=None, gpus=None,
+         max_tile_size=None, allow_trivial_match=True):
+    """
+    Unified entry point for every SCAMP join. Computes a self-join of ``a``
+    (when ``b`` is omitted) or an ab-join of ``a`` against ``b``, in one of
+    several forms selected by ``method``, and returns a :class:`JoinResult`
+    whose populated fields depend on the arguments.
+
+    This is the recommended interface as of pyscamp 5.0. The per-type
+    functions (:func:`selfjoin`, :func:`abjoin`, :func:`selfjoin_sum`, etc.)
+    remain available and are equivalent to the corresponding ``join`` call.
+
+    :param a: Time series. Columns of the distance matrix.
+    :type a: 1D array
+    :param b: Second time series. If omitted, a self-join of ``a`` is computed;
+              otherwise an ab-join whose rows come from ``b``.
+    :type b: 1D array, optional
+    :param m: Subsequence (window) length. Required.
+    :type m: int
+    :param method: Which profile to compute: ``"1nn"`` (nearest-neighbor
+                   matrix profile), ``"sum"`` (sum of correlations above a
+                   threshold), ``"knn"`` (approximate k-nearest-neighbors), or
+                   ``"matrix"`` (pooled distance-matrix summary). Default
+                   ``"1nn"``.
+    :type method: str, optional
+    :param index: (``method="1nn"`` only) When True (default) the result also
+                  carries the nearest-neighbor index. Pass ``index=False`` to
+                  compute only the distance profile, which uses a cheaper
+                  kernel that does not track indices.
+    :type index: bool, optional
+    :param left_right: Return both join directions as ``left_*`` / ``right_*``
+                       instead of a single combined profile. For a self-join
+                       these are the left (nearest *preceding* neighbor) and
+                       right (nearest *subsequent* neighbor) matrix profiles;
+                       for an ab-join they are the A-in-B and B-in-A
+                       directions. Not valid for ``method="matrix"``.
+    :type left_right: bool, optional
+    :param k: (``method="knn"`` only, required) Number of neighbors to return
+              per subsequence.
+    :type k: int, optional
+    :param threshold: (sum / knn / matrix) Correlation threshold in [-1, 1].
+    :type threshold: float, optional
+    :param mheight: (``method="matrix"`` only) Output grid height. Default 50.
+    :type mheight: int, optional
+    :param mwidth: (``method="matrix"`` only) Output grid width. Default 50.
+    :type mwidth: int, optional
+    :param precision: ``"double"`` (default), ``"single"``, or ``"ultra"``.
+    :type precision: str, optional
+    :param pearson: Return Pearson correlations instead of z-normalized
+                    Euclidean distance. Default False.
+    :type pearson: bool, optional
+    :param threads: Number of CPU worker threads.
+    :type threads: int, optional
+    :param gpus: CUDA device ids to use; an empty list forces CPU execution.
+    :type gpus: list[int], optional
+    :param max_tile_size: Tile size override for performance tuning.
+    :type max_tile_size: int, optional
+    :param allow_trivial_match: (ab-join only) When False, treats ``a`` and
+                                ``b`` as aligned and excludes trivial
+                                self-matches near the equivalent main diagonal.
+    :type allow_trivial_match: bool, optional
+    :return: A result object whose populated fields depend on the request.
+    :rtype: JoinResult
+    """
+    ...
+
+
+class JoinResult:
+    """
+    Structured result returned by :func:`join`. Only the fields relevant to
+    the request are populated; the rest are ``None``.
+
+    :ivar method: The join method that was run.
+    :ivar profile: Primary distance profile (``method`` ``"1nn"`` / ``"sum"``,
+                   ``left_right=False``). 1D array.
+    :ivar index: Nearest-neighbor indices (``method="1nn"``, ``index=True``,
+                 ``left_right=False``). 1D array.
+    :ivar matrix: Pooled 2D distance-matrix summary (``method="matrix"``).
+    :ivar matches: :class:`KNNMatches` for ``method="knn"``,
+                   ``left_right=False``.
+    :ivar left_profile: Column-direction profile (``left_right=True``); for a
+                        self-join, the nearest *preceding* neighbor.
+    :ivar left_index: Indices for ``left_profile`` (1nn).
+    :ivar right_profile: Row-direction profile (``left_right=True``); for a
+                         self-join, the nearest *subsequent* neighbor.
+    :ivar right_index: Indices for ``right_profile`` (1nn).
+    :ivar left_matches: :class:`KNNMatches` for the left direction
+                        (``method="knn"``, ``left_right=True``).
+    :ivar right_matches: :class:`KNNMatches` for the right direction.
+    """
+    ...
+
+
+class KNNMatches:
+    """
+    KNN matches as three parallel numpy arrays (one entry per emitted match).
+    A ``namedtuple``, so it also unpacks as ``cols, rows, distances``.
+
+    :ivar cols: Column index of each match (subsequence in A).
+    :ivar rows: Row index of each match (the neighbor).
+    :ivar distances: Correlation or z-normalized Euclidean distance per match.
     """
     ...

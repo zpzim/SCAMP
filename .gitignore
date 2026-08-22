@@ -1,0 +1,6 @@
+# Built extension copied into the package dir during local dev builds
+# (the real build places it under build/lib*/pyscamp/, not here).
+src/python/pyscamp/*.so
+
+# setuptools build metadata
+*.egg-info/

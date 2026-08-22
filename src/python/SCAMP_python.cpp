@@ -142,6 +142,8 @@ bool KeyIsOkForProfileType(std::string key, SCAMP::SCAMPProfileType type) {
 
   switch (type) {
     case SCAMP::PROFILE_TYPE_1NN_INDEX:
+    case SCAMP::PROFILE_TYPE_1NN:
+      // 1NN (no index) accepts the same options as 1NN_INDEX.
       return nn_index.count(key) == 1;
     case SCAMP::PROFILE_TYPE_SUM_THRESH:
       return sum_thresh.count(key) == 1;
@@ -434,6 +436,161 @@ py::array_t<float> scamp_matrix(const std::vector<double>& a,
   return arr;
 }
 
+// ===========================================================================
+// Unified join entry point backing pyscamp.join().
+//
+// do_join() sets up a single SCAMPArgs from explicit structural arguments
+// (method, want_index, left_right) rather than one hardcoded profile type per
+// function, runs it, and returns a py::dict whose keys map onto JoinResult
+// fields in the Python layer. This is what lets a single Python join() cover
+// self/ab x {1nn, sum, knn, matrix} x index on/off x left/right in one place,
+// including the two capabilities the per-function bindings never exposed:
+// PROFILE_TYPE_1NN (index=False) and keep_rows_separate (left/right in one
+// pass). The legacy selfjoin/abjoin/*_sum/*_knn/*_matrix functions are left
+// untouched for backward compatibility.
+// ===========================================================================
+
+// --- per-direction extractors: one SCAMP::Profile -> numpy object(s) ---
+
+py::array_t<float> extract_1nn(const SCAMP::Profile& p, bool pearson,
+                               int window) {
+  return vec2pyarr<float>(p.data[0].float_value, pearson, window);
+}
+
+std::pair<py::array_t<float>, py::array_t<int>> extract_1nn_index(
+    const SCAMP::Profile& p, bool pearson, int window) {
+  size_t n = p.data[0].uint64_value.size();
+  py::array_t<float> nn(n);
+  py::array_t<int> idx(n);
+  SplitProfile1NNINDEX(p.data[0].uint64_value, nn, idx, pearson, window);
+  return {std::move(nn), std::move(idx)};
+}
+
+py::array_t<double> extract_sum(const SCAMP::Profile& p) {
+  return vec2pyarr<double>(p.data[0].double_value);
+}
+
+py::array_t<float> extract_matrix(const SCAMP::Profile& p, bool pearson,
+                                  int window, int height, int width) {
+  auto arr = vec2pyarr<float>(p.data[0].float_value, pearson, window);
+  arr.resize({height, width});
+  return arr;
+}
+
+// KNN as three parallel numpy arrays (col, row, distance), grouped by column
+// and ordered like SplitProfileKNN (drains the per-column priority queues).
+// Mutates p (empties the queues); do_join owns a local Profile so this is safe.
+std::tuple<py::array_t<int64_t>, py::array_t<int64_t>, py::array_t<float>>
+extract_knn(SCAMP::Profile& p, bool pearson, int window) {
+  std::vector<SCAMP::SCAMPmatch> flat;
+  for (auto& pq : p.data[0].match_value) {
+    std::list<SCAMP::SCAMPmatch> elems;
+    while (!pq.empty()) {
+      elems.push_front(pq.top());
+      pq.pop();
+    }
+    for (auto& e : elems) flat.push_back(e);
+  }
+  size_t n = flat.size();
+  py::array_t<int64_t> cols(n), rows(n);
+  py::array_t<float> dist(n);
+  auto* c = cols.mutable_data();
+  auto* r = rows.mutable_data();
+  auto* d = dist.mutable_data();
+  for (size_t i = 0; i < n; ++i) {
+    c[i] = flat[i].col;
+    r[i] = flat[i].row;
+    d[i] = pearson ? CleanupPearson(flat[i].corr)
+                   : ConvertToEuclidean(flat[i].corr, window);
+  }
+  return {std::move(cols), std::move(rows), std::move(dist)};
+}
+
+SCAMP::SCAMPProfileType ProfileTypeForMethod(const std::string& method,
+                                             bool want_index) {
+  if (method == "1nn")
+    return want_index ? SCAMP::PROFILE_TYPE_1NN_INDEX : SCAMP::PROFILE_TYPE_1NN;
+  if (method == "sum") return SCAMP::PROFILE_TYPE_SUM_THRESH;
+  if (method == "knn") return SCAMP::PROFILE_TYPE_APPROX_ALL_NEIGHBORS;
+  if (method == "matrix") return SCAMP::PROFILE_TYPE_MATRIX_SUMMARY;
+  throw std::invalid_argument("do_join: unknown method '" + method + "'");
+}
+
+// Write one direction's outputs into `out` under the given key prefix
+// ("" for the single-direction case, "left_"/"right_" for keep_rows).
+void PutDirection(py::dict& out, const std::string& prefix,
+                  const std::string& method, bool want_index, bool pearson,
+                  int window, int height, int width, SCAMP::Profile& profile) {
+  if (method == "1nn") {
+    if (want_index) {
+      auto pr = extract_1nn_index(profile, pearson, window);
+      out[py::str(prefix + "profile")] = std::move(pr.first);
+      out[py::str(prefix + "index")] = std::move(pr.second);
+    } else {
+      out[py::str(prefix + "profile")] = extract_1nn(profile, pearson, window);
+    }
+  } else if (method == "sum") {
+    out[py::str(prefix + "profile")] = extract_sum(profile);
+  } else if (method == "matrix") {
+    out[py::str(prefix + "matrix")] =
+        extract_matrix(profile, pearson, window, height, width);
+  } else {  // knn
+    auto t = extract_knn(profile, pearson, window);
+    out[py::str(prefix + "match_cols")] = std::move(std::get<0>(t));
+    out[py::str(prefix + "match_rows")] = std::move(std::get<1>(t));
+    out[py::str(prefix + "match_dist")] = std::move(std::get<2>(t));
+  }
+}
+
+py::dict do_join(const std::vector<double>& a, py::object b_obj, int m,
+                 const std::string& method, bool want_index, bool left_right,
+                 int k, const py::kwargs& kwargs) {
+  const bool self_join = b_obj.is_none();
+
+  SCAMP::SCAMPArgs args = GetDefaultSCAMPArgs();
+  args.timeseries_a = a;
+  args.window = m;
+  if (self_join) {
+    args.timeseries_b = a;
+    args.has_b = false;
+  } else {
+    auto barr = b_obj.cast<
+        py::array_t<double, py::array::c_style | py::array::forcecast>>();
+    args.timeseries_b = ArrayToDoubleVector(barr, "b");
+    args.has_b = true;
+  }
+
+  args.profile_type = ProfileTypeForMethod(method, want_index);
+  args.profile_a.type = args.profile_type;
+  args.profile_b.type = args.profile_type;
+  if (method == "knn") {
+    args.max_matches_per_column = k;
+  }
+
+  // Direction control. A self-join always computes the upper triangle (both
+  // row and column reductions); keep_rows_separate decides whether the row
+  // direction is merged into the combined profile (left_right=False) or kept
+  // separate as profile_b (left_right=True). An ab-join only computes the row
+  // direction when the caller wants it.
+  args.computing_columns = true;
+  args.computing_rows = self_join ? true : left_right;
+  args.keep_rows_separate = left_right;
+
+  bool pearson = setup_and_do_SCAMP(&args, kwargs);
+
+  py::dict out;
+  if (left_right) {
+    PutDirection(out, "left_", method, want_index, pearson, m,
+                 args.matrix_height, args.matrix_width, args.profile_a);
+    PutDirection(out, "right_", method, want_index, pearson, m,
+                 args.matrix_height, args.matrix_width, args.profile_b);
+  } else {
+    PutDirection(out, "", method, want_index, pearson, m, args.matrix_height,
+                 args.matrix_width, args.profile_a);
+  }
+  return out;
+}
+
 bool has_gpu_support() { return SCAMP::num_available_gpus() > 0; }
 
 // Runs the SCAMP GPU autotuner over the requested device(s) and writes the
@@ -504,7 +661,10 @@ std::vector<std::tuple<int64_t, int64_t, float>> (*ab_join_KNN)(
     const std::vector<double>&, const std::vector<double>&, int, int,
     const py::kwargs&) = &scamp_knn;
 
-PYBIND11_MODULE(pyscamp, m) {
+// Compiled core of the pyscamp package. Imported as pyscamp._core; the
+// pyscamp/__init__.py re-exports the public names and adds the pure-Python
+// join() surface. (Before 5.0 this module was imported directly as `pyscamp`.)
+PYBIND11_MODULE(_core, m) {
   m.doc() = R"pbdoc(
         pyscamp: Python bindings for SCAMP
         ----------------------------------
@@ -527,6 +687,21 @@ PYBIND11_MODULE(pyscamp, m) {
   m.def("gpu_supported", GPU_supported, R"pbdoc(
         Returns true if both 1) The module was compiled with GPU support and 2) GPUs are available.
         )pbdoc");
+
+  // Low-level unified join backing pyscamp.join(). Structural arguments are
+  // explicit; everything else flows through kwargs. Returns a dict whose keys
+  // (profile / index / matrix / match_cols|rows|dist, each optionally with a
+  // left_/right_ prefix) are assembled into a JoinResult by the Python layer.
+  // Underscore-prefixed: not part of the public surface -- use join().
+  m.def("_do_join",
+        [](py::array_t<double, py::array::c_style | py::array::forcecast> a,
+           py::object b, int m, const std::string& method, bool want_index,
+           bool left_right, int k, const py::kwargs& kwargs) {
+          return do_join(ArrayToDoubleVector(a, "a"), b, m, method, want_index,
+                         left_right, k, kwargs);
+        },
+        py::arg("a"), py::arg("b"), py::arg("m"), py::arg("method"),
+        py::arg("want_index"), py::arg("left_right"), py::arg("k"));
 
   m.def("autotune", &run_autotune, py::arg("devices") = std::vector<int>{},
         py::arg("cache_path") = std::string{}, R"pbdoc(

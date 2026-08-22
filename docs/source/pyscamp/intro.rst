@@ -110,22 +110,38 @@ Python Example
   # Allows checking if pyscamp was built with CUDA and GPUs are available.
   has_gpu_support = mp.gpu_supported()
 
-  # Self join.
-  profile, index = mp.selfjoin(a, sublen)
-  # AB join using 4 threads and no gpus.
-  profile, index = mp.abjoin(a, b, sublen, threads=4, gpus=[])
-  # Sum thresh
-  corr_sum = mp.abjoin_sum(a, b, sublen, threshold=0.9)
-    
-  # Matrix summary (100x100) with threVshold, outputting pearson correlation
-  matrix = mp.abjoin_matrix(a, b, sublen, mwidth=100, mheight=100, threshold=0.5, pearson=True)
+  # The recommended interface (pyscamp 5.0+) is the single join() entry point.
+  # It returns a JoinResult; only the fields relevant to the request are set.
+
+  # Self join (nearest-neighbor matrix profile + index).
+  r = mp.join(a, m=sublen)
+  profile, index = r.profile, r.index
+
+  # AB join using 4 threads and no gpus. Omit the index for a faster 1NN.
+  r = mp.join(a, b, m=sublen, index=False, threads=4, gpus=[])
+  profile = r.profile
+
+  # Left/right (preceding/subsequent) matrix profiles in a single pass.
+  r = mp.join(a, m=sublen, left_right=True)
+  left, right = r.left_profile, r.right_profile
+
+  # Other join types are selected with method=.
+  corr_sum = mp.join(a, b, m=sublen, method="sum", threshold=0.9).profile
+  matrix = mp.join(a, b, m=sublen, method="matrix",
+                   mwidth=100, mheight=100, threshold=0.5, pearson=True).matrix
 
   # Approximate KNN is supported with GPUs + CUDA only for now.
   if has_gpu_support:
-    knn = mp.selfjoin_knn(a,sublen, k)
-    # KNN with threshold
-    knn = mp.selfjoin_knn(a, sublen, k, threshold=0.85)
-    # KNN Ab join with threshold, outputting pearson correlation
+    knn = mp.join(a, m=sublen, method="knn", k=k, threshold=0.85)
+    cols, rows, distances = knn.matches   # three parallel numpy arrays
+
+  # The per-type functions from earlier releases remain available and behave
+  # identically to the equivalent join() call:
+  profile, index = mp.selfjoin(a, sublen)
+  profile, index = mp.abjoin(a, b, sublen, threads=4, gpus=[])
+  corr_sum = mp.abjoin_sum(a, b, sublen, threshold=0.9)
+  matrix = mp.abjoin_matrix(a, b, sublen, mwidth=100, mheight=100, threshold=0.5, pearson=True)
+  if has_gpu_support:
     knn = mp.abjoin_knn(a, b, sublen, k, threshold=0.90, pearson=True)
 
 
