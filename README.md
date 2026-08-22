@@ -89,11 +89,24 @@ import pyscamp as mp
 # Allows checking if pyscamp was built with CUDA and has GPU support.
 has_gpu_support = mp.gpu_supported()
 
-# Self join
-profile, index = mp.selfjoin(a, sublen)
+# The recommended interface is the single join() entry point. It returns a
+# JoinResult; only the fields relevant to the request are populated.
+
+# Self join (nearest-neighbor matrix profile + index).
+r = mp.join(a, m=sublen)
+profile, index = r.profile, r.index
 
 # AB join using 4 threads, outputting pearson correlation.
-profile, index = mp.abjoin(a, b, sublen, pearson=True, threads=4)
+r = mp.join(a, b, m=sublen, pearson=True, threads=4)
+
+# Other join types are selected with method= ("sum", "knn", "matrix"); pass
+# left_right=True for the left/right (preceding/subsequent) profiles, or
+# index=False for a faster 1NN distance profile without the index.
+summary = mp.join(a, m=sublen, method="matrix", mwidth=100, mheight=100).matrix
+
+# The per-type functions (selfjoin, abjoin, selfjoin_sum, ...) remain available
+# and behave identically to the equivalent join() call.
+profile, index = mp.selfjoin(a, sublen)
 ~~~
 
 More information and the API documentation for pyscamp is available on [readthedocs](https://scamp-docs.readthedocs.io/en/latest/)
