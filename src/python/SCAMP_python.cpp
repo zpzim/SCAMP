@@ -554,8 +554,8 @@ py::dict do_join(const std::vector<double>& a, py::object b_obj, int m,
     args.timeseries_b = a;
     args.has_b = false;
   } else {
-    auto barr =
-        b_obj.cast<py::array_t<double, py::array::c_style | py::array::forcecast>>();
+    auto barr = b_obj.cast<
+        py::array_t<double, py::array::c_style | py::array::forcecast>>();
     args.timeseries_b = ArrayToDoubleVector(barr, "b");
     args.has_b = true;
   }
@@ -693,16 +693,15 @@ PYBIND11_MODULE(_core, m) {
   // (profile / index / matrix / match_cols|rows|dist, each optionally with a
   // left_/right_ prefix) are assembled into a JoinResult by the Python layer.
   // Underscore-prefixed: not part of the public surface -- use join().
-  m.def(
-      "_do_join",
-      [](py::array_t<double, py::array::c_style | py::array::forcecast> a,
-         py::object b, int m, const std::string& method, bool want_index,
-         bool left_right, int k, const py::kwargs& kwargs) {
-        return do_join(ArrayToDoubleVector(a, "a"), b, m, method, want_index,
-                       left_right, k, kwargs);
-      },
-      py::arg("a"), py::arg("b"), py::arg("m"), py::arg("method"),
-      py::arg("want_index"), py::arg("left_right"), py::arg("k"));
+  m.def("_do_join",
+        [](py::array_t<double, py::array::c_style | py::array::forcecast> a,
+           py::object b, int m, const std::string& method, bool want_index,
+           bool left_right, int k, const py::kwargs& kwargs) {
+          return do_join(ArrayToDoubleVector(a, "a"), b, m, method, want_index,
+                         left_right, k, kwargs);
+        },
+        py::arg("a"), py::arg("b"), py::arg("m"), py::arg("method"),
+        py::arg("want_index"), py::arg("left_right"), py::arg("k"));
 
   m.def("autotune", &run_autotune, py::arg("devices") = std::vector<int>{},
         py::arg("cache_path") = std::string{}, R"pbdoc(
